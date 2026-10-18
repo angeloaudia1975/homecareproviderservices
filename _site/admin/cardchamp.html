@@ -1,0 +1,235 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — CardChamp</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:2px 0 4px}
+ .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700}
+ .kpi .v{font-size:24px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;line-height:1.1;margin-top:2px}
+ .kpi .s{font-size:11px;color:var(--gray);margin-top:1px}
+ .kpi.cc{border-left:4px solid #EE5A5A}
+ .ccbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+ .ccbar .logo{height:26px}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid var(--line)}
+ td{padding:7px 8px;border-bottom:1px solid #eef2f6;vertical-align:top}
+ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+ .pill{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:6px;padding:2px 7px;white-space:nowrap}
+ .pill.referred{background:#eef2f7;color:#5b6b7b}.pill.applied{background:#e7f0fb;color:#2b5fa0}
+ .pill.approved{background:#e7f6ec;color:#1f7a44}.pill.active{background:#dff5e6;color:#137a3b}
+ .pill.declined{background:#fdecec;color:#b42323}.pill.churned{background:#f3eef9;color:#5b3fa0}.pill.void{background:#f1f1f1;color:#999}
+ .frm{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;margin-top:6px}
+ .frm label{font-size:11px;color:var(--gray);font-weight:600;display:block}
+ .frm input,.frm select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit}
+ .rowact{display:flex;gap:6px;flex-wrap:wrap}
+ .lnk{color:#1681c2;cursor:pointer;font-weight:600;text-decoration:none}
+ .empty{border:1px dashed var(--line);border-radius:10px;padding:18px;color:var(--gray);font-size:13px;text-align:center;background:#fafbfc}
+ .seg{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+ .cchip{font-size:12px;font-weight:700;color:var(--navy);background:#f5f8fb;border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer}
+ .cchip.on{background:#EE5A5A;border-color:#EE5A5A;color:#fff}
+ .imp{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fbfcfe}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div>
+    <div class="ccbar"><img class="logo" src="https://www.cardchamp.com/hubfs/_website-logos/cardchamp.svg" alt="CardChamp" onerror="this.style.display='none'"><h1 style="margin:0">CardChamp — Dealer Services</h1></div>
+    <div class="sub">Referral activity, conversions, and commission for the CardChamp partnership. Clicks are captured automatically from the site &amp; ordering portal; conversions are logged here (or imported when CardChamp sends a report).</div>
+  </div><div id="conn"></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money=n=>(n==null||n==="")?"—":"$"+Math.round(Number(n)||0).toLocaleString("en-US");
+const idate=s=>{ if(!s) return "—"; try{ return new Date(s).toLocaleDateString(); }catch(e){ return String(s); } };
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), DATA=null, DEALERS={}, SHOW="interested", BUSY=false;
+const SERVICE="cardchamp";
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+async function p(payload){ const r=await fetch("/.netlify/functions/partner-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(Object.assign({service:SERVICE},payload))}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+async function boot(){
+  if(!TOKEN){ gate(); return; }
+  // dealer name list for the manual form (best-effort)
+  try{ const r=await fetch("/.netlify/functions/dealers-api",{headers:{authorization:"Bearer "+TOKEN}}); if(r.ok){ const d=await r.json(); (d.dealers||[]).forEach(x=>{ if(x.name) DEALERS[x.name]=x.id; }); } }catch(e){}
+  load();
+}
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  const r=await p({action:"report"});
+  if(r.status===401){ gate("Your session ended — sign in again."); return; }
+  if(r.status===403){ $("#body").innerHTML=`<div class="msg err"><b>Staff only.</b></div>`; return; }
+  if(r.body&&r.body.error==="tables_missing"){ $("#body").innerHTML=`<div class="msg">Run <b>supabase/partner_services.sql</b> in Supabase to turn on CardChamp reporting, then reload.</div>`; return; }
+  if(!r.body||!r.body.ok){ $("#body").innerHTML=`<div class="msg err">Couldn't load report.</div>`; return; }
+  DATA=r.body; render();
+}
+function render(){
+  const k=DATA.kpis||{};
+  const kpis=`<div class="kpis">
+    <div class="kpi cc"><div class="l">Clicks · 30 days</div><div class="v">${k.clicks_30d||0}</div><div class="s">${k.clicks_total||0} all-time</div></div>
+    <div class="kpi"><div class="l">Interested dealers</div><div class="v">${k.interested_dealers||0}</div><div class="s">clicked CardChamp</div></div>
+    <div class="kpi"><div class="l">Referrals</div><div class="v">${k.referrals_total||0}</div><div class="s">${k.active||0} active</div></div>
+    <div class="kpi"><div class="l">Conversion</div><div class="v">${k.conversion_rate||0}%</div><div class="s">of interested → referred</div></div>
+    <div class="kpi cc"><div class="l">Commission · this month</div><div class="v">${money(k.commission_period)}</div><div class="s">${money(k.commission_total)} lifetime</div></div>
+    <div class="kpi"><div class="l">Partner revenue</div><div class="v">${money(k.revenue_total)}</div><div class="s">tracked to date</div></div>
+  </div>`;
+  const seg=`<div class="seg">
+    <button class="cchip ${SHOW==='interested'?'on':''}" onclick="seg('interested')">Interested dealers (${(DATA.interested||[]).length})</button>
+    <button class="cchip ${SHOW==='ledger'?'on':''}" onclick="seg('ledger')">Referral &amp; commission ledger (${(DATA.referrals||[]).length})</button>
+    <button class="cchip ${SHOW==='import'?'on':''}" onclick="seg('import')">Import a report</button>
+    <span style="flex:1"></span>
+    <button class="btn sm orange" onclick="openLog()">＋ Log a conversion</button>
+  </div>`;
+  let panel;
+  if(SHOW==="interested") panel=renderInterested();
+  else if(SHOW==="ledger") panel=renderLedger();
+  else panel=renderImport();
+  $("#body").innerHTML=kpis+`<div class="card">${seg}<div id="logbox"></div>${panel}</div>`;
+}
+function seg(s){ SHOW=s; render(); }
+function renderInterested(){
+  const rows=DATA.interested||[];
+  if(!rows.length) return `<div class="empty">No CardChamp clicks captured yet. As dealers click the “Turn Credit Card Fees into Cash Flow” button on the site or ordering portal, they’ll appear here — signed-in dealers are matched by account.</div>`;
+  return `<table><thead><tr><th>Dealer</th><th class="num">Clicks</th><th>Last click</th><th>Where</th><th>Referral?</th><th></th></tr></thead><tbody>
+   ${rows.map(r=>`<tr>
+     <td>${r.dealer_id?`<a class="lnk" href="/admin/dealer.html?id=${encodeURIComponent(r.dealer_id)}">${esc(r.name)}</a>`:esc(r.name)}</td>
+     <td class="num">${r.clicks}</td><td>${idate(r.last_click)}</td>
+     <td>${esc((r.surfaces||[]).join(", ")||"—")}</td>
+     <td>${r.has_referral?'<span class="pill active">Yes</span>':'<span class="pill referred">Not yet</span>'}</td>
+     <td class="rowact">${r.has_referral?"":`<button class="btn ghost sm" onclick="openLog('${r.dealer_id||''}',this.getAttribute('data-n'))" data-n="${esc(r.name)}">Log conversion</button>`}</td>
+   </tr>`).join("")}</tbody></table>`;
+}
+function renderLedger(){
+  const rows=DATA.referrals||[];
+  if(!rows.length) return `<div class="empty">No conversions logged yet. When a dealer enrolls with CardChamp, click <b>＋ Log a conversion</b> to record the dealer, status, and commission — or import a CardChamp report once you receive one.</div>`;
+  return `<table><thead><tr><th>Dealer</th><th>Status</th><th>Period</th><th class="num">Volume</th><th class="num">Revenue</th><th class="num">Commission</th><th>Source</th><th></th></tr></thead><tbody>
+   ${rows.map(r=>`<tr id="ref_${r.id}">
+     <td>${r.dealer_id?`<a class="lnk" href="/admin/dealer.html?id=${encodeURIComponent(r.dealer_id)}">${esc(r.dealer_name)}</a>`:esc(r.dealer_name)}${r.note?`<div class="hint" style="margin:1px 0 0">${esc(r.note)}</div>`:""}</td>
+     <td><span class="pill ${esc(r.status)}">${esc(r.status)}</span></td>
+     <td>${esc(r.period||"—")}</td>
+     <td class="num">${money(r.monthly_volume)}</td><td class="num">${money(r.revenue)}</td><td class="num">${money(r.commission)}</td>
+     <td>${esc(r.source||"—")}</td>
+     <td class="rowact">${r.status!=="void"?`<button class="lnk" style="background:none;border:0" onclick="editRef('${r.id}')">Edit</button> <button class="lnk" style="background:none;border:0;color:#b42323" onclick="voidRef('${r.id}')">Void</button>`:""}</td>
+   </tr>`).join("")}</tbody></table>`;
+}
+function statusOpts(sel){ return (DATA.statuses||["referred","applied","approved","active","declined","churned"]).filter(s=>s!=="void").map(s=>`<option value="${s}"${s===sel?" selected":""}>${s}</option>`).join(""); }
+function dealerList(){ return `<datalist id="dl_dealers">${Object.keys(DEALERS).slice(0,4000).map(n=>`<option value="${esc(n)}"></option>`).join("")}</datalist>`; }
+function openLog(dealer_id,dealer_name){
+  const box=$("#logbox"); if(!box) return;
+  const thisMonth=new Date().toISOString().slice(0,7);
+  box.innerHTML=`<div class="imp" style="margin-bottom:12px">
+    <b>Log a CardChamp conversion / commission</b>
+    <div class="frm">
+      <div style="grid-column:span 2"><label>Dealer</label><input id="f_dealer" list="dl_dealers" value="${esc(dealer_name||'')}" placeholder="Start typing a dealer name…"></div>
+      <div><label>Status</label><select id="f_status">${statusOpts('active')}</select></div>
+      <div><label>Reporting month</label><input id="f_period" value="${thisMonth}" placeholder="YYYY-MM"></div>
+      <div><label>Monthly volume ($)</label><input id="f_vol" placeholder="e.g. 42000"></div>
+      <div><label>Partner revenue ($)</label><input id="f_rev" placeholder="optional"></div>
+      <div><label>HCPS commission ($)</label><input id="f_comm" placeholder="e.g. 180"></div>
+      <div style="grid-column:span 2"><label>Note</label><input id="f_note" placeholder="optional"></div>
+    </div>
+    <input type="hidden" id="f_did" value="${esc(dealer_id||'')}">
+    <div style="margin-top:10px;display:flex;gap:8px"><button class="btn orange sm" onclick="submitLog()">Save conversion</button><button class="btn ghost sm" onclick="document.getElementById('logbox').innerHTML=''">Cancel</button><span id="logmsg" class="hint" style="margin:0"></span></div>
+  </div>${dealerList()}`;
+  const f=$("#f_dealer"); if(f&&!dealer_name) f.focus();
+}
+async function submitLog(){
+  if(BUSY)return; const name=(($("#f_dealer")||{}).value||"").trim();
+  if(!name){ $("#logmsg").textContent="Enter a dealer."; return; }
+  BUSY=true; $("#logmsg").textContent="Saving…";
+  const did=DEALERS[name]||(($("#f_did")||{}).value||"")||null;
+  const r=await p({action:"log_referral", dealer_id:did||undefined, dealer_name:name,
+    status:($("#f_status")||{}).value, period:($("#f_period")||{}).value,
+    monthly_volume:($("#f_vol")||{}).value, revenue:($("#f_rev")||{}).value, commission:($("#f_comm")||{}).value,
+    note:($("#f_note")||{}).value });
+  BUSY=false;
+  if(r.body&&r.body.ok){ $("#logbox").innerHTML=""; SHOW="ledger"; await load(); }
+  else $("#logmsg").textContent=(r.body&&(r.body.error||r.body.message))||"Save failed.";
+}
+function editRef(id){
+  const r=(DATA.referrals||[]).find(x=>x.id===id); if(!r) return;
+  const tr=document.getElementById("ref_"+id); if(!tr) return;
+  tr.innerHTML=`<td colspan="8"><div class="frm">
+    <div><label>Status</label><select id="e_status">${statusOpts(r.status)}</select></div>
+    <div><label>Period</label><input id="e_period" value="${esc(r.period||'')}" placeholder="YYYY-MM"></div>
+    <div><label>Volume ($)</label><input id="e_vol" value="${r.monthly_volume!=null?r.monthly_volume:''}"></div>
+    <div><label>Revenue ($)</label><input id="e_rev" value="${r.revenue!=null?r.revenue:''}"></div>
+    <div><label>Commission ($)</label><input id="e_comm" value="${r.commission!=null?r.commission:''}"></div>
+    <div style="grid-column:span 2"><label>Note</label><input id="e_note" value="${esc(r.note||'')}"></div>
+    </div><div style="margin-top:8px;display:flex;gap:8px"><button class="btn orange sm" onclick="saveRef('${id}')">Save</button><button class="btn ghost sm" onclick="render()">Cancel</button></div></td>`;
+}
+async function saveRef(id){
+  const r=await p({action:"update_referral", id, status:($("#e_status")||{}).value, period:($("#e_period")||{}).value,
+    monthly_volume:($("#e_vol")||{}).value, revenue:($("#e_rev")||{}).value, commission:($("#e_comm")||{}).value, note:($("#e_note")||{}).value });
+  if(r.body&&r.body.ok){ await load(); } else alert("Save failed.");
+}
+async function voidRef(id){ if(!confirm("Void this referral? It stays in the record but is removed from totals.")) return; await p({action:"void_referral",id}); await load(); }
+
+/* ---- Import a CardChamp report (CSV) — ready for when reports arrive ---- */
+let IMPROWS=null;
+function renderImport(){
+  return `<div class="imp">
+    <b>Import a CardChamp report</b>
+    <div class="hint" style="margin:4px 0 10px">Upload a CSV export from CardChamp (one row per dealer). Columns are matched by header — dealer/account name, status, monthly volume, revenue, commission, period, and an optional id. Dealers are matched to your accounts by name (same matching the account-number import uses); anything unmatched is still recorded by name for review. Re-importing a report with the same row id updates instead of duplicating.</div>
+    <input type="file" id="impfile" accept=".csv,text/csv" onchange="parseImport(this)">
+    <div id="impprev" style="margin-top:10px"></div>
+  </div>`;
+}
+function parseCSV(text){
+  const rows=[]; let i=0,f="",row=[],q=false; text=text.replace(/\r\n/g,"\n").replace(/\r/g,"\n");
+  while(i<text.length){ const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i+=2;continue;} q=false;i++;continue;} f+=c;i++;continue; }
+    if(c==='"'){q=true;i++;continue;}
+    if(c===','){row.push(f);f="";i++;continue;}
+    if(c==='\n'){row.push(f);rows.push(row);row=[];f="";i++;continue;}
+    f+=c;i++;
+  }
+  if(f.length||row.length){ row.push(f); rows.push(row); }
+  return rows.filter(r=>r.some(c=>String(c).trim()!==""));
+}
+function mapHeader(h){ h=String(h||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+  if(/(dealer|account|business|merchant|company|name)/.test(h)&&!/status/.test(h)) return "dealer_name";
+  if(/status|stage|state/.test(h)) return "status";
+  if(/volume|processing/.test(h)) return "monthly_volume";
+  if(/residual|revenue/.test(h)) return "revenue";
+  if(/commission|payout/.test(h)) return "commission";
+  if(/period|month|statement/.test(h)) return "period";
+  if(/^(id|ref|reference|row id|merchant id|mid)$/.test(h)||/\b(mid|reference)\b/.test(h)) return "external_ref";
+  return null;
+}
+function parseImport(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ const rows=parseCSV(rd.result); if(rows.length<2){ $("#impprev").innerHTML='<div class="hint">Couldn\'t read any rows.</div>'; return; }
+    const hdr=rows[0].map(mapHeader); const out=[];
+    for(let r=1;r<rows.length;r++){ const o={}; hdr.forEach((k,ci)=>{ if(k) o[k]=rows[r][ci]; }); if(o.dealer_name) out.push(o); }
+    IMPROWS=out;
+    const cols=hdr.filter(Boolean);
+    $("#impprev").innerHTML=`<div class="hint">Read <b>${out.length}</b> rows. Mapped columns: ${cols.length?esc([...new Set(cols)].join(", ")):"<span style='color:#b42323'>none — check the header row</span>"}.</div>
+      <div style="margin-top:8px;display:flex;gap:8px"><button class="btn orange sm" ${out.length?"":"disabled"} onclick="doImport()">Import ${out.length} rows</button><span id="impmsg" class="hint" style="margin:0"></span></div>`;
+  };
+  rd.readAsText(file);
+}
+async function doImport(){
+  if(!IMPROWS||!IMPROWS.length) return; $("#impmsg").textContent="Importing…";
+  const r=await p({action:"import_referrals", rows:IMPROWS});
+  if(r.body&&r.body.ok){ $("#impmsg").innerHTML=`Imported ${r.body.imported}, matched ${r.body.matched} to a dealer${(r.body.unmatched||[]).length?`, ${r.body.unmatched.length} unmatched (recorded by name)`:""}.`; SHOW="ledger"; setTimeout(load,900); }
+  else $("#impmsg").textContent=(r.body&&(r.body.error||r.body.message))||"Import failed.";
+}
+boot();
+</script>
+</body></html>

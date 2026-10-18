@@ -213,6 +213,38 @@ async function signIn(pg, email) {
       await tm.click('text=My team'); await tm.waitForSelector('text=exam passed');
       assert.ok(!/\d+%/.test(await tm.textContent('#view')), 'no score in the team view'); await tm.close();
     });
+    await t('A grade that cannot be written (axe, 390 and 1280): time runs out in the page → "Your exam is being graded" with no score; the exam page says it is still being graded; once the fault is gone it shows the result', async () => {
+      run(DB, `create function public.zz_refuse() returns trigger language plpgsql as $f$ begin if new.action = 'submit_attempt' then raise exception 'test refused'; end if; return new; end $f$;
+               create trigger zz_refuse before insert on academy_events for each row execute function public.zz_refuse();`);
+      for (const w of [390, 1280]) {
+        run(DB, `begin; select set_config('academy.op', 'test', true); delete from academy_attempts where true; commit;`);   // test only
+        const enr = JSON.parse(run(DB, `select to_jsonb(e) from academy_enrollments e join academy_learners l on l.id = e.learner_id where l.email = 'pat@north.example' limit 1`)).id;
+        const qid = JSON.parse(run(DB, `select to_jsonb(q) from academy_questions q where use = 'exam' limit 1`)).id;
+        run(DB, `begin; select set_config('academy.op', 'test', true); insert into academy_attempts (enrollment_id, question_ids, started_at, draft_answers)
+                 values ('${enr}', array['${qid}']::uuid[], now() - interval '44 minutes 56 seconds', ${J({ [qid]: 'a' })}); commit;`);
+        const aid = JSON.parse(run(DB, `select to_jsonb(a) from academy_attempts a where enrollment_id = '${enr}'`)).id;
+        const pg = await page(browser, w, { bypassCSP: true });
+        run(DB, `delete from academy_login_codes where true`);
+        await signIn(pg, 'pat@north.example'); await pg.waitForSelector('text=Golden Lift Chair Sales Certification');
+        await pg.evaluate(h => { location.hash = h; }, `take?a=${aid}&e=${enr}`); await pg.waitForSelector('text=Question 1 of 1');
+        await pg.waitForSelector('text=Your exam is being graded', { timeout: 15000 });
+        assert.ok(!/\d+%/.test(await pg.textContent('#view')), 'no score without a grade');
+        assert.ok(await pg.isVisible('text=saved answers are kept'));
+        assert.ok(await noSideScroll(pg)); assert.deepStrictEqual(await smallTargets(pg), []); assert.deepStrictEqual(await axe(pg), [], 'axe ungraded');
+        await shot(pg, `exam-${w}-ungraded`);
+        await pg.click('text=Back to the exam page'); await pg.waitForSelector('text=still being graded');
+        assert.ok(await pg.isVisible('.ac-attempts >> text=Being graded'));
+        assert.ok(!(await pg.isVisible('text=Start the exam')), 'no new start while it waits');
+        assert.deepStrictEqual(pg.errors.filter(e => !/favicon|status of 409/.test(e)), []);
+        await pg.close();
+      }
+      run(DB, 'drop trigger zz_refuse on academy_events; drop function public.zz_refuse()');
+      const pg = await page(browser, 390);
+      run(DB, `delete from academy_login_codes where true`);
+      await signIn(pg, 'pat@north.example'); await pg.waitForSelector('text=Golden Lift Chair Sales Certification');
+      await pg.click('text=Final exam'); await pg.waitForSelector('.ac-attempts >> text=Passed');
+      assert.ok(await pg.isVisible('.ac-attempts >> text=time ran out')); await pg.close();
+    });
     await t('Partner 360 handoff: the link signs the dealer user in, the code is removed from the address bar at once, and the same link never works twice', async () => {
       const m = await HAND.handler({ httpMethod: 'POST', headers: { origin: 'https://hcpsonlineordering.netlify.app', authorization: 'Bearer buyer' }, body: '{"action":"mint"}' });
       const url = JSON.parse(m.body).url; const code = url.split('#handoff=')[1];

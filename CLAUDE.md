@@ -3069,6 +3069,14 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     (45, decision I pending). Past the deadline an attempt is graded with the answers saved before it.
   - Learners see questions and choices only; results are score, pass/fail and topics. Training Managers see passed /
     not passed and the attempt count, never a score. New switch `academy_exams` (exactly true = on; OFF).
+  - **Review corrections (ChatGPT review of PR #22, 18 Oct 2026; verdict HOLD):** one open attempt is PER LEARNER across
+    courses; cooldown and daily limit are PER ENROLLMENT (cross-course tests). A grade that cannot be written is NEVER
+    swallowed: `academy_exam_grading_failed` records it on the attempt (grading_failures / grading_failed_at /
+    grading_error), audits it once per distinct error (expire_failed / submit_failed), raises a WARNING and returns it;
+    the next exam call grades it again; meanwhile that enrollment refuses a start (`grading_pending`) and a submit answers
+    `ok:false` (`grading_pending` / `grading_failed`) → API 409, never a result. Owner decisions still open (no
+    requirement changed): the 45-minute limit for 25 questions and whether 17/17 lessons must be complete first.
+    Pre-activation checks kept: the real Netlify production check and the trusted client-IP validation.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

@@ -2,14 +2,21 @@
 -- HCPS Academy — A2E / M6: exam attempts with server-enforced limits (DEVELOPMENT; NOT run in production)
 --
 -- The approved retake policy, enforced by the DATABASE (never the browser), per course version:
---   * one open attempt at a time (per learner, across all courses);
---   * at least exam_cooldown_minutes (default 60) between the end of one attempt and the start of the next;
---   * at most exam_daily_limit (default 3) attempts started per calendar day, America/Chicago (DST-safe);
+--   * one open attempt at a time PER LEARNER, across all their courses (an attempt is open until it is submitted or
+--     its deadline passes) — a learner never sits two exams at once;
+--   * PER ENROLLMENT (one course version): at least exam_cooldown_minutes (default 60) between the end of one attempt
+--     and the start of the next, and at most exam_daily_limit (default 3) attempts started per calendar day,
+--     America/Chicago (DST-safe). An attempt in one course never uses up the cooldown or daily attempts of another;
 --   * unlimited retakes otherwise.
 --   An open attempt has a time limit, exam_time_limit_minutes (default 45 for 25 questions — Angelo's decision I,
 --   proposed default). An attempt still open at its deadline EXPIRES: it is graded with the answers saved before the
 --   deadline (unanswered = wrong), so an abandoned attempt can never block a learner, and answers sent after the
 --   deadline never count.
+-- A grading failure is never swallowed: it is recorded on the attempt (grading_failures, grading_failed_at,
+-- grading_error), written to the audit trail when it is new or different, raised as a WARNING to the database log and
+-- returned to the caller. The attempt stays ungraded and is graded again by the next exam call (the same saved answers,
+-- so the same result); meanwhile its enrollment cannot start another attempt (reason grading_pending) and a submit
+-- answers ok:false with reason grading_pending — never ok:true without a result.
 -- Learners see questions and choices only. Answer keys and explanations never leave the database: questions are read
 -- through academy_exam_op_view, and results through M1's grading (score, pass/fail, topics to study).
 --
@@ -18,7 +25,7 @@
 -- published version, exact-fraction pass mark, single submission) still runs. The server role loses EXECUTE on those
 -- two M1 functions and INSERT/UPDATE/DELETE on academy_attempts, so the limits cannot be bypassed.
 -- New columns: academy_attempts.learner_id (from the enrollment, by trigger), expires_at, draft_answers,
--- draft_saved_at, expired; academy_course_versions.exam_time_limit_minutes / exam_cooldown_minutes / exam_daily_limit.
+-- draft_saved_at, expired, grading_failures, grading_failed_at, grading_error; academy_course_versions.exam_time_limit_minutes / exam_cooldown_minutes / exam_daily_limit.
 -- Every UPDATE carries a WHERE clause (pg-safeupdate).
 -- Run order: after M1–M5. Rollback: academy_a2e_m6_exam_attempts_rollback.sql (refused while any attempt exists).
 -- RULE 19: no new table or view. The operations are SECURITY DEFINER with a pinned search path, executable by
@@ -54,7 +61,10 @@ alter table public.academy_attempts
   add column expires_at     timestamptz,
   add column draft_answers  jsonb not null default '{}'::jsonb check (jsonb_typeof(draft_answers) = 'object'),
   add column draft_saved_at timestamptz,
-  add column expired        boolean not null default false;
+  add column expired        boolean not null default false,
+  add column grading_failures  int not null default 0 check (grading_failures >= 0),
+  add column grading_failed_at timestamptz,
+  add column grading_error     text check (length(grading_error) <= 400);
 alter table public.academy_attempts alter column learner_id set not null, alter column expires_at set not null;
 alter table public.academy_attempts add constraint academy_attempts_expiry check (expires_at > started_at);
 create index academy_attempts_learner_started on public.academy_attempts (learner_id, started_at desc);
@@ -125,11 +135,39 @@ begin
   return out;
 end $$;
 
--- Grade every attempt of this learner that is still open past its deadline, with the answers saved before it.
--- Each in its own sub-transaction: one that cannot be graded (e.g. its enrollment was withdrawn) never blocks the rest.
-create function public.academy_exam_expire(p_learner uuid) returns int
+-- A grade that could not be written: recorded on the attempt (count, time, SQLSTATE: message) and, when the error is
+-- new or different from the last one recorded, in the audit trail; always raised as a WARNING to the database log.
+-- Returns whether the record was written. Never raises (a failure to record is itself a WARNING), so it cannot hide the
+-- original error.
+create function public.academy_exam_grading_failed(p_attempt academy_attempts, p_action text, p_actor_type text,
+                                                   p_actor text, p_state text, p_msg text) returns boolean
 language plpgsql set search_path = pg_catalog, public, pg_temp as $$
-declare a academy_attempts; n int := 0;
+declare v_err text := coalesce(p_state, '?????') || ': ' || left(coalesce(p_msg, ''), 300);
+begin
+  raise warning 'academy: attempt % could not be graded (%): %', p_attempt.id, p_action, v_err;
+  begin
+    perform academy_op_begin(p_action, p_actor);
+    update academy_attempts set grading_failures = grading_failures + 1, grading_failed_at = now(), grading_error = v_err
+     where id = p_attempt.id;
+    if p_attempt.grading_error is distinct from v_err then
+      perform academy_op_audit(p_actor_type, p_actor, 'academy_attempts', p_attempt.id::text, p_action, null,
+        jsonb_build_object('sqlstate', p_state, 'error', left(coalesce(p_msg, ''), 300), 'failures', p_attempt.grading_failures + 1));
+    end if;
+    perform academy_op_end();
+  exception when others then
+    raise warning 'academy: the grading failure of attempt % could not be recorded: % %', p_attempt.id, sqlstate, sqlerrm;
+    return false;
+  end;
+  return true;
+end $$;
+
+-- Grade every attempt of this learner that is still open past its deadline, with the answers saved before it.
+-- Each in its own sub-transaction: one that cannot be graded (e.g. its enrollment was withdrawn) never blocks the rest,
+-- and its failure is recorded and returned (academy_exam_grading_failed), never swallowed. Returns
+-- {graded, failed: [{attempt_id, sqlstate, recorded}]}.
+create function public.academy_exam_expire(p_learner uuid) returns jsonb
+language plpgsql set search_path = pg_catalog, public, pg_temp as $$
+declare a academy_attempts; n int := 0; v_failed jsonb := '[]'::jsonb; v_state text; v_msg text;
 begin
   for a in select * from academy_attempts where learner_id = p_learner and submitted_at is null and expires_at <= now()
            order by started_at for update loop
@@ -138,21 +176,24 @@ begin
       perform academy_op_begin('expire_attempt', 'system:exam-clock');
       update academy_attempts set expired = true where id = a.id;
       perform academy_op_audit('system', 'system:exam-clock', 'academy_attempts', a.id::text, 'expire_attempt', null,
-        jsonb_build_object('expires_at', a.expires_at, 'answered', (select count(*) from jsonb_object_keys(a.draft_answers))));
+        jsonb_build_object('expires_at', a.expires_at, 'answered', (select count(*) from jsonb_object_keys(a.draft_answers)),
+                           'earlier_failures', a.grading_failures));
       perform academy_op_end();
       n := n + 1;
     exception when others then
-      perform academy_op_end();   -- left open; it no longer counts as open (past its deadline) and is reported as overdue
+      get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+      v_failed := v_failed || jsonb_build_array(jsonb_build_object('attempt_id', a.id, 'sqlstate', v_state,
+        'recorded', academy_exam_grading_failed(a, 'expire_failed', 'system', 'system:exam-clock', v_state, v_msg)));
     end;
   end loop;
-  return n;
+  return jsonb_build_object('graded', n, 'failed', v_failed);
 end $$;
 
 -- The limits for one enrollment at a moment (the operations pass now()): {can_start, reason, next_at, ...}. Reads only.
 create function public.academy_exam_limits(p_learner uuid, p_enrollment academy_enrollments, p_now timestamptz) returns jsonb
 language plpgsql stable set search_path = pg_catalog, public, pg_temp as $$
-declare v_v academy_course_versions; v_open academy_attempts; v_last timestamptz; v_day_start timestamptz; v_today int;
-        v_next_day timestamptz;
+declare v_v academy_course_versions; v_open academy_attempts; v_stuck academy_attempts; v_last timestamptz;
+        v_day_start timestamptz; v_today int; v_next_day timestamptz;
 begin
   select * into v_v from academy_course_versions where id = p_enrollment.version_id;
   select * into v_open from academy_attempts where learner_id = p_learner and submitted_at is null and expires_at > p_now
@@ -160,6 +201,12 @@ begin
   if v_open.id is not null then
     return jsonb_build_object('can_start', false, 'reason', 'open_attempt', 'open_attempt_id', v_open.id,
                               'open_enrollment_id', v_open.enrollment_id, 'next_at', v_open.expires_at);
+  end if;
+  -- an attempt of THIS enrollment past its deadline that could not be graded yet: no new start until it is graded
+  select * into v_stuck from academy_attempts where enrollment_id = p_enrollment.id and submitted_at is null
+     and expires_at <= p_now and started_at <= p_now order by started_at limit 1;
+  if v_stuck.id is not null then
+    return jsonb_build_object('can_start', false, 'reason', 'grading_pending', 'pending_attempt_id', v_stuck.id, 'next_at', null);
   end if;
   v_day_start := (date_trunc('day', p_now at time zone 'America/Chicago')) at time zone 'America/Chicago';
   v_next_day := (date_trunc('day', p_now at time zone 'America/Chicago') + interval '1 day') at time zone 'America/Chicago';
@@ -198,7 +245,8 @@ begin
     'attempts', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'started_at', a.started_at,
                'submitted_at', a.submitted_at, 'expires_at', a.expires_at, 'expired', a.expired,
                'score', a.score, 'passed', a.passed, 'open', a.submitted_at is null and a.expires_at > now(),
-               'overdue', a.submitted_at is null and a.expires_at <= now()) order by a.started_at desc)
+               'overdue', a.submitted_at is null and a.expires_at <= now(),
+               'grading_failed', a.submitted_at is null and a.grading_failures > 0) order by a.started_at desc)
               from academy_attempts a where a.enrollment_id = v_e.id), '[]'::jsonb));
 end $$;
 
@@ -258,9 +306,12 @@ end $$;
 
 -- Submit. Before the deadline: the saved answers plus these are graded by M1. After it: only the answers saved
 -- before the deadline count (the attempt is graded as expired). Returns score, pass/fail and topics to study only.
+-- When the grade cannot be written it says so and keeps the answers: ok:false with reason grading_failed (before the
+-- deadline: the answers are saved and the learner may submit again) or grading_pending (after it: graded again by the
+-- next exam call). The failure is recorded (academy_exam_grading_failed). Never ok:true without a result.
 create function public.academy_exam_op_submit(p_actor text, p_attempt_id uuid, p_answers jsonb) returns jsonb
 language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
-declare v_a academy_attempts; v_r jsonb; v_clean jsonb;
+declare v_a academy_attempts; v_r jsonb; v_clean jsonb; v_x jsonb; v_state text; v_msg text; v_rec boolean;
 begin
   select * into v_a from academy_attempts where id = p_attempt_id;
   if not found then raise exception 'academy: attempt not found' using errcode = 'P0002'; end if;
@@ -269,15 +320,28 @@ begin
   select * into v_a from academy_attempts where id = p_attempt_id for update;
   if v_a.submitted_at is not null then raise exception 'academy: this attempt was already submitted' using errcode = '22023'; end if;
   if v_a.expires_at <= now() then
-    perform academy_exam_expire(v_a.learner_id);
+    v_x := academy_exam_expire(v_a.learner_id);
     select * into v_a from academy_attempts where id = p_attempt_id;
+    if v_a.submitted_at is null then
+      return jsonb_build_object('ok', false, 'expired', true, 'reason', 'grading_pending', 'attempt_id', v_a.id,
+        'recorded', coalesce((select bool_and((f->>'recorded')::boolean) from jsonb_array_elements(v_x->'failed') f
+                               where f->>'attempt_id' = p_attempt_id::text), false));
+    end if;
     return jsonb_build_object('ok', true, 'expired', true, 'score', v_a.score, 'passed', v_a.passed);
   end if;
   v_clean := academy_exam_clean_answers(v_a.draft_answers || coalesce(p_answers, '{}'::jsonb), v_a.question_ids);
   perform academy_op_begin('save_answers', p_actor);
   update academy_attempts set draft_answers = v_clean, draft_saved_at = now() where id = p_attempt_id;
   perform academy_op_end();
-  v_r := academy_op_submit_attempt(p_actor, p_attempt_id, v_clean);
+  select * into v_a from academy_attempts where id = p_attempt_id;
+  begin
+    v_r := academy_op_submit_attempt(p_actor, p_attempt_id, v_clean);
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+    v_rec := academy_exam_grading_failed(v_a, 'submit_failed', 'learner', p_actor, v_state, v_msg);
+    return jsonb_build_object('ok', false, 'expired', false, 'reason', 'grading_failed', 'attempt_id', p_attempt_id,
+                              'recorded', v_rec, 'expires_at', v_a.expires_at);
+  end;
   return jsonb_build_object('ok', true, 'expired', false) || v_r;
 end $$;
 
@@ -302,7 +366,7 @@ revoke insert, update, delete, truncate on table public.academy_attempts from se
 -- ---------------------------------------------------------------------------------------------
 -- INSTALL CHECKS (each must read ok = true)
 -- ---------------------------------------------------------------------------------------------
-select 'M6 functions' as check, count(*) = 10 as ok from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+select 'M6 functions' as check, count(*) = 11 as ok from pg_proc p join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public' and p.proname like 'academy\_exam\_%'
 union all
 select 'operations are security definer with a pinned path', bool_and(p.prosecdef and p.proconfig::text like '%search_path=pg_catalog, public, pg_temp%')

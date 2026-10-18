@@ -1,0 +1,403 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>HCPS — Permission check</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ /* Permission check (Phase 1 QA). The President picks a rep or Relations account; the page opens the
+    normal, audit-logged View-as session for that person and asks the LIVE server, as that person,
+    for things they must be refused and things they must be allowed. Nothing here decides access —
+    every answer comes from the server's own checks. Nothing is created or changed: the probes are
+    reads, a "set the platform mode to what it already is", and structural edits with no dealer named. */
+ .pc{max-width:860px}
+ .who{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+ .who .btn{min-height:44px;display:inline-flex;align-items:center}
+ .verdict{font-size:20px;font-weight:800;border-radius:12px;padding:14px 16px;margin:10px 0 14px}
+ .verdict.ok{background:#e9f7ef;color:#11643a;border:1px solid #bfe5cf}
+ .verdict.bad{background:#fdecec;color:#9b1c1c;border:1px solid #f3c2c2}
+ .verdict.run{background:#eef5fc;color:#2b4a6f;border:1px solid #cfe0f2}
+ .rows{display:grid;gap:6px}
+ .row{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:14px}
+ .row .r{font-weight:800;font-size:12px;border-radius:6px;padding:3px 0;text-align:center}
+ .row .r.p{background:#e9f7ef;color:#11643a} .row .r.f{background:#fdecec;color:#9b1c1c} .row .r.w{background:#f1f3f5;color:#6b7280}
+ .row .r.i{background:#fff4e0;color:#8a4b00;font-size:11px}   /* TEST INVALID: the record the check aims at is gone — not a pass */
+ .row .g{color:var(--gray);font-size:12px;white-space:nowrap}
+ .steps{margin:6px 0 0 18px;padding:0;line-height:1.7}
+ .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+ .acts .btn{min-height:44px}
+ @media(max-width:640px){ .wrap{padding:12px 12px 50px} .row{grid-template-columns:84px minmax(0,1fr)} .row .g{grid-column:2} }
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap pc">
+  <div class="top"><div><h1>Permission check</h1><div class="sub">Shows, on the live server, what a rep or Relations account can and can't do — tested as that person.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+async function call(fn,body,method,extra){
+  const opt={method:method||"POST",headers:Object.assign({authorization:"Bearer "+(TOKEN||"")},extra||{})};
+  if(opt.method==="POST"){ opt.headers["content-type"]="application/json"; opt.body=JSON.stringify(body||{}); }
+  try{ const r=await fetch("/.netlify/functions/"+fn,opt); let j=null; try{ j=await r.json(); }catch(e){} return {status:r.status,j:j||{}}; }
+  catch(e){ return {status:0,j:{}}; }
+}
+const ROLE=()=>String((ME&&ME.role)||"").toLowerCase();
+const ld=()=>{ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };   // the person's own date
+const MGMT=r=>["president","admin","owner"].includes(r);
+
+/* TEST TARGETS. A rep's refusal checks aim at real records that are NOT his. A refusal only proves
+   something while its target exists: a deleted target answers 404 (or, behind a dealer check, 403 for
+   any id at all). So (2F maintenance):
+     · before the View-as session starts, the President's own session confirms each target exists and
+       isn't the checked person's (fixtureCheck → sessionStorage), and
+     · a target that is gone — by that check, or a 404 from the server — shows TEST INVALID, never PASS.
+   No target here is created by the check; when one is retired, point the constant at another record. */
+const TD="3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b";            // "TEST — Golden Sandbox" (House-owned, is_test)
+const ANGELO="angelo@homecareproviderservices.us";
+const ANGELO_OPP="adbddad4-a563-42e1-ae4e-3f5ef1270b51";    // Angelo's deal "Golden lift chairs — sandbox test" (Lost)
+const ANGELO_TASK="c2541012-1c8a-414c-b716-3ebd7ea2db4b";   // Angelo's task "Follow-up: Re-test follow-up B" on the TEST dealer (dismissed)
+const ANGELO_VISIT="6ad16613-9342-4b0e-a53a-034b736808b7";  // Angelo's approved visit at Georges Pharmacy Batesville (his book)
+const ANGELO_VISIT_DEALER="651b304e-38b3-44ae-989d-d7cb0072ed86";
+const FX_KEY="hcps_pc_fixtures";
+/* Run in the PRESIDENT's session (read-only) for the person about to be checked. */
+async function fixtureCheck(forEmail){
+  const who=String(forEmail||"").trim().toLowerCase();
+  const theirs=v=>{ const x=String(v==null?"":v).trim().toLowerCase(); return !x || x===who; };   // blank owner counts as not proven
+  const missing=[];
+  const all=(((await call("dealers-api",null,"GET")).j||{}).dealers)||[];
+  const dealer=id=>all.find(d=>String(d.id)===String(id));
+  const td=dealer(TD); if(!td || String(td.rep_email||"").trim().toLowerCase()===who) missing.push("TEST dealer");
+  const tl=await call("crm-api",{action:"list",dealer_id:TD});
+  const tk=((tl.j&&tl.j.tasks)||[]).find(t=>String(t.id)===ANGELO_TASK);
+  if(!td || !tk || theirs(tk.assigned_email||tk.assigned_rep)) missing.push("Angelo's task");
+  const pb=await call("pipeline-api",{action:"board"});
+  const op=((pb.j&&pb.j.opportunities)||[]).find(o=>String(o.id)===ANGELO_OPP);
+  if(!op || theirs(op.owner_email||op.owner_rep)) missing.push("Angelo's deal");
+  const vd=dealer(ANGELO_VISIT_DEALER);
+  const vr=await call("routes-api",{action:"visit_report_get",report_id:ANGELO_VISIT,dealer_id:ANGELO_VISIT_DEALER});
+  const rp=vr.j&&vr.j.report;
+  if(!vd || !rp || theirs(rp.rep_email) || String(vd.rep_email||"").trim().toLowerCase()===who) missing.push("Angelo's visit");
+  const rec={at:Date.now(),for:who,missing};
+  try{ sessionStorage.setItem(FX_KEY,JSON.stringify(rec)); }catch(e){}
+  return rec;
+}
+function fixturesFor(who){
+  try{ const f=JSON.parse(sessionStorage.getItem(FX_KEY)||"null");
+    return (f && f.for===String(who||"").toLowerCase() && Date.now()-f.at<4*3600e3 && Array.isArray(f.missing)) ? f : null; }catch(e){ return null; }
+}
+const CC_URL="/admin/command-center-rep.html";
+const PILOT=["greg@homecareproviderservices.us","lori@homecareproviderservices.us"];   // the Command Center landing pilot
+const WSH={"x-hcps-workspace":"mine"};   // the My Sales Workspace header (honored for management only)
+
+function picker(){
+  if(ROLE()!=="president"){ $("#body").innerHTML=`<div class="card">Only the President can run this check (it opens a View-as session).</div>`; return; }
+  $("#body").innerHTML=`<div class="card"><h2>My Sales Workspace</h2>
+    <p class="hint">Checks, in your own session (no View-as), that My Sales Workspace shows only your own dealer book, tasks, routes and deals — and that the normal Admin view is unchanged.</p>
+    <div class="who"><button class="btn" id="wscheck">Check my Sales Workspace</button></div></div>
+    <div class="card"><h2>Who do you want to check?</h2>
+    <p class="hint">Click a name. You'll be asked to confirm, then the page opens a normal View-as session for that person (logged like any View-as) and runs the check by itself. When it's done, press <b>Exit view-as</b>.</p>
+    <div class="who" id="who"><span class="hint">Loading staff…</span></div></div>`;
+  call("staff-auth",{action:"list_users"}).then(r=>{
+    const users=((r.j&&r.j.users)||[]).filter(u=>u.active!==false && ["rep","relations"].includes(String(u.role||"").toLowerCase()));
+    $("#who").innerHTML=users.length?users.map(u=>`<button class="btn" data-email="${esc(u.email)}" data-name="${esc(u.name||u.email)}">Check ${esc(u.name||u.email)} <span style="opacity:.75;font-weight:600;margin-left:6px">· ${esc(u.role)}</span></button>`).join("")
+      :`<span class="hint">No active rep or Relations accounts found.</span>`;
+    for(const b of document.querySelectorAll("#who .btn")) b.addEventListener("click",()=>startAs(b.getAttribute("data-email"),b.getAttribute("data-name"),b));
+  });
+  const wb=$("#wscheck"); if(wb) wb.addEventListener("click",runWorkspace);
+}
+async function startAs(email,name,btn){
+  if(!confirm(`Open a View-as session for ${name} and run the permission check?\n\nThis is logged like any View-as. Nothing is changed. Press "Exit view-as" when you're done.`)) return;
+  if(btn){ btn.disabled=true; btn.textContent="Opening…"; }
+  try{ await fixtureCheck(email); }catch(e){}   // read-only, as the President — the check marks any missing target TEST INVALID
+  const r=await call("staff-auth",{action:"impersonate",email});
+  const j=r.j||{};
+  if(!j.ok){ alert(j.message||j.error||"Couldn't start the View-as session."); picker(); return; }
+  window.ACImpersonate.start({token:j.token,refresh:j.refresh,expires_in:j.expires_in,profile:j.profile},
+    {by_name:(ME&&(ME.name||ME.email))||"admin",rep_name:(j.profile&&j.profile.name)||name,rep_email:email,at:(j.impersonation&&j.impersonation.at)||""},
+    "/admin/permission-check.html");
+}
+
+function sheet(title){
+  $("#body").innerHTML=`<div class="verdict run" id="verdict">${esc(title)}…</div><div class="rows" id="rows"></div>
+    <div class="acts">${window.ACImpersonate&&ACImpersonate.active()?`<button class="btn" onclick="ACImpersonate.exit()">Exit view-as</button>`:""}<button class="btn" style="background:#6b7280" id="copy">Copy results</button></div>`;
+  // ok: true = PASS, false = FAIL, "invalid" = TEST INVALID (the record the check aims at no longer exists).
+  const rows=[]; const add=(check,expect,got,ok)=>{ const st=ok==="invalid"?"invalid":!!ok; rows.push({check,expect,got,ok:st});
+    const [cls,lab]=st==="invalid"?["i","TEST INVALID"]:st?["p","PASS"]:["f","FAIL"];
+    $("#rows").insertAdjacentHTML("beforeend",
+    `<div class="row"><span class="r ${cls}">${lab}</span><span>${esc(check)}</span><span class="g">expected ${esc(expect)} · got ${esc(String(got))}</span></div>`); };
+  return {rows,add};
+}
+function verdict(rows,label){
+  const bad=rows.filter(r=>r.ok===false).length, inv=rows.filter(r=>r.ok==="invalid").length;
+  const v=$("#verdict"); v.className="verdict "+(bad||inv?"bad":"ok");
+  const what=[bad?`${bad} FAILED`:"",inv?`${inv} TEST INVALID`:""].filter(Boolean).join(", ");
+  v.textContent=(bad||inv)?`${label}: ${what} of ${rows.length} checks — press Copy results and send them to Claude.`:`${label}: ALL ${rows.length} CHECKS PASSED`;
+  $("#copy").onclick=()=>{ const t=v.textContent+"\n"+rows.map(r=>`${r.ok==="invalid"?"TEST INVALID":r.ok?"PASS":"FAIL"} — ${r.check} (expected ${r.expect}, got ${r.got})`).join("\n");
+    (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{$("#copy").textContent="Copied ✓";},()=>{ prompt("Copy these results:",t); }); };
+}
+
+/* Phase 2E: the Conversion report — read-only. `want` is the scope this view should get. */
+async function convRow(add,label,want,hdr,mine){
+  const r=await call("pipeline-api",{action:"conversion",days:90},"POST",hdr||undefined), j=r.j||{};
+  const reps=(j.by_rep||[]).map(g=>g.key), others=mine?reps.filter(k=>!mine.includes(k)):[];
+  const got=j.code==="flag_off"?"switch off":(r.status===200?`${j.scope} · ${(j.totals||{}).created||0} created · ${reps.length} rep${reps.length===1?"":"s"}${others.length?", "+others.length+" not yours":""}`:r.status);
+  add(label,want,got,r.status===200&&j.scope===want&&!others.length&&!/commission/i.test(JSON.stringify(j)));
+}
+
+/* My Sales Workspace, checked in the President's own session. Read-only: compares each list with and
+   without the workspace header. */
+async function runWorkspace(){
+  const me=String((ME&&ME.email)||"").toLowerCase(), rn=String((ME&&ME.rep_name)||"").trim().toLowerCase();
+  const {rows,add}=sheet("Checking My Sales Workspace for "+((ME&&(ME.name||ME.email))||"you"));
+  const prof=((await call("staff-auth",{action:"me"})).j||{}).profile||{};
+  add("Your sign-in still lands on the Admin Dashboard","/admin/",prof.landing||"(none)",prof.landing==="/admin/");
+  // Dealer book: the same resolver as a rep's — only dealers assigned to you (plus their own branches/HQ).
+  const all=(((await call("dealers-api",null,"GET")).j||{}).dealers)||[];
+  const wsr=await call("dealers-api",null,"GET",WSH); const mine=((wsr.j||{}).dealers)||[];
+  const ids=new Set(mine.map(d=>String(d.id)));
+  const assigned=all.filter(d=>String(d.rep_email||"").toLowerCase()===me);
+  const othersIn=mine.filter(d=>d.rep_email && String(d.rep_email).toLowerCase()!==me);
+  add("Workspace dealer list = your own book",assigned.length+"+ of "+all.length,wsr.status===200?mine.length+" dealers":wsr.status,
+    wsr.status===200&&mine.length>0&&mine.length<all.length&&assigned.every(d=>ids.has(String(d.id))));
+  add("No dealer assigned to someone else in your workspace","none",othersIn.length?othersIn.slice(0,3).map(d=>d.name).join(", "):"none",!othersIn.length);
+  add("Admin dealer list unchanged (every dealer)","all dealers",all.length+" dealers",all.length>=mine.length&&all.length>0);
+  // Map / route planner.
+  const pts=(((await call("geocode-api",null,"GET",WSH)).j||{}).points)||[];
+  const outPts=pts.filter(p=>!ids.has(String(p.dealer_id)));
+  add("Route planner map shows only your dealers","none outside",outPts.length+" outside of "+pts.length,!outPts.length);
+  // Tasks.
+  const tw=(await call("crm-api",{action:"my_tasks"},"POST",WSH)).j||{}, tasks=tw.tasks||[];
+  const notMine=tasks.filter(t=>!(String(t.assigned_email||"").toLowerCase()===me || (rn&&String(t.assigned_rep||"").trim().toLowerCase()===rn)));
+  add("My Tasks shows only your tasks","yours only",(tw.sees_all?"company-wide · ":"")+tasks.length+" tasks, "+notMine.length+" not yours",!tw.sees_all&&!notMine.length);
+  const ta=(await call("crm-api",{action:"my_tasks"})).j||{};
+  add("Admin task queue unchanged (company-wide)","company-wide",ta.sees_all?"company-wide":"own only",!!ta.sees_all);
+  // Routes.
+  const rw=(await call("routes-api",{action:"list_routes"},"POST",WSH)).j||{}, routes=rw.routes||[];
+  const foreign=routes.filter(r=>!r.mine || (r.assigned_to_email && String(r.assigned_to_email).toLowerCase()!==me));
+  add("Routes: only your own (none you planned for others)","yours only",routes.length+" routes, "+foreign.length+" not yours",!!rw.workspace&&!foreign.length);
+  // Pipeline.
+  const pw=(await call("pipeline-api",{action:"board"},"POST",WSH)).j||{}, opps=pw.opportunities||[];
+  const foreignO=opps.filter(o=>!(String(o.owner_email||"").toLowerCase()===me || (rn&&String(o.owner_rep||"").trim().toLowerCase()===rn)));
+  add("Pipeline: only your own deals","yours only",opps.length+" deals, "+foreignO.length+" not yours",!!pw.workspace&&!foreignO.length);
+  // Command Center: your own day, no picker; the management view keeps the picker and stays read-only.
+  const reps=(((await call("rep-command-api",{action:"reps"})).j||{}).reps||[]).filter(x=>String(x.role||"rep")==="rep");
+  const other=(reps.find(x=>/greg/i.test(x.name||x.email))||reps[0]||{}).email||"";
+  const dw=(await call("rep-command-api",{action:"today",rep:other||undefined},"POST",WSH)).j||{}, hw=dw.header||{};
+  add("Workspace Command Center is your own day (picker ignored)",me,(hw.rep&&hw.rep.email)||"(none)",!!hw.workspace&&!hw.viewing_other&&hw.rep&&hw.rep.email===me);
+  const pr=(((await call("rep-command-api",{action:"reps"},"POST",WSH)).j||{}).reps)||[];
+  add("No rep picker inside the workspace","none",pr.length+" reps",!pr.length);
+  if(other){
+    const dm=(await call("rep-command-api",{action:"today",rep:other})).j||{}, hm=dm.header||{};
+    add("Management view of "+other+": read-only",other+" · read-only",((hm.rep&&hm.rep.email)||"(none)")+(hm.viewing_other?" · read-only":""),!!(hm.rep&&hm.rep.email===other&&hm.viewing_other&&!hm.workspace));
+  }
+  // Phase 2A, amendment 1: Start visit (the unplanned-visit screen) — read-only probes, nothing is started.
+  // The probe dealers are in another rep's book AND not a stop on a route you drive: a route you drive
+  // lets you visit its stops, the same rule as for any rep.
+  const onMine=new Set();
+  for(const r of routes){ const d=(await call("routes-api",{action:"route_day",route_id:r.id},"POST",WSH)).j||{};
+    for(const st of (d.stops||[])) if(st&&st.dealer_id) onMine.add(String(st.dealer_id)); }
+  const otherBook=all.filter(d=>!onMine.has(String(d.id)) && (d.rep_email ? String(d.rep_email).toLowerCase()!==me
+    : (!!d.rep && String(d.rep).trim().toLowerCase()!==rn && !/house|unassigned/i.test(d.rep)))).slice(0,3);
+  if(!otherBook.length) add("Workspace: Start visit refused outside your book","a dealer to test with","none found",false);
+  for(const d of otherBook){
+    const sv=await call("routes-api",{action:"route_day",dealer_id:d.id},"POST",WSH);
+    add("Workspace: Start visit refused at "+(d.name||d.id)+" ("+(d.rep||d.rep_email)+"'s book)","refused",sv.j.code==="flag_off"?"switch off":sv.status,sv.status===403&&sv.j.code!=="flag_off");
+  }
+  const sa=await call("routes-api",{action:"route_day",dealer_id:(otherBook[0]&&otherBook[0].id)||TD});
+  add("Admin mode: Start visit available at any dealer","200",sa.j.code==="flag_off"?"switch off":sa.status,sa.status===200&&!!(sa.j.route&&sa.j.route.adhoc));
+  // Phase 2B: the Morning Brief reads your OWN book — in the workspace and in the Admin view alike.
+  // "check" and "dry_run" never write or run the AI.
+  for(const [label,hdr] of [["Workspace",WSH],["Admin view",null]]){
+    const bc=await call("rep-command-api",{action:"brief",mode:"check",date:ld(),tz:new Date().getTimezoneOffset()},"POST",hdr||undefined);
+    const sg=(bc.j.signals||[]), outside=sg.filter(x=>!ids.has(String(x.dealer_id)));
+    add(label+": Morning Brief signals come from your own book","own book",bc.j.code==="flag_off"?"switch off":(bc.status===200?`${bc.j.scope} · ${sg.length} signals, ${outside.length} outside`:bc.status),
+      bc.status===200&&bc.j.scope==="own_book"&&!outside.length);
+  }
+  if(other){
+    const bw=await call("rep-command-api",{action:"brief",mode:"refresh",rep:other,dry_run:true});
+    add("Cannot write "+other+"'s Morning Brief (dry run)","refused",bw.j.code==="flag_off"?"switch off":bw.status,bw.status===403&&bw.j.code==="not_yours");
+  }
+  // Phase 2C: the End-of-Day Recap is your own day too (in the workspace even when another rep is named);
+  // one recap per person per day, shared by both views. "check" and "dry_run" never write or run the AI.
+  for(const [label,hdr] of [["Workspace",WSH],["Admin view",null]]){
+    const rc=await call("rep-command-api",{action:"brief",kind:"eod",mode:"check",rep:hdr&&other?other:undefined,date:ld(),tz:new Date().getTimezoneOffset()},"POST",hdr||undefined);
+    add(label+": your End-of-Day Recap is your own day",me,rc.j.code==="flag_off"?"switch off":(rc.status===200?(rc.j.person||"(none)")+(rc.j.can_generate?" · yours to write":" · read-only"):rc.status),
+      rc.status===200&&rc.j.person===me&&rc.j.can_generate===true&&!!rc.j.facts);
+  }
+  // Phase 2D: the Relationship Timeline follows Dealer 360 — in the workspace your own book only; in
+  // the Admin view any dealer. Read-only.
+  const tlw=await call("crm-api",{action:"timeline",dealer_id:(otherBook[0]&&otherBook[0].id)||TD},"POST",WSH);
+  add("Workspace: Relationship Timeline refused outside your book","refused",tlw.j.code==="flag_off"?"switch off":tlw.status,tlw.status===403&&tlw.j.code!=="flag_off");
+  const tla=await call("crm-api",{action:"timeline",dealer_id:(otherBook[0]&&otherBook[0].id)||TD});
+  add("Admin view: Relationship Timeline of any dealer","200",tla.j.code==="flag_off"?"switch off":tla.status,tla.status===200);
+  // Phase 2E: the Conversion report and deal history — your own deals in the workspace, company-wide in
+  // the Admin view. Read-only.
+  await convRow(add,"Workspace: Conversion report covers only your own deals","workspace",WSH,[me,rn].filter(Boolean));
+  await convRow(add,"Admin view: Conversion report is company-wide","company",null,null);
+  const allOpps=(((await call("pipeline-api",{action:"board"})).j||{}).opportunities)||[];
+  const notMineO=allOpps.find(o=>!(String(o.owner_email||"").toLowerCase()===me || (rn&&String(o.owner_rep||"").trim().toLowerCase()===rn)));
+  if(!notMineO) add("Workspace: another rep's deal history refused","a deal to test with","none found",false);
+  else{ const hw=await call("pipeline-api",{action:"history",id:notMineO.id},"POST",WSH);
+    add("Workspace: another rep's deal history refused ("+(notMineO.owner_rep||notMineO.owner_email||"?")+")","refused",hw.j.code==="flag_off"?"switch off":hw.status,hw.status===403&&hw.j.code!=="flag_off"); }
+  if(other){
+    const rw2=await call("rep-command-api",{action:"brief",kind:"eod",mode:"auto",rep:other,dry_run:true});
+    add("Cannot write "+other+"'s End-of-Day Recap (dry run)","refused",rw2.j.code==="flag_off"?"switch off":rw2.status,rw2.status===403&&rw2.j.code==="not_yours");
+  }
+  verdict(rows,"My Sales Workspace ("+((ME&&(ME.name||ME.email))||"you")+")");
+}
+
+async function run(){
+  const role=ROLE(), rep=role==="rep", me=String((ME&&ME.email)||"").toLowerCase();
+  const whoRaw=(ME&&(ME.name||ME.email))||"this account";
+  const {rows,add}=sheet("Checking "+whoRaw+" ("+role+")");
+  const refused=s=>s===403||s===404;
+  const mode=((await call("platform-api",{action:"get"})).j||{}).mode;
+  // Test targets (reps): confirmed by the President just before this View-as session (fixtureCheck).
+  const FX=rep?fixturesFor(me):null, gone=k=>!!(FX&&FX.missing.includes(k));
+  if(rep) add("Test targets confirmed before the check (TEST dealer, Angelo's task, deal and visit)","all present",
+    FX?(FX.missing.length?"missing: "+FX.missing.join(", "):"all present"):"not confirmed — start this check from the President's Permission check page",
+    FX&&!FX.missing.length?true:"invalid");
+  // A refusal aimed at a specific record: it must be a 403 while the record exists; a missing record is TEST INVALID.
+  const probe=async(label,fn,body,needs)=>{
+    const lost=needs.filter(gone); if(lost.length) return add(label,"refused","target record no longer exists ("+lost.join(", ")+")","invalid");
+    const r=await call(fn,body);
+    if(r.status===404) return add(label,"refused","404 — target record no longer exists","invalid");
+    add(label,"refused",r.j.code==="flag_off"?"switch off":r.status,r.status===403&&r.j.code!=="flag_off");
+  };
+
+  // Refused for BOTH roles. None of these changes anything even if it were wrongly allowed.
+  const refuse=[
+    ["User management (list staff)","staff-auth",{action:"list_users"}],
+    ["President-only View-as","staff-auth",{action:"impersonate",email:ANGELO}],
+    ["Change platform mode","platform-api",{action:"set",mode}],
+    ["Read Zoho credentials","routes-api",{action:"get_settings",key:"zoho_auth"}],
+    ["Zoho integration","zoho-api",{action:"status"}],
+    ["Sales import","sales-import-api",{action:"preview",rows:[]}],
+    ["Commission import settings","commissions-api",{action:"config"}],
+    ["Change dealer ownership (rep)","dealers-api",{action:"rep"}],
+    ["Change dealer ordering access","dealers-api",{action:"access"}],
+    ["Change dealer email verification","dealers-api",{action:"verify_email"}],
+    ["Edit structural Dealer Manager fields","dealers-api",{action:"edit"}],
+    ["Change an account's class (Morning Brief eligibility)","dealers-api",{action:"set_account_class"}],
+  ];
+  for(const [label,fn,body] of refuse){ const r=await call(fn,body); add(label,"refused",r.status,refused(r.status)); }
+  // Refusals aimed at specific records that are not his (each needs its target to exist). The task probe
+  // is "dismiss" on an already-dismissed task, so even a wrong answer would change nothing visible.
+  if(rep) for(const [label,fn,body,needs] of [
+    ["Open the TEST dealer's Dealer 360 (not his book)","crm-api",{action:"list",dealer_id:TD},["TEST dealer"]],
+    ["Read the TEST dealer's visits","crm-api",{action:"visits",dealer_id:TD},["TEST dealer"]],
+    ["Retrieve Angelo's visit (by id)","routes-api",{action:"visit_report_get",report_id:ANGELO_VISIT,dealer_id:ANGELO_VISIT_DEALER,detail:true},["Angelo's visit"]],
+    ["Modify Angelo's task (by id)","crm-api",{action:"dismiss_task",id:ANGELO_TASK},["Angelo's task"]],
+    ["Modify Angelo's opportunity (by id)","pipeline-api",{action:"update",id:ANGELO_OPP},["Angelo's deal"]],
+    ["Draft an email from Angelo's dealer visit","ai-email-api",{action:"draft",dealer_id:ANGELO_VISIT_DEALER,template:"visit_followup",visit_report_id:ANGELO_VISIT},["Angelo's visit"]],
+    ["Open an unplanned visit at the TEST dealer (not his book)","routes-api",{action:"route_day",dealer_id:TD},["TEST dealer"]],
+    ["Read the TEST dealer's Relationship Timeline (not his book)","crm-api",{action:"timeline",dealer_id:TD},["TEST dealer"]],
+  ]) await probe(label,fn,body,needs);
+
+  // Allowed (200).
+  const allow=rep?[
+    ["Own Command Center","rep-command-api",{action:"today"}],
+    ["Own tasks","crm-api",{action:"my_tasks"}],
+    ["Own routes","routes-api",{action:"list_routes"}],
+    ["Own pipeline","pipeline-api",{action:"board"}],
+  ]:[
+    ["Audiences","audiences-api",{action:"list"}],
+    ["Campaign Studio","campaign-api",{action:"list"}],
+    ["Partner report","partner-api",{action:"report"}],
+    ["Command 360","command360-api",{action:"summary"}],
+    ["Open any dealer's Dealer 360","crm-api",{action:"list",dealer_id:TD}],
+  ];
+  for(const [label,fn,body] of allow){ const r=await call(fn,body); add(label,"200",r.status,r.status===200); }
+
+  // Dealer list: a rep sees only his book; Relations sees every dealer.
+  const dl=await call("dealers-api",null,"GET"); const dealers=(dl.j&&dl.j.dealers)||[];
+  if(rep){
+    if(gone("TEST dealer")) add("Dealer list is his book only (no TEST dealer)","his book","target record no longer exists (TEST dealer)","invalid");
+    else add("Dealer list is his book only (no TEST dealer)","his book",dl.status===200?dealers.length+" dealers":dl.status,dl.status===200&&!dealers.some(d=>String(d.id)===TD));
+    // Phase 2D: the Relationship Timeline of a dealer in his book (read-only).
+    const own=dealers[0]; const tlo=own?await call("crm-api",{action:"timeline",dealer_id:own.id}):{status:0,j:{}};
+    add("Reads the Relationship Timeline of his own dealer"+(own?" ("+(own.name||own.id)+")":""),"200",tlo.j.code==="flag_off"?"switch off":(own?tlo.status:"no dealer"),tlo.status===200);
+    // Phase 2E: Angelo's deal history is refused by id; his own Conversion report covers his own deals only.
+    await probe("Read the stage history of Angelo's opportunity (by id)","pipeline-api",{action:"history",id:ANGELO_OPP},["Angelo's deal"]);
+    await convRow(add,"Conversion report: his own deals only","own",null,[me,String((ME&&ME.rep_name)||"").trim().toLowerCase()].filter(Boolean));
+    const routes=((await call("routes-api",{action:"list_routes"})).j||{}).routes||[];
+    // Every route listed is one he drives or owns (no one else's — Angelo's or TEST — by any name).
+    const notHis=routes.filter(r=>!(r.mine===true || String(r.assigned_to_email||"").toLowerCase()===me));
+    add("No one else's routes in his routes (Angelo / TEST)","none",notHis.length+" of "+routes.length,!notHis.length);
+    const tasks=((await call("crm-api",{action:"my_tasks"})).j||{}).tasks||[];
+    if(gone("Angelo's task")) add("No TEST-dealer tasks in My Tasks","none","target record no longer exists (Angelo's task)","invalid");
+    else add("No TEST-dealer tasks in My Tasks","none",tasks.filter(t=>t.dealer_id===TD).length,!tasks.some(t=>t.dealer_id===TD));
+    const day=((await call("rep-command-api",{action:"today",rep:ANGELO})).j||{});
+    const w=String((day.header&&day.header.rep&&day.header.rep.email)||"");
+    add("Asking for Angelo's day returns his own day",me,w||"(none)",!!w&&w===me);
+    // The workspace header is for management only — sent by a rep, it changes nothing.
+    const tw=((await call("crm-api",{action:"my_tasks"},"POST",WSH)).j||{});
+    add("Workspace header ignored for a rep (tasks)",tasks.length+" own tasks",(tw.tasks||[]).length+" tasks",!tw.sees_all&&(tw.tasks||[]).length===tasks.length);
+    const dw=await call("dealers-api",null,"GET",WSH);
+    add("Workspace header ignored for a rep (dealer list)",dealers.length+" dealers",((dw.j&&dw.j.dealers)||[]).length+" dealers",((dw.j&&dw.j.dealers)||[]).length===dealers.length);
+    // Phase 2B: asking for Angelo's Morning Brief gives his own (read-only check / dry run: nothing written).
+    const ba=await call("rep-command-api",{action:"brief",mode:"check",rep:ANGELO,date:ld(),tz:new Date().getTimezoneOffset()});
+    add("Asking for Angelo's Morning Brief returns his own",me,ba.j.code==="flag_off"?"switch off":(ba.j.person||ba.status),ba.status===200&&ba.j.person===me);
+    const bd=await call("rep-command-api",{action:"brief",mode:"refresh",rep:ANGELO,dry_run:true});
+    add("A brief request naming Angelo stays his own (dry run)","his own",bd.j.code==="flag_off"?"switch off":(bd.j.own?"his own":bd.status),bd.status===200&&bd.j.dry_run===true&&bd.j.own===true);
+    // Phase 2C: the same for the End-of-Day Recap.
+    const ra=await call("rep-command-api",{action:"brief",kind:"eod",mode:"check",rep:ANGELO,date:ld(),tz:new Date().getTimezoneOffset()});
+    add("Asking for Angelo's End-of-Day Recap returns his own",me,ra.j.code==="flag_off"?"switch off":(ra.j.person||ra.status),ra.status===200&&ra.j.person===me);
+    const rd=await call("rep-command-api",{action:"brief",kind:"eod",mode:"auto",rep:ANGELO,dry_run:true});
+    add("A recap request naming Angelo stays his own (dry run)","his own",rd.j.code==="flag_off"?"switch off":(rd.j.own&&rd.j.kind==="eod"?"his own":rd.status),rd.status===200&&rd.j.dry_run===true&&rd.j.own===true&&rd.j.kind==="eod");
+  }else{
+    add("Dealer list shows every dealer (incl. TEST dealer)","all dealers",dl.status===200?dealers.length+" dealers":dl.status,dl.status===200&&dealers.some(d=>String(d.id)===TD));
+    // A rep's Command Center, read-only: the first sales rep Relations may pick (Greg, when he's on the list).
+    const reps=(((await call("rep-command-api",{action:"reps"})).j||{}).reps||[]).filter(x=>String(x.role||"rep")==="rep");
+    const pick=(reps.find(x=>/greg/i.test(x.name||x.email))||reps[0]||{}).email||"";
+    const day=pick?((await call("rep-command-api",{action:"today",rep:pick})).j||{}):{};
+    const h=day.header||{};
+    add("Views a rep's Command Center, read-only",(pick||"a rep")+" · viewing",(h.rep&&h.rep.email)||"(none)",!!(pick&&h.rep&&h.rep.email===pick&&h.viewing_other));
+    add("Rep picker available in her Command Center","reps listed",reps.length+" reps",reps.length>0);
+    // The workspace header is for management only — sent by Relations, it changes nothing.
+    const tw=((await call("crm-api",{action:"my_tasks"},"POST",WSH)).j||{});
+    add("Workspace header ignored for Relations (still company-wide)","company-wide",tw.sees_all?"company-wide":"narrowed",!!tw.sees_all);
+    // Phase 2B: she reads a rep's stored Morning Brief but never writes one for them; her own covers every dealer.
+    if(pick){
+      const br=await call("rep-command-api",{action:"brief",mode:"check",rep:pick,date:ld(),tz:new Date().getTimezoneOffset()});
+      add("Reads "+pick+"'s Morning Brief, read-only",pick+" · read-only",br.j.code==="flag_off"?"switch off":(br.status===200?(br.j.person||"")+(br.j.can_generate?" · can write":" · read-only"):br.status),br.status===200&&br.j.person===pick&&br.j.can_generate===false);
+      const bw=await call("rep-command-api",{action:"brief",mode:"refresh",rep:pick,dry_run:true});
+      add("Cannot write "+pick+"'s Morning Brief (dry run)","refused",bw.j.code==="flag_off"?"switch off":bw.status,bw.status===403&&bw.j.code==="not_yours");
+      // Phase 2C: the same for the rep's End-of-Day Recap.
+      const rr=await call("rep-command-api",{action:"brief",kind:"eod",mode:"check",rep:pick,date:ld(),tz:new Date().getTimezoneOffset()});
+      add("Reads "+pick+"'s End-of-Day Recap, read-only",pick+" · read-only",rr.j.code==="flag_off"?"switch off":(rr.status===200?(rr.j.person||"")+(rr.j.can_generate?" · can write":" · read-only"):rr.status),rr.status===200&&rr.j.person===pick&&rr.j.can_generate===false);
+      const rw=await call("rep-command-api",{action:"brief",kind:"eod",mode:"auto",rep:pick,dry_run:true});
+      add("Cannot write "+pick+"'s End-of-Day Recap (dry run)","refused",rw.j.code==="flag_off"?"switch off":rw.status,rw.status===403&&rw.j.code==="not_yours");
+    }
+    const bo=await call("rep-command-api",{action:"brief",mode:"check",date:ld(),tz:new Date().getTimezoneOffset()});
+    add("Her Morning Brief's relationship signals are company-wide","company_wide",bo.j.code==="flag_off"?"switch off":(bo.status===200?`${bo.j.scope} · ${(bo.j.signals||[]).length} signals`:bo.status),bo.status===200&&bo.j.scope==="company_wide");
+    // Phase 2D: Relations reads any dealer's Relationship Timeline (read-only).
+    const tlr=await call("crm-api",{action:"timeline",dealer_id:TD});
+    add("Reads any dealer's Relationship Timeline (TEST)","200",tlr.j.code==="flag_off"?"switch off":tlr.status,tlr.status===200);
+    // Phase 2E: Relations reads the company-wide Conversion report (no commission figures).
+    await convRow(add,"Conversion report is company-wide (no commission)","company",null,null);
+    // Phase 2A: Relations may visit any dealer — read-only probe, nothing is started.
+    const sv=await call("routes-api",{action:"route_day",dealer_id:TD});
+    add("Unplanned visit screen opens at any dealer (TEST)","200",sv.j.code==="flag_off"?"switch off":sv.status,sv.status===200&&!!(sv.j.route&&sv.j.route.adhoc));
+  }
+  // Where this person lands at sign-in (pilot: Greg and Lori → Command Center).
+  const prof=((await call("staff-auth",{action:"me"})).j||{}).profile||{};
+  const want=PILOT.includes(me)?CC_URL:"/admin/rep-home.html";
+  add(PILOT.includes(me)?"Signs in to the Command Center (pilot)":"Signs in to Portal Home (not in the pilot)",want,prof.landing||"(none)",prof.landing===want);
+  verdict(rows,whoRaw+" ("+role+")");
+}
+
+(function(){
+  if(!TOKEN){ $("#body").innerHTML=`<div class="card">Sign in first, then open this page again. <a href="/admin/">Go to sign-in</a></div>`; return; }
+  const role=ROLE();
+  if(role==="rep"||role==="relations"){ run(); return; }
+  if(MGMT(role)){ picker(); return; }
+  $("#body").innerHTML=`<div class="card">This check is for rep and Relations accounts (this session is “${esc(role||"unknown")}”).</div>`;
+})();
+</script>
+</body></html>

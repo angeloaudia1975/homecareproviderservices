@@ -1,10 +1,10 @@
 // HCPS Academy — A2E M6 external probe (browser console). Uses ONLY the PUBLIC key, as a stranger could.
 // Paste into the console of a blank tab (about:blank); it asks for the public key, stores nothing, sends nothing elsewhere.
-// Calls the 9 callable M6 functions (the 10th is a trigger function, which the API cannot call at all) through the public API with correctly named arguments (so "not found" can only mean the
+// Calls the 10 callable M6 functions (the 11th is a trigger function, which the API cannot call at all) through the public API with correctly named arguments (so "not found" can only mean the
 // function is not installed, never a wrong signature), then tries a direct read, insert, edit and delete on
 // academy_attempts. Every argument is a random id / an address on example.invalid: even a broken permission could only reach "not found".
-//   Before M6: the 9 function lines say NOT INSTALLED (the 4 table lines say BLOCKED already).
-//   After M6: all 13 lines must say BLOCKED.   OPEN!! = stop and report.
+//   Before M6: the 10 function lines say NOT INSTALLED (the 4 table lines say BLOCKED already).
+//   After M6: all 14 lines must say BLOCKED.   OPEN!! = stop and report.
 (async () => {
   const REF = 'ycqmztthwldytkzyvmiv';                       // built from the ref (Netlify's secret scanner, see A1 probe)
   const URL = `https://${REF}.supabase.co`;
@@ -17,6 +17,7 @@
   const calls = {
     academy_exam_enrollment: { p_actor: A, p_enrollment_id: Z },
     academy_exam_clean_answers: { p_answers: {}, p_ids: [Z] },
+    academy_exam_grading_failed: { p_attempt: null, p_action: 'x', p_actor_type: 'system', p_actor: A, p_state: 'P0001', p_msg: 'x' },
     academy_exam_expire: { p_learner: Z },
     academy_exam_limits: { p_learner: Z, p_enrollment: null, p_now: '2026-01-01T00:00:00Z' },
     academy_exam_op_status: { p_actor: A, p_enrollment_id: Z },
@@ -49,7 +50,7 @@
   console.table(rows);
   const n = Object.keys(calls).length;
   console.log(open ? `${open} CHECK(S) OPEN — stop and send this table`
-    : notInstalled === n ? `M6 NOT INSTALLED — the 9 functions are absent; the 4 table checks BLOCKED (key verified)`
+    : notInstalled === n ? `M6 NOT INSTALLED — the 10 functions are absent; the 4 table checks BLOCKED (key verified)`
     : notInstalled === 0 ? `ALL ${rows.length} CHECKS BLOCKED (key verified)`
     : `MIXED: ${notInstalled} not installed, ${blocked} blocked — M6 is partly installed; stop and send this table`);
 })();

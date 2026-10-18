@@ -223,6 +223,10 @@
           actions.replaceChildren(el('p', { text: 'The clock starts as soon as you begin. Ready?' }), yes, no); yes.focus();
         });
         actions.appendChild(start);
+      } else if (S.reason === 'open_attempt') {
+        out.appendChild(msg('You have an exam in progress in another course. Finish it first — it ends by ' + when(S.next_at) + '.'));
+      } else if (S.reason === 'grading_pending') {
+        out.appendChild(msg('Your last attempt is still being graded. Your saved answers are kept. Please contact HCPS if this does not clear.', true));
       } else if (!P.version_published) {
         out.appendChild(msg('This course version is no longer offered, so its exam cannot be started.'));
       } else {
@@ -311,10 +315,18 @@
             el('button', { type: 'button', cls: 'ac-btn sec', text: 'My courses', onclick: function () { go('courses'); } })])]);
         focusMain();
       };
+      var ungraded = function (why) {   // past the deadline and not graded yet: no score is shown, the answers are kept
+        clearInterval(timer); window.removeEventListener('beforeunload', guard);
+        show([el('h1', { text: 'Your exam is being graded' }), el('section', { cls: 'ac-card ac-stack' }, [msg(why, true)]),
+          el('div', { cls: 'ac-row' }, [el('button', { type: 'button', cls: 'ac-btn pri', text: 'Back to the exam page', onclick: function () { go('exam', { e: eid }); } }),
+            el('button', { type: 'button', cls: 'ac-btn sec', text: 'My courses', onclick: function () { go('courses'); } })])]);
+        focusMain();
+      };
       var submit = function () {
         ended = true; clearTimeout(saveT);
         var send = Object.assign({}, pending); pending = {};
         api({ action: 'exam_submit', attempt_id: aid, answers: send }).then(function (x) {
+          if (x.status === 409 && x.body && x.body.error === 'grading_pending') { ungraded(text(x)); return; }
           if (x.status !== 200) { ended = false; pending = Object.assign(send, pending); body.prepend(msg(text(x, 'Your answers could not be submitted. Check your connection and try again.'), true)); return; }
           result(x.body);
         });

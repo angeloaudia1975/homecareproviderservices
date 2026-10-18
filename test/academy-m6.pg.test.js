@@ -204,6 +204,92 @@ try {
     assert.match(tryRun(DB, `select academy_exam_op_start(${A6}, '${E6}')`).err, /access .* has ended|not active/);
     assert.strictEqual(count(DB, 'academy_attempts', `learner_id = '${L6}'`), 0);
   });
+  // ---- review item 4: the one-open rule is per learner across courses; cooldown and daily limit are per enrollment
+  const C2 = course(DB, 'second-course'); const V2 = version(DB, C2); publish(DB, V2.v);
+  await t('Across courses: an open attempt in course A blocks starting course B; once A is submitted, B starts at once (A\'s cooldown is A\'s alone)', () => {
+    const L = learnerAt(DB, HQ, 'seven@test.example', '777777'); const EA = enroll(DB, L, V.v), EB = enroll(DB, L, V2.v); const AL = `'learner:${L}'`;
+    const a = op(DB, 'start', `${AL}, '${EA}'`); assert.strictEqual(a.ok, true);
+    const b = op(DB, 'start', `${AL}, '${EB}'`);
+    assert.strictEqual(b.ok, false); assert.strictEqual(b.reason, 'open_attempt'); assert.strictEqual(b.open_enrollment_id, EA); assert.strictEqual(b.open_attempt_id, a.attempt_id);
+    assert.strictEqual(op(DB, 'status', `${AL}, '${EB}'`).reason, 'open_attempt', 'status for B says the same');
+    assert.strictEqual(op(DB, 'submit', `${AL}, '${a.attempt_id}', '{}'`).ok, true);
+    assert.strictEqual(op(DB, 'status', `${AL}, '${EA}'`).reason, 'cooldown', 'A waits for its cooldown');
+    const b2 = op(DB, 'start', `${AL}, '${EB}'`); assert.strictEqual(b2.ok, true, 'B is not held by A\'s cooldown: ' + JSON.stringify(b2));
+    assert.strictEqual(op(DB, 'start', `${AL}, '${EA}'`).reason, 'open_attempt', 'and now B\'s open attempt blocks A');
+    assert.strictEqual(count(DB, 'academy_attempts', `learner_id = '${L}'`), 2);
+  });
+  await t('Across courses: the daily limit is counted per enrollment — three attempts in course A leave course B\'s three untouched', () => {
+    const L = learnerAt(DB, HQ, 'eight@test.example', '888888'); const EA = enroll(DB, L, V.v), EB = enroll(DB, L, V2.v);
+    for (const s of ['2026-11-05 08:00:00-06', '2026-11-05 10:00:00-06', '2026-11-05 12:00:00-06']) run(DB, asOwner(`insert into academy_attempts (enrollment_id, question_ids, started_at, answers, submitted_at, score, passed, graded_at)
+      values ('${EA}', array['${V.qs[0]}','${V.qs[1]}']::uuid[], '${s}', '{}', '${s}'::timestamptz + interval '10 minutes', 0, false, '${s}'::timestamptz + interval '10 minutes')`));
+    const lim = (e, at) => json(run(DB, `select academy_exam_limits('${L}', e, '${at}'::timestamptz) from academy_enrollments e where e.id = '${e}'`));
+    assert.strictEqual(lim(EA, '2026-11-05 20:00:00-06').reason, 'daily_limit');
+    const b = lim(EB, '2026-11-05 20:00:00-06'); assert.strictEqual(b.can_start, true, JSON.stringify(b)); assert.strictEqual(b.attempts_today, 0);
+  });
+
+  // ---- review items 2 and 3: a grade that cannot be written is recorded, reported and retried — never swallowed
+  run(DB, `create function public.zz_test_refuse_events() returns trigger language plpgsql as $f$ begin
+             if new.action = any (string_to_array(current_setting('zz.refuse', true), ',')) then raise exception 'test refused %', new.action; end if; return new; end $f$;
+           create trigger zz_test_refuse_events before insert on academy_events for each row execute function public.zz_test_refuse_events();`);
+  const refuse = actions => run(DB, `alter database ${DB} set zz.refuse = '${actions}'`);
+  const overdue = (e, answers) => { run(DB, asOwner(`insert into academy_attempts (enrollment_id, question_ids, started_at, draft_answers)
+      values ('${e}', array['${V.qs[0]}','${V.qs[1]}']::uuid[], now() - interval '50 minutes', ${J(answers)})`)); return q1(DB, `select id from academy_attempts where enrollment_id = '${e}' and submitted_at is null`).id; };
+  const row = id => q1(DB, `select submitted_at, score, expired, grading_failures, grading_error from academy_attempts where id = '${id}'`);
+  const evs = (id, action) => count(DB, 'academy_events', `entity_id = '${id}' and action = '${action}'`);
+  let LF, EF, AF, IDF;
+  await t('Expiry failure: status still answers; the attempt stays ungraded, is recorded (count, SQLSTATE, audit row, WARNING) and blocks a new start with grading_pending', () => {
+    LF = learnerAt(DB, HQ, 'nine@test.example', '999999'); EF = enroll(DB, LF, V.v); AF = `'learner:${LF}'`;
+    IDF = overdue(EF, { [V.qs[0]]: 'a' });
+    refuse('submit_attempt');
+    const r = tryRun(DB, `select academy_exam_op_status(${AF}, '${EF}')`);
+    assert.ok(r.ok, r.err); assert.match(r.err, /WARNING:.*could not be graded \(expire_failed\): P0001: test refused submit_attempt/);
+    const st = json(r.out);
+    assert.strictEqual(st.can_start, false); assert.strictEqual(st.reason, 'grading_pending'); assert.strictEqual(st.pending_attempt_id, IDF);
+    assert.strictEqual(st.attempts[0].overdue, true); assert.strictEqual(st.attempts[0].grading_failed, true); assert.strictEqual(st.attempts[0].score, null);
+    const w = row(IDF); assert.strictEqual(w.submitted_at, null); assert.strictEqual(w.grading_failures, 1); assert.strictEqual(w.grading_error, 'P0001: test refused submit_attempt');
+    assert.strictEqual(evs(IDF, 'expire_failed'), 1); assert.strictEqual(evs(IDF, 'expire_attempt'), 0);
+    const ev = q1(DB, `select actor, after from academy_events where entity_id = '${IDF}' and action = 'expire_failed'`);
+    assert.strictEqual(ev.actor, 'system:exam-clock'); assert.strictEqual(ev.after.sqlstate, 'P0001'); assert.strictEqual(ev.after.failures, 1);
+    const s2 = op(DB, 'start', `${AF}, '${EF}'`); assert.strictEqual(s2.ok, false); assert.strictEqual(s2.reason, 'grading_pending');
+    assert.strictEqual(row(IDF).grading_failures, 2, 'every call retries'); assert.strictEqual(evs(IDF, 'expire_failed'), 1, 'the same error is audited once');
+    assert.strictEqual(count(DB, 'academy_attempts', `learner_id = '${LF}'`), 1, 'no new attempt');
+  });
+  await t('Expired submit with a failed grade answers ok:false / grading_pending (recorded) — never ok:true without a result', () => {
+    const r = op(DB, 'submit', `${AF}, '${IDF}', ${J({ [V.qs[1]]: 'a' })}`);
+    assert.deepStrictEqual(r, { ok: false, expired: true, reason: 'grading_pending', attempt_id: IDF, recorded: true });
+    assert.strictEqual(row(IDF).submitted_at, null);
+  });
+  await t('When even the failure record is refused: the call still answers, recorded = false, two WARNINGs name both errors, nothing half-written', () => {
+    const L = learnerAt(DB, HQ, 'ten@test.example', '101010'); const E = enroll(DB, L, V.v); const AL = `'learner:${L}'`;
+    const id = overdue(E, { [V.qs[0]]: 'a', [V.qs[1]]: 'a' });
+    refuse('submit_attempt,expire_failed');
+    const r = tryRun(DB, `select academy_exam_op_submit(${AL}, '${id}', '{}')`);
+    assert.ok(r.ok, r.err); assert.match(r.err, /could not be graded/); assert.match(r.err, /could not be recorded: P0001 test refused expire_failed/);
+    const x = json(r.out); assert.strictEqual(x.ok, false); assert.strictEqual(x.reason, 'grading_pending'); assert.strictEqual(x.recorded, false);
+    const w = row(id); assert.strictEqual(w.submitted_at, null); assert.strictEqual(w.grading_failures, 0, 'the record rolled back whole'); assert.strictEqual(evs(id, 'expire_failed'), 0);
+    refuse('');
+    const g = op(DB, 'submit', `${AL}, '${id}', '{}'`); assert.strictEqual(g.ok, true); assert.strictEqual(g.score, 100, 'graded with the saved answers once the fault is gone');
+  });
+  await t('Recovery is deterministic: once the fault is gone the next call grades it with the answers saved in time, and the audit row keeps the failure count', () => {
+    const st = op(DB, 'status', `${AF}, '${EF}'`);
+    const w = row(IDF); assert.ok(w.submitted_at); assert.strictEqual(w.expired, true); assert.strictEqual(w.score, 50, 'only the answer saved before the deadline');
+    assert.strictEqual(q1(DB, `select after from academy_events where entity_id = '${IDF}' and action = 'expire_attempt'`).after.earlier_failures, 3, 'status, start and the expired submit each retried');
+    assert.strictEqual(st.attempts[0].grading_failed, false); assert.strictEqual(st.reason, 'cooldown', 'the cooldown runs from its deadline: ' + JSON.stringify(st));
+  });
+  await t('Submit before the deadline when grading fails: ok:false / grading_failed; the answers are kept; the attempt stays open; a later submit grades it', () => {
+    const L = learnerAt(DB, HQ, 'eleven@test.example', '111112'); const E = enroll(DB, L, V.v); const AL = `'learner:${L}'`;
+    const s = op(DB, 'start', `${AL}, '${E}'`); assert.strictEqual(s.ok, true);
+    op(DB, 'save', `${AL}, '${s.attempt_id}', ${J({ [V.qs[0]]: 'a' })}`);
+    refuse('submit_attempt');
+    const r = op(DB, 'submit', `${AL}, '${s.attempt_id}', ${J({ [V.qs[1]]: 'a' })}`);
+    assert.strictEqual(r.ok, false); assert.strictEqual(r.reason, 'grading_failed'); assert.strictEqual(r.recorded, true); assert.strictEqual(r.expired, false);
+    const v = op(DB, 'view', `${AL}, '${s.attempt_id}'`); assert.strictEqual(v.open, true); assert.deepStrictEqual(v.answers, { [V.qs[0]]: 'a', [V.qs[1]]: 'a' }, 'the sent answer was saved');
+    assert.strictEqual(evs(s.attempt_id, 'submit_failed'), 1);
+    refuse('');
+    const g = op(DB, 'submit', `${AL}, '${s.attempt_id}', '{}'`); assert.strictEqual(g.ok, true); assert.strictEqual(g.score, 100);
+  });
+  run(DB, `drop trigger zz_test_refuse_events on academy_events; drop function public.zz_test_refuse_events(); alter database ${DB} reset zz.refuse`);
+
   await t('Attempts never change learner, enrollment, start or deadline — not even as the owner with the marker', () => {
     assert.match(tryRun(DB, asOwner(`update academy_attempts set expires_at = expires_at + interval '1 day' where id = '${AT}'`)).err, /never change/);
     assert.match(tryRun(DB, `update academy_attempts set score = 100 where id = '${AT}'`).err, /audited operation/);

@@ -234,6 +234,12 @@ const EXAM_WAIT = {
   open_attempt: 'You already have an exam in progress. Finish it first.',
   cooldown: 'You can take the exam again after a short break.',
   daily_limit: 'You have used today’s exam attempts. You can try again tomorrow.',
+  grading_pending: 'Your last attempt is still being graded. Your saved answers are kept. Please contact HCPS if this does not clear.',
+};
+// A grade the database could not write (recorded there): never answered as a result.
+const EXAM_UNGRADED = {
+  grading_failed: 'Your answers are saved, but they could not be graded just now. Try submitting again in a moment; if it keeps happening, contact HCPS.',
+  grading_pending: 'Time ran out. Your saved answers are kept, but they could not be graded yet. They will be graded with the answers you saved — please contact HCPS if this does not clear.',
 };
 LEARNER.exam_view = async (event, learner, b) => {
   await examsOn();
@@ -245,7 +251,13 @@ LEARNER.exam_save = async (event, learner, b) => {
 };
 LEARNER.exam_submit = async (event, learner, b) => {
   await examsOn();
-  return await A.accessOp('exam_op_submit', { p_actor: actorOf(learner), p_attempt_id: A.uuid(b.attempt_id, 'attempt'), p_answers: answersOf(b.answers) });
+  const r = await A.accessOp('exam_op_submit', { p_actor: actorOf(learner), p_attempt_id: A.uuid(b.attempt_id, 'attempt'), p_answers: answersOf(b.answers) });
+  if (r && r.ok === false) {
+    console.error('[academy] exam not graded', JSON.stringify({ attempt: r.attempt_id, reason: r.reason, recorded: r.recorded }));
+    return A.respond(event, 409, { error: r.reason || 'grading_failed', message: EXAM_UNGRADED[r.reason] || EXAM_UNGRADED.grading_failed,
+      attempt_id: r.attempt_id, expired: r.expired === true });
+  }
+  return r;
 };
 
 LEARNER.save_progress = async (event, learner, b) => {

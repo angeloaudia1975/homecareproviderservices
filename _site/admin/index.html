@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HCPS Admin — Operating System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#10263f; --navy2:#2B4071; --navy3:#3B599A;
+    --orange:#F5821F; --orange-d:#d96f14; --gold:#fcb21e;
+    --blue:#1681c2; --green:#2d7d46; --hub4:#5b4b9a;
+    --paper:#eef1f4; --card:#ffffff; --ink:#1b2733; --gray:#6b7280; --line:#e2e6ea;
+    --shadow:0 10px 30px rgba(16,38,63,.08);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Barlow',system-ui,sans-serif;background:var(--paper);color:var(--ink);}
+  h1,h2,h3,.cond{font-family:'Barlow Condensed','Barlow',sans-serif;}
+  a{text-decoration:none;color:inherit;}
+
+  /* ---- header + hub nav ---- */
+  header{position:sticky;top:0;z-index:100;background:linear-gradient(120deg,var(--navy) 0%,var(--navy2) 100%);color:#fff;padding:20px 30px 0;}
+  .hwrap{max-width:1180px;margin:0 auto;}
+  .htop{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand .mark{width:42px;height:42px;border-radius:11px;background:var(--orange);display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed';font-weight:800;font-size:21px;color:#fff;box-shadow:0 6px 18px rgba(245,130,31,.4);}
+  .brand b{font-family:'Barlow Condensed';font-weight:800;font-size:22px;letter-spacing:.3px;display:block;line-height:1;}
+  .brand span{font-size:10.5px;text-transform:uppercase;letter-spacing:2px;color:#aebdd0;font-weight:600;}
+  .who{display:flex;align-items:center;gap:12px;color:#c4d1e0;font-size:13px;}
+  .who b{color:#fff;}
+  .who button{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 13px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;}
+  .who button:hover{background:rgba(255,255,255,.22);}
+  .hubnav{max-width:1180px;margin:16px auto 0;display:flex;gap:4px;flex-wrap:wrap;}
+  .hubnav a{color:#aebdd0;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:11px 14px;border-bottom:3px solid transparent;}
+  .hubnav a:hover{color:#fff;}
+  .hubnav a.on{color:#fff;border-color:var(--orange);}
+
+  .hero{background:linear-gradient(120deg,var(--navy) 0%,var(--navy2) 100%);color:#fff;padding:6px 30px 26px;}
+  .herowrap{max-width:1180px;margin:0 auto;}
+  .hero h1{margin:14px 0 6px;font-size:29px;font-weight:800;letter-spacing:.4px;}
+  .hero p{margin:0;color:#c4d1e0;font-size:14.5px;max-width:720px;line-height:1.5;}
+
+  /* ---- body ---- */
+  main{max-width:1180px;margin:0 auto;padding:24px 30px 60px;}
+  .callout{display:flex;align-items:center;gap:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:14px 18px;margin:0 0 22px;color:#9a3412;}
+  .callout b{color:#7c2d12;}
+  .callout .cta{color:#c2410c;font-weight:800;white-space:nowrap;}
+  /* My Sales Workspace — the President's own dealer book, worked as a rep (admin-chrome.js / staff-session.js) */
+  .callout.ws{background:#ecfdf3;border-color:#a7e3bd;color:#14532d;}
+  .callout.ws b{color:#14532d;} .callout.ws .cta{color:#15803d;}
+  .wsbtn{display:inline-flex;align-items:center;gap:4px;background:#1f9d57;color:#fff;border-radius:8px;padding:7px 12px;font-weight:700;font-size:12.5px;text-decoration:none;white-space:nowrap;}
+  .wsbtn:hover{background:#178a4b;}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  .favrow{display:flex;flex-wrap:wrap;gap:9px;padding:4px 2px 2px}
+  .favchip{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line,#e5e9ee);
+    border-radius:11px;padding:9px 14px;text-decoration:none;color:inherit;font-size:13.5px;font-weight:700;
+    box-shadow:0 1px 2px rgba(16,38,63,.05)}
+  .favchip:hover{border-color:#b8791b;box-shadow:0 2px 8px rgba(184,121,27,.18)}
+  .favchip .fi{font-size:16px;line-height:1}
+  @media(max-width:640px){.favchip{flex:1 1 calc(50% - 9px);justify-content:flex-start}}
+  @media(max-width:880px){.grid{grid-template-columns:1fr;}}
+  /* Phones: the same masthead rules as the shared header (admin-chrome.js ensureMobileStyles) — scrolls away with the
+     page, account controls on screen, one sideways-scrolling hub row, 44px tap targets. Desktop untouched. */
+  @media(max-width:760px){
+    header{position:relative;padding:10px 12px 0}
+    header .htop{flex-wrap:wrap;gap:8px}
+    header .who{flex-wrap:wrap;gap:6px 8px;width:100%;min-width:0}
+    header .who button,header .who .wsbtn{min-height:44px;display:inline-flex;align-items:center}
+    header .who button{margin-left:auto}
+    .hubnav{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;max-width:100%;margin-top:10px}
+    .hubnav a{flex:0 0 auto;min-height:44px;display:inline-flex;align-items:center}
+  }
+  .hub{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;scroll-margin-top:150px;}
+  .hub .top{padding:18px 20px 14px;border-top:5px solid var(--accent);}
+  .hub .hd{display:flex;align-items:center;gap:12px;}
+  .hub .icon{width:44px;height:44px;border-radius:12px;background:color-mix(in srgb,var(--accent) 14%,#fff);display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto;}
+  .hub h2{margin:0;font-size:22px;font-weight:800;color:var(--navy);letter-spacing:.3px;line-height:1.05;}
+  .hub .purpose{margin:3px 0 0;font-size:12.5px;color:var(--gray);line-height:1.4;}
+  .hub .tools{padding:6px 14px 16px;display:flex;flex-direction:column;gap:2px;}
+  .tool{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:11px;transition:background .12s,transform .12s;}
+  a.tool:hover{background:color-mix(in srgb,var(--accent) 8%,#fff);transform:translateX(2px);}
+  .tool .ti{width:34px;height:34px;border-radius:9px;background:color-mix(in srgb,var(--accent) 12%,#fff);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:16px;flex:0 0 auto;}
+  .tool .tb{flex:1;min-width:0;}
+  .tool .tn{font-weight:700;font-size:14px;color:var(--navy);line-height:1.15;}
+  .tool .td{font-size:11.5px;color:var(--gray);line-height:1.3;margin-top:1px;}
+  .tool .arw{color:var(--accent);font-weight:800;opacity:0;transition:opacity .12s;}
+  a.tool:hover .arw{opacity:1;}
+  .tag{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;padding:3px 7px;border-radius:6px;white-space:nowrap;}
+  .tag.live{background:#e7f6ec;color:#1f7a44;border:1px solid #bfe3ca;}
+  .tag.plan{background:#eef1f4;color:#8a94a1;border:1px solid #dde3e9;}
+  .tag.hub{background:#fdeee0;color:#b45309;border:1px solid #f6d5ad;}
+  .tag.new{background:#fff4d6;color:#8a5a00;border:1px solid #f3d27a;}
+  .tool.planned{opacity:.72;}.tool.planned .tn{color:#5b6672;}
+  .soon{margin:10px 2px 0;font-size:11.5px;color:#7a8694;letter-spacing:.01em;}
+  .note{margin:22px 0 0;padding:16px 20px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--orange);border-radius:12px;color:#374151;font-size:13px;line-height:1.6;}
+  .note b{color:var(--navy);}
+  .foot{margin-top:22px;color:#9aa4ae;font-size:12px;}
+
+  /* ---- sign-in gate ---- */
+  .gatewrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--navy);}
+  .gatebox{background:#fff;border-radius:16px;padding:28px 26px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+  .gatebox .bd{color:var(--orange);font-weight:800;font-size:12px;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px;}
+  .gatebox h2{font-size:22px;margin:0 0 4px;color:var(--navy);}
+  .gatebox p{color:var(--gray);font-size:13px;margin:0 0 16px;}
+  .gatebox input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:15px;margin:0 0 10px;font-family:inherit;}
+  .gatebox .row{display:flex;align-items:center;gap:10px;}
+  .gatebox button{background:var(--orange);color:#fff;border:0;border-radius:9px;padding:11px 20px;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit;}
+  .gatebox button:hover{background:var(--orange-d);}
+  .gatebox a{color:var(--navy);font-weight:600;font-size:13px;}
+  .gatebox a:hover{text-decoration:underline;}
+  .gatebox .er{color:#b42323;font-size:13px;margin-top:8px;min-height:16px;}
+</style>
+</head>
+<body>
+
+<div id="gate"></div>
+
+<div id="app" style="display:none">
+  <header>
+    <div class="hwrap htop">
+      <div class="brand"><div class="mark">H</div><div><b>HCPS Connect 360</b><span>Operating System</span></div></div>
+      <div class="who"><a class="wsbtn" id="ws-enter" href="/admin/command-center-rep.html?workspace=mine" title="Work your own dealer book — your day, route, visits, tasks and deals">🧑‍💼 My Sales Workspace</a><span id="whoName"></span><button onclick="lock()">Lock</button></div>
+    </div>
+    <nav class="hubnav">
+      <a href="#top" class="on">Dashboard</a>
+      <a href="/admin/hub.html?cat=ordering">Online Ordering</a>
+      <a href="/admin/hub.html?cat=website">Website</a>
+      <a href="/admin/hub.html?cat=sales">Sales &amp; Marketing</a>
+      <a href="/admin/hub.html?cat=analytics">Sales Data &amp; Analytics</a>
+    </nav>
+  </header>
+  <div class="hero"><div class="herowrap" id="top">
+    <h1>The control center for HomeCare Provider Services</h1>
+    <p>Manage your ordering platforms, website, sales &amp; marketing, and business analytics — organized around what you run, all from one place.</p>
+  </div></div>
+
+  <main>
+    <a class="callout ws" id="ws-callout" href="/admin/command-center-rep.html?workspace=mine">
+      <span style="font-size:22px">🧑‍💼</span>
+      <span><b>My Sales Workspace</b> — work your own dealer book as a rep: today's route and meeting prep, Start/End Visit, AI visit summaries, follow-ups, tasks and deals. Your Admin Dashboard stays one click away.</span>
+      <span class="cta" style="margin-left:auto">Open →</span>
+    </a>
+    <a class="callout" href="/admin/dealers.html#logins">
+      <span style="font-size:22px">✅</span>
+      <span><b>Approve dealer logins</b> — dealers who register on the ordering portal wait here until you approve them. <span id="pendCount" style="font-weight:800"></span></span>
+      <span class="cta" style="margin-left:auto">Pending logins →</span>
+    </a>
+
+    <!-- Rendered from ACAdmin.HUBS (admin-chrome.js) — the SINGLE SOURCE OF TRUTH shared with the
+         masthead sub-nav and the category landing pages. Add a tool there and it appears here too. -->
+    <div id="favwrap"></div>
+    <div class="grid" id="grid"></div>
+
+    <div class="note">
+      <b>How this is organized.</b> Every tool lives inside the business function it serves, so you navigate by what you're doing. Your <b>Dealer Records</b> are the shared spine — the same database powers Contract Pricing &amp; Portal Accounts (Ordering), Dealer 360 &amp; CRM (Sales &amp; Marketing), and the Command Center metrics (Analytics). The <b>Golden</b> ordering platform now feeds dealer behavior in live through the federation connector — watch it in <b>Golden Activity</b> (Analytics), turn it into campaigns from <b>Product Interest</b> (Sales &amp; Marketing), and see the same touches land on the <b>Dealer 360</b> timeline and Who-to-Call. Tiles marked <span class="tag hub">Next</span> are being built now — the portal's own notes, tasks &amp; follow-up engine drive daily sales work, while <b>Zoho</b> holds the CRM sync and, soon, email &amp; marketing. <span class="tag plan">Planned</span> tiles are mapped into the architecture and built in turn.
+    </div>
+    <div class="foot">HomeCare Provider Services · Admin Operating System · signed in with your staff email &amp; password.</div>
+  </main>
+</div>
+
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null;
+try{ ME=HCPS.profile(); }catch(e){ ME=null; }
+const $=s=>document.querySelector(s);
+
+/* The operating-system dashboard is for management (Phase 0L). A sales rep who signs in here, or
+   opens /admin/ with a saved session, goes to their own landing (profile.landing from the server —
+   today the rep workspace home). Server-side checks still guard every tool. */
+function repLanding(){
+  // The Admin dashboard is management's (president/admin/owner). A sales rep and Customer Relations
+  // go to their own workspace (decision Oct 2); the server still guards every admin endpoint.
+  const role=String((ME&&ME.role)||"").toLowerCase(); if(role!=="rep"&&role!=="relations") return null;
+  const u=ME&&ME.landing; return (typeof u==="string"&&/^\/admin\/[A-Za-z0-9._\/-]*$/.test(u)&&!u.includes("..")&&u!=="/admin/")?u:"/admin/rep-home.html";
+}
+function showApp(){
+  const away=repLanding(); if(away){ location.replace(away); return; }
+  $("#gate").style.display="none";
+  $("#app").style.display="block";
+  const wn=$("#whoName"); if(wn) wn.innerHTML=(ME&&ME.name)?("Hi, <b>"+esc(ME.name)+"</b>"+(ME.role?" · "+esc(ME.role):"")):"";
+  buildGrid();
+  loadPending();
+  wireNav();
+}
+
+// The dashboard grid is rendered from ACAdmin.HUBS — the same array that drives the sub-nav and the
+// category landing pages — so a tool added once shows up everywhere. Only per-hub styling lives here.
+const HUB_STYLE={
+  ordering:{accent:"var(--orange)"}, website:{accent:"var(--blue)"},
+  sales:{accent:"var(--green)"}, analytics:{accent:"var(--navy3)"}
+};
+function tagFor(status){
+  if(status==="planned") return '<span class="tag plan">Planned</span>';
+  if(status==="new")     return '<span class="tag new">New</span>';
+  return '<span class="tag live">Live</span>';
+}
+/* The grid lists tools you can open, and nothing else. A tool with no page was rendered
+   here as a greyed tile with a "Planned" tag — honest, but it still sat in the grid taking
+   the shape of a tool and inviting a click that does nothing. Anything not yet built is now
+   named in one line under the section instead. */
+function toolRow(t, hubId){
+  if((t.status==="planned")||!t.href) return '';
+  const href=(window.ACAdmin&&ACAdmin.hubHref)?ACAdmin.hubHref(t,hubId):t.href;
+  const inner='<div class="ti">'+esc(t.icon||"•")+'</div><div class="tb"><div class="tn">'+esc(t.label)+'</div>'
+    +'<div class="td">'+esc(t.desc||"")+'</div></div>'+tagFor(t.status)
+    +'<span class="arw">→</span>';
+  return '<a class="tool" href="'+esc(href)+'">'+inner+'</a>';
+}
+/* ── Favorites row ───────────────────────────────────────────────────────────
+   The tools this person pinned, straight across the top of their own dashboard.
+   Personal: two people signing into the same Connect 360 see different shortcuts.
+   Resolved against ACAdmin.HUBS so a favorite always shows the tool's real name and
+   icon, and a tool that is later renamed or retired doesn't leave a dead tile. */
+function buildFavs(){
+  const wrap=$("#favwrap"); if(!wrap||!window.ACAdmin) return;
+  ACAdmin.loadFavs().then(function(list){
+    const items=(list||[]).map(function(h){ const t=ACAdmin.toolAt(h); return t?{href:h,t:t}:null; }).filter(Boolean);
+    if(!items.length){
+      wrap.innerHTML='<section class="hub" style="--accent:#b8791b;margin-bottom:22px">'
+        +'<div class="top"><div class="hd"><div class="icon">★</div>'
+        +'<div><h2>Your favorites</h2><p class="purpose">No shortcuts yet. Open any tool and tap the ☆ beside your name — it appears here for you alone.</p></div></div></div></section>';
+      return;
+    }
+    wrap.innerHTML='<section class="hub" style="--accent:#b8791b;margin-bottom:22px">'
+      +'<div class="top"><div class="hd"><div class="icon">★</div>'
+      +'<div><h2>Your favorites</h2><p class="purpose">The tools you pinned — yours alone. Tap the ☆ on any tool to add or remove it.</p></div></div></div>'
+      +'<div class="favrow">'+items.map(function(x){
+          return '<a class="favchip" href="'+esc(x.href)+'"><span class="fi">'+esc(x.t.icon||"•")+'</span>'
+            +'<span class="fl">'+esc(x.t.label)+'</span></a>'; }).join('')
+      +'</div></section>';
+  });
+}
+try{ window.addEventListener("hcps-favs", buildFavs); }catch(e){}
+
+function buildGrid(){
+  buildFavs();
+  const grid=$("#grid"); if(!grid) return;
+  const HUBS=(window.ACAdmin&&ACAdmin.HUBS)||[];
+  if(!HUBS.length){ return; }   // admin-chrome.js not ready yet; hcps-token event will re-run
+  grid.innerHTML=HUBS.map(function(h){
+    const st=HUB_STYLE[h.id]||{accent:"var(--orange)"};
+    const tools=(h.tools||[]).map(function(t){ return toolRow(t,h.id); }).join("");
+    const soon=(h.tools||[]).filter(function(t){ return (t.status==="planned")||!t.href; })
+      .map(function(t){ return t.label; });
+    return '<section class="hub" id="'+esc(h.id)+'" style="--accent:'+st.accent+'">'
+      + '<div class="top"><div class="hd"><div class="icon">'+esc(h.icon||"•")+'</div>'
+      +   '<div><h2>'+esc(h.dashTitle||h.label)+'</h2><p class="purpose">'+esc(h.purpose||"")+'</p></div>'
+      + '</div></div><div class="tools">'+tools+'</div>'
+      + (soon.length?'<p class="soon">Not built yet: '+esc(soon.join(" · "))+'</p>':'')
+      + '</section>';
+  }).join("");
+}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function gate(msg){
+  $("#app").style.display="none";
+  const g=$("#gate"); g.style.display="block";
+  g.innerHTML=`<div class="gatewrap"><div class="gatebox">
+    <div class="bd">HomeCare Provider Services</div>
+    <h2>Admin sign-in</h2>
+    <p>Sign in with your work email and password.</p>
+    <input id="lemail" type="email" placeholder="Email" autocomplete="username">
+    <input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()">
+    <div class="row"><button onclick="submitTok()">Sign in</button><a href="reset.html">Forgot password?</a></div>
+    <div class="er" id="lerr">${msg||""}</div>
+  </div></div>`;
+  setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);
+}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{
+    const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({}));
+    if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile;
+    showApp();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+
+// live count of dealers waiting for approval
+async function loadPending(){
+  try{
+    const r=await fetch("/.netlify/functions/dealers-api",{headers:{authorization:"Bearer "+TOKEN}});
+    if(!r.ok) return; const j=await r.json();
+    const n=(j.logins||[]).filter(l=>l.status==="pending").length;
+    const el=$("#pendCount"); if(el) el.textContent = n? `${n} waiting.` : "None waiting right now.";
+  }catch(e){}
+}
+// smooth-scroll hub nav + active highlight
+function wireNav(){
+  const links=[...document.querySelectorAll(".hubnav a")];
+  links.forEach(a=>a.addEventListener("click",e=>{
+    const id=a.getAttribute("href"); if(id&&id.startsWith("#")){ e.preventDefault();
+      const t=document.querySelector(id==="#top"?"#top":id); if(t) t.scrollIntoView({behavior:"smooth",block:"start"});
+      links.forEach(x=>x.classList.remove("on")); a.classList.add("on"); }
+  }));
+}
+
+if(TOKEN) showApp(); else gate();
+</script>
+</body>
+</html>

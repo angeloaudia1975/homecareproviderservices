@@ -2,7 +2,7 @@
 -- HCPS Academy — A2E M6 POST-MIGRATION CHECK (READ-ONLY)    supabase/academy_a2e_m6_postcheck.sql
 -- Changes nothing. Expected after M6:
 --   m6_code_fingerprint  see docs/academy/A2E_EXAMS.md (Unix form and Windows-paste form, both precomputed)
---   m6_functions 10 · m6_server_callable 5 · m6_public_callable 0 · m1_start_submit_server false / false
+--   m6_functions 11 · m6_server_callable 5 · m6_public_callable 0 · m1_start_submit_server false / false
 --   attempts_server_writes false · attempts 0 · version limits present (45 / 60 / 3 defaults)
 --   academy_switches exactly as in the preflight (only academy_admin on)
 -- Any other value = stop and investigate (never roll back on suspicion).

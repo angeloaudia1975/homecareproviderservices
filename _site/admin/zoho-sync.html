@@ -1,0 +1,187 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Zoho Sync</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .syncgrid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+ @media(max-width:760px){.syncgrid{grid-template-columns:1fr}}
+ .srow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f6}
+ .srow:last-child{border-bottom:0}
+ .srow .t{flex:1}.srow .t b{color:var(--navy);font-size:13.5px}.srow .t .d{font-size:11.5px;color:var(--gray)}
+ .srow .when{font-size:11px;color:var(--gray);white-space:nowrap}
+ .dot{width:9px;height:9px;border-radius:50%;display:inline-block}.dot.on{background:#2d7d46}.dot.off{background:#c2410c}
+ .log{background:#0f1b2b;color:#d7e2ee;border-radius:10px;padding:12px 14px;font:12px/1.6 ui-monospace,Menlo,Consolas,monospace;max-height:230px;overflow:auto;margin-top:14px;white-space:pre-wrap}
+ .rev{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+ .rev th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:5px 7px;border-bottom:1px solid var(--line)}
+ .rev td{padding:5px 7px;border-bottom:1px solid #eef2f6}
+ .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0}
+ .tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+ .tile.w{border-left:4px solid #b45309}
+ .tile .tl{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .tile .tv{font-size:24px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ .hstat{display:flex;gap:26px;flex-wrap:wrap}
+ .hlabel{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .hval{font-size:15px;color:var(--navy);font-weight:700;margin-top:3px}
+ .dot.warn{background:#b45309}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Zoho Sync <span class="hint" style="font-weight:400">— health dashboard</span></h1><div class="sub">Connection health, freshness, and record counts between the portal and Zoho CRM. The portal is the system of record; Zoho carries the CRM &amp; marketing weight. Automatic two-way sync runs every 15 minutes and drains real-time webhook events; the buttons below are on-demand / troubleshooting controls.</div></div>
+    <div id="conn"></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), STATE=null, BUSY=false;
+const when=t=>{ if(!t) return "never"; try{ return new Date(t).toLocaleString(); }catch(e){ return t; } };
+const rel=t=>{ if(!t) return "—"; const ms=Date.now()-new Date(t).getTime(); const h=ms/3.6e6; return h<1?Math.max(1,Math.round(ms/6e4))+"m ago":h<48?Math.round(h)+"h ago":Math.round(h/24)+"d ago"; };
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+async function z(payload){ const r=await fetch("/.netlify/functions/zoho-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+function logln(s){ const el=$("#log"); if(el){ el.textContent += (el.textContent?"\n":"")+s; el.scrollTop=el.scrollHeight; } }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  const r=await z({action:"sync_state"});
+  if(r.status===401){ gate("Your session ended — sign in again."); return; }
+  if(r.status===403){ $("#body").innerHTML=`<div class="msg err"><b>President only.</b></div>`; return; }
+  STATE=r.body||{};
+  try{ const iv=await z({action:"invalid_emails"}); if(iv.status===200 && iv.body && iv.body.ok) STATE._invalid=iv.body; }catch(e){}
+  render();
+}
+function tile(label,val,cls){ return `<div class="tile ${cls||''}"><div class="tl">${label}</div><div class="tv">${val}</div></div>`; }
+function feed(){
+  const rows=(STATE&&STATE.recent)||[];
+  if(!rows.length) return `<div class="card"><h2>Recent sync activity</h2><div class="hint" style="margin-top:6px">No events yet. This lights up as the auto-sync runs every 15 min and as Zoho webhooks fire.</div></div>`;
+  const dirlbl=d=>d==="in"?'⬅ in':d==="out"?'➡ out':esc(d||"");
+  const rescls=r=>r==="ok"?"on":(r==="fail"?"off":"warn");
+  return `<div class="card"><h2>Recent sync activity <span class="hint" style="font-weight:600">— last ${rows.length} events</span></h2>
+    <table class="rev"><thead><tr><th>When</th><th>Dir</th><th>Area</th><th>Result</th><th>Detail</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td class="when" title="${esc(when(r.created_at))}">${esc(rel(r.created_at))}</td><td>${dirlbl(r.direction)}</td><td>${esc(r.entity||"")}${r.action?(' · '+esc(r.action)):''}</td><td><span class="dot ${rescls(r.result)}"></span> ${esc(r.result||"")}</td><td class="d" style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.detail||"")}">${esc(String(r.detail||"").slice(0,140))}</td></tr>`).join("")}
+    </tbody></table></div>`;
+}
+function fixEmails(){
+  const iv=(STATE&&STATE._invalid); if(!iv||!iv.count) return "";
+  const rows=iv.invalid||[];
+  return `<div class="card"><h2>Emails to fix <span class="hint" style="font-weight:600">— ${iv.count} address${iv.count===1?"":"es"} Zoho won't accept</span></h2>
+    <div class="hint" style="margin:2px 0 10px">These have a typo — a missing ".com", a stray space, or two addresses in one field. Auto-sync skips them so nothing breaks; correct the address on the dealer and the next 15-min run syncs it — and their mail starts matching to the dealer too.</div>
+    <table class="rev"><thead><tr><th>Dealer</th><th>Contact</th><th>Bad email</th><th>Where</th><th></th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td>${esc(r.dealer||"")}</td><td>${esc(r.name||"—")}</td><td style="color:#b42323;font-family:ui-monospace,Menlo,Consolas,monospace">${esc(r.email||"")}</td><td class="d">${r.source==="primary"?"Primary":"Contact"}</td><td style="text-align:right"><a class="btn sm" href="/admin/dealer.html?id=${encodeURIComponent(r.dealer_id||"")}">Fix →</a></td></tr>`).join("")}
+    </tbody></table></div>`;
+}
+function render(){
+  const st=STATE.last||{}, conn=STATE.connected, opp=STATE.opportunities||{}, cnt=STATE.counts||{}, q=STATE.queue||{}, auto=STATE.autosync||{}, wh=STATE.webhooks||{}, iv=STATE._invalid||{count:0};
+  $("#conn").innerHTML=`<span class="chip"><span class="dot ${conn?'on':'off'}"></span> ${conn?'Connected to Zoho':'Not connected'}</span>`;
+  const ago=t=>{ if(!t) return {txt:"never",cls:"off"}; const ms=Date.now()-new Date(t).getTime(); const h=ms/3.6e6;
+    const txt = h<1?Math.max(1,Math.round(ms/6e4))+"m ago" : h<48?Math.round(h)+"h ago" : Math.round(h/24)+"d ago";
+    return {txt, cls: h<24?"on": h<168?"warn":"off"}; };
+  // 1) connection + automation health
+  const aAgo=ago(auto.at), wAgo=ago(wh.last);
+  const connCard=`<div class="card">
+    <div class="hstat">
+      <div><div class="hlabel">Zoho connection</div><div class="hval"><span class="dot ${conn?'on':'off'}"></span> ${conn?'Connected':'Not connected'}</div></div>
+      <div><div class="hlabel">Automatic sync</div><div class="hval">${auto.on?`<span class="dot ${aAgo.cls}"></span> On · ${aAgo.txt}`:'<span class="dot warn"></span> Deploying — first run pending'}</div></div>
+      <div><div class="hlabel">Inbound webhooks (Zoho → portal)</div><div class="hval">${wh.last?`<span class="dot ${wAgo.cls}"></span> Live · ${wh.in_24h||0} in 24h`:'<span class="dot warn"></span> Live · awaiting first event'}</div></div>
+    </div>
+    <div class="hint" style="margin-top:8px">${auto.on?'Two-way sync runs automatically every 15 minutes and drains real-time webhook events; the controls below are for on-demand troubleshooting.':'Automatic sync is deploying — every 15 min it pushes changed records up to Zoho and drains inbound webhook events. These metrics light up after its first run.'}</div></div>`;
+  // 2) record + health tiles
+  const tiles=`<div class="tiles">
+    ${tile("Dealers on file",cnt.dealers==null?"—":cnt.dealers)}
+    ${tile("Contacts on file",cnt.contacts==null?"—":cnt.contacts)}
+    ${tile("Webhook events · 24h",wh.in_24h||0)}
+    ${tile("Inbound queued",wh.pending||0,wh.pending?"w":"")}
+    ${tile("Pending updates",q.pending||0,q.pending?"w":"")}
+    ${(()=>{ const f=(STATE.failures&&STATE.failures.in_24h)||0, n=f+(q.failed||0); return tile("Sync failures · 24h",n,n?"w":""); })()}
+    ${tile("Emails to fix",iv.count||0,iv.count?"w":"")}
+    ${tile("Pipeline linked",(opp.linked||0)+"/"+(opp.total||0))}
+  </div>`;
+  // 3) per-area freshness
+  const areas=[
+    ["🔁","Auto-sync last run","autosync_at"],
+    ["🏢","Accounts pushed","accounts_pushed_at"],["📇","Contacts pushed","contacts_pushed_at"],
+    ["📝","Notes & tasks mirrored","mirror_at"],["🔮","Pipeline pushed","opportunities_pushed_at"],
+    ["📞","Account updates pulled","accounts_pulled_at"],["🔢","Account #s pulled","account_numbers_pulled_at"],
+    ["✉️","Contacts pulled","contacts_pulled_at"],["🔄","Deal changes pulled","deals_pulled_at"]];
+  const fresh=`<div class="card"><h2>Sync freshness</h2>
+    ${areas.map(([ic,lbl,k])=>{const a=ago(st[k]);return `<div class="srow"><div style="font-size:16px">${ic}</div><div class="t"><b>${lbl}</b></div><div style="text-align:right;white-space:nowrap"><span class="dot ${a.cls}"></span> <span class="when">${a.txt}${st[k]?" · "+when(st[k]):""}</span></div></div>`;}).join("")}</div>`;
+  // 4) force sync (on-demand / troubleshooting)
+  const row=(icon,title,desc,btn)=>`<div class="srow"><div style="font-size:18px">${icon}</div><div class="t"><b>${title}</b><div class="d">${desc}</div></div><div>${btn}</div></div>`;
+  const btn=(id,label,fn)=>`<button class="btn sm" id="${id}" onclick="${fn}" ${conn?'':'disabled'}>${label}</button>`;
+  const force=`<div class="card"><h2>Force sync <span class="hint" style="font-weight:600">— on-demand / troubleshooting</span></h2>
+    <div class="syncgrid">
+      <div><div class="hlabel" style="margin-bottom:4px">Push · portal → Zoho</div>
+        ${row("🏢","Accounts","Dealers → Zoho Accounts.",btn("b_acc","Run","run('sync_accounts','b_acc')"))}
+        ${row("📇","Contacts","Contacts → Zoho, linked to account.",btn("b_con","Run","run('sync_contacts','b_con')"))}
+        ${row("🔮","Pipeline",("Open opps → Zoho Deals. "+(opp.total?(opp.linked+"/"+opp.total+" linked"):"")),btn("b_opp","Run","run('sync_opportunities','b_opp')"))}
+        ${row("💰","Sales as deals","Historical sales → closed-won Deals.",btn("b_deal","Run","runDeals()"))}
+        ${row("📝","Notes &amp; tasks","New portal notes/tasks → Zoho.",btn("b_mir","Run","run('mirror_to_zoho','b_mir')"))}</div>
+      <div><div class="hlabel" style="margin-bottom:4px">Pull · Zoho → portal</div>
+        ${row("🔄","Deal changes","Zoho deal edits → opportunities.",btn("b_pd","Run","run('pull_deals','b_pd')"))}
+        ${row("📞","Account updates","Zoho phone/address → dealers (review-only for new).",btn("b_pa","Run","run('pull_accounts','b_pa')"))}
+        ${row("🔢","Account numbers","Zoho Acct # fields → portal, then satellites.",btn("b_pan","Run","run('pull_account_numbers','b_pan')"))}
+        ${row("✉️","Contacts","Zoho contacts → portal + email matcher.",btn("b_pc","Run","run('pull_contacts','b_pc')"))}</div>
+    </div>
+    <div class="hint" style="margin-top:8px">Pulls stay conservative: linked records update in place; brand-new Zoho records are listed for review, never auto-created.</div></div>`;
+  $("#body").innerHTML=connCard+tiles+fixEmails()+fresh+feed()+force+`<div id="review"></div><div class="log" id="log">Ready.${conn?"":" Connect to Zoho first (Zoho CRM Sync setup)."}</div>`;
+}
+async function run(action,btnId){
+  if(BUSY) return; BUSY=true; const b=$("#"+btnId); const label=b?b.textContent:""; if(b){b.disabled=true;b.textContent="Working…";}
+  logln("→ "+action+" …");
+  const r=await z({action}); const j=r.body||{};
+  if(j.ok){ logln("✓ "+action+": "+summarize(action,j)); }
+  else logln("✗ "+action+": "+(j.message||j.error||("http "+r.status)));
+  if(action==="pull_accounts" && j.new_in_zoho) renderReview(j.new_in_zoho);
+  if(b){b.disabled=false;b.textContent=label;}
+  BUSY=false; load();
+}
+function summarize(a,j){
+  if(a==="sync_accounts") return `${j.inserted||0} new, ${j.updated||0} updated of ${j.total||0}`;
+  if(a==="sync_contacts") return `${j.inserted||0} new, ${j.updated||0} updated, ${j.linked_to_account||0} linked`;
+  if(a==="sync_opportunities") return `${j.created||0} created, ${j.updated||0} updated of ${j.total||0}`;
+  if(a==="mirror_to_zoho") return `${j.notes_pushed||0} notes, ${j.tasks_pushed||0} tasks`;
+  if(a==="pull_deals") return `${j.changed||0} of ${j.linked||0} linked deals updated`;
+  if(a==="pull_accounts") return `${j.updated||0} dealers updated, ${(j.new_in_zoho||[]).length} new in Zoho`;
+  if(a==="pull_account_numbers") return `${j.lines_updated||0} account #s updated, ${j.unmatched_accounts||0} accounts unmatched`;
+  if(a==="pull_contacts") return `${j.written||0} contacts loaded (of ${j.with_email||0} with email), ${j.unmatched_accounts||0} accounts unmatched`;
+  return JSON.stringify(j).slice(0,120);
+}
+function renderReview(list){
+  const el=$("#review"); if(!el) return;
+  if(!list.length){ el.innerHTML=""; return; }
+  el.innerHTML=`<div class="card" style="margin-top:15px"><h2>New in Zoho — review <span class="hint" style="font-weight:600">${list.length} account(s) not in the portal</span></h2>
+    <table class="rev"><thead><tr><th>Account</th><th>City</th><th>State</th><th>Phone</th></tr></thead><tbody>
+    ${list.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.city)}</td><td>${esc(a.state)}</td><td>${esc(a.phone)}</td></tr>`).join("")}</tbody></table>
+    <div class="hint" style="margin-top:8px">These exist in Zoho but not in the portal. Add them in Dealer Manager if they should be tracked here.</div></div>`;
+}
+async function runDeals(){
+  if(BUSY) return; BUSY=true; const b=$("#b_deal"); if(b){b.disabled=true;b.textContent="Working…";}
+  let off=0, total=null, ins=0, upd=0;
+  logln("→ sync_deals (sliced) …");
+  for(let i=0;i<40;i++){
+    const r=await z({action:"sync_deals",offset:off,limit:150}); const j=r.body||{};
+    if(!j.ok){ logln("✗ sync_deals: "+(j.message||j.error||r.status)); break; }
+    ins+=j.inserted||0; upd+=j.updated||0; total=j.total; off+=j.count||0;
+    logln(`  … ${off}/${total} (${ins} new, ${upd} updated)`);
+    if(!j.count || off>=total) break;
+  }
+  logln(`✓ sync_deals done: ${ins} new, ${upd} updated of ${total}`);
+  if(b){b.disabled=false;b.textContent="Push sales";}
+  BUSY=false; load();
+}
+load();
+</script>
+</body></html>

@@ -1,0 +1,257 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Email Sync (Phase 0)</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:8px 0}
+ .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .kpi .v{font-size:22px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid var(--line)}
+ td{padding:6px 8px;border-bottom:1px solid #eef2f6}
+ .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+ pre{background:#0e1b2b;color:#d6e4f0;padding:12px;border-radius:10px;overflow:auto;font-size:12px;max-height:340px}
+ .ok{color:#1f7a44}.warn{color:#b45309}
+ .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+ .pill.y{background:#e7f6ee;color:#1f7a44}.pill.n{background:#fdecec;color:#b42323}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Email Sync <span class="hint" style="font-weight:400">— Phase 0</span></h1>
+    <div class="sub">Pulls Inbox + Sent Items for your connected mailboxes via Microsoft Graph, matches each message to a dealer, and stores it for Dealer 360. Start with <b>Status</b>, then <b>Test connection</b>, then <b>Sync</b>.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;} let BUSY=false;
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; render();
+  }catch(err){ gate("Could not reach the server. Try again."); } }
+function lock(){ HCPS.signOut(); TOKEN=null; location.reload(); }
+async function api(payload){ const r=await fetch("/.netlify/functions/email-sync-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({error:"bad response ("+r.status+")"})); }
+
+let DEALERS=[];
+function render(){ if(!TOKEN){ gate(); return; }
+  $("#body").innerHTML=`<div class="card">
+    <div class="row">
+      <button class="btn sm" onclick="doStatus()">Status</button>
+      <button class="btn sm" onclick="doTest()">Test connection</button>
+      <button class="btn sm" onclick="doSeed()">Seed domains from CRM</button>
+      <button class="btn sm" onclick="doUnmatched()">Review unmatched</button>
+      <button class="btn sm" onclick="doIgnored()">Ignored senders</button>
+      <button class="btn sm" onclick="doDeliverability()">📶 Deliverability</button>
+      <button class="btn orange" onclick="doSync()">Sync now</button>
+      <span class="hint">days <input id="days" value="30" style="width:56px;padding:5px 7px;border:1px solid var(--line);border-radius:7px"></span>
+      <span id="msg" class="hint" style="margin:0"></span>
+    </div>
+    <div class="hint" style="margin-top:6px">Email auto-syncs in the background every hour — these buttons are for on-demand runs and cleanup.</div>
+    <div class="step" style="margin-top:12px">
+      <h3>Load older history <span class="hint" style="font-weight:400">— pull months the hourly sync never covered</span></h3>
+      <div class="hint" style="margin:0 0 8px">The rolling sync only ever looks back a few months. To bring in a fixed period — say the start of the year to today — set the dates and run it. It works a week at a time so it can't time out, and it's safe to re-run: messages already stored are matched on their Outlook ID and updated, never duplicated.</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="hint">from <input id="bf_from" type="date" value="2026-01-01" style="padding:5px 7px;border:1px solid var(--line);border-radius:7px"></span>
+        <span class="hint">to <input id="bf_to" type="date" style="padding:5px 7px;border:1px solid var(--line);border-radius:7px"></span>
+        <button class="btn orange" id="bf_go" onclick="doBackfill()">Load history</button>
+        <button class="btn sm" onclick="doCoverage()">What have we got?</button>
+        <span id="bf_msg" class="hint" style="margin:0"></span>
+      </div>
+      <div id="bf_prog" style="margin-top:8px"></div>
+    </div>
+    <div id="out"></div>
+  </div>`;
+  doUnmatched();  // show what needs attention as soon as the page opens
+}
+async function ensureDealers(){ if(DEALERS.length) return; const d=await api({action:"dealers"}); if(d&&d.ok) DEALERS=d.dealers||[]; }
+async function doUnmatched(){ if(BUSY)return; busy("Loading unmatched…"); await ensureDealers(); const j=await api({action:"unmatched"}); done();
+  if(!j||!j.ok){ return; }
+  const hid=j.hidden||{auto:0,rule:0};
+  const hidNote=(hid.auto||hid.rule)?`<div class="hint" style="margin-bottom:6px">Hidden from this list: <b>${hid.auto}</b> automatic (no-reply / notifications) · <b>${hid.rule}</b> you ignored — <a href="#" onclick="doIgnored();return false">manage ignored →</a></div>`:"";
+  if(!j.unmatched||!j.unmatched.length){ $("#out").innerHTML=`<div class="hint ok" style="margin-top:8px">✓ No unmatched senders need attention — every captured email is assigned, automatic, or ignored.</div>${hidNote}`; return; }
+  const opts='<option value="">— assign to dealer —</option>'+DEALERS.map(d=>`<option value="${esc(d.id)}">${esc(d.name)}${d.branch?" (branch)":""}</option>`).join("");
+  $("#out").innerHTML=`<div class="step" style="margin-top:10px"><h3 class="warn">Unmatched senders (${j.unmatched.length})</h3>
+    <div class="hint" style="margin-bottom:6px">These emailed you but didn't match a dealer. <b>Assign</b> one to save it as that dealer's contact (future mail attaches automatically). Or clear noise: <b>Not important</b> / <b>Ignore</b> hides that address; <b>Ignore @domain</b> hides the whole domain (vendors, newsletters). Everything is reversible under “Ignored senders”.</div>
+    ${hidNote}
+    <table><thead><tr><th>Sender</th><th>Emails</th><th>Latest subject</th><th>Assign / classify</th></tr></thead><tbody>
+    ${j.unmatched.map((u,i)=>`<tr id="ur_${i}">
+      <td><b>${esc(u.email)}</b>${u.name?`<div class="hint">${esc(u.name)}</div>`:""}</td>
+      <td class="num">${u.count}</td>
+      <td class="hint" style="max-width:240px">${esc(u.last_subject||"")}</td>
+      <td style="white-space:nowrap"><select id="us_${i}" style="min-width:200px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:12.5px">${opts}</select>
+        <button class="btn ghost sm" onclick="assignUnmatched(${i},'${esc(u.email)}','${esc((u.name||'').replace(/'/g,''))}')">Assign</button> <span id="uok_${i}" class="hint"></span>
+        <div class="row" style="margin:5px 0 0;gap:6px"><span class="hint">noise:</span>
+          <button class="btn ghost sm" onclick="ignoreSender(${i},{email:'${esc(u.email)}',classify:'not_important'})">Not important</button>
+          <button class="btn ghost sm" onclick="ignoreSender(${i},{email:'${esc(u.email)}',classify:'ignore'})">Ignore</button>
+          <button class="btn ghost sm" onclick="ignoreSender(${i},{domain:'${esc(u.domain)}',classify:'ignore'})">Ignore @${esc(u.domain)}</button>
+        </div></td>
+    </tr>`).join("")}</tbody></table></div>`; }
+async function assignUnmatched(i,email,name){ const sel=$("#us_"+i), ok=$("#uok_"+i); const dealer_id=sel&&sel.value;
+  if(!dealer_id){ if(ok) ok.innerHTML='<span class="warn">pick a dealer</span>'; return; }
+  if(ok) ok.textContent="saving…";
+  const r=await api({action:"assign_email",email,dealer_id,name});
+  if(r&&r.ok){ const row=$("#ur_"+i); if(row){ row.style.opacity=.5; } if(ok) ok.innerHTML=`<span class="ok">✓ assigned (${r.messages_updated} email${r.messages_updated===1?"":"s"})</span>`; }
+  else if(ok) ok.innerHTML='<span class="warn">failed</span>'; }
+async function ignoreSender(i,opts){ const ok=$("#uok_"+i); if(ok) ok.textContent="hiding…";
+  const r=await api(Object.assign({action:"ignore_sender"},opts||{}));
+  if(r&&r.ok){ doUnmatched(); }   // re-filter so this (and any same-domain) rows drop off the list
+  else if(ok) ok.innerHTML='<span class="warn">'+esc((r&&(r.message||r.error))||"failed")+'</span>'; }
+async function doIgnored(){ if(BUSY)return; busy("Loading ignored…"); const j=await api({action:"ignored_list"}); done();
+  if(!j||!j.ok){ $("#out").innerHTML=`<div class="hint warn">${esc((j&&(j.message||j.error))||"error")}</div>`; return; }
+  const rules=j.rules||[]; const typ=k=>k==="domain"?"Domain":k==="pattern"?"Pattern":"Email";
+  const cls=a=>a==="not_important"?'<span class="pill" style="background:#fff3e6;color:#b45309">Not important</span>':'<span class="pill" style="background:#eef2f6;color:#4a5568">Ignored</span>';
+  const rows=rules.length?rules.map(r=>`<tr>
+      <td><b>${esc(r.value)}</b></td><td>${typ(r.kind)}</td><td>${cls(r.action)}</td>
+      <td class="hint">${esc((r.created_at||"").slice(0,10))}</td>
+      <td><button class="btn ghost sm" onclick="restoreSender('${esc(r.id)}')">Restore</button></td>
+    </tr>`).join(""):`<tr><td colspan="5" class="hint">No senders ignored yet — use the Ignore buttons in the unmatched list.</td></tr>`;
+  $("#out").innerHTML=`<div class="step" style="margin-top:10px"><h3>Ignored senders (${rules.length})</h3>
+    <div class="hint" style="margin-bottom:6px">Hidden from the unmatched queue. Click <b>Restore</b> to bring one back. <button class="btn ghost sm" onclick="doUnmatched()">← back to unmatched</button></div>
+    <table><thead><tr><th>Value</th><th>Type</th><th>Class</th><th>Since</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="hint" style="margin-top:10px"><b>Automatic patterns</b> (always hidden, no setup needed): ${(j.auto_patterns||[]).map(p=>`<code>${esc(p)}</code>`).join(" · ")}</div>
+    </div>`; }
+async function restoreSender(id){ const r=await api({action:"restore_sender",id}); if(r&&r.ok) doIgnored(); }
+
+// Email deliverability — SPF/DKIM/DMARC pass rates + sending sources from Postmark DMARC monitoring.
+async function doDeliverability(){ if(BUSY)return; busy("Loading deliverability…"); const j=await api({action:"deliverability"}); done();
+  if(!j){ $("#out").innerHTML=`<div class="hint warn">Couldn't load deliverability.</div>`; return; }
+  if(!j.ok){ $("#out").innerHTML=`<div class="step" style="margin-top:10px"><h3>Email deliverability</h3>
+      <div class="hint warn">${esc(j.message||j.error||"Not available")}</div>
+      ${j.error==="not_configured"?`<div class="hint" style="margin-top:6px">Add <code>POSTMARK_DMARC_API_TOKEN</code> in Netlify (from your Postmark DMARC account) and this shows your live SPF/DKIM/DMARC pass rates and every source sending as your domain.</div>`:""}</div>`; return; }
+  const t=j.totals||{};
+  const clr=p=>p==null?"#8a94a1":(p>=95?"#1f7a44":p>=80?"#b45309":"#b42323");
+  const pctv=p=>`<span style="color:${clr(p)};font-weight:800">${p==null?"—":p+"%"}</span>`;
+  const verified=j.verified===true?'<span class="pill y">DNS verified</span>':j.verified===false?'<span class="pill n">DNS not verified yet</span>':'<span class="pill">checking…</span>';
+  const rows=(j.sources||[]).map(s=>`<tr><td>${esc(s.source)}</td><td class="num">${(s.messages||0).toLocaleString()}</td><td class="num">${pctv(s.spf_pct)}</td><td class="num">${pctv(s.dkim_pct)}</td></tr>`).join("")
+    ||`<tr><td colspan="4" class="hint">No report data yet — the mailbox providers start sending DMARC reports a few days after the DNS record goes live. Check back soon.</td></tr>`;
+  $("#out").innerHTML=`<div class="step" style="margin-top:10px"><h3>Email deliverability <span class="hint" style="font-weight:400">— DMARC monitoring, last 30 days</span> ${verified}</h3>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Messages seen</div><div class="v">${(t.messages||0).toLocaleString()}</div></div>
+      <div class="kpi"><div class="l">SPF pass</div><div class="v">${pctv(t.spf_pct)}</div></div>
+      <div class="kpi"><div class="l">DKIM pass</div><div class="v">${pctv(t.dkim_pct)}</div></div>
+      <div class="kpi"><div class="l">DMARC pass</div><div class="v">${pctv(t.dmarc_pct)}</div></div>
+    </div>
+    <div class="hint" style="margin:2px 0 6px">Independent view from the mailbox providers (Gmail, Microsoft, Yahoo…) via Postmark — a plain-English weekly summary also lands in admin@.${j.report_count?` ${j.report_count} report${j.report_count===1?"":"s"} in range.`:""}</div>
+    <table><thead><tr><th>Sending source</th><th>Messages</th><th>SPF</th><th>DKIM</th></tr></thead><tbody>${rows}</tbody></table></div>`; }
+
+function busy(m){ BUSY=true; $("#msg").textContent=m||"Working…"; }
+function done(){ BUSY=false; $("#msg").textContent=""; }
+const pill=b=>`<span class="pill ${b?'y':'n'}">${b?'set':'missing'}</span>`;
+
+async function doStatus(){ if(BUSY)return; busy("Checking config…"); const j=await api({action:"status"}); done();
+  if(!j.ok){ $("#out").innerHTML=`<div class="hint warn">${esc(j.error||"error")}</div>`; return; }
+  $("#out").innerHTML=`<div class="kpis">
+    <div class="kpi"><div class="l">Mailboxes</div><div class="v">${j.mailboxes.length}</div></div>
+    <div class="kpi"><div class="l">Tenant ID</div><div class="v">${pill(j.env.graph_tenant)}</div></div>
+    <div class="kpi"><div class="l">Client ID</div><div class="v">${pill(j.env.graph_client)}</div></div>
+    <div class="kpi"><div class="l">Secret</div><div class="v">${pill(j.env.graph_secret)}</div></div>
+  </div>
+  <div class="hint">Mailboxes: ${j.mailboxes.map(esc).join(" · ")||"<span class='warn'>none set</span>"}</div>`; }
+
+async function doTest(){ if(BUSY)return; busy("Connecting to Graph…"); const j=await api({action:"test"}); done();
+  if(!j.ok){ $("#out").innerHTML=`<div class="hint warn">Test failed: ${esc(j.message||j.error||"error")}</div>`; return; }
+  const rows=a=>a.map(m=>`<tr><td>${esc(m.from)}</td><td>${esc(m.subject)||"<span class='hint'>(no subject)</span>"}</td><td class="hint">${esc((m.when||"").slice(0,16).replace("T"," "))}</td></tr>`).join("")||`<tr><td colspan="3" class="hint">none in range</td></tr>`;
+  $("#out").innerHTML=`<div class="ok" style="margin:6px 0">✓ Connected to ${esc(j.mailbox)} — ${j.inbox_count} inbox, ${j.sent_count} sent (last 14 days).</div>
+    <h3 style="margin:10px 0 2px">Inbox sample</h3><table><thead><tr><th>From</th><th>Subject</th><th>When</th></tr></thead><tbody>${rows(j.inbox_sample)}</tbody></table>
+    <h3 style="margin:12px 0 2px">Sent sample</h3><table><thead><tr><th>From</th><th>Subject</th><th>When</th></tr></thead><tbody>${rows(j.sent_sample)}</tbody></table>`; }
+
+async function doSeed(){ if(BUSY)return; busy("Seeding domains from CRM…"); const j=await api({action:"seed_domains"}); done();
+  if(!j.ok){ $("#out").innerHTML=`<div class="hint warn">Seed failed: ${esc(j.message||j.error||"error")}</div>`; return; }
+  $("#out").innerHTML=`<div class="kpis">
+    <div class="kpi g"><div class="l">Domains added</div><div class="v">${j.domains_added}</div></div>
+    <div class="kpi"><div class="l">Already had</div><div class="v">${j.already_had}</div></div>
+    <div class="kpi ${j.skipped_ambiguous?'w':''}"><div class="l">Skipped (shared domain)</div><div class="v">${j.skipped_ambiguous}</div></div>
+  </div><div class="hint">Mapped each dealer's business email domain to that dealer. Shared/ISP domains used by more than one dealer were skipped on purpose. Now click <b>Sync now</b> — matches should jump.</div>`; }
+/* ── Backfill ────────────────────────────────────────────────────────────────
+   Walks the range a month at a time. Each call is its own request, so a long backfill
+   is a visible sequence of small successes instead of one request that dies at the
+   timeout with nothing to show for it — and if it stops halfway, the months already
+   loaded are already in. */
+let BF_STOP=false;
+function monthSlices(fromStr,toStr){
+  const out=[]; const end=toStr?new Date(toStr+"T00:00:00Z"):new Date();
+  let cur=new Date(fromStr+"T00:00:00Z");
+  while(cur<end){
+    const nxt=new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth()+1, 1));
+    const stop=nxt<end?nxt:end;
+    out.push({from:cur.toISOString().slice(0,10), to:stop.toISOString().slice(0,10)});
+    cur=stop;
+    if(out.length>36) break;                    // three years is plenty; never loop away
+  }
+  return out;
+}
+async function doBackfill(){
+  if(BUSY) return;
+  const from=($("#bf_from")||{}).value||"", to=($("#bf_to")||{}).value||"";
+  if(!from){ const m=$("#bf_msg"); if(m){ m.textContent="Pick a start date."; } return; }
+  const slices=monthSlices(from,to);
+  if(!slices.length){ const m=$("#bf_msg"); if(m){ m.textContent="That range is empty."; } return; }
+  if(!confirm(`Load email history for ${slices.length} week(s), from ${from} to ${to||"today"}?\n\n`
+    +`Roughly ${Math.ceil(slices.length*12/60)} minute(s). You'll see each week finish, and you can stop at any point — `
+    +`whatever has loaded stays. Re-running is safe: nothing is duplicated.`)) return;
+  BF_STOP=false; BUSY=true;
+  const btn=$("#bf_go"); if(btn){ btn.disabled=true; btn.textContent="Loading…"; }
+  const prog=$("#bf_prog"); const rows=[];
+  let kept=0, matched=0, scanned=0, failed=0;
+  const paint=()=>{ if(!prog) return;
+    prog.innerHTML=`<div class="kpis" style="margin-bottom:8px">
+        <div class="kpi"><div class="l">Months done</div><div class="v">${rows.length} / ${slices.length}</div></div>
+        <div class="kpi"><div class="l">Scanned</div><div class="v">${scanned}</div></div>
+        <div class="kpi"><div class="l">Kept</div><div class="v">${kept}</div></div>
+        <div class="kpi"><div class="l">Matched to a dealer</div><div class="v">${matched}</div></div>
+      </div>
+      <div style="max-height:220px;overflow:auto">${rows.map(r=>`<div class="hint" style="margin:0 0 3px">${esc(r)}</div>`).join("")}</div>
+      ${BUSY?`<button class="btn sm" onclick="BF_STOP=true">Stop after this month</button>`:""}`; };
+  paint();
+  for(const sl of slices){
+    if(BF_STOP){ rows.push("Stopped — the months above are loaded."); break; }
+    const m=$("#bf_msg"); if(m) m.textContent=`Loading ${sl.from} → ${sl.to}…`;
+    let j=null;
+    try{ j=await api({action:"backfill",from:sl.from,to:sl.to}); }catch(e){ j=null; }
+    if(j&&j.ok){
+      scanned+=j.scanned||0; kept+=j.kept||0; matched+=j.matched||0;
+      rows.push(`${sl.from} → ${sl.to}: ${j.scanned||0} scanned · ${j.kept||0} kept · ${j.matched||0} matched`
+        +(j.truncated?`  ⚠ ${j.truncated}`:"")+(j.complete===false&&!j.truncated?"  ⚠ more remains in this month — run it again":""));
+    } else {
+      failed++;
+      rows.push(`${sl.from} → ${sl.to}: failed — ${esc((j&&(j.message||j.error))||"no response")}`);
+    }
+    paint();
+  }
+  BUSY=false;
+  if(btn){ btn.disabled=false; btn.textContent="Load history"; }
+  const m=$("#bf_msg"); if(m) m.textContent=failed?`Finished with ${failed} month(s) that failed — re-run to retry those.`:"Finished.";
+  paint(); doCoverage();
+}
+async function doCoverage(){
+  const j=await api({action:"coverage"}).catch(()=>null);
+  const m=$("#bf_msg"); if(!m) return;
+  if(!j||!j.ok){ m.textContent="Couldn't read what's stored."; return; }
+  const d=v=>v?String(v).slice(0,10):"—";
+  m.textContent=`Stored now: ${(j.total!=null?j.total.toLocaleString():"?")} message(s), ${d(j.oldest)} → ${d(j.newest)}.`;
+}
+
+async function doSync(){ if(BUSY)return; const days=parseInt(($("#days")||{}).value,10)||30; busy("Syncing "+days+" days…"); const j=await api({action:"sync",days}); done();
+  if(!j.ok){ $("#out").innerHTML=`<div class="hint warn">Sync failed: ${esc(j.message||j.error||"error")}</div>`; return; }
+  $("#out").innerHTML=`<div class="kpis">
+    <div class="kpi"><div class="l">Scanned</div><div class="v">${j.scanned}</div></div>
+    <div class="kpi"><div class="l">Kept (relevant)</div><div class="v">${j.kept}</div></div>
+    <div class="kpi"><div class="l">Matched to dealer</div><div class="v">${j.matched}</div></div>
+    <div class="kpi"><div class="l">Domains learned</div><div class="v">${j.learned_domains}</div></div>
+    <div class="kpi"><div class="l">New contacts</div><div class="v">${j.new_candidates}</div></div>
+  </div>
+  <table><thead><tr><th>Mailbox</th><th>Kept</th><th>Matched</th><th>Note</th></tr></thead><tbody>
+    ${(j.per_mailbox||[]).map(p=>`<tr><td>${esc(p.mailbox||p.folder||"")}</td><td>${p.kept??"—"}</td><td>${p.matched??"—"}</td><td class="hint">${esc(p.error||"")}</td></tr>`).join("")}
+  </tbody></table>
+  <div class="hint" style="margin-top:6px">Matched messages are now on those dealers' 360 timelines. Unmatched business mail is stored and will match once its domain is confirmed.</div>`; }
+
+render();
+</script>
+</body></html>

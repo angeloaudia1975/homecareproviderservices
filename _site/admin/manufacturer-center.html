@@ -1,0 +1,1092 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Manufacturer Center</title>
+<style>
+ :root{--ink:#1b2733;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--silver:#D8DEE4;--light:#F3F6FA;--gray:#5b6672;--green:#1A7A4A;--red:#B91C1C;--amber:#B45309}
+ *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:var(--light);color:var(--ink);padding-bottom:60px}
+ .wrap{max-width:1240px;margin:22px auto;padding:0 20px}
+ h1{font-size:22px;margin:0 0 3px}h2{font-size:17px;margin:0 0 8px}h3{font-size:14px;margin:14px 0 6px}
+ .sub{color:var(--gray);font-size:13px;margin:0 0 12px;max-width:900px;line-height:1.45}
+ .infobar{background:#eaf1f8;border:1px solid #cfe0f2;color:var(--blue-dk);border-radius:9px;padding:9px 13px;font-size:12.5px;margin-bottom:14px;line-height:1.5}
+ .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+ .card{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:14px 16px;margin-bottom:14px;overflow-x:auto}
+ table{border-collapse:collapse;width:100%;font-size:12.5px}
+ th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);padding:6px 8px;border-bottom:1px solid var(--silver);white-space:nowrap}
+ td{padding:8px;border-bottom:1px solid #eef2f6;vertical-align:top}
+ tr.sel td{background:#f5f8fc}
+ .pill{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;padding:3px 8px;border-radius:9px;white-space:nowrap}
+ .p-frozen{background:#e8eefc;color:var(--blue-dk)}.p-pass{background:#e6f5ee;color:var(--green)}.p-fail{background:#fee2e2;color:var(--red)}
+ .p-adv{background:#f1f4f8;color:var(--gray)}.p-warn{background:#fef3c7;color:var(--amber)}.p-auth{background:#eef6f1;color:var(--green)}
+ .btn{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 13px;font-weight:700;font-size:12.5px;cursor:pointer}
+ .btn:hover{background:var(--blue-dk)}.btn:disabled{opacity:.55;cursor:default}
+ .btn.ghost{background:#fff;color:var(--blue-dk);border:1px solid var(--silver)}.btn.warn{background:var(--amber);color:#fff}.btn.warn:hover{background:#92400e}
+ .tabs{display:flex;gap:4px;border-bottom:1px solid var(--silver);margin:4px 0 12px}
+ .tabs button{background:none;border:none;border-bottom:3px solid transparent;padding:8px 12px;font-weight:700;font-size:13px;color:var(--gray);cursor:pointer}
+ .tabs button.on{color:var(--ink);border-bottom-color:var(--orange)}
+ .mut{color:var(--gray)}.err{color:var(--red)}.ok{color:var(--green)}
+ .chk{border:1px solid #e6ebf1;border-radius:9px;margin:6px 0;background:#fff}
+ .chk summary{cursor:pointer;padding:8px 10px;display:flex;gap:8px;align-items:center;font-size:13px;list-style:none}
+ .chk summary::-webkit-details-marker{display:none}
+ .chk .det{padding:4px 12px 10px;font-size:12px}
+ pre{white-space:pre-wrap;word-break:break-word;background:#f7f9fb;border:1px solid #eef2f6;border-radius:7px;padding:8px;font-size:11.5px;max-height:340px;overflow:auto}
+ .gate,.msg{background:#fff;border:1px solid var(--silver);border-radius:12px;padding:24px;max-width:420px;margin:30px auto;text-align:center}
+ .go{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}
+ input[type=text],input[type=email],input[type=password],textarea,select{padding:8px 10px;border:1px solid var(--silver);border-radius:8px;font-size:13px;background:#fff;font-family:inherit}
+ textarea{width:100%;min-height:64px}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+ @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+ .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50}
+ .toast.show{opacity:1}
+ .tabs.wf{flex-wrap:wrap}
+ .rob{background:#eef3fb;border:1px solid #cfdcf0;color:var(--blue-dk);border-radius:9px;padding:9px 12px;font-size:12.5px;margin:0 0 12px;line-height:1.5}
+ .dry{background:#f7f9fc;border:1px dashed #b8c6da;border-radius:9px;padding:10px 12px;margin:10px 0;font-size:12.5px}
+ .gatebox{border:2px solid var(--silver);border-radius:11px;padding:10px 13px;margin:10px 0}
+ .gatebox .gh{display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:13px}
+ .gatebox .gn{background:var(--ink);color:#fff;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase}
+ .g-wait{border-color:#f3d9a4;background:#fffaf0}.g-ok{border-color:#bfe3cf;background:#f3fbf6}.g-used{border-color:var(--silver);background:#fafbfc}
+ .chip{display:inline-block;background:#f1f4f8;border-radius:12px;padding:3px 9px;font-size:11.5px;margin:2px 2px 2px 0}.chip-warn{background:#fef3c7}
+ .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:6px 0}
+ @media(max-width:900px){.grid3{grid-template-columns:1fr}}
+ label{font-size:11.5px;color:var(--gray);font-weight:700}
+ .sub2{background:#fbfcfe}
+ tr.needrow td{background:#fffbeb}.needtxt{color:var(--amber);font-size:11.5px}
+ td.facts{background:#fbfcfd}td.interp{background:#f8fbf8}
+ .enstages{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin:12px 0}
+ @media(max-width:900px){.enstages{grid-template-columns:repeat(2,1fr)}}
+ .enst{background:#f7f9fc;border:1px solid var(--silver);border-radius:9px;padding:7px 9px;text-align:left;cursor:pointer;font-family:inherit}
+ .enst b{display:block;font-size:12px;color:var(--ink)}.enst span{font-size:11px;color:var(--gray)}
+ .enst.on{border-color:var(--orange);background:#fff7ef;box-shadow:inset 0 -3px 0 var(--orange)}.enst.later{opacity:.55}
+ .enissue{border-left:4px solid #f3d9a4}.enissue span,.enissue b{overflow-wrap:anywhere}
+ /* Release C — Dealer Preview (staff-only; the dealer-like cards use the storefront's own words and prices) */
+ .pvtiles{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:10px 0}
+ @media(max-width:900px){.pvtiles{grid-template-columns:repeat(2,1fr)}}
+ .pvtile{border:1px solid var(--silver);border-radius:10px;padding:9px 10px;background:#fff}.pvtile b{display:block;font-size:22px;line-height:1.1}.pvtile span{font-size:11.5px;color:var(--gray)}
+ .pvtile.good{border-color:#bfe3cf;background:#f3fbf6}.pvtile.bad{border-color:#f5b5b5;background:#fff3f3}
+ .pvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin:10px 0}
+ .pvcard{border:1px solid #e3e8ef;border-radius:12px;padding:10px;background:#fff;cursor:pointer;text-align:left;font-family:inherit;min-width:0}
+ .pvcard:hover{border-color:var(--orange)}.pvcard .t{font-weight:700;font-size:13px;margin:6px 0 2px;overflow-wrap:anywhere}
+ .pvimg{width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff;border-radius:8px;display:block}
+ .pvph{width:100%;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;background:#f3f5f8;color:var(--gray);border-radius:8px;font-size:12px}
+ .pvstaff{background:#fff4d6;border:1px dashed #d4a017;color:#6b4e00;font-size:11px;padding:4px 7px;border-radius:7px;margin-top:6px;line-height:1.35}
+ .pvstaff b{font-size:10px;letter-spacing:.4px}
+ .price{font-weight:800;font-size:17px;color:var(--ink)}.price.locked{font-size:13px;color:var(--gray)}.pnote{font-size:11.5px;color:var(--gray);margin-top:2px}
+ .pvdetail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;border:1px solid #e3e8ef;border-radius:12px;padding:12px;background:#fff;margin:10px 0}
+ @media(max-width:760px){.pvdetail{grid-template-columns:1fr}}
+ .pvthumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.pvthumbs img{width:54px;height:54px;object-fit:contain;border:1px solid #e3e8ef;border-radius:6px;cursor:pointer;background:#fff}
+ .pvcart{background:#f7f9fc;border:1px solid #dfe6f0;border-radius:9px;padding:9px 11px;margin-top:8px;font-size:12.5px}
+ .pvtog{display:inline-flex;border:1px solid var(--silver);border-radius:9px;overflow:hidden}.pvtog button{border:0;background:#fff;padding:6px 12px;font-family:inherit;cursor:pointer}.pvtog button.on{background:var(--ink);color:#fff}
+ /* Approve Content & Images (2026-10-12): Current Dealer View next to the proposal, area by area; nothing is chosen for you */
+ .apnote{background:#eef4ff;border:1px solid #c9d8f5;color:#1e3a6e;border-radius:9px;padding:8px 11px;font-size:12.5px;margin:8px 0}
+ .appages{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.appg{border:1px solid var(--silver);background:#fff;border-radius:9px;padding:7px 10px;text-align:left;cursor:pointer;font-family:inherit;max-width:100%}
+ .appg.on{border-color:var(--orange);background:#fff7ef}.appg b{display:block;font-size:12.5px;overflow-wrap:anywhere}.appg span{font-size:11px;color:var(--gray)}
+ .apcheck{display:flex;gap:5px;flex-wrap:wrap;margin:6px 0 10px}.apchip{font-size:11.5px;border-radius:12px;padding:3px 9px;border:1px solid var(--silver);background:#fff;max-width:100%;overflow-wrap:anywhere}
+ .apchip.ok{background:#eef8f1;border-color:#bfe3cf;color:#14532d}.apchip.wait{background:#fffbeb;border-color:#f3d9a4;color:#7a4b00}.apchip.stale{background:#fff3f3;border-color:#f5b5b5;color:#8a1c1c}
+ .aparea{border:1px solid #e3e8ef;border-radius:11px;padding:10px 12px;margin:10px 0;background:#fff;min-width:0}.aparea.done{border-left:4px solid #3aa76d}.aparea.todo{border-left:4px solid #e0a43a}
+ .aphead{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.aphead h4{margin:0;font-size:14px}
+ .apcols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin:8px 0}@media(max-width:760px){.apcols{grid-template-columns:1fr}}
+ .apcol{border:1px solid #edf0f5;border-radius:9px;padding:8px 10px;background:#fbfcfe;font-size:12.5px;line-height:1.45;min-width:0;overflow-wrap:anywhere}.apcol h5{margin:0 0 5px;font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--gray)}
+ .gsban{margin:2px 0 10px;padding:7px 10px;border:1px solid #cfe9d8;background:#f4fbf6;border-radius:9px}.gsban .gshist{margin-top:3px}tr.gsrow td{background:#f4fbf6}
+ .apcols.three{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}@media(max-width:760px){.apcols.three{grid-template-columns:1fr}}
+ .apcol.on{border-color:#2e7d4f;box-shadow:inset 0 0 0 1px #2e7d4f}.apcol.ed{background:#fbf9f2}
+ .apselected{font-size:12px;margin:2px 0 4px}.apwarn{margin:8px 0;padding:8px 10px;border:1px solid #e3b341;background:#fff8e6;border-radius:9px;font-size:12.5px;line-height:1.45}
+ .apcol.cur{background:#f7faf8}.apcol ul{margin:3px 0 0 16px;padding:0}
+ .apchoices{display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:12.5px}.apchoices label{display:inline-flex;gap:5px;align-items:center;font-weight:400;cursor:pointer}
+ .apedit textarea{width:100%;min-height:90px;font-family:inherit;font-size:12.5px}
+ .aparea input[type=file],.aparea input[type=text]{max-width:100%;box-sizing:border-box}
+ .apthumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin:6px 0}
+ .apimg{border:1px solid #e3e8ef;border-radius:9px;padding:5px;background:#fff;font-size:11px;position:relative;min-width:0}.apimg img{width:100%;aspect-ratio:1/1;object-fit:contain;display:block;border-radius:6px;background:#fff}
+ .apimg.sel{border-color:var(--orange);box-shadow:0 0 0 2px #ffd9b3}.apimg .tag{display:inline-block;font-size:10px;border-radius:5px;padding:1px 5px;margin:2px 2px 0 0;background:#eef1f6}
+ .apimg .tag.cur{background:#e7f6ec;color:#14532d}.apimg .tag.dup{background:#fff3f3;color:#8a1c1c}.apimg .ord{position:absolute;top:8px;left:8px;background:var(--orange);color:#fff;border-radius:999px;font-weight:700;font-size:11px;padding:1px 7px}
+ .apimg .ctl{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap}.apimg .ctl button{font-size:11px;padding:2px 6px}
+ .apopt{display:grid;grid-template-columns:minmax(0,150px) minmax(0,110px) minmax(0,110px) minmax(0,1fr);gap:10px;align-items:start;border-top:1px solid #edf0f5;padding:8px 0}
+ @media(max-width:760px){.apopt{grid-template-columns:1fr 1fr}}
+ .apopt .pill,.aphead .pill{white-space:normal;max-width:100%}
+ .apopt img,.apopt .pvph{width:100%;aspect-ratio:1/1;object-fit:contain;border:1px solid #e3e8ef;border-radius:7px;background:#fff}
+</style><link rel="stylesheet" href="/admin/admin-shell.css"></head><body>
+<header id="ac-head"></header>
+<div class="wrap" id="wrap"><div class="msg">Loading…</div></div>
+<div class="toast" id="toast"></div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+/* MANUFACTURER CENTER — Phases 1–3 + the guided workflow of Phase 6 (approved 2026-10-10). It
+   orchestrates the Structure Map, Product Content Enrichment, the commercial master (product_skus) and
+   Partner 360; it is not another product database or pricing engine. Every write goes through catalog-api
+   (president only), answers a dry run first, is refused on a frozen line, and the two that can change what
+   dealers see need Approval 1 (staged records, freight terms); activation needs Approval 2. */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const API="/.netlify/functions/catalog-api";
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), LINES=[], OPEN=null, TAB="verify", LINE=null, RUN=null, BUSY=false;
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2600);}
+async function api(body){const h={"content-type":"application/json"};if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch(API,{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){gate();throw new Error("unauthorized");}
+  if(r.status===403){$("#wrap").innerHTML='<div class="msg err">President only — Manufacturer Center is limited to President accounts. <button class="go" onclick="lock()">Sign in as a different user</button></div>';throw new Error("unauthorized");}
+  const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw new Error((j.message||j.error)||("HTTP "+r.status));return j;}
+function gate(msg){$("#wrap").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p style="margin:2px 0 12px;color:#607089;font-size:13px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username" style="margin:0 0 8px;width:100%"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" style="margin:0 0 12px;width:100%" onkeydown="if(event.key==='Enter')submitTok()"><br><button class="go" onclick="submitTok()">Sign in</button> <a href="reset.html" style="display:inline-block;margin-left:6px;color:#10263f;font-size:13px;font-weight:600">Forgot password?</a><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{var t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  var email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  var e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+const fmtD=s=>s?String(s).slice(0,10):"";
+const fmtT=s=>{ if(!s) return ""; try{ return new Date(s).toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short"}); }catch(e){ return String(s); } };
+function sourceCell(s){ if(!s) return '<span class="mut">none registered</span>';
+  const rec=s.legacy?'<span class="mut">received date not recorded (legacy)</span>':'received '+esc(fmtD(s.received_date));
+  return `${esc(s.title)}<div class="mut" style="font-size:11.5px">${rec}</div>`; }
+function effCell(s){ if(!s) return ""; return s.effective_date_status==="stated"?esc(fmtD(s.manufacturer_effective_date)):(s.effective_date_status==="pending"?'<span class="pill p-warn">pending</span>':'<span class="mut">n/a</span>'); }
+async function boot(){
+  try{ const j=await api({action:"mc_overview"}); LINES=j.lines||[]; render();
+    const h=new URLSearchParams(String(location.hash||"").replace(/^#/,""));
+    if(h.get("enrich")) await openEnrichment(h.get("enrich"));
+    else if(h.get("line")){ OPEN=h.get("line"); await openLine(OPEN); if(h.get("tab")&&STEPS.some(s=>s[0]===h.get("tab"))) go(h.get("tab")); }
+    else if(OPEN) await openLine(OPEN,true); }
+  catch(e){ if(String(e.message)!=="unauthorized") $("#wrap").innerHTML=`<div class="msg err">Manufacturer Center could not load: ${esc(e.message)}</div>`; }
+}
+/* (Angelo 2026-10-12) The newest finalized Gold Standard is the line's status; failed or rolled-back runs after it are
+   history and never make the line read as failing. A line with no Gold Standard yet shows its last verification. */
+function gsHistory(g){ return g&&g.later_failed?`<div class="mut gshist" style="font-size:11px;margin-top:2px">History: ${g.later_failed} later attempt${g.later_failed===1?'':'s'} failed and ${g.later_failed===1?'was':'were'} rolled back — Gold Standard unchanged</div>`:''; }
+function statusCell(l){
+  const g=l.gold_standard;
+  if(g) return `<span class="pill p-pass" title="The newest finalized Gold Standard run">Gold Standard · pass</span> <span class="mut" style="font-size:11.5px">#${esc(g.id)} ${esc(g.phase)} · ${esc(fmtT(g.run_at))}</span>${gsHistory(g)}`;
+  return l.last_run?`<span class="pill ${l.last_run.result==='pass'?'p-pass':'p-fail'}">${esc(l.last_run.result)}</span> <span class="mut" style="font-size:11.5px">${esc(l.last_run.phase)} · ${esc(fmtT(l.last_run.run_at))}</span>`:'<span class="mut">never</span>';
+}
+function gsBanner(g){ return g?`<div class="gsban"><span class="pill p-pass">Current Gold Standard: PASS</span> <span class="mut" style="font-size:12px">run #${esc(g.id)} · ${esc(g.phase)} · ${esc(fmtT(g.run_at))} · fingerprint <code>${esc(g.fingerprint||'')}</code></span>${gsHistory(g)}</div>`:''; }
+function render(){
+  const rows=LINES.map(l=>`<tr class="${OPEN===l.slug?'sel':''}">
+    <td><b>${esc(l.name)}</b><div class="mut" style="font-size:11px">${esc(l.slug)}</div></td>
+    <td>${l.frozen?'<span class="pill p-frozen" title="Gold Standard COMPLETE — commercial changes refused unless a regression_fix is recorded">Frozen</span> ':''}${l.authoritative?'<span class="pill p-auth">Record authority</span>':'<span class="pill p-adv">Layers</span>'}</td>
+    <td>${sourceCell(l.source)}</td><td>${effCell(l.source)}</td>
+    <td>${l.decisions||0}${l.open_regression_fixes?` <span class="pill p-warn">${l.open_regression_fixes} open fix</span>`:''}</td>
+    <td>${(l.deferrals||[]).map(d=>`<span class="pill p-adv" title="${esc(d.note||'')}">${esc(String(d.item||'').replace(/_/g,' '))} deferred</span>`).join(' ')||'<span class="mut">—</span>'}</td>
+    <td>${statusCell(l)}</td>
+    <td style="white-space:nowrap"><button class="btn ghost" onclick="openLine('${esc(l.slug)}')">Open</button> ${(l.enrichment_window||(l.deferrals||[]).some(d=>d&&d.item==="enrichment_pages"))?`<button class="btn" onclick="openEnrichment('${esc(l.slug)}')" title="Products → Auto-Enrich → Review Issues. Drafts only; dealers see nothing until the line is published.">Continue Product Enrichment</button>`:''}</td></tr>`).join("");
+  $("#wrap").innerHTML=`<h1>Manufacturer Center</h1>
+  <p class="sub">From a manufacturer's files to a verified, record-authoritative line. Manufacturer Center coordinates the Structure Map, Product Content Enrichment, the commercial master (<code>product_skus</code>) and Partner 360 — it does not hold products or set prices itself.</p>
+  <div class="infobar"><b>Guided workflow:</b> Sources → Match &amp; decide → Structure &amp; content → Commercial &amp; freight → Stage (<b>Approval 1</b>) → Verify &amp; activate (<b>Approval 2</b>). Every write shows a dry run first. <b>Frozen lines</b> (Climbing Steps, Strongback, Ovation, Bemis) open read-only and refuse every change — in catalog-api and in the database — unless a <b>regression_fix</b> decision is recorded and sent with it. Bemis product pages are an <b>approved deferral</b>, not a regression.</div>
+  <div class="bar"><button class="btn ghost" id="stbtn" onclick="selftest()">Test the freeze guard</button><span class="mut" style="font-size:12px">Tries one commercial write per table on every frozen line; each attempt is rolled back.</span></div>
+  <div id="st"></div>
+  <div class="card"><table><thead><tr><th>Line</th><th>Status</th><th>Accepted source</th><th>Mfr effective date</th><th>Decisions</th><th>Deferrals</th><th>Gold Standard / verification</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="mut">No lines.</td></tr>'}</tbody></table></div>
+  <div id="line"></div>`;
+}
+async function selftest(){
+  const b=$("#stbtn"); b.disabled=true; b.textContent="Testing…";
+  try{ const j=await api({action:"mc_guard_selftest"});
+    const byLine={}; (j.attempts||[]).forEach(a=>{ (byLine[a.line]=byLine[a.line]||[]).push(a); });
+    $("#st").innerHTML=`<div class="card"><h3 style="margin-top:0">${j.pass?'<span class="pill p-pass">pass</span>':'<span class="pill p-fail">fail</span>'} Freeze guard self-test</h3><table><thead><tr><th>Line</th>${(j.attempts||[]).slice(0,5).map(a=>`<th>${esc(a.attempt)}</th>`).join('')}</tr></thead><tbody>${Object.entries(byLine).map(([l,as])=>`<tr><td><b>${esc(l)}</b></td>${as.map(a=>`<td><span class="pill ${a.result==='blocked'?'p-pass':'p-fail'}">${esc(a.result)}</span></td>`).join('')}</tr>`).join('')}</tbody></table><p class="mut" style="font-size:11.5px;margin-top:6px">Every attempt ran inside a sub-transaction that was rolled back — no data changed.</p></div>`;
+  }catch(e){ $("#st").innerHTML=`<div class="card err">Self-test could not run: ${esc(e.message)}</div>`; }
+  b.disabled=false; b.textContent="Test the freeze guard";
+}
+async function openLine(slug, keep){
+  OPEN=slug; EN=null; if(!keep){ RUN=null; wfReset(); } render();
+  $("#line").innerHTML='<div class="card mut">Loading '+esc(slug)+'…</div>';
+  try{ LINE=await api({action:"mc_line",manufacturer:slug}); if(!keep) TAB=(LINE.meta&&LINE.meta.frozen)?"activate":"sources"; renderLine(); }
+  catch(e){ if(String(e.message)!=="unauthorized") $("#line").innerHTML=`<div class="card err">Could not load ${esc(slug)}: ${esc(e.message)}</div>`; }
+}
+/* ═══ THE GUIDED WORKFLOW (Manufacturer Center Phase 6, approved 2026-10-10) ═══════════════════════════
+   One line, one path: Sources → Match & decide → Structure & content → Commercial & freight → Stage →
+   Verify & activate, with History and the Decisions log beside it. Every button that writes first runs the
+   same action as a dry run and shows exactly what would be written; the two that change what dealers can
+   see (staged records, freight terms) then need APPROVAL 1, and activation needs APPROVAL 2 — both recorded
+   as decisions, single-use, and bound by the server to exactly what was shown. A frozen line opens
+   read-only: no write button is drawn, and the server refuses them anyway. */
+const STEPS=[["sources","1 · Sources"],["match","2 · Match & decide"],["structure","3 · Structure & content"],["commercial","4 · Commercial & freight"],["stage","5 · Stage"],["activate","6 · Verify & activate"],["history","History"],["decisions","Decisions"]];
+let WF={};                       // per-line workflow state; cleared when another line opens
+function wfReset(){ WF={ match:null, structure:null, commercial:null, regDry:null, accDry:{}, impDry:null, decDry:null, decFor:null,
+  stageDry:null, stageApproval:null, freightDry:null, freightApproval:null, preRun:null, actApproval:null, actDry:null, cmp:null, busy:false }; }
+wfReset();
+const frozen=()=>!!(LINE&&LINE.meta&&LINE.meta.frozen);
+const money=n=>n==null||n===""?'<span class="mut">—</span>':"$"+Number(n).toFixed(2);
+const jv=v=>v==null?'<span class="mut">—</span>':`<code style="font-size:11px">${esc(typeof v==="object"?JSON.stringify(v):String(v))}</code>`;
+const pill=(cls,t)=>`<span class="pill ${cls}">${esc(t)}</span>`;
+const short=h=>h?esc(String(h).slice(0,12))+"…":"";
+function ro(note){ return `<div class="rob">🔒 <b>Read-only — this line is frozen</b> (Gold Standard COMPLETE). ${note||"Nothing here can be changed."} A correction goes through <b>Decisions → Report a regression</b>, which records a single-use <code>regression_fix</code> to send with the fix.</div>`; }
+function gateBox(n, title, state, body){
+  const cls=state==="used"?"g-used":(state==="approved"?"g-ok":"g-wait");
+  const lab=state==="used"?"used":(state==="approved"?"approved":"waiting for approval");
+  return `<div class="gatebox ${cls}"><div class="gh"><span class="gn">Approval ${n}</span> <b>${esc(title)}</b> ${pill(state==="approved"?"p-pass":(state==="used"?"p-adv":"p-warn"),lab)}</div>${body}</div>`;
+}
+async function apiq(body){ try{ return {ok:true, j:await api(body)}; }catch(e){ return {ok:false, e}; } }
+
+function renderLine(){
+  const L=LINE, m=L.meta||{}, l=LINES.find(x=>x.slug===L.manufacturer)||{};
+  const tabs=STEPS.map(([k,n])=>`<button class="${TAB===k?'on':''}" onclick="go('${k}')">${n}</button>`).join("");
+  $("#line").innerHTML=`<div class="card"><h2>${esc(l.name||L.manufacturer)} ${m.frozen?pill("p-frozen","Frozen · read-only"):""} ${m.record_authoritative?pill("p-auth","Record authority"):pill("p-adv","Layers")}</h2>${m.frozen_reason?`<p class="mut" style="font-size:12px;margin:-4px 0 8px">${esc(m.frozen_reason)}</p>`:''}${gsBanner(L.gold_standard)}<div class="tabs wf">${tabs}</div><div id="wfbody"></div></div>`;
+  drawStep();
+}
+function go(k){ TAB=k; renderLine(); }
+async function drawStep(){
+  const B=$("#wfbody"); if(!B) return;
+  try{
+    if(TAB==="sources") B.innerHTML=stepSources();
+    else if(TAB==="match"){ if(!WF.match){ B.innerHTML='<p class="mut">Matching the source against the master record…</p>'; WF.match=await api({action:"mc_match",manufacturer:OPEN}); } B.innerHTML=stepMatch(); }
+    else if(TAB==="structure"){ if(!WF.structure){ B.innerHTML='<p class="mut">Reading structure and content status…</p>'; WF.structure=await api({action:"mc_structure",manufacturer:OPEN}); } B.innerHTML=stepStructure(); }
+    else if(TAB==="commercial"){ if(!WF.commercial){ B.innerHTML='<p class="mut">Reading the commercial master and freight…</p>'; WF.commercial=await api({action:"mc_commercial",manufacturer:OPEN}); } B.innerHTML=stepCommercial(); }
+    else if(TAB==="stage"){ if(!WF.match){ B.innerHTML='<p class="mut">Preparing the staging rows…</p>'; WF.match=await api({action:"mc_match",manufacturer:OPEN}); } B.innerHTML=stepStage(); }
+    else if(TAB==="activate") B.innerHTML=stepActivate();
+    else if(TAB==="history") B.innerHTML=stepHistory();
+    else B.innerHTML=stepDecisions();
+  }catch(e){ if(String(e.message)!=="unauthorized") B.innerHTML=`<div class="err">Could not load this step: ${esc(e.message)}</div>`; }
+}
+async function reloadLine(keepWF){ LINE=await api({action:"mc_line",manufacturer:OPEN}); const o=await api({action:"mc_overview"}); LINES=o.lines||LINES; if(!keepWF){ const keep={}; wfReset(); } render(); renderLine(); }
+
+/* ── 1. SOURCES ─────────────────────────────────────────────────────────────────────────────────── */
+function stepSources(){
+  const L=LINE, src=L.sources||[];
+  const rows=src.map(s=>`<tr><td>${s.id}</td><td>${esc(s.kind)}</td><td><b>${esc(s.title)}</b><div class="mut" style="font-size:11px">${esc(s.file_name||'')}${s.file_sha256?' · sha256 '+esc(s.file_sha256.slice(0,12))+'…':''}${s.storage_path?' · stored privately':''}</div></td>
+    <td>${s.legacy?'<span class="mut">not recorded (legacy)</span>':esc(fmtD(s.received_date))}</td><td>${s.effective_date_status==='stated'?esc(fmtD(s.manufacturer_effective_date)):pill('p-warn',s.effective_date_status)}</td>
+    <td>${pill(s.status==='accepted'?'p-pass':'p-adv',s.status)}${s.accepted_by?'<div class="mut" style="font-size:11px">'+esc(s.accepted_by)+'</div>':''}</td>
+    <td>${(!frozen()&&(s.status==='received'||s.status==='under_review'))?acceptCell(s):''}${(!frozen()&&s.status==='accepted'&&s.kind==='price_list')?`<button class="btn ghost" onclick="WF.impFor=${s.id};drawStep()">Import rows…</button>`:''}</td></tr>`).join('');
+  return `${frozen()?ro("Sources are shown for reference."):''}
+  <p class="sub">The manufacturer's files exactly as received. A source has the day HCPS received it (never invented) and the manufacturer's own effective date only when the manufacturer states one. Files are stored privately (<code>mfr-sources</code>) with their SHA-256.</p>
+  <table><thead><tr><th>#</th><th>Kind</th><th>Title / file</th><th>Received</th><th>Mfr effective date</th><th>Status</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="mut">No sources registered.</td></tr>'}</tbody></table>
+  ${!frozen()&&WF.impFor?importPanel(WF.impFor):''}
+  ${frozen()?'':registerPanel()}`;
+}
+function acceptCell(s){ const d=WF.accDry[s.id];
+  return d?`<div class="dry"><b>Dry run:</b> accept source ${s.id}; decision recorded: <i>${esc(d.would_record.reason)}</i><br><button class="btn" onclick="acceptSource(${s.id},false)">Accept source (writes)</button> <button class="btn ghost" onclick="delete WF.accDry[${s.id}];drawStep()">Cancel</button></div>`
+           :`<input type="text" id="accr_${s.id}" placeholder="Why it is accepted (required)" style="width:220px"> <button class="btn ghost" onclick="acceptSource(${s.id},true)">Check acceptance (dry run)</button>`; }
+async function acceptSource(id, dry){
+  const reason=dry?(($("#accr_"+id)||{}).value||"").trim():(WF.accDry[id]&&WF.accDry[id].would_record.reason);
+  if(!reason){ toast("Say why the source is accepted"); return; }
+  const r=await apiq({action:"mc_accept_source",manufacturer:OPEN,source_id:id,reason,dry_run:dry});
+  if(!r.ok){ toast("Not accepted: "+r.e.message); return; }
+  if(dry){ WF.accDry[id]=r.j; drawStep(); } else { toast("Source "+id+" accepted"); delete WF.accDry[id]; await reloadLine(); }
+}
+function registerPanel(){ const d=WF.regDry;
+  return `<div class="card sub2"><h3 style="margin-top:0">Register a source</h3>
+  <div class="grid3"><label>Kind<br><select id="rg_kind"><option>price_list</option><option>terms</option><option>catalog</option><option>images</option><option>cross_reference</option><option>status_list</option><option>other</option></select></label>
+  <label>Title<br><input type="text" id="rg_title" placeholder="e.g. Bemis Digital Price List 2026" style="width:100%"></label>
+  <label>Received by HCPS<br><input type="text" id="rg_rec" placeholder="YYYY-MM-DD"></label>
+  <label>Manufacturer effective date<br><select id="rg_effs"><option value="pending">pending (not stated)</option><option value="stated">stated</option><option value="not_applicable">not applicable</option></select> <input type="text" id="rg_effd" placeholder="YYYY-MM-DD if stated" style="width:120px"></label>
+  <label>File (optional, ≤ 10 MB)<br><input type="file" id="rg_file"></label>
+  <label>Note<br><input type="text" id="rg_note" style="width:100%"></label></div>
+  ${d?`<div class="dry"><b>Dry run — would register:</b> ${jv(d.would_insert)}${d.file_bytes?` and store ${d.file_bytes} bytes privately`:''}<br><button class="btn" onclick="registerSource(false)">Register source (writes)</button> <button class="btn ghost" onclick="WF.regDry=null;drawStep()">Change</button></div>`
+       :`<div style="margin-top:8px"><button class="btn ghost" onclick="registerSource(true)">Check registration (dry run)</button></div>`}</div>`; }
+let REG_BODY=null;
+async function registerSource(dry){
+  if(dry){ const f=($("#rg_file")||{}).files&&$("#rg_file").files[0];
+    const body={action:"mc_register_source",manufacturer:OPEN,kind:$("#rg_kind").value,title:$("#rg_title").value.trim(),received_date:$("#rg_rec").value.trim(),
+      effective_date_status:$("#rg_effs").value,manufacturer_effective_date:$("#rg_effd").value.trim()||null,note:$("#rg_note").value.trim()||null};
+    if(f){ if(f.size>10*1024*1024){ toast("File larger than 10 MB"); return; } body.file_name=f.name; body.content_type=f.type||"application/octet-stream";
+      body.file_b64=await new Promise((res,rej)=>{ const rd=new FileReader(); rd.onload=()=>res(String(rd.result).split(",")[1]||""); rd.onerror=rej; rd.readAsDataURL(f); }); }
+    REG_BODY=body; }
+  const r=await apiq(Object.assign({},REG_BODY,{dry_run:dry}));
+  if(!r.ok){ toast("Not registered: "+r.e.message); return; }
+  if(dry){ WF.regDry=r.j; drawStep(); } else { toast("Source registered as received — accept it when it has been checked"); WF.regDry=null; REG_BODY=null; await reloadLine(); }
+}
+function importPanel(id){ const d=WF.impDry;
+  return `<div class="card sub2"><h3 style="margin-top:0">Import the rows of source ${id} — exactly as received</h3>
+  <p class="mut" style="font-size:12px">Paste the price list as tab- or comma-separated text with a header row. Recognised columns: <code>code</code> (or Model Number), <code>description</code>, <code>base_price</code> (dealer price per order unit), <code>msrp</code>, <code>map</code>, <code>unit_cost</code>, <code>case_qty</code> (as written, e.g. "2/CS"). Every column you paste is also kept, untouched, in <code>raw</code>. A source is imported once; a corrected file is a new source.</p>
+  <textarea id="imp_text" style="min-height:110px;font-family:monospace;font-size:11.5px" placeholder="code&#9;description&#9;base_price&#9;msrp&#9;map&#9;unit_cost&#9;case_qty"></textarea>
+  ${d?`<div class="dry"><b>Dry run:</b> ${d.would_insert} rows would be added as received.<table><thead><tr><th>Code</th><th>Dealer price</th><th>MSRP</th><th>MAP</th><th>Unit cost</th><th>Case qty (as written → parsed)</th></tr></thead><tbody>${d.rows.slice(0,40).map(x=>`<tr><td>${esc(x.code)}</td><td>${money(x.base_price)}</td><td>${money(x.msrp)}</td><td>${money(x.map)}</td><td>${money(x.parsed_unit_cost)}</td><td>${esc((x.raw&&(x.raw["Master Case Qty"]||x.raw.case_qty))||'—')} → ${x.parsed_case_qty==null?'<span class="mut">none</span>':esc(x.parsed_case_qty)}</td></tr>`).join('')}</tbody></table>
+     <button class="btn" onclick="importRows(${id},false)">Import rows (writes)</button> <button class="btn ghost" onclick="WF.impDry=null;drawStep()">Change</button></div>`
+     :`<div style="margin-top:8px"><button class="btn ghost" onclick="importRows(${id},true)">Check import (dry run)</button> <button class="btn ghost" onclick="WF.impFor=null;drawStep()">Close</button></div>`}</div>`; }
+let IMP_ROWS=null;
+function parseTable(txt){
+  const lines=String(txt||"").split(/\r?\n/).filter(l=>l.trim()); if(lines.length<2) return [];
+  const sep=lines[0].includes("\t")?"\t":",", split=l=>l.split(sep).map(x=>x.trim().replace(/^"|"$/g,""));
+  const head=split(lines[0]); const key=h=>{ const k=h.toLowerCase().replace(/[^a-z0-9]/g,"");
+    return ({code:"code",modelnumber:"code",sku:"code",description:"description",itemdescription:"description",baseprice:"base_price",dealerprice:"base_price",dealermastercasecost:"base_price",
+      msrp:"msrp",map:"map",unitcost:"unit_cost",dealercostperunit:"unit_cost",caseqty:"case_qty_text",mastercaseqty:"case_qty_text"})[k]||null; };
+  return lines.slice(1).map(l=>{ const c=split(l), raw={}, row={}; head.forEach((h,i)=>{ raw[h]=c[i]===""?null:c[i]; const k=key(h); if(k&&c[i]!==""&&c[i]!=null) row[k]=k==="code"||k==="description"||k==="case_qty_text"?c[i]:Number(String(c[i]).replace(/[$,]/g,"")); });
+    if(row.case_qty_text!=null) raw["Master Case Qty"]=row.case_qty_text; row.raw=raw; return row; });
+}
+async function importRows(id, dry){
+  if(dry){ IMP_ROWS=parseTable(($("#imp_text")||{}).value); if(!IMP_ROWS.length){ toast("Paste a header row and at least one row"); return; } }
+  const r=await apiq({action:"mc_import_source_rows",manufacturer:OPEN,source_id:id,rows:IMP_ROWS,dry_run:dry});
+  if(!r.ok){ toast("Not imported: "+r.e.message); return; }
+  if(dry){ WF.impDry=r.j; drawStep(); } else { toast(r.j.imported+" rows imported as received"); WF.impDry=null; WF.impFor=null; WF.match=null; await reloadLine(); }
+}
+
+/* ── 2. MATCH & DECIDE ──────────────────────────────────────────────────────────────────────────── */
+const ST_LABEL={new:"new on the record",same:"matches the record",changes:"record would change",not_in_source:"on record, not in source",retired:"retired",not_compared:"not compared (legacy source)"};
+function stepMatch(){
+  const M=WF.match, s=M.summary||{};
+  if(!M.source) return `${frozen()?ro():''}<p class="mut">No accepted price list for this line yet. Register and accept one in <b>1 · Sources</b>, then import its rows.</p>`;
+  /* Phase 6 correction: an accepted LEGACY source registered without row-level rows cannot be compared. That is
+     information — not a conflict and not a request for a decision. */
+  if(M.comparison&&M.comparison.available===false) return `${frozen()?ro("The match is shown for reference."):''}
+  <div class="rob" style="background:#f5f7fb;border-color:#d8e0ec">ℹ️ <b>${esc(M.comparison.message||'Match comparison unavailable.')}</b><br><span class="mut" style="font-size:12px">Source #${M.source.id} ${esc(M.source.title)} was accepted before row-level source data was stored. No SKU is reported as missing from it and nothing here asks for a decision; the line's record stays as verified.</span></div>
+  <div style="margin:4px 0 10px"><span class="chip">${esc(ST_LABEL.not_compared)}: <b>${s.not_compared||0}</b></span> <span class="chip">retired: <b>${s.retired||0}</b></span> <span class="chip">needs a decision: <b>0</b></span> <span class="chip">proposed changes: <b>0</b></span></div>`;
+  const chips=[["new",s.new],["changes",s.changes],["same",s.same],["not_in_source",s.not_in_source],["retired",s.retired]].map(([k,n])=>`<span class="chip">${esc(ST_LABEL[k])}: <b>${n||0}</b></span>`).join(" ");
+  const rows=M.rows.map((r,i)=>{ const need=r.needs_decision.length;
+    return `<tr class="${need?'needrow':''}"><td><b>${esc(r.code)}</b>${r.on_storefront?'':'<div class="mut" style="font-size:11px">not on the storefront</div>'}</td><td>${pill(need?'p-warn':(r.status==='same'?'p-pass':'p-adv'),need?'needs a decision':ST_LABEL[r.status])}</td>
+      <td class="facts">${r.source?`${money(r.source.base_price)} · MSRP ${money(r.source.msrp)} · MAP ${money(r.source.map)}<div class="mut" style="font-size:11px">case qty ${r.source.case_qty==null?'none given':esc(r.source.case_qty)} · unit cost ${money(r.source.dealer_unit_cost)}</div>`:'<span class="mut">not in source</span>'}</td>
+      <td class="interp">${Object.keys(r.hcps||{}).length?jv(r.hcps)+'<div class="mut" style="font-size:11px">decision '+r.decision_ids.join(', ')+'</div>':'<span class="mut">none</span>'}</td>
+      <td>${r.record?`${money(r.record.base_price)} · ${esc(r.record.uom||'')}${r.record.case_qty>1?' ('+esc(r.record.case_qty)+')':''}<div class="mut" style="font-size:11px">${esc(r.record.status||'')}</div>`:'<span class="mut">no record</span>'}</td>
+      <td>${r.diffs.map(d=>`<div style="font-size:11.5px">${esc(d.field)}: ${jv(d.record)} → ${jv(d.proposed)}</div>`).join('')}${r.needs_decision.map(n=>`<div class="needtxt">${esc(n.why)}</div>`).join('')}</td>
+      <td>${frozen()?'':`<button class="btn ghost" onclick="openDecision(${i})">Decide…</button>`}</td></tr>`; }).join('');
+  return `${frozen()?ro("The match is shown for reference."):''}
+  <p class="sub">Source <b>#${M.source.id} ${esc(M.source.title)}</b> against the master record. <b>Source facts</b> (left, as received) and <b>HCPS interpretations</b> (decisions) are kept apart; only their combination is proposed for staging, and nothing is written here except a decision.</p>
+  <div style="margin:4px 0 10px">${chips} <span class="chip ${s.needs_decision?'chip-warn':''}">needs a decision: <b>${s.needs_decision||0}</b></span> <span class="chip">ready to stage: <b>${s.ready_to_stage||0}</b></span> <span class="chip ${s.proposed_changes?'chip-warn':''}">proposed changes (new or different): <b>${s.proposed_changes||0}</b></span></div>
+  ${(M.unapplied||[]).length?`<div class="needtxt" style="margin-bottom:8px">Not applied — the "applies to" wording is not understood, so it was not guessed at: ${M.unapplied.map(u=>'decision #'+esc(u.id)+' ('+esc(u.field)+': '+esc(u.applies_to)+')').join('; ')}. Record it again as the whole line or as packs.</div>`:''}
+  ${WF.decFor!=null&&!frozen()?decisionPanel(WF.decFor):''}
+  <table><thead><tr><th>SKU</th><th>Status</th><th>Source facts (as received)</th><th>HCPS interpretation</th><th>Master record now</th><th>What would change / why a decision is needed</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function openDecision(i){ WF.decFor=i; WF.decDry=null; drawStep(); }
+function decisionPanel(i){
+  const r=WF.match.rows[i], need=(r.needs_decision[0]||{}).field||"", d=WF.decDry;
+  const mv=r.source?{base_price:r.source.base_price,msrp:r.source.msrp,map:r.source.map,case_qty:r.source.case_qty,unit_cost:r.source.dealer_unit_cost}:null;
+  return `<div class="card sub2"><h3 style="margin-top:0">Decision for ${esc(r.code)}</h3>
+   <p class="mut" style="font-size:12px">The manufacturer value is filled from the source and kept as written. Put HCPS's interpretation in <b>HCPS value</b> as JSON using the staging fields (e.g. <code>{"uom":"Each","case_qty":1}</code>, <code>{"msrp_basis":"each"}</code>, <code>{"status":"discontinued"}</code>). It is recorded with your name and reason and never edited afterwards. Only the keys of the <b>Field</b> are used (uom with case_qty; msrp_basis with map_basis; status with status_note) — any other key is ignored.</p>
+   <div class="grid3"><label>Kind<br><select id="dc_kind"><option>interpretation</option><option>conflict</option><option>exception</option></select></label>
+   <label>Field<br><input type="text" id="dc_field" value="${esc(need)}"></label><label>Applies to<br><select id="dc_scope"><option value="sku">this SKU (${esc(r.code)})</option><option value="line">the whole line</option><option value="packs">every pack SKU on the line</option></select></label></div>
+   <label>Manufacturer value (as received)<br><input type="text" id="dc_mv" value="${esc(mv?JSON.stringify(mv):'')}" style="width:100%" readonly></label>
+   <label>HCPS value (JSON)<br><input type="text" id="dc_hv" style="width:100%" placeholder='{"uom":"Each","case_qty":1}'></label>
+   <label>Reason (required)<br><textarea id="dc_reason"></textarea></label>
+   ${d?`<div class="dry"><b>Dry run — would record:</b> ${jv(d.decision)}<br><button class="btn" onclick="recordDecision(false)">Record decision (writes)</button> <button class="btn ghost" onclick="WF.decDry=null;drawStep()">Change</button></div>`
+      :`<div style="margin-top:8px"><button class="btn ghost" onclick="recordDecision(true)">Check decision (dry run)</button> <button class="btn ghost" onclick="WF.decFor=null;drawStep()">Close</button></div>`}</div>`;
+}
+let DEC_BODY=null;
+async function recordDecision(dry){
+  if(dry){ const r=WF.match.rows[WF.decFor]; let hv=null, mv=null; const hvt=$("#dc_hv").value.trim();
+    try{ hv=hvt?JSON.parse(hvt):null; mv=$("#dc_mv").value?JSON.parse($("#dc_mv").value):null; }catch(e){ toast("HCPS value must be JSON"); return; }
+    const scope=$("#dc_scope").value; if(scope==="packs"&&hv) hv=Object.assign({},hv,{applies_to:"packs"});
+    DEC_BODY={action:"mc_record_decision",manufacturer:OPEN,kind:$("#dc_kind").value,field:$("#dc_field").value.trim(),code:scope==="sku"?r.code:null,
+      manufacturer_value:mv,hcps_value:hv,source_id:WF.match.source?WF.match.source.id:null,reason:$("#dc_reason").value.trim()}; }
+  const x=await apiq(Object.assign({},DEC_BODY,{dry_run:dry}));
+  if(!x.ok){ toast("Not recorded: "+x.e.message); return; }
+  if(dry){ WF.decDry=x.j; drawStep(); } else { toast("Decision #"+x.j.decision.id+" recorded"); WF.decDry=null; WF.decFor=null; WF.match=null; WF.stageDry=null; WF.stageApproval=null; await reloadLine(true); TAB="match"; renderLine(); }
+}
+
+/* ── 3. STRUCTURE & CONTENT (status and links — edited where they always were) ─────────────────────── */
+function stepStructure(){
+  const S=WF.structure, st=S.structure||{}, c=S.content||{};
+  const steps=(c.steps||[]).map(x=>`<tr><td>${pill(x.pass?'p-pass':'p-warn',x.pass?'ok':'to do')}</td><td><b>${esc(x.name)}</b><div class="mut" style="font-size:11.5px">${esc(x.detail||'')}</div></td></tr>`).join('');
+  const kinds=Object.entries(st.by_kind||{}).map(([k,n])=>`<span class="chip">${esc(k.replace(/_/g,' '))}: <b>${n}</b></span>`).join(' ');
+  const deferred=(LINE.meta&&LINE.meta.deferrals||[]).map(d=>`<div class="rob" style="background:#f5f7fb;border-color:#d8e0ec">Approved deferral: <b>${esc(String(d.item||'').replace(/_/g,' '))}</b> — ${esc(d.note||'')}</div>`).join('');
+  return `<p class="sub">How the line is organised (Structure Map) and how far its content is enriched (Product Content Enrichment). Manufacturer Center only reports here; grouping, categories, pages, images and documents are changed in those tools.</p>
+  ${deferred}
+  <div class="grid2"><div class="card"><h3 style="margin-top:0">Structure</h3><p>${st.faults_total?pill('p-fail',st.faults_total+' faults'):pill('p-pass','no faults')} ${st.gaps_total?pill('p-warn',st.gaps_total+' gaps'):''} <span class="mut">${st.products_affected||0} products affected · ${st.pages||0} pages</span></p><div>${kinds||'<span class="mut">No findings.</span>'}</div>
+    <p style="margin-top:10px"><a class="btn ghost" href="${esc(S.links.structure_map)}" target="_blank" rel="noopener">Open Structure Map →</a></p></div>
+  <div class="card"><h3 style="margin-top:0">Content & publishing</h3><p>${pill(c.passed===c.of?'p-pass':'p-warn',(c.passed||0)+' of '+(c.of||0)+' steps')} <span class="mut">${c.percent_published!=null?esc(c.percent_published)+'% published':''}</span></p>
+    ${c.next_step?`<p class="mut" style="font-size:12px">Next: <b>${esc(c.next_step)}</b> — ${esc(c.next_action||'')}</p>`:'<p class="ok" style="font-size:12px">The whole flow passes for this line.</p>'}
+    <p><a class="btn ghost" href="${esc(S.links.structure_map)}" target="_blank" rel="noopener">Product Content Enrichment →</a> <a class="btn ghost" href="${esc(S.links.product_catalog)}" target="_blank" rel="noopener">Product Catalog →</a> <a class="btn ghost" href="${esc(S.links.images)}" target="_blank" rel="noopener">Images →</a></p></div></div>
+  <div class="card"><table><tbody>${steps||'<tr><td class="mut">No steps reported.</td></tr>'}</tbody></table></div>`;
+}
+
+/* ── 4. COMMERCIAL & FREIGHT ────────────────────────────────────────────────────────────────────── */
+function bTable(rows){ return rows&&rows.length?`<table><thead><tr><th>Group</th><th>Order</th><th>Fee</th><th>Words a dealer reads</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.group)}</td><td>${r.amount==null?'any':'$'+Number(r.amount).toFixed(2)}</td><td>$${Number(r.fee||0).toFixed(2)}</td><td>${esc(r.words)}</td></tr>`).join('')}</tbody></table>`:'<span class="mut">No freight rule — freight is not quoted.</span>'; }
+function stepCommercial(){
+  const C=WF.commercial, f=C.freight||{};
+  const recs=(C.records||[]).map(r=>`<tr><td><b>${esc(r.code)}</b></td><td>${esc(r.status)}</td><td>${money(r.base_price)}</td><td>${money(r.msrp)}${r.msrp_basis?' <span class="mut">'+esc(r.msrp_basis)+'</span>':''}</td><td>${money(r.map)}${r.map_basis?' <span class="mut">'+esc(r.map_basis)+'</span>':''}</td><td>${esc(r.uom||'')}${r.case_qty>1?' ('+esc(r.case_qty)+')':''}</td><td>${money(r.dealer_unit_cost)}</td><td>${(r.tiers||[]).map(t=>esc((t.min_qty||t.minQty)+'+ $'+t.price)).join(' · ')||'<span class="mut">—</span>'}</td><td class="mut" style="font-size:11px">${esc(r.source_file||'')}</td></tr>`).join('');
+  const srcPill=f.source==="record"?pill("p-pass","from the record (freight_terms)"):(f.source==="file"?pill("p-adv","from manufacturers.json (fallback)"):pill("p-adv","no rule"));
+  return `${frozen()?ro("Prices and freight are shown for reference."):''}
+  <p class="sub">The commercial master (<code>product_skus</code>) for this line, and the freight rule dealers get. Prices change only through <b>5 · Stage</b>; freight terms change here, after a dry run and Approval 1. Unit cost is HCPS's record and is never shown to dealers or used to price.</p>
+  <div class="card"><h3 style="margin-top:0">Commercial master — ${(C.records||[]).length} records ${C.authoritative?pill('p-auth','prices from the record'):pill('p-adv','prices from the layers')}</h3>
+   <table><thead><tr><th>SKU</th><th>Status</th><th>Dealer</th><th>MSRP</th><th>MAP</th><th>Unit</th><th>Unit cost</th><th>Breaks</th><th>Source</th></tr></thead><tbody>${recs||'<tr><td colspan="9" class="mut">No master records yet — stage the source in 5 · Stage.</td></tr>'}</tbody></table></div>
+  <div class="card"><h3 style="margin-top:0">Freight ${srcPill} ${f.invalid?pill('p-fail','record terms invalid — file used'):''}</h3>
+   ${f.record_terms&&f.record_terms.trace?`<p class="mut" style="font-size:12px">Traced to ${esc(JSON.stringify(f.record_terms.trace))}</p>`:''}
+   ${bTable(f.boundaries)}
+   ${frozen()?'':freightEditor(f)}</div>`;
+}
+function freightEditor(f){ const d=WF.freightDry, a=WF.freightApproval;
+  const start=JSON.stringify(f.record_terms?Object.fromEntries(Object.entries(f.record_terms).filter(([k])=>k!=="trace")):(f.effective||{summary:"",groups:[],elseActual:true,actualNote:"Freight is confirmed by HCPS on your order confirmation."}),null,1);
+  return `<h3>Change the freight terms</h3>
+  <p class="mut" style="font-size:12px">Freight terms take effect for dealers the moment they are stored. Trace them to an accepted source and/or a decision of this line.</p>
+  <textarea id="fr_terms" style="min-height:150px;font-family:monospace;font-size:11.5px" oninput="WF.freightDry=null;WF.freightApproval=null">${esc(start)}</textarea>
+  <div class="grid3"><label>Source # (accepted)<br><input type="text" id="fr_src" value="${esc(((LINE.sources||[]).filter(s=>s.status==='accepted').slice(-1)[0]||{}).id||'')}"></label><label>Decision #<br><input type="text" id="fr_dec"></label></div>
+  ${d?`<div class="dry"><b>Dry run</b> — plan <code>${short(d.plan_hash)}</code><div class="grid2"><div><b>Now</b> (${esc(d.preview.before.source)})${bTable(d.preview.before.boundaries)}</div><div><b>After</b> (record)${bTable(d.preview.after.boundaries)}</div></div></div>
+     ${gateBox(1,"Write these freight terms",a?(a.used?"used":"approved"):"wait",a?`<p class="mut" style="font-size:12px">Approval #${a.id} for plan <code>${short(d.plan_hash)}</code></p><button class="btn" onclick="writeFreight()">Write freight terms (writes)</button>`
+        :`<input type="text" id="fr_reason" placeholder="Why these terms are right (required)" style="width:60%"> <button class="btn warn" onclick="approve('stage','freight')">Approve exactly this plan</button>`)}`
+     :`<div style="margin-top:8px"><button class="btn ghost" onclick="freightDry()">Preview (dry run)</button></div>`}`; }
+let FR_BODY=null;
+async function freightDry(){
+  let terms; try{ terms=JSON.parse($("#fr_terms").value); }catch(e){ toast("Freight terms must be JSON"); return; }
+  const sid=parseInt($("#fr_src").value,10), did=parseInt($("#fr_dec").value,10);
+  FR_BODY={action:"mc_set_freight_terms",manufacturer:OPEN,terms,trace:Object.assign({},sid>0?{source_id:sid}:{},did>0?{decision_id:did}:{})};
+  const r=await apiq(Object.assign({},FR_BODY,{dry_run:true})); if(!r.ok){ toast("Preview refused: "+r.e.message); return; }
+  WF.freightDry=r.j; WF.freightApproval=null; drawStep();
+}
+async function writeFreight(){
+  const r=await apiq(Object.assign({},FR_BODY,{approval_decision_id:WF.freightApproval.id})); if(!r.ok){ toast("Not written: "+r.e.message); return; }
+  toast("Freight terms stored (approval #"+r.j.approval_used+" used)"); WF.freightDry=null; WF.freightApproval=null; WF.commercial=null; await reloadLine(true); TAB="commercial"; renderLine();
+}
+
+/* ── 5. STAGE ───────────────────────────────────────────────────────────────────────────────────── */
+function stepStage(){
+  const M=WF.match, d=WF.stageDry, a=WF.stageApproval;
+  if(frozen()) return ro("Staging is not available on a frozen line.");
+  if(!M.source) return '<p class="mut">No accepted price list to stage. Start in 1 · Sources.</p>';
+  const blocked=(M.blocked||[]).map(b=>`<li><b>${esc(b.code)}</b> — ${b.needs.map(n=>esc(n.why)).join(' ')}</li>`).join('');
+  const newRow=x=>`<span style="font-size:12px">${money(x.base_price)} per ${esc(x.uom||'unit')}${Number(x.case_qty)>1?' ('+esc(x.case_qty)+' each)':''} · MSRP ${money(x.msrp)}${x.msrp_basis?' '+esc(x.msrp_basis):''} · MAP ${money(x.map)}${x.map_basis?' '+esc(x.map_basis):''} · unit cost ${money(x.dealer_unit_cost)}${(x.tiers||[]).length?' · breaks '+esc(x.tiers.map(t=>(t.min_qty||t.minQty)+'+ $'+t.price).join(', ')):''} · ${esc(x.status||'active')}</span>`;
+  const plan=d?d.plan.map(p=>`<tr><td><b>${esc(p.code)}</b></td><td>${p.action==='create'?pill('p-adv','new record'):esc(p.action)}</td><td>${p.action==='create'?newRow(p.set):(Object.entries(p.changed||{}).map(([k,v])=>`<div style="font-size:11.5px">${esc(k)}: ${jv(v[0])} → ${jv(v[1])}</div>`).join('')||'<span class="mut">no change</span>')}</td><td class="mut" style="font-size:11px">${(p.not_in_source||[]).join(', ')}</td><td>${(p.would_clear||[]).length?pill('p-fail','would clear '+p.would_clear.join(', ')):''}</td></tr>`).join(''):'';
+  const prev=d&&d.activation_preview?`<p class="mut" style="font-size:12px">If this line were activated after staging: ${esc(JSON.stringify({compared:d.activation_preview.compared,differences:(d.activation_preview.drift||[]).length}))}</p>`:'';
+  return `<p class="sub">The proposed rows are the source facts with the recorded HCPS decisions applied (${M.stage_rows.length} rows from source #${M.source.id}). A field the source leaves out is kept; nothing is cleared without a decision. The dry run shows exactly what would be written to the master record.</p>
+  ${blocked?`<div class="card" style="border-color:#f3d9a4;background:#fffaf0"><b>${M.blocked.length} SKU(s) wait for a decision</b> and are not staged:<ul style="margin:6px 0 0 18px">${blocked}</ul><p style="margin-top:6px"><button class="btn ghost" onclick="go('match')">Go to 2 · Match & decide</button></p></div>`:''}
+  <div class="bar"><button class="btn ghost" onclick="stageDry()" ${M.stage_rows.length?'':'disabled'}>Dry run</button><span class="mut" style="font-size:12px">Writes nothing.</span></div>
+  ${d?`<div class="dry"><b>Dry run</b> — plan <code>${short(d.plan_hash)}</code> · ${d.plan.length} rows${(d.would_clear_refused||[]).length?' · '+pill('p-fail',d.would_clear_refused.length+' would clear — not allowed'):''}
+     <table><thead><tr><th>SKU</th><th>Action</th><th>Changes</th><th>Not in source (kept)</th><th></th></tr></thead><tbody>${plan}</tbody></table>${prev}</div>
+     ${gateBox(1,"Write the staged records",a?(a.used?"used":"approved"):"wait",a?`<p class="mut" style="font-size:12px">Approval #${a.id} for plan <code>${short(d.plan_hash)}</code>. Writing changes the master record only; dealers see nothing until the line is activated (Approval 2).</p><button class="btn" onclick="stageWrite()">Write staged records (writes)</button>`
+        :`<input type="text" id="st_reason" placeholder="Why this plan is right (required)" style="width:60%"> <button class="btn warn" onclick="approve('stage','records')">Approve exactly this plan</button>`)}`:''}`;
+}
+function stageBody(){ const M=WF.match; return {action:"stage_record_source",manufacturer:OPEN,source_id:M.source.id,rows:M.stage_rows}; }
+async function stageDry(){ const r=await apiq(Object.assign(stageBody(),{dry_run:true})); if(!r.ok){ toast("Dry run refused: "+r.e.message); return; } WF.stageDry=r.j; WF.stageApproval=null; drawStep(); }
+async function stageWrite(){
+  const r=await apiq(Object.assign(stageBody(),{approval_decision_id:WF.stageApproval.id})); if(!r.ok){ toast("Not staged: "+r.e.message); return; }
+  toast(r.j.staged.length+" records staged (approval #"+r.j.approval_used+" used)"); WF.stageDry=null; WF.stageApproval=null; WF.match=null; WF.commercial=null; WF.preRun=null; await reloadLine(true); TAB="activate"; renderLine();
+}
+async function approve(gate, kind){
+  const reason=((gate==="stage"?(kind==="freight"?$("#fr_reason"):$("#st_reason")):$("#act_reason"))||{}).value;
+  if(!reason||!reason.trim()){ toast("Give the reason for the approval"); return; }
+  const body={action:"mc_approve_gate",manufacturer:OPEN,gate,reason:reason.trim()};
+  if(gate==="stage"){ const d=kind==="freight"?WF.freightDry:WF.stageDry; body.plan_hash=d.plan_hash; body.plan_kind=kind; } else body.run_id=WF.preRun.id;
+  const r=await apiq(body); if(!r.ok){ toast("Not approved: "+r.e.message); return; }
+  if(gate==="stage"&&kind==="freight") WF.freightApproval=r.j.approval; else if(gate==="stage") WF.stageApproval=r.j.approval; else WF.actApproval=r.j.approval;
+  toast("Approval #"+r.j.approval.id+" recorded"); LINE=await api({action:"mc_line",manufacturer:OPEN}); drawStep();
+}
+
+/* ── 6. VERIFY & ACTIVATE ───────────────────────────────────────────────────────────────────────── */
+function stepActivate(){
+  const m=LINE.meta||{}, pre=WF.preRun, a=WF.actApproval, d=WF.actDry;
+  const last=(LINE.runs||[])[0];
+  const live=m.record_authoritative===true;
+  const verifyBar=`<div class="bar"><button class="btn" id="vbtn" onclick="verifyWF('${live?'release':'pre'}')">${live?'Run verification':'Run pre-activation verification'}</button><span class="mut" style="font-size:12px">Saved as evidence; never deleted or rewritten.</span></div>`;
+  let gate="";
+  if(!live && !frozen()){
+    gate=pre&&pre.result==="pass"
+      ? gateBox(2,"Activate the line (prices come from the master record)",a?(a.used?"used":"approved"):"wait",
+          a?`<p class="mut" style="font-size:12px">Approval #${a.id} for pre-activation run #${pre.id} (fingerprint <code>${esc(pre.fingerprint||'')}</code>).</p>
+             ${d?`<div class="dry"><b>Activation dry run:</b> ${esc(d.message)}</div><button class="btn" onclick="activate(false)">Activate (writes)</button>`:`<button class="btn ghost" onclick="activate(true)">Activation dry run</button>`}`
+           :`<input type="text" id="act_reason" placeholder="Why this line may go live (required)" style="width:60%"> <button class="btn warn" onclick="approve('activate')">Approve activation</button>`)
+      : `<div class="gatebox g-wait"><div class="gh"><span class="gn">Approval 2</span> <b>Activate the line</b> ${pill('p-warn','needs a passing pre-activation run')}</div><p class="mut" style="font-size:12px">Run the pre-activation verification after staging. It must pass, and the record must not change after it, before activation can be approved.</p></div>`;
+  }
+  return `${frozen()?ro("You can still run the verification — it changes no product data."):''}
+  <p class="sub">${live?'This line already prices from the master record. Verification checks everything a dealer sees against its baseline.':'The full verification suite on the staged record — cards, cart, server pricing, freight at every threshold, both emails, images and the fingerprint. Then Approval 2, an activation dry run, and activation; a post-activation verification runs straight after.'}</p>
+  ${verifyBar}<div id="runview">${pre?runHtml(pre):(RUN?runHtml(RUN):'')}</div>${gate}
+  ${LINE.gold_standard&&!pre?`<p style="font-size:12px"><b>Current Gold Standard:</b> ${pill('p-pass','pass')} run #${esc(LINE.gold_standard.id)} ${esc(LINE.gold_standard.phase)} · ${esc(fmtT(LINE.gold_standard.run_at))}</p>`:''}
+  ${last&&!pre&&(!LINE.gold_standard||last.id!==LINE.gold_standard.id)?`<p class="mut" style="font-size:12px">${LINE.gold_standard?'History — latest run':'Last run'}: #${last.id} ${esc(last.phase)} ${esc(last.result)} · ${esc(fmtT(last.run_at))}</p>`:''}`;
+}
+async function verifyWF(phase){
+  if(BUSY) return; BUSY=true; const b=$("#vbtn"); if(b){ b.disabled=true; b.textContent="Verifying… (up to a minute)"; }
+  try{ const j=await api({action:"mc_verify",manufacturer:OPEN,phase}); const run={id:j.run_id,phase:j.phase,result:j.result,checks:j.checks,fingerprint:j.fingerprint,run_at:new Date().toISOString(),baseline_run:j.baseline_run};
+    if(phase==="pre"){ WF.preRun=run; WF.actApproval=null; WF.actDry=null; } else RUN=run;
+    toast(j.result==='pass'?'Verification passed':'Verification FAILED — see the checks'); await reloadLine(true); TAB="activate"; renderLine(); }
+  catch(e){ toast("Verification did not finish: "+e.message); }
+  BUSY=false;
+}
+async function activate(dry){
+  const r=await apiq({action:"set_record_authority",manufacturer:OPEN,authoritative:true,confirm_parity:true,approval_decision_id:WF.actApproval.id,dry_run:dry});
+  if(!r.ok){ toast((dry?"Dry run refused: ":"Not activated: ")+r.e.message); return; }
+  if(dry){ WF.actDry=r.j; drawStep(); return; }
+  toast("Activated — running the post-activation verification"); WF.actDry=null; WF.actApproval=null; WF.preRun=null;
+  await reloadLine(true); await verifyWF("post");
+}
+
+/* ── HISTORY ────────────────────────────────────────────────────────────────────────────────────── */
+function stepHistory(){
+  const G=LINE.gold_standard;
+  const runs=(LINE.runs||[]).map(r=>`<tr class="${RUN&&RUN.id===r.id?'sel':''}${G&&G.id===r.id?' gsrow':''}"><td><input type="checkbox" class="cmpk" value="${r.id}"></td><td>${r.id}</td><td>${esc(fmtT(r.run_at))}<div class="mut" style="font-size:11px">${esc(r.run_by||'')}</div></td><td>${esc(r.phase)}</td><td>${pill(r.result==='pass'?'p-pass':'p-fail',r.result)}${G&&G.id===r.id?' '+pill('p-pass','Current Gold Standard'):(G&&r.result!=='pass'?' <span class="mut" style="font-size:11px">history</span>':'')}</td><td><code>${esc(r.fingerprint||'')}</code></td><td><button class="btn ghost" onclick="showRun(${r.id})">View</button></td></tr>`).join("");
+  const c=WF.cmp;
+  return `${gsBanner(G)}<p class="sub">Every verification run of this line — kept as evidence, never deleted or rewritten. Tick two runs to compare them check by check (values compared with keys sorted, never as raw text).</p>
+  <div class="bar"><button class="btn ghost" onclick="compare()">Compare the two ticked runs</button></div>
+  ${c?`<div class="card"><h3 style="margin-top:0">Run #${c.a} vs #${c.b} — fingerprint ${c.fingerprint_same?pill('p-pass','same'):pill('p-fail','different')}</h3><table><thead><tr><th>Check</th><th>#${c.a}</th><th>#${c.b}</th><th>Evidence</th></tr></thead><tbody>${c.checks.map(x=>`<tr><td>${esc(x.label)}</td><td>${x.in_a?pill(x.pass_a?'p-pass':'p-fail',x.pass_a?'pass':'fail'):'<span class="mut">—</span>'}</td><td>${x.in_b?pill(x.pass_b?'p-pass':'p-fail',x.pass_b?'pass':'fail'):'<span class="mut">—</span>'}</td><td>${x.in_a&&x.in_b?(x.same_detail?'<span class="ok">identical</span>':'<span class="err">differs</span>'):'<span class="mut">only in one run</span>'}</td></tr>`).join('')}</tbody></table>
+    ${(c.lines_only_in_a.length||c.lines_only_in_b.length)?`<details><summary>Product lines that differ</summary><pre>${esc(c.lines_only_in_a.map(l=>'- '+l).concat(c.lines_only_in_b.map(l=>'+ '+l)).join('\n'))}</pre></details>`:''}</div>`:''}
+  <div id="runview">${RUN?runHtml(RUN):''}</div>
+  <table><thead><tr><th></th><th>#</th><th>When</th><th>Phase</th><th>Result</th><th>Fingerprint</th><th></th></tr></thead><tbody>${runs||'<tr><td colspan="7" class="mut">No runs yet.</td></tr>'}</tbody></table>`;
+}
+async function compare(){ const ids=[...document.querySelectorAll(".cmpk:checked")].map(x=>parseInt(x.value,10)); if(ids.length!==2){ toast("Tick exactly two runs"); return; }
+  const r=await apiq({action:"mc_compare_runs",a:Math.min(...ids),b:Math.max(...ids)}); if(!r.ok){ toast(r.e.message); return; } WF.cmp=r.j; drawStep(); }
+async function showRun(id){ try{ const j=await api({action:"mc_run",id}); RUN=j.run; drawStep(); }catch(e){ toast(e.message); } }
+
+/* ── DECISIONS LOG (and the regression path for a frozen line) ─────────────────────────────────── */
+/* ── CORRECT A PUBLISHED PAGE (Angelo 2026-10-12) ── a regression_fix scoped to one live page and named content areas:
+   corrected text → dry run → Approve (plan number) → Carry out (checked; rolls back on any difference) → storefront check
+   → Finalize (new Gold Standard). No enrichment window is used or spent. */
+function corrFixes(){ return (LINE.decisions||[]).filter(d=>d.kind==="regression_fix"&&d.hcps_value&&d.hcps_value.scope==="content_correction"); }
+function corrPending(){ const g=LINE.gold_standard; return (LINE.decisions||[]).filter(d=>d.kind==="content_publication"&&d.hcps_value&&d.hcps_value.correction&&d.used_at&&(!g||String(d.used_at)>String(g.run_at))); }
+function corrCard(){
+  const open=corrFixes().filter(d=>!d.used_at), pend=corrPending(), C=WF.corr||null;
+  if(!open.length&&!pend.length&&!C) return '';
+  const list=open.map(d=>`<div style="margin:4px 0"><b>Regression fix #${d.id}</b> — ${esc(d.hcps_value.page_name||d.hcps_value.page_key)} · ${esc((d.hcps_value.areas||[]).join(', '))} <button class="btn ghost" onclick="corrOpen(${d.id})">Open correction</button></div>`).join('');
+  const fin=pend.map(d=>`<div style="margin:4px 0">Correction #${d.id} (regression fix #${esc(d.hcps_value.correction.regression_fix)}) is live — check the storefront, then <button class="btn warn" onclick="corrFinalize(${d.id})">Finalize (new Gold Standard)</button></div>`).join('');
+  return `<div class="card corrcard"><h3 style="margin-top:0">Correct a published page</h3><p class="mut" style="font-size:12px">A Gold Standard page changes only under a regression fix scoped to that page and the areas it names. Every other field, page, photo and price stays exactly as it is. No enrichment window is used.</p>${list}${fin}${C?corrHtml(C):''}</div>`;
+}
+function corrVal(a,v){ if(v==null) return '<span class="mut">— none —</span>'; if(a==="description") return `<div style="white-space:pre-wrap">${esc(v)}</div>`; if(a==="features") return apVal(v,"features"); return apVal(v,"specs"); }
+function corrHtml(C){
+  if(C.busy) return `<p class="mut">${esc(C.busy)}</p>`;
+  if(C.err) return `<div class="msg err">${esc(C.err)}</div>`;
+  const st=C.st, pl=C.pl, s=pl.summary||{};
+  const rows=(pl.changes||[]).map(ch=>{ const f=ch.area==="features"?"features":(ch.area==="specs"?"specs":"description");
+    return `<div class="aparea"><div class="aphead"><h4>${esc(ch.area[0].toUpperCase()+ch.area.slice(1))}</h4><span class="mut" style="font-size:11px">correction #${esc(ch.decision)}${ch.from?' · the text of approval #'+esc(ch.from):''}</span></div>
+      <div class="apcols"><div class="apcol cur"><h5>Live now</h5>${corrVal(ch.area,f==="description"?ch.before.description:(ch.before[f]||[]).concat(ch.before[f==="features"?"clinical_applications":"billing_codes"]||[]))}</div><div class="apcol on"><h5>After the correction</h5>${corrVal(ch.area,f==="description"?ch.after.description:ch.after[f])}</div></div></div>`; }).join('');
+  const prev=pl.preview||{};
+  const head=`<h4 style="margin:10px 0 4px">${esc(pl.page.name||pl.page.page_key)} — regression fix #${esc(pl.regression_fix.id)}</h4>
+    <p style="font-size:12.5px">Plan <code>${esc(String(pl.plan_hash).slice(0,16))}</code> · ${pl.publishable?pill('p-pass','ready to approve'):pill('p-fail','cannot be approved')} · SKUs ${esc(s.accounted)}/${esc(s.active_skus)} · missing ${esc(s.missing)} · duplicates ${esc(s.duplicates)} · commercial changes ${esc(s.commercial_changes)} · cards ${esc(s.cards_today)} → ${esc(s.cards_after)} · other pages unchanged ${esc(s.other_pages_unchanged)}</p>
+    ${pl.problems&&pl.problems.length?`<div class="msg err">${pl.problems.map(esc).join('<br>')}</div>`:''}
+    <p class="mut" style="font-size:12px">Unchanged on this page: ${esc((pl.unchanged&&pl.unchanged.fields||[]).join(', '))} — ${pl.unchanged&&pl.unchanged.identical?'identical':'DIFFERENT'}. Dealer preview: ${prev.pass?'pass':'FAIL'}.</p>`;
+  let act='';
+  if(C.exec) act=`<div class="msg ${C.exec.ok?'ok':'err'}"><b>${C.exec.ok?'Correction carried out — the live page matches the approved dry run. Check the storefront, then Finalize.':'Not carried out'}</b>${C.exec.message?' — '+esc(C.exec.message):''}<div style="font-size:11.5px">${(C.exec.checks||[]).map(c=>(c.pass?'✓ ':'✗ ')+esc(c.label)).join('<br>')}</div></div>${C.exec.ok?`<button class="btn warn" onclick="corrFinalize(${C.approval.id})">Finalize (new Gold Standard)</button>`:''}`;
+  else if(C.approval) act=`<div class="msg ok">Approved as decision #${esc(C.approval.id)} (plan <code>${esc(String(C.approval.plan_hash).slice(0,16))}</code>).</div><button class="btn warn" onclick="corrExecute()">Carry out the correction</button>`;
+  else if(pl.publishable) act=`<input type="text" id="corr_reason" placeholder="Why this correction is right (required)" style="width:60%"> <button class="btn warn" onclick="corrApprove()">Approve exactly this correction</button>`;
+  return head+rows+`<div style="margin-top:8px">${act}</div>`;
+}
+async function corrOpen(rid){
+  WF.corr={rid,busy:"Building the correction dry run…"}; drawStep();
+  try{ const [st,pl]=await Promise.all([papi({action:"correction_state",manufacturer:OPEN,regression_fix_id:rid}),papi({action:"correction_plan",manufacturer:OPEN,regression_fix_id:rid})]); WF.corr={rid,st,pl}; }
+  catch(e){ WF.corr={rid,err:"The correction could not be read: "+e.message}; }
+  drawStep();
+}
+async function corrApprove(){
+  const C=WF.corr, reason=(($("#corr_reason")||{}).value||"").trim(); if(!reason){ toast("Say why — it is recorded"); return; }
+  try{ const r=await papi({action:"correction_approve",manufacturer:OPEN,regression_fix_id:C.rid,plan_hash:C.pl.plan_hash,reason}); C.approval=r.decision; toast("Correction approved #"+r.decision.id); }
+  catch(e){ toast("Not approved: "+e.message); }
+  drawStep();
+}
+async function corrExecute(){
+  const C=WF.corr; if(C.running) return; C.running=true; toast("Carrying out the correction and checking the live page…");
+  try{ const r=await papi({action:"correction_execute",manufacturer:OPEN,regression_fix_id:C.rid,decision_id:C.approval.id}); C.exec=Object.assign({ok:true},r); }
+  catch(e){ C.exec={ok:false,message:e.message,checks:(e.body&&e.body.checks)||[]}; }
+  C.running=false; LINE=await api({action:"mc_line",manufacturer:OPEN}); drawStep();
+}
+async function corrFinalize(did){
+  toast("Running the final verification…");
+  try{ const r=await api({action:"mc_publish_finalize",manufacturer:OPEN,decision_id:did}); toast("Gold Standard saved — run #"+r.run_id); WF.corr=null; }
+  catch(e){ toast("Final verification failed — rolled back: "+e.message); }
+  LINE=await api({action:"mc_line",manufacturer:OPEN}); const j=await api({action:"mc_overview"}); LINES=j.lines||[]; render(); renderLine();
+}
+function stepDecisions(){
+  const L=LINE, m=L.meta||{};
+  return `${m.frozen?corrCard():''}${m.frozen?`<div class="card" style="background:#fffaf0;border-color:#f3d9a4"><h3 style="margin-top:0">Report a regression</h3><p class="mut" style="font-size:12px;margin-bottom:8px">A frozen line accepts a commercial change only with a recorded <b>regression_fix</b>. Recording it changes nothing by itself; it is single-use and must be sent with the fix.</p>
+      <div class="grid2"><input type="text" id="rf_field" placeholder="Field (e.g. base_price, uom, map)"><input type="text" id="rf_code" placeholder="SKU code (blank = whole line)"></div>
+      <textarea id="rf_reason" placeholder="What regression was found, and how it was seen (required)" style="margin-top:8px"></textarea>
+      <div style="margin-top:8px"><button class="btn warn" onclick="recordFix()">Record regression_fix decision</button></div></div>`:''}
+    <p class="sub">Every HCPS decision on this line, newest first — interpretations, conflicts, exceptions, approvals (including both approval gates) and regression fixes. Decisions are never edited; a later decision supersedes an earlier one.</p>
+    <table><thead><tr><th>#</th><th>When</th><th>Kind</th><th>SKU</th><th>Field</th><th>Manufacturer value</th><th>HCPS value</th><th>Reason</th></tr></thead><tbody>${(L.decisions||[]).map(d=>`<tr><td>${d.id}</td><td style="white-space:nowrap">${esc(fmtD(d.decided_at))}<div class="mut" style="font-size:11px">${esc(d.decided_by||'')}</div></td><td>${pill('p-adv',d.kind)}${(d.kind==='regression_fix'||/^gate:/.test(d.field))?(d.used_at?' '+pill('p-adv','used'):' '+pill('p-warn','open')):''}</td><td>${esc(d.code||'line')}</td><td>${esc(d.field)}</td><td>${jv(d.manufacturer_value)}</td><td>${jv(d.hcps_value)}</td><td style="max-width:340px">${esc(d.reason)}</td></tr>`).join('')||'<tr><td colspan="8" class="mut">No decisions.</td></tr>'}</tbody></table>`;
+}
+async function recordFix(){
+  const field=($("#rf_field").value||"").trim(), code=($("#rf_code").value||"").trim(), reason=($("#rf_reason").value||"").trim();
+  if(!field||!reason){ toast("Field and reason are required"); return; }
+  try{ const j=await api({action:"mc_record_decision",manufacturer:OPEN,kind:"regression_fix",field,code:code||null,reason});
+    toast("Recorded regression_fix #"+j.decision.id+" — send it with the fix"); LINE=await api({action:"mc_line",manufacturer:OPEN}); drawStep(); }
+  catch(e){ toast("Not recorded: "+e.message); }
+}
+
+function detailHtml(c){
+  const d=c.detail; if(d==null) return '<span class="mut">—</span>';
+  if(c.id==="freight_boundaries"&&Array.isArray(d)&&d.length&&d[0].amount!=null) return `<table><thead><tr><th>Group</th><th>Order amount</th><th>Fee</th><th>Words in the cart</th></tr></thead><tbody>${d.map(r=>`<tr><td>${esc(r.group)}</td><td>$${Number(r.amount).toFixed(2)}</td><td>$${Number(r.fee).toFixed(2)}</td><td>${esc(r.words)}</td></tr>`).join('')}</tbody></table>`;
+  if(c.id==="emails"&&d.dealer_lines) return `<b>Dealer confirmation</b><pre>${esc(d.dealer_lines.join('\n'))}\nFreight: ${esc(d.dealer_freight||'—')}</pre><b>HCPS email</b><pre>${esc(d.hcps_lines.join('\n'))}\nFreight: ${esc(d.hcps_freight||'—')}</pre>`;
+  if(c.id==="fingerprint"){ const x=Object.assign({},d); const n=(x.lines||[]).length; delete x.lines; return `<pre>${esc(JSON.stringify(x,null,1))}</pre><span class="mut">${n} product lines hashed</span>`; }
+  return `<pre>${esc(typeof d==='string'?d:JSON.stringify(d,null,1))}</pre>`;
+}
+function runHtml(r){
+  const checks=(r.checks||[]);
+  const blk=checks.filter(c=>c.severity==='blocking'), adv=checks.filter(c=>c.severity!=='blocking');
+  const row=c=>`<details class="chk" ${!c.pass?'open':''}><summary><span class="pill ${c.pass?(c.severity==='blocking'?'p-pass':'p-adv'):'p-fail'}">${c.pass?(c.severity==='blocking'?'pass':'info'):'fail'}</span><b>${esc(c.label)}</b></summary><div class="det">${detailHtml(c)}</div></details>`;
+  return `<div class="card" style="border-color:${r.result==='pass'?'#bfe3cf':'#f3c0c0'}"><h3 style="margin-top:0"><span class="pill ${r.result==='pass'?'p-pass':'p-fail'}">${esc(r.result)}</span> Run #${esc(r.id||'')} · ${esc(r.phase)} · fingerprint <code>${esc(r.fingerprint||'')}</code>${r.baseline_run?` <span class="mut" style="font-size:12px">compared with baseline run #${esc(r.baseline_run)}</span>`:''}</h3>
+    ${blk.map(row).join('')}<h3>Information</h3>${adv.map(row).join('')}</div>`;
+}
+/* ═══ PRODUCT ENRICHMENT — Release B (approved 2026-10-11) ═════════════════════════════════════════════════
+   The front door's stages 2–4 for one line: Products → Auto-Enrich → Review Issues. The system proposes the pages,
+   reads the manufacturer's pages, drafts copy and copies photos into HCPS storage; Angelo works from Review Issues,
+   never field by field. Every draft is hidden from dealers; on a frozen line every write carries the line's open
+   enrichment window. Dealer Preview (Release C) and Publish & Verify (Release D) come later. Prices never change here. */
+const PAPI="/.netlify/functions/product-content";
+let EN=null;   // {slug, tab, plan, busy, log:[], pend:{}}
+async function papi(body){ const h={"content-type":"application/json"}; if(TOKEN) h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch(PAPI,{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){ gate(); throw new Error("unauthorized"); }
+  const j=await r.json().catch(()=>({})); if(!r.ok||j.ok===false||j.error) { const e=new Error(j.message||j.error||("HTTP "+r.status)); e.status=r.status; e.body=j; throw e; } return j; }
+const ENRICH_STAGES=[["sources","1 · Manufacturer & Sources"],["products","2 · Products"],["auto","3 · Auto-Enrich"],["issues","4 · Review Issues"],["approve","5 · Approve Content & Images"],["preview","6 · Dealer Preview"],["publish","7 · Publish & Verify"]];
+const ST_PILL={ready:"p-pass",conflict:"p-fail",needs_grouping:"p-warn",needs_content:"p-warn",needs_image:"p-warn",needs_category:"p-warn",held_back:"p-adv",not_enriched:"p-adv"};
+function enWin(){ return EN&&EN.plan&&EN.plan.window; }
+function winBody(b){ const w=enWin(); return Object.assign({manufacturer:EN.slug}, w?{enrichment_window:{decision_id:w.id}}:{}, b); }
+async function openEnrichment(slug, tab){
+  OPEN=slug; EN={slug, tab:tab||"products", plan:null, busy:false, log:[], pend:{}, winDry:null};
+  render(); $("#line").innerHTML='<div class="card mut">Reading '+esc(slug)+'’s products…</div>';
+  try{ history.replaceState(null,"","#enrich="+encodeURIComponent(slug)); }catch(e){}
+  await enReload();
+}
+async function enReload(){ try{ EN.plan=await papi({action:"enrich_plan",manufacturer:EN.slug}); }
+  catch(e){ if(String(e.message)!=="unauthorized") $("#line").innerHTML=`<div class="card err">Product Enrichment could not load: ${esc(e.message)}</div>`; return; }
+  if(!EN.tabPicked){ EN.tab=EN.plan.pages.some(p=>p.status!=="not_enriched")?"issues":"products"; EN.tabPicked=true; } enDraw(); }
+function enGo(t){ if(t==="sources"){ openLine(EN.slug); return; } EN.tab=t; enDraw(); if(t==="approve"&&!EN.ap&&!EN.apBusy) apLoad(); }
+function enDraw(){
+  const P=EN.plan, l=LINES.find(x=>x.slug===EN.slug)||{}, notEnr=P.pages.filter(p=>p.status==="not_enriched").length;
+  const issues=P.pages.reduce((n,p)=>n+p.issues.filter(i=>!i.pending).length,0);
+  const held=P.pages.filter(p=>p.status==="held_back").reduce((n,p)=>n+p.issues.length,0);
+  const apS=EN.ap?EN.ap.pages.filter(p=>p.areas):null;
+  const sub={sources:"Done",products:P.pages.length+" pages",auto:notEnr?notEnr+" to go":(P.ready+" ready"),issues:(issues-held)?(issues-held)+" open":(held?held+" held for sources":"none open"),
+    approve:apS?(apS.filter(p=>p.status==="approved").length+" of "+apS.length+" approved"):(P.ready?P.ready+" page"+(P.ready===1?"":"s")+" to approve":"Nothing Ready"),
+    preview:EN.pv?(EN.pv.pass?"Previewed — all checks pass":"Previewed — see checks"):"Read-only",publish:pubState()};
+  const stages=ENRICH_STAGES.map(([k,n])=>`<button class="enst ${EN.tab===k?'on':''}" onclick="enGo('${k}')"><b>${esc(n)}</b><span>${esc(sub[k]||'')}</span></button>`).join("");
+  $("#line").innerHTML=`<div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">${esc(l.name||EN.slug)} — Product Enrichment</h2>
+    ${P.frozen?pill("p-frozen","Frozen · prices locked"):""}<span style="flex:1"></span>
+    <a class="btn ghost" href="/admin/product-content-review.html?manufacturer=${encodeURIComponent(EN.slug)}" target="_blank" title="The Advanced Product Editor: for unusual cases only. Prices are not edited there.">Open Advanced Editor</a>
+    <button class="btn ghost" onclick="openLine('${esc(EN.slug)}')">Line workflow</button></div>
+    <div class="enstages">${stages}</div>${enWindowBox()}<div id="enbody">${enBody()}</div></div>`;
+}
+function enWindowBox(){
+  const P=EN.plan; if(!P.frozen) return "";
+  const w=P.window;
+  if(w) return `<div class="rob" style="background:#eef8f1;border-color:#bfe3cf;color:#14532d">✅ <b>Enrichment window #${w.id} is open</b>${(w.by||w.at)?' ('+[w.by?'opened by '+esc(w.by):'',w.at?esc(fmtT(w.at)):''].filter(Boolean).join(', ')+')':''}. It covers <b>hidden draft pages only</b>: copy, specs, categories, groupings and photos copied into HCPS storage. Prices, tiers, UOM/case qty, MSRP/MAP, freight and commercial status stay locked, and nothing goes live without Approve &amp; Publish Manufacturer and a passing verification.</div>`;
+  const d=EN.winDry;
+  return `<div class="gatebox g-wait"><div class="gh"><span class="gn">Needs you once</span> <b>${esc(EN.slug)} is frozen (Gold Standard)</b></div>
+    <p style="font-size:12.5px;margin:0 0 8px">Drafting product pages needs a one-time <b>enrichment window</b>. Drafts are invisible to dealers; prices stay locked; nothing goes live without your approval and a passing verification.</p>
+    ${d?`<div class="dry"><b>Dry run — this would be recorded</b> (nothing written yet):<div class="grid2" style="margin-top:6px"><div><b>May write</b><ul>${d.hcps_value.may_write.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div><div><b>May not change</b><ul>${d.hcps_value.may_not_change.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div></div><p class="mut" style="font-size:12px">Publish: ${esc(d.hcps_value.publish)}</p>
+      <button class="btn" onclick="enOpenWindow(false)">Approve enrichment window</button> <button class="btn ghost" onclick="EN.winDry=null;enDraw()">Cancel</button></div>`
+     :`<div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="en_winreason" placeholder="Reason (e.g. Bemis product pages, Release B)" style="flex:1;min-width:240px" value="${esc(EN.slug==='bemis'?'Bemis product pages — Release B enrichment (content only)':'')}"><button class="btn" onclick="enOpenWindow(true)">Review what the window allows</button></div>`}</div>`;
+}
+async function enOpenWindow(dry){
+  const reason=dry?(($("#en_winreason")||{}).value||"").trim():EN.winReason;
+  if(!reason){ toast("A reason is required"); return; }
+  try{ const j=await api({action:"mc_open_enrichment_window",manufacturer:EN.slug,reason,dry_run:dry});
+    if(dry){ EN.winDry=j.would_record; EN.winReason=reason; enDraw(); return; }
+    toast("Enrichment window #"+j.window.id+" opened"); EN.winDry=null; await enReload(); }
+  catch(e){ toast("Not opened: "+e.message); }
+}
+function enBody(){ return EN.tab==="products"?enProducts():(EN.tab==="auto"?enAuto():(EN.tab==="approve"?enApprove():(EN.tab==="preview"?enPreview():(EN.tab==="publish"?enPublish():enIssues())))); }
+function unitOf(s){ return s.case_qty>1?("Case of "+s.case_qty):(s.uom||"Each"); }
+function enProducts(){
+  const P=EN.plan;
+  const rows=P.pages.map(p=>`<tr><td><b>${esc(p.name)}</b>${p.bundle?'<div class="needtxt">A display or bundle — your call in Review Issues</div>':''}</td>
+    <td>${p.skus.map(s=>`<div><code>${esc(s.code)}</code>${s.option?' — '+esc(s.option):''}</div>`).join('')}${Object.keys(p.options||{}).length?`<div class="mut" style="font-size:11.5px">Option: ${esc(Object.keys(p.options).join(', '))}</div>`:''}</td>
+    <td>${[...new Set(p.skus.map(unitOf))].map(esc).join('<br>')} 🔒</td><td class="mut" style="font-size:11.5px">${esc(p.group_reason)}</td><td>${pill(ST_PILL[p.status]||'p-adv',p.label)}</td></tr>`).join('');
+  return `<h3>${P.active} active SKUs become ${P.pages.length} product pages</h3>
+    <p class="sub">Brought in automatically from the commercial record. SKUs whose names differ only by shape, colour, side or size — and that point at the same manufacturer page — share one page with an option picker. Displays and bundles are never merged on their own. Sharing a page is presentation only: it never creates or changes a pricing family.</p>
+    <table><thead><tr><th>Proposed page</th><th>SKUs and option</th><th>Order unit (locked)</th><th>Why grouped</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+    ${P.excluded.length?`<p class="mut" style="font-size:12px;margin-top:8px">Left out automatically: ${P.excluded.map(x=>`<code>${esc(x.code)}</code> (${esc(x.why)})`).join(', ')}. Order unit, price, MSRP and MAP come only from the commercial record and can't be changed here.</p>`:''}
+    <div style="margin-top:12px"><button class="btn" onclick="enGo('auto')">Next: Auto-Enrich ${P.pages.length} pages →</button></div>`;
+}
+function enAuto(){
+  const P=EN.plan, w=!P.frozen||enWin();
+  const todo=P.pages.filter(p=>p.status==="not_enriched"||(p.draft&&p.draft.images&&!p.draft.images.done));
+  const rows=P.pages.map(p=>{ const d=p.draft, pr=EN.pend[p.page_key];
+    const src=d&&d.sources&&d.sources.length?d.sources.map(s=>`<div style="font-size:11.5px">${esc(s.role==='product'?'Product page':(s.role==='landing'?'Landing page':'Bundle page (parts about it)'))}: <a href="${esc(s.url)}" target="_blank">${esc(String(s.url).replace(/^https?:\/\/(www\.)?/,'').slice(0,48))}</a>${s.model?' · model '+esc(s.model):''}</div>`).join(''):(d?'<span class="needtxt">No manufacturer page — catalog line only</span>':'<span class="mut">—</span>');
+    const img=d&&d.images?(d.images.done?`✓ ${d.gallery.length} photo${d.gallery.length===1?'':'s'}${d.images.failed.length?` <span class="needtxt">(${d.images.failed.length} failed)</span>`:''}`:`${d.images.copied}/${d.images.candidates} copying…`):'—';
+    return `<tr><td><b>${esc(p.name)}</b>${pr?`<div class="needtxt">${esc(pr)}</div>`:''}</td><td>${src}</td>
+      <td>${d?(d.description?'✓ Description':'<span class="needtxt">no description</span>')+', '+d.features.length+' features':'—'}</td>
+      <td>${d?(d.specs.length?'✓ '+d.specs.length+' stated':'<span class="mut">none stated</span>'):'—'}</td>
+      <td>${d?(d.warranty?'✓ stated':'<span class="mut">Not stated</span>'):'—'}</td><td>${img}</td>
+      <td>${d?esc([d.category,d.subcategory].filter(Boolean).join(' › ')||'—'):'—'}</td><td>${pill(ST_PILL[p.status]||'p-adv',p.label)}</td></tr>`; }).join('');
+  return `<h3>${todo.length?(P.pages.length-todo.length)+' of '+P.pages.length+' pages enriched':'Enrichment finished: '+P.ready+' ready, '+(P.pages.length-P.ready-(P.counts.held_back||0))+' need a look'}</h3>
+    <p class="sub">For each page the system reads the manufacturer's site and your catalog, drafts the copy from what the source states, copies the photos into HCPS storage and suggests the category dealers see today. Drafts are invisible to dealers. Facts a source didn't state are left blank, never made up.</p>
+    <div class="bar">${w?`<button class="btn" id="enrun" onclick="enRun(false)" ${EN.busy?'disabled':''}>${todo.length?(todo.length===P.pages.length?'Run Auto-Enrich':'Continue Auto-Enrich ('+todo.length+' to go)'):'Auto-Enrich is done'}</button>
+      <button class="btn ghost" onclick="enRun(true)" ${EN.busy?'disabled':''} title="Reads every page again and rebuilds every draft and its photos. Resolutions you recorded are kept.">Re-run every page</button>`:'<span class="needtxt">Approve the enrichment window above first.</span>'}</div>
+    <table><thead><tr><th>Page</th><th>Source found</th><th>Copy &amp; features</th><th>Specs</th><th>Warranty</th><th>Photos</th><th>Category</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+    ${!todo.length?`<div style="margin-top:12px"><button class="btn" onclick="enGo('issues')">Next: Review Issues →</button></div>`:''}`;
+}
+async function enRun(all){
+  if(EN.busy) return; EN.busy=true; const P=EN.plan;
+  const list=P.pages.filter(p=>all||p.status==="not_enriched"||(p.draft&&p.draft.images&&!p.draft.images.done));
+  let n=0;
+  for(const p of list){
+    n++; try{
+      if(all||p.status==="not_enriched"){ EN.pend[p.page_key]="Reading the manufacturer's pages… ("+n+"/"+list.length+")"; enDraw(); await papi(winBody({action:"enrich_page",page_key:p.page_key})); }
+      for(let i=0;i<12;i++){ EN.pend[p.page_key]="Copying photos into HCPS storage…"; enDraw(); const r=await papi(winBody({action:"enrich_images",page_key:p.page_key})); if(!r.remaining) break; }
+      delete EN.pend[p.page_key];
+    }catch(e){ EN.pend[p.page_key]="Stopped: "+e.message+" — Continue picks up from here."; if(String(e.message)==="unauthorized") break; }
+    try{ EN.plan=await papi({action:"enrich_plan",manufacturer:EN.slug}); }catch(e){}
+    enDraw();
+  }
+  EN.busy=false; await enReload(); toast("Auto-Enrich finished");
+}
+function enIssues(){
+  const P=EN.plan, open=[], ready=[], held=[];
+  P.pages.forEach(p=>{ if(p.status==="ready") ready.push(p); else if(p.status==="held_back") held.push(p); if(p.status!=="held_back") p.issues.filter(i=>!i.pending).forEach((i,ix)=>open.push({p,i,ix})); });
+  const notEnr=P.pages.filter(p=>p.status==="not_enriched");
+  const card=({p,i,ix})=>{ const id=p.page_key+"__"+ix; const ev=i.evidence?`<div class="grid2" style="margin:6px 0"><div class="dry" style="margin:0"><b>Manufacturer page says</b><div>${esc(i.evidence.page||'')}</div></div><div class="dry" style="margin:0"><b>Your record says</b><div>${esc(i.evidence.record||'')}</div></div></div>`:'';
+    const choices=(i.choices||[]).map(c=>`<button class="btn ghost" onclick="enPick('${esc(id)}','${esc(c.id)}')">${esc(c.label)}</button>`).join(' ');
+    return `<div class="card enissue" id="iss_${esc(id)}"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0">${pill(ST_PILL[i.type==='conflict'?'conflict':i.type]||'p-warn',(EN.plan&&{conflict:'Conflict',needs_grouping:'Needs grouping decision',needs_content:'Needs content',needs_image:'Needs image',needs_category:'Needs category'}[i.type])||i.type)}<b>${esc(p.name)}</b><span class="mut">·</span><span>${esc(i.title)}</span></div>
+      <p style="font-size:12.5px;margin:6px 0">${esc(i.detail||'')}</p>${ev}
+      ${choices?`<div style="display:flex;gap:6px;flex-wrap:wrap">${choices}</div>`:'<p class="mut" style="font-size:12px">Fix this where it lives (named above); it clears on the next refresh.</p>'}<div id="pick_${esc(id)}"></div></div>`; };
+  return `<h3>Review Issues (${open.length})</h3><p class="sub">Only what needs you. Each choice is recorded with its reason as a decision that is never rewritten (a later choice supersedes it).</p>
+    ${notEnr.length?`<div class="rob">${notEnr.length} page(s) not enriched yet — run <a href="#" onclick="enGo('auto');return false">Auto-Enrich</a> first.</div>`:''}
+    ${open.map(card).join('')||'<p class="ok"><b>No open issues.</b></p>'}
+    ${ready.length?`<div class="card" style="background:#f3fbf6;border-color:#bfe3cf"><b>${ready.length} page${ready.length===1?'':'s'} ready — nothing to review:</b> ${ready.map(p=>esc(p.name)).join(' · ')}</div>`:''}
+    ${held.length?`<div class="card sub2"><b>Held back for source review (${held.length}) — not blocking; issues kept open:</b>${held.map(p=>`<div style="margin-top:6px"><b>${esc(p.name)}</b> <span class="mut">· its SKUs keep their current catalog cards</span><ul style="margin:3px 0 0 18px;font-size:12.5px">${p.issues.map(i=>`<li>${esc(i.title)}</li>`).join('')}</ul></div>`).join('')}</div>`:''}
+    ${(!open.length&&!notEnr.length)?`<div style="margin-top:12px"><button class="btn" onclick="enGo('approve')">Next: Approve Content &amp; Images →</button></div>`:''}
+    <p class="mut" style="font-size:12px">A page with no open issue still needs your content &amp; image approval before it can be published: Auto-Enrich only proposes. Unusual cases: <a href="/admin/product-content-review.html?manufacturer=${encodeURIComponent(EN.slug)}" target="_blank">Open Advanced Editor</a> for that page, then come back.</p>`;
+}
+function enFind(id){ const [pk,ix]=id.split("__"); const p=EN.plan.pages.find(x=>x.page_key===pk); return {p, i:p&&p.issues.filter(x=>!x.pending)[+ix]}; }
+function enPick(id, choice){
+  const {p,i}=enFind(id); if(!p||!i) return; const box=$("#pick_"+CSS.escape(id)); const c=(i.choices||[]).find(x=>x.id===choice)||{};
+  const issue=i.resolution_key||i.type;
+  if(c.action==="upload"){ box.innerHTML=`<div class="dry">${p.skus.length>1?`<label>Photo for</label> <select id="up_code_${esc(id)}">${(i.codes||p.skus.map(s=>s.code)).map(cd=>`<option value="${esc(cd)}">${esc(cd)}${(p.skus.find(s=>s.code===cd)||{}).option?' — '+esc(p.skus.find(s=>s.code===cd).option):''}</option>`).join('')}</select> `:''}
+    <input type="file" id="up_file_${esc(id)}" accept="image/jpeg,image/png,image/webp"> <button class="btn" onclick="enUpload('${esc(id)}')">Upload into the draft</button><div class="mut" style="font-size:11.5px;margin-top:4px">Stored in HCPS storage under this enrichment window; dealers can't see it until the line is published.</div></div>`; return; }
+  box.innerHTML=`<div class="dry"><b>${esc(c.label)}</b>
+    ${c.needs==="source_url"?`<div style="margin-top:6px"><input type="text" id="v_url_${esc(id)}" placeholder="https://… the manufacturer page or PDF for this product" style="width:100%"></div>`:''}
+    ${c.needs==="category"?`<div class="grid2" style="margin-top:6px"><input type="text" id="v_cat_${esc(id)}" placeholder="Category (e.g. Bath Safety)"><input type="text" id="v_sub_${esc(id)}" placeholder="Subcategory (e.g. Toilet Seats)"></div>`:''}
+    <div style="margin-top:6px"><input type="text" id="v_reason_${esc(id)}" placeholder="Why (required — saved with the decision)" style="width:100%"></div>
+    <div style="margin-top:6px"><button class="btn" onclick="enResolve('${esc(id)}','${esc(issue)}','${esc(choice)}')">Record this decision</button></div></div>`;
+}
+async function enResolve(id, issue, choice){
+  const {p}=enFind(id); const g=k=>(($("#"+k+"_"+CSS.escape(id))||{}).value||"").trim();
+  const value={}; if(g("v_url")) value.source_url=g("v_url"); if(g("v_cat")) value.category=g("v_cat"); if(g("v_sub")) value.subcategory=g("v_sub");
+  const reason=g("v_reason"); if(!reason){ toast("Say why — it is saved with the decision"); return; }
+  try{ const dry=await papi(winBody({action:"enrich_resolve",page_key:p.page_key,issue,choice,value,reason,dry_run:true}));
+    await papi(winBody({action:"enrich_resolve",page_key:p.page_key,issue,choice,value,reason}));
+    toast("Recorded"+(dry&&dry.would_record&&dry.would_record.supersedes_id?" (supersedes decision #"+dry.would_record.supersedes_id+")":""));
+    if(choice==="rerun_with_source"||(issue==="conflict"&&choice==="different_product")){ EN.pend[p.page_key]="Re-running with your decision…"; enDraw();
+      await papi(winBody({action:"enrich_page",page_key:p.page_key})); for(let k=0;k<12;k++){ const r=await papi(winBody({action:"enrich_images",page_key:p.page_key})); if(!r.remaining) break; } delete EN.pend[p.page_key]; }
+    await enReload(); }
+  catch(e){ toast("Not recorded: "+e.message); }
+}
+async function enUpload(id){
+  const {p}=enFind(id); const f=($("#up_file_"+CSS.escape(id))||{}).files; const file=f&&f[0]; if(!file){ toast("Choose a photo"); return; }
+  if(file.size>6*1024*1024){ toast("Photo larger than 6 MB"); return; }
+  const code=(($("#up_code_"+CSS.escape(id))||{}).value)||null;
+  const b64=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(",")[1]); r.onerror=rej; r.readAsDataURL(file); });
+  try{ const up=await papi(winBody({action:"upload_image",page_key:p.page_key,filename:file.name,content_type:file.type||"image/jpeg",content_base64:b64}));
+    await papi(winBody({action:"enrich_set_image",page_key:p.page_key,code,url:up.url})); toast("Photo added to the draft"); await enReload(); }
+  catch(e){ toast("Not uploaded: "+e.message); }
+}
+/* ── APPROVE CONTENT & IMAGES (Angelo 2026-10-12). Auto-Enrich proposes; only the President decides what becomes
+   dealer-facing. Per Ready page and area: the Current Dealer View next to the proposal, and an explicit choice — Keep
+   current · Use proposed · Edit; photos chosen one by one (keep the current dealer image · use this image · upload ·
+   none). NO SELECTION = KEEP CURRENT: nothing proposed is ever taken for you. Every choice is recorded (append-only)
+   with what was on screen; a page is approved only when every area that differs carries your choice. */
+const AP_LABEL={keep_current:"Keep current",use_proposed:"Use proposed",edit:"Edit",custom:"Choose photos",use_image:"Use this image",none:"No option-specific photo"};
+async function apLoad(keep){
+  if(EN.apBusy) return; EN.apBusy="Reading the current dealer view and the proposals…"; enDraw();
+  try{ EN.ap=await papi({action:"approval_state",manufacturer:EN.slug}); const rd=EN.ap.pages.filter(p=>p.areas);
+    if(!keep||!rd.some(p=>p.page_key===EN.apPage)) EN.apPage=(rd[0]||{}).page_key||null; EN.apPend={}; EN.apGal={}; }
+  catch(e){ toast("Approval screen not loaded: "+e.message); }
+  EN.apBusy=null; enDraw();
+}
+function apPg(){ return EN.ap&&EN.ap.pages.find(p=>p.page_key===EN.apPage); }
+function apStatusPill(p){ return p.status==="approved"?pill("p-pass","Approved — ready to publish"):(p.status==="kept_as_today"?pill("p-adv","Kept as today — not published"):pill("p-warn","Waiting for President Content Approval")); }
+function apVal(v,kind){
+  if(v==null||v===""||(Array.isArray(v)&&!v.length)) return '<span class="mut">— none —</span>';
+  if(kind==="features") return `<ul>${v.map(x=>`<li>${esc(typeof x==="string"?x:JSON.stringify(x))}</li>`).join('')}</ul>`;
+  if(kind==="specs") return `<table style="font-size:12px"><tbody>${v.map(x=>`<tr><td><b>${esc(x&&x.label||'')}</b></td><td>${esc(x&&x.value||'')}</td></tr>`).join('')}</tbody></table>`;
+  if(kind==="sizing") return (v.rows&&v.rows.length?`<div>${v.rows.length} sizing row(s)</div>`:'')+(v.note?`<div>${esc(v.note)}</div>`:'')||'<span class="mut">— none —</span>';
+  if(kind==="documents") return [].concat((v.documents||[]).map(d=>`<div>📄 <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.label||String(d.url).split('/').pop())}</a></div>`),
+    (v.videos||[]).map(x=>{ const u=typeof x==="string"?x:(x&&x.url); return `<div>▶ <a href="${esc(u)}" target="_blank" rel="noopener">${esc(String(u).replace(/^https?:\/\//,'').slice(0,60))}</a></div>`; }),
+    v.source_url?[`<div>🔗 Manufacturer page: <a href="${esc(v.source_url)}" target="_blank" rel="noopener">${esc(String(v.source_url).replace(/^https?:\/\/(www\.)?/,'').slice(0,60))}</a></div>`]:[]).join('')||'<span class="mut">— none —</span>';
+  if(kind==="category") return esc([v.category,v.subcategory].filter(Boolean).join(' › '))||'<span class="mut">— none —</span>';
+  return esc(String(v));
+}
+function apSide(v,kind){ if(!v) return ''; if(v.all!==undefined) return apVal(v.all,kind);
+  return Object.keys(v.by_sku||{}).map(c=>`<div style="margin-bottom:5px"><code>${esc(c)}</code><div>${apVal(v.by_sku[c],kind)}</div></div>`).join(''); }
+function apChosen(a){ return a.selected?`${pill("p-pass","✓ "+(AP_LABEL[a.choice]||a.choice))}<span class="mut" style="font-size:11px">recorded${a.by?' by '+esc(a.by):''}${a.decision?' · #'+a.decision:''}</span>`:(a.same?pill("p-pass","✓ No difference"):(a.stale?pill("p-fail","Changed since you chose — choose again"):pill("p-warn","Not chosen — dealers keep today's"))); }
+function apRadios(id,a){ const cur=(EN.apPend[id]&&EN.apPend[id].choice)||(a.selected?a.choice:null);
+  return a.choices.map(c=>`<label><input type="radio" name="ap_${esc(id)}" value="${esc(c)}" ${cur===c?'checked':''} onchange="apPick('${esc(id)}','${esc(c)}')"> ${esc(AP_LABEL[c]||c)}</label>`).join(''); }
+function apCancel(id){ delete EN.apPend[id]; $("#enbody").innerHTML=enApprove(); }
+function apPick(id,choice){ EN.apPend[id]=Object.assign({},EN.apPend[id]||{},{choice}); $("#enbody").innerHTML=enApprove(); }
+function apTextArea(p,a){
+  const kind=a.id, id=p.page_key+"__"+a.id, pend=EN.apPend[id]||{}, cur=pend.choice||(a.selected?a.choice:null);
+  const propText=v=>v&&v.all!==undefined?v.all:Object.values((v&&v.by_sku)||{})[0];
+  let edit='';
+  if(cur==="edit"){
+    /* start from the President's saved edit whenever one exists — even while another choice is active */
+    const pv=propText(a.proposed), prev=a.selected&&a.choice==="edit"?a.value:(a.edit_saved?a.edit_saved.value:null);
+    if(kind==="features") edit=`<div class="apedit"><div class="mut" style="font-size:11.5px">One feature per line.</div><textarea id="ape_${esc(id)}">${esc(((prev&&prev.items)||pv||[]).join('\n'))}</textarea></div>`;
+    else if(kind==="specs") edit=`<div class="apedit"><div class="mut" style="font-size:11.5px">One spec per line: <code>Label: value</code></div><textarea id="ape_${esc(id)}">${esc(((prev&&prev.items)||pv||[]).map(x=>(x.label||'')+': '+(x.value||'')).join('\n'))}</textarea></div>`;
+    else if(kind==="documents"){ const d=pv||{documents:[],videos:[]}; const keepD=prev?prev.documents:(d.documents||[]).map(x=>x.url), keepV=prev?prev.videos:(d.videos||[]).map(x=>typeof x==="string"?x:x.url);
+      edit=`<div class="apedit">${(d.documents||[]).map(x=>`<label style="display:block"><input type="checkbox" class="apdoc_${esc(id)}" value="${esc(x.url)}" ${keepD.indexOf(x.url)>=0?'checked':''}> 📄 ${esc(x.label||x.url)}</label>`).join('')}${(d.videos||[]).map(x=>{ const u=typeof x==="string"?x:x.url; return `<label style="display:block"><input type="checkbox" class="apvid_${esc(id)}" value="${esc(u)}" ${keepV.indexOf(u)>=0?'checked':''}> ▶ ${esc(u)}</label>`; }).join('')}</div>`; }
+    else if(kind==="category") edit=`<div class="apedit"><input type="text" id="ape_${esc(id)}" placeholder="Subcategory dealers browse (e.g. Toilet Seats)" value="${esc((prev&&prev.text)||((pv||{}).subcategory)||'')}" style="width:100%"></div>`;
+    else if(kind==="sizing") edit=`<div class="apedit"><div class="mut" style="font-size:11.5px">The sizing note (the table stays as proposed).</div><textarea id="ape_${esc(id)}">${esc((prev&&prev.text)||((pv||{}).note)||'')}</textarea></div>`;
+    else { const t=(prev&&prev.text)||(kind==="title"?(a.proposed&&a.proposed.card)||'':(typeof pv==="string"?pv:'')); edit=`<div class="apedit"><textarea id="ape_${esc(id)}" ${kind==="title"||kind==="tagline"||kind==="warranty"?'style="min-height:44px"':''}>${esc(t)}</textarea></div>`; }
+    edit+=`<div class="mut" style="font-size:11.5px;margin-top:3px">Your text becomes the approved version; the source that supported the facts stays recorded with it${a.provenance?` (${esc(typeof a.provenance==='string'?a.provenance:(a.provenance.source||a.provenance.url||JSON.stringify(a.provenance)).slice(0,90))})`:''}.</div>`;
+  }
+  const curHtml=kind==="title"?(a.current.card?esc(a.current.card):`<span class="mut">No single card today: ${(a.cards_today||[]).map(esc).join(' · ')}</span>`)+`<div class="mut" style="font-size:11.5px;margin-top:3px">Options: ${Object.keys(a.current.options||{}).map(c=>esc(c+' — '+a.current.options[c])).join(' · ')}</div>`:apSide(a.current,kind);
+  const propHtml=kind==="title"?esc(a.proposed.card||'')+`<div class="mut" style="font-size:11.5px;margin-top:3px">Options: ${Object.keys(a.proposed.options||{}).map(c=>esc(c+' — '+a.proposed.options[c])).join(' · ')}</div>`:apSide(a.proposed,kind);
+  /* Current · Auto-Enrich proposed · President edited (when one is saved) — and which one publication would use */
+  const es=a.edit_saved, active=a.selected?a.choice:null;
+  const selCol=a.same?null:(active==="use_proposed"?"prop":(active==="edit"?"edit":"cur"));
+  const edHtml=es?`<div class="apcol ed ${selCol==='edit'?'on':''}"><h5>President edited <span class="mut" style="text-transform:none;letter-spacing:0">#${esc(es.decision)}</span></h5>${apEditVal(kind,es.value)}
+      <div class="mut" style="font-size:11px;margin-top:4px">Saved${es.by?' by '+esc(es.by):''}${es.at?' · '+esc(fmtT(es.at)):''}${es.active?'':' · kept, not the active choice'}${es.stale?' · made against an earlier proposal':''}</div></div>`:'';
+  const warn=apNeedsWarn(a,id,cur)?`<div class="apwarn" id="apwarn_${esc(id)}"><b>⚠</b> You already have a President-edited version for this section. Choosing ${cur==="keep_current"?"Keep current":"Use Proposed"} will replace that selection for publication. Continue?
+      <div class="mut" style="font-size:11.5px;margin-top:3px">Your edited text (#${esc(es.decision)}) stays saved and can be chosen again with Edit.</div>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn warn" onclick="apSave('${esc(id)}',true)">Continue — ${cur==="keep_current"?"keep current":"use proposed"}</button><button class="btn ghost" onclick="apCancel('${esc(id)}')">Cancel</button></div></div>`:'';
+  return `<div class="aparea ${a.approved?'done':'todo'}" id="ap_${esc(id)}"><div class="aphead"><h4>${esc(a.label)}</h4>${apChosen(a)}</div>
+    ${a.note?`<div class="mut" style="font-size:12px;margin-top:4px">${esc(a.note)}</div>`:''}
+    <div class="apcols ${es?'three':''}"><div class="apcol cur ${selCol==='cur'?'on':''}"><h5>Current dealer view</h5>${curHtml}</div><div class="apcol ${selCol==='prop'?'on':''}"><h5>Proposed by Auto-Enrich</h5>${propHtml}</div>${edHtml}</div>
+    ${a.same?'':`<div class="apselected">Selected for publication: <b>${apSelectedLabel(a)}</b></div>`}
+    ${a.same?'':`<div class="apchoices">${apRadios(id,a)}<span style="flex:1"></span><button class="btn" onclick="apSave('${esc(id)}')" ${cur&&!warn?'':'disabled'}>Save choice</button></div>${warn}${edit}`}</div>`;
+}
+/* a saved edit exists and the President picked (not yet saved) a choice that would replace it for publication */
+function apNeedsWarn(a,id,cur){ const pend=EN.apPend[id]||{}; return !!(a.edit_saved&&pend.choice&&(cur==="use_proposed"||cur==="keep_current")&&!(a.selected&&a.choice===cur)); }
+function apSelectedLabel(a){
+  if(!a.selected) return a.stale?"Current dealer view — your earlier choice no longer applies; choose again":"Current dealer view (nothing chosen yet)";
+  if(a.choice==="edit") return "President edited version"+(a.decision?" (#"+esc(a.decision)+")":"");
+  if(a.choice==="use_proposed") return "Auto-Enrich proposed"+(a.decision?" (#"+esc(a.decision)+")":"");
+  if(a.choice==="keep_current") return "Current dealer view (Keep current"+(a.decision?" #"+esc(a.decision):"")+")";
+  return esc(AP_LABEL[a.choice]||a.choice);
+}
+function apEditVal(kind,v){
+  if(!v) return '<span class="mut">— none —</span>';
+  if(kind==="features") return apVal(v.items||[],"features");
+  if(kind==="specs") return apVal(v.items||[],"specs");
+  if(kind==="documents") return [].concat((v.documents||[]).map(u=>`<div>📄 ${esc(String(u).split('/').pop())}</div>`),(v.videos||[]).map(u=>`<div>▶ ${esc(String(u).replace(/^https?:\/\//,'').slice(0,60))}</div>`)).join('')||'<span class="mut">— none —</span>';
+  return v.text?`<div style="white-space:pre-wrap">${esc(v.text)}</div>`:'<span class="mut">— none —</span>';
+}
+function apGrouping(p,a){ const id=p.page_key+"__grouping", cur=(EN.apPend[id]&&EN.apPend[id].choice)||(a.selected?a.choice:null), D=a.display||{today:[],proposed:[]};
+  return `<div class="aparea ${a.approved?'done':'todo'}" id="ap_${esc(id)}"><div class="aphead"><h4>Grouping</h4>${apChosen(a)}</div>
+    <div class="apcols"><div class="apcol cur"><h5>Current dealer view</h5>${D.today.map(k=>`<div>${esc(k.name)} <span class="mut">(${k.codes.map(esc).join(', ')})</span></div>`).join('')}</div>
+      <div class="apcol"><h5>Proposed by Auto-Enrich</h5>${D.proposed.map(k=>`<div>One card: ${esc(k.name)}</div><div class="mut">Options: ${(k.options||[]).map(o=>esc(o.label||o.code)+' ('+esc(o.code)+')').join(' · ')}</div>`).join('')}</div></div>
+    ${a.same?'':`<div class="mut" style="font-size:12px">${esc(a.note||'')}</div><div class="apchoices">${apRadios(id,a)}<span style="flex:1"></span><button class="btn" onclick="apSave('${esc(id)}')" ${cur?'':'disabled'}>Save choice</button></div>`}</div>`; }
+function apTile(p,c,sel,extra){ const n=p.candidates.findIndex(x=>x.url===c.url)+1, dupOf=c.duplicate_of?p.candidates.findIndex(x=>x.url===c.duplicate_of)+1:0;
+  return `<div class="apimg ${sel?'sel':''}">${extra&&extra.ord?`<span class="ord">${extra.ord}</span>`:''}<img src="${esc(c.display)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;pvph&quot;>No image</div>'">
+    <div>#${n} ${c.kinds.map(k=>`<span class="tag ${k==='current'?'cur':''}">${esc(k==='current'?'current dealer':(k==='proposed'?'suggested':'uploaded'))}</span>`).join('')}${dupOf?`<span class="tag dup">same picture as #${dupOf}</span>`:''}</div>${extra&&extra.ctl?`<div class="ctl">${extra.ctl}</div>`:''}</div>`; }
+function apGalleryArea(p,a){
+  const id=p.page_key+"__images", cur=(EN.apPend[id]&&EN.apPend[id].choice)||(a.selected?a.choice:null);
+  const byUrl=u=>p.candidates.find(c=>c.url===u)||{url:u,display:u,kinds:[]};
+  if(cur==="custom"&&!EN.apGal[p.page_key]) EN.apGal[p.page_key]=(a.selected&&a.choice==="custom"&&a.value?a.value.gallery.map(g=>g.url):[]);
+  const G=EN.apGal[p.page_key]||[];
+  const curTiles=a.current.gallery.map(u=>apTile(p,byUrl(u),false)).join('')||'<span class="mut">No photo</span>';
+  const propTiles=a.proposed.gallery.map(u=>apTile(p,byUrl(u),false)).join('')||'<span class="mut">No photo</span>';
+  let picker='';
+  if(cur==="custom"){
+    picker=`<div class="dry" style="margin-top:8px"><b>Your gallery</b> <span class="mut" style="font-size:12px">— tick photos to include; #1 is the main photo; use ◀ ▶ to reorder. Only the photos you tick are ever published.</span>
+      <div class="apthumbs">${G.map((u,i)=>apTile(p,byUrl(u),true,{ord:i+1,ctl:`<button class="btn ghost" onclick="apGalMove('${esc(p.page_key)}',${i},-1)" ${i?'':'disabled'}>◀</button><button class="btn ghost" onclick="apGalMove('${esc(p.page_key)}',${i},1)" ${i<G.length-1?'':'disabled'}>▶</button><button class="btn ghost" onclick="apGalToggle('${esc(p.page_key)}',${p.candidates.findIndex(c=>c.url===u)})">Remove</button>`})).join('')||'<span class="mut">Nothing ticked yet.</span>'}</div>
+      <b style="font-size:12.5px">All photos for this page</b><div class="apthumbs">${p.candidates.map((c,ci)=>apTile(p,c,G.indexOf(c.url)>=0,{ctl:`<label style="font-size:11.5px"><input type="checkbox" ${G.indexOf(c.url)>=0?'checked':''} onchange="apGalToggle('${esc(p.page_key)}',${ci})"> include</label>`})).join('')}</div>
+      <div style="margin-top:6px"><input type="file" id="apup_${esc(p.page_key)}" accept="image/jpeg,image/png,image/webp"> <button class="btn ghost" onclick="apUpload('${esc(p.page_key)}',null)">Upload another photo</button></div></div>`;
+  }
+  return `<div class="aparea ${a.approved?'done':'todo'}" id="ap_${esc(id)}"><div class="aphead"><h4>Images — main photo &amp; gallery</h4>${apChosen(a)}</div>
+    <div class="apcols"><div class="apcol cur"><h5>Current dealer images</h5><div class="apthumbs">${curTiles}</div></div><div class="apcol"><h5>Suggested by Auto-Enrich</h5><div class="apthumbs">${propTiles}</div></div></div>
+    ${a.same?'':`<div class="apchoices">${apRadios(id,a)}<span style="flex:1"></span><button class="btn" onclick="apSave('${esc(id)}')" ${cur&&(cur!=="custom"||G.length)?'':'disabled'}>Save choice</button></div>${picker}`}</div>`;
+}
+function apOptionsArea(p,a){
+  const rows=a.options.map(o=>{ const id=p.page_key+"__opt__"+o.code, pend=EN.apPend[id]||{}, cur=pend.choice||(o.selected?o.choice:null), url=pend.url||(o.selected?o.url:null);
+    const cand=p.candidates;
+    const chooser=cur==="use_image"?`<div class="apthumbs">${cand.map((c,ci)=>`<div onclick="apOptUrl('${esc(id)}',${ci})" style="cursor:pointer">${apTile(p,c,c.url===url)}</div>`).join('')}</div>
+      <div><input type="file" id="apup_${esc(id)}" accept="image/jpeg,image/png,image/webp"> <button class="btn ghost" onclick="apUpload('${esc(p.page_key)}','${esc(o.code)}')">Upload a photo for this option</button></div>`:'';
+    return `<div class="apopt"><div><b><code>${esc(o.code)}</code></b>${o.option?`<div>${esc(o.option)}</div>`:''}<div style="margin-top:4px">${o.selected?pill("p-pass","✓ "+(AP_LABEL[o.choice]||o.choice)):(o.same?pill("p-pass","✓ No difference"):(o.stale?pill("p-fail","Changed — choose again"):pill("p-warn","Not chosen — keeps today's")))}</div></div>
+      <div><div class="mut" style="font-size:11px">Current</div>${o.current.image?`<img src="${esc((p.candidates.find(c=>c.url===o.current.image)||{}).display||o.current.image)}" alt="">`:'<div class="pvph">No image</div>'}</div>
+      <div><div class="mut" style="font-size:11px">Suggested</div>${o.proposed.image?`<img src="${esc((p.candidates.find(c=>c.url===o.proposed.image)||{}).display||o.proposed.image)}" alt="">`:'<div class="pvph">No image</div>'}</div>
+      <div style="min-width:0">${o.same?'':`<div class="apchoices" style="flex-direction:column;align-items:flex-start;gap:4px">${o.choices.map(c=>`<label><input type="radio" name="ap_${esc(id)}" ${cur===c?'checked':''} onchange="apPick('${esc(id)}','${esc(c)}')"> ${esc(c==="keep_current"?"Keep current dealer image":(c==="use_image"?"Use this image (pick below)":"No option-specific photo (shows the page's main photo)"))}</label>`).join('')}</div>
+        <button class="btn" style="margin-top:6px" onclick="apSaveOpt('${esc(p.page_key)}','${esc(o.code)}')" ${cur&&(cur!=="use_image"||url)?'':'disabled'}>Save choice</button>`}</div>
+      ${chooser?`<div style="grid-column:1/-1">${chooser}</div>`:''}</div>`; }).join('');
+  return `<div class="aparea ${a.approved?'done':'todo'}"><div class="aphead"><h4>Option images</h4>${a.approved?pill("p-pass","✓ Every option decided"):pill("p-warn","Waiting")}</div>
+    <div class="mut" style="font-size:12px;margin-top:3px">The photo a dealer sees when choosing each option. Assign a photo to a specific option (for example Round vs Elongated), keep today's, or let the option show the page's main photo.</div>${rows}</div>`;
+}
+/* Catalog card / default image of a grouped page (2026-10-12): what dealers see on the catalog card before choosing an
+   option. Never taken from the option order and never pre-selected. Presentation only. */
+function apCardArea(p,a){
+  const id=p.page_key+"__card_image", pend=EN.apPend[id]||{}, cur=pend.choice||(a.selected?a.choice:null);
+  const curCode=pend.code||(a.selected&&a.choice==="use_option"?a.code:null), curUrl=pend.url||(a.selected&&a.choice==="use_image"?a.url:null);
+  const disp=u=>(p.candidates.find(c=>c.url===u)||{}).display||u;
+  const lab=o=>o.option||o.code;
+  const opt=o=>{ const on=cur==="use_option"&&curCode===o.code; return `<label class="apimg ${on?'sel':''}" style="cursor:${o.image?'pointer':'not-allowed'};opacity:${o.image?1:.55}">
+      <input type="radio" name="ap_${esc(id)}" ${on?'checked':''} ${o.image?'':'disabled'} onchange="apCardPick('${esc(id)}','use_option','${esc(o.code)}')">
+      ${o.image?`<img src="${esc(disp(o.image))}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;pvph&quot;>No image</div>'">`:'<div class="pvph">No option photo</div>'}
+      <div><b>Use ${esc(lab(o))} option image</b> <span class="mut">(${esc(o.code)})</span></div></label>`; };
+  const picker=cur==="use_image"?`<div class="apthumbs">${p.candidates.map((c,ci)=>`<div onclick="apCardUrl('${esc(id)}',${ci})" style="cursor:pointer">${apTile(p,c,c.url===curUrl)}</div>`).join('')}</div>`:'';
+  const status=a.selected?pill("p-pass","✓ "+(a.choice==="use_option"?"Use "+lab(a.options.find(o=>o.code===a.code)||{code:a.code})+" option image":(a.choice==="none"?"No image":"Another approved image"))):(a.stale?pill("p-fail","Option photos changed — choose again"):pill("p-warn","Not chosen — required for a grouped page"));
+  return `<div class="aparea ${a.approved?'done':'todo'}" id="ap_${esc(id)}"><div class="aphead"><h4>Catalog card / default image</h4>${status}</div>
+    <div class="mut" style="font-size:12px;margin-top:3px">${esc(a.note||'')}</div>
+    <div class="apthumbs" style="margin-top:8px">${a.options.map(opt).join('')}
+      <label class="apimg ${cur==='use_image'?'sel':''}" style="cursor:pointer"><input type="radio" name="ap_${esc(id)}" ${cur==='use_image'?'checked':''} onchange="apCardPick('${esc(id)}','use_image')"><div class="pvph">${curUrl?'':'Pick below'}</div><div><b>Choose another approved image</b></div></label>
+      <label class="apimg ${cur==='none'?'sel':''}" style="cursor:pointer"><input type="radio" name="ap_${esc(id)}" ${cur==='none'?'checked':''} onchange="apCardPick('${esc(id)}','none')"><div class="pvph">No image</div><div><b>No image</b> <span class="mut">(the card shows the "No image" placeholder)</span></div></label></div>
+    ${picker}
+    <div class="apchoices"><span style="flex:1"></span><button class="btn" onclick="apSaveCard('${esc(p.page_key)}')" ${cur&&(cur!=='use_option'||curCode)&&(cur!=='use_image'||curUrl)?'':'disabled'}>Save choice</button></div></div>`;
+}
+function apCardPick(id,choice,code){ EN.apPend[id]=Object.assign({},{choice},code?{code}:{}); $("#enbody").innerHTML=enApprove(); }
+function apCardUrl(id,ci){ const pk=id.split("__card_image")[0], p=EN.ap.pages.find(x=>x.page_key===pk); EN.apPend[id]={choice:"use_image",url:p.candidates[ci].url}; $("#enbody").innerHTML=enApprove(); }
+async function apSaveCard(pk){ const id=pk+"__card_image", pend=EN.apPend[id]||{}; if(!pend.choice){ toast("Choose first"); return; }
+  const value=pend.choice==="use_option"?{code:pend.code}:(pend.choice==="use_image"?{url:pend.url}:{});
+  if(await apSend({page_key:pk,area:"card_image",choice:pend.choice,value})){ delete EN.apPend[id]; $("#enbody").innerHTML=enApprove(); } }
+function enApprove(){
+  if(EN.apBusy) return `<h3>Approve Content &amp; Images</h3><p class="mut">${esc(EN.apBusy)}</p>`;
+  if(!EN.ap) return `<h3>Approve Content &amp; Images</h3><button class="btn" onclick="apLoad()">Open the approval screen</button>`;
+  const ready=EN.ap.pages.filter(p=>p.areas), other=EN.ap.pages.filter(p=>!p.areas);
+  if(!ready.length) return `<h3>Approve Content &amp; Images</h3><p class="mut">No Ready page to approve. Pages become approvable once Review Issues has nothing open for them.</p>`;
+  const p=apPg()||ready[0]; EN.apPage=p.page_key;
+  const tabs=ready.map(x=>`<button class="appg ${x.page_key===p.page_key?'on':''}" onclick="EN.apPage='${esc(x.page_key)}';EN.apPend={};$('#enbody').innerHTML=enApprove()"><b>${esc(x.name)}</b><span>${esc(x.codes.join(', '))} · ${esc(x.status==='approved'?'approved':(x.status==='kept_as_today'?'kept as today':x.waiting.length+' to decide'))}</span></button>`).join('');
+  const chips=p.checklist.map(c=>`<span class="apchip ${c.approved?'ok':(c.stale?'stale':'wait')}">${esc(c.label)} ${c.approved?'✓':'○'}</span>`).join('');
+  const A=id=>p.areas.find(a=>a.id===id);
+  const text=["title","tagline","description","features","specs","sizing","warranty","documents","category"].map(id=>apTextArea(p,A(id))).join('');
+  const bulk=p.areas.filter(a=>!a.approved&&a.id!=="grouping"&&a.id!=="option_images"&&a.choices&&a.choices.indexOf("keep_current")>=0).length+A("option_images").options.filter(o=>!o.approved).length;
+  return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">Approve Content &amp; Images</h3><span style="flex:1"></span><button class="btn ghost" onclick="apLoad(true)">Refresh</button></div>
+    <div class="apnote"><b>Auto-Enrich proposes; only you decide what dealers see.</b> Each area shows the current dealer view next to the proposal. Nothing is taken for you: <b>if you make no selection, dealers keep today's content and photos.</b> A page is ready to publish only when every area that differs carries your choice (Keep current counts). Review Issues is separate — a page with no open issue can still be waiting for your approval.</div>
+    <div class="appages">${tabs}</div>
+    <div class="card" style="margin:6px 0"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:15px">${esc(p.name)}</b>${apStatusPill(p)}<span class="mut" style="font-size:12px">${esc(p.codes.join(' · '))}</span></div>
+      <div class="apcheck">${chips}</div>
+      ${bulk?`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn ghost" onclick="apKeepAll()">Keep current for the ${bulk} item${bulk===1?'':'s'} still waiting</button><span class="mut" style="font-size:11.5px">Records an explicit Keep current on each (grouping and a title with no current version are left for you).</span></div>`:''}</div>
+    ${apGalleryArea(p,A("images"))}${apOptionsArea(p,A("option_images"))}${A("card_image")?apCardArea(p,A("card_image")):''}${apGrouping(p,A("grouping"))}${text}
+    ${other.length?`<div class="card sub2" style="margin-top:10px"><b>Not approvable yet</b>${other.map(x=>`<div style="font-size:12.5px;margin-top:3px">${esc(x.name)} <span class="mut">— ${esc(x.note||x.status)}</span></div>`).join('')}</div>`:''}
+    <div style="margin-top:12px"><button class="btn" onclick="enGo('preview')">Next: Dealer Preview →</button></div>`;
+}
+function apGalToggle(pk,ci){ const p=EN.ap.pages.find(x=>x.page_key===pk), u=p.candidates[ci].url, G=EN.apGal[pk]=EN.apGal[pk]||[]; const i=G.indexOf(u); if(i>=0) G.splice(i,1); else G.push(u); $("#enbody").innerHTML=enApprove(); }
+function apGalMove(pk,i,d){ const G=EN.apGal[pk]; const j=i+d; if(!G||j<0||j>=G.length) return; const t=G[i]; G[i]=G[j]; G[j]=t; $("#enbody").innerHTML=enApprove(); }
+function apOptUrl(id,ci){ const pk=id.split("__opt__")[0], p=EN.ap.pages.find(x=>x.page_key===pk); EN.apPend[id]=Object.assign({},EN.apPend[id]||{},{choice:"use_image",url:p.candidates[ci].url}); $("#enbody").innerHTML=enApprove(); }
+async function apSend(sel){
+  try{ const r=await papi(Object.assign({action:"approval_record",manufacturer:EN.slug},Array.isArray(sel)?{selections:sel}:sel));
+    (r.pages||[]).forEach(np=>{ const i=EN.ap.pages.findIndex(x=>x.page_key===np.page_key); if(i>=0) EN.ap.pages[i]=Object.assign({review_status:EN.ap.pages[i].review_status},np); });
+    toast("Recorded"+(r.recorded&&r.recorded.length>1?" ("+r.recorded.length+" choices)":"")); return true; }
+  catch(e){ toast("Not recorded: "+e.message); return false; }
+}
+async function apSave(id,confirmed){
+  const [pk,area]=id.split("__"), p=EN.ap.pages.find(x=>x.page_key===pk), a=p.areas.find(x=>x.id===area), pend=EN.apPend[id]||{}, choice=pend.choice;
+  if(!choice){ toast("Choose first"); return; }
+  /* never replace a saved President edit without an explicit confirmation */
+  if(!confirmed&&apNeedsWarn(a,id,choice)){ $("#enbody").innerHTML=enApprove(); toast("Confirm first: this replaces your edited version for publication"); return; }
+  const value={};
+  if(area==="images"&&choice==="custom"){ const G=EN.apGal[pk]||[]; if(!G.length){ toast("Tick at least one photo"); return; } value.gallery=G.map(u=>({url:u})); }
+  if(choice==="edit"){ const el=$("#ape_"+CSS.escape(id));
+    if(area==="features") value.items=String(el.value||"").split("\n").map(x=>x.trim()).filter(Boolean);
+    else if(area==="specs") value.items=String(el.value||"").split("\n").map(x=>x.trim()).filter(Boolean).map(l=>{ const i=l.indexOf(":"); return i>0?{label:l.slice(0,i).trim(),value:l.slice(i+1).trim()}:{label:"",value:l}; });
+    else if(area==="documents"){ value.documents=[...document.querySelectorAll(".apdoc_"+CSS.escape(id))].filter(x=>x.checked).map(x=>x.value); value.videos=[...document.querySelectorAll(".apvid_"+CSS.escape(id))].filter(x=>x.checked).map(x=>x.value); }
+    else value.text=String((el&&el.value)||"").trim(); }
+  if(await apSend({page_key:pk,area,choice,value})){ delete EN.apPend[id]; if(area==="images") delete EN.apGal[pk]; $("#enbody").innerHTML=enApprove(); }
+}
+async function apSaveOpt(pk,code){ const id=pk+"__opt__"+code, pend=EN.apPend[id]||{}; if(!pend.choice){ toast("Choose first"); return; }
+  if(await apSend({page_key:pk,area:"option_image",code,choice:pend.choice,value:pend.choice==="use_image"?{url:pend.url}:{}})){ delete EN.apPend[id]; $("#enbody").innerHTML=enApprove(); } }
+async function apKeepAll(){ const p=apPg(); if(!p) return;
+  const sel=p.areas.filter(a=>!a.approved&&a.id!=="grouping"&&a.id!=="option_images"&&a.choices&&a.choices.indexOf("keep_current")>=0).map(a=>({page_key:p.page_key,area:a.id,choice:"keep_current"}))
+    .concat(p.areas.find(a=>a.id==="option_images").options.filter(o=>!o.approved).map(o=>({page_key:p.page_key,area:"option_image",code:o.code,choice:"keep_current"})));
+  if(!sel.length) return; if(await apSend(sel)){ EN.apPend={}; $("#enbody").innerHTML=enApprove(); } }
+async function apUpload(pk,code){
+  const id=code?pk+"__opt__"+code:pk, f=($("#apup_"+CSS.escape(id))||{}).files, file=f&&f[0]; if(!file){ toast("Choose a photo"); return; }
+  if(file.size>6*1024*1024){ toast("Photo larger than 6 MB"); return; }
+  const b64=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(",")[1]); r.onerror=rej; r.readAsDataURL(file); });
+  try{ const up=await papi(winBody({action:"upload_image",page_key:pk,filename:file.name,content_type:file.type||"image/jpeg",content_base64:b64}));
+    if(code){ EN.apPend[id]={choice:"use_image",url:up.url}; await apSaveOpt(pk,code); }
+    else { const G=EN.apGal[pk]=EN.apGal[pk]||[]; G.push(up.url); const p=EN.ap.pages.find(x=>x.page_key===pk); p.candidates.push({url:up.url,display:up.url,kinds:["uploaded"],codes:[],role:"uploaded"}); $("#enbody").innerHTML=enApprove(); toast("Uploaded — tick Save choice to record your gallery"); } }
+  catch(e){ toast("Not uploaded: "+e.message); }
+}
+/* ── RELEASE C — DEALER PREVIEW (approved 2026-10-11). Read-only and staff-only: product-content enrich_preview runs the
+   storefront's own merge twice (today; and with the Ready drafts treated as published, in memory) and returns the
+   dealer cards, the storefront's price words and the accounting proof for every active SKU. Nothing is written or
+   published. The yellow "STAFF ONLY" notes exist only on this screen — they are not part of anything a dealer gets. */
+async function enPreviewRun(){
+  if(EN.pvBusy) return; EN.pvBusy=true; enDraw();
+  try{ EN.pv=await papi({action:"enrich_preview",manufacturer:EN.slug}); EN.pvMode=EN.pvMode||"proposed"; EN.pvCard=null; EN.pvCart=null; }
+  catch(e){ toast("Preview not built: "+e.message); }
+  EN.pvBusy=false; enDraw();
+}
+function pvImg(u,alt){ return u?`<img class="pvimg" src="${esc(u)}" alt="${esc(alt||'')}" loading="lazy" onerror="this.outerHTML='<div class=&quot;pvph&quot;>No image</div>'">`:'<div class="pvph">No image</div>'; }
+function pvCards(){ return (EN.pv&&EN.pv[EN.pvMode==="today"?"today":"proposed"])||[]; }
+function enPreview(){
+  const l=LINES.find(x=>x.slug===EN.slug)||{}, nm=l.name||EN.slug;
+  if(!EN.pv) return `<h3>Dealer Preview</h3><p class="sub">See exactly what a dealer would see if the Ready pages were published <b>with your recorded content &amp; image selections</b> — computed with Partner 360's own catalog merge, picker and price words. Held-back products are shown on the card dealers have today. <b>Read-only and staff-only: nothing is published, saved, copied or selected.</b></p>
+    <button class="btn" id="pvgo" onclick="enPreviewRun()" ${EN.pvBusy?'disabled':''}>${EN.pvBusy?'Building the preview…':'Preview '+esc(nm)+' as Dealer'}</button>`;
+  const V=EN.pv, s=V.summary, cards=pvCards();
+  const tile=(n,lbl,good)=>`<div class="pvtile ${good===true?'good':(good===false?'bad':'')}"><b>${esc(n)}</b><span>${esc(lbl)}</span></div>`;
+  const tiles=tile(s.enriched_pages_ready,"enriched pages shown with your selections")+tile(s.held_back,"products/pages held back")+(s.waiting_for_approval?tile(s.waiting_for_approval,"pages waiting for your approval (current cards)"):"")+tile(s.accounted+" / "+s.active_skus,"active SKUs accounted for",s.accounted===s.active_skus)
+    +tile(s.missing,"missing",s.missing===0)+tile(s.duplicates,"duplicates",s.duplicates===0)+tile(s.commercial_changes,"commercial changes",s.commercial_changes===0);
+  const checks=V.checks.map(c=>`<div style="display:flex;gap:8px;align-items:flex-start;margin:3px 0">${pill(c.pass?'p-pass':'p-fail',c.pass?'Pass':'Fail')}<span style="font-size:12.5px">${esc(c.label)}${!c.pass&&c.detail?`<div class="needtxt">${esc(JSON.stringify(c.detail).slice(0,400))}</div>`:''}</span></div>`).join('');
+  const grid=cards.map((k,ix)=>{ const o=k.options[0]||{};
+    return `<button class="pvcard" onclick="pvOpen(${ix})">${pvImg(k.image,k.name)}<div class="t">${esc(k.name)}</div>${o.price_html||''}
+      ${k.options.length>1?`<div class="pnote">${k.options.length} options</div>`:''}${k.staff_note?`<div class="pvstaff"><b>STAFF ONLY</b> · ${esc(k.staff_note)}</div>`:''}</button>`; }).join('');
+  const acc=V.skus.map(x=>`<tr><td><code>${esc(x.code)}</code></td><td>${esc(x.page||'—')}</td><td style="font-size:12px">${esc(x.path)}</td><td style="font-size:12px">${esc(x.today_card.join(' / ')||'—')}</td><td style="font-size:12px">${esc(x.proposed_card.join(' / ')||'—')}</td><td>${esc(x.unit||'—')}</td><td style="font-size:12px">${esc(x.price_proposed||'—')} ${x.commercial_same?pill('p-pass','unchanged'):pill('p-fail','changed')}</td><td>${x.orderable_proposed?'✓':'<span class="needtxt">no</span>'}</td></tr>`).join('');
+  return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">${esc(nm)} as a dealer would see it</h3>${pill(V.pass?'p-pass':'p-fail',V.pass?'All checks pass':'Checks failing')}<span style="flex:1"></span>
+      <span class="pvtog"><button class="${EN.pvMode==='today'?'on':''}" onclick="pvMode('today')">Current Dealer View</button><button class="${EN.pvMode==='proposed'?'on':''}" onclick="pvMode('proposed')">Approved New Dealer View</button></span>
+      <button class="btn ghost" onclick="enPreviewRun()">Rebuild</button></div>
+    <div class="apnote"><b>Preview only — switching views does not select content or images.</b> Your selections are made and recorded in <a href="#" onclick="enGo('approve');return false">5 · Approve Content &amp; Images</a>.</div>
+    <p class="mut" style="font-size:12px;margin:4px 0">Read-only, staff-only. ${EN.pvMode==='proposed'?'Approved New Dealer View: each Ready page built from your <b>recorded selections only</b> — an area you have not decided shows today\'s content and photos; a suggested photo you did not pick never appears. Held-back products stay on the card dealers have today.':'Current Dealer View: exactly what dealers see now.'} ${s.cards_today} cards today → ${s.cards_proposed} with your selections. Nothing is published.</p>
+    ${V.approval?`<div class="apcheck">${Object.keys(V.approval).map(k=>{ const a=V.approval[k], pg=(EN.plan.pages.find(p=>p.page_key===k)||{}).name||k; return `<span class="apchip ${a.status==='approved'?'ok':'wait'}">${esc(pg)}: ${esc(a.status==='approved'?'approved':(a.status==='kept_as_today'?'kept as today':'waiting for your approval — '+a.waiting.join(', ')))}</span>`; }).join('')}</div>`:''}
+    <div class="pvtiles">${tiles}</div>
+    <div class="pvgrid">${grid}</div><div id="pvdetail">${EN.pvCard!=null?pvDetail():''}</div>
+    <details style="margin-top:10px" ${V.pass?'':'open'}><summary><b>Proof checks (${V.checks.filter(c=>c.pass).length}/${V.checks.length} pass)</b></summary><div style="margin-top:6px">${checks}</div></details>
+    <details style="margin-top:8px"><summary><b>Accounting — all ${s.active_skus} active SKUs</b> (retired, kept off: ${esc(s.retired_excluded.join(', ')||'none')})</summary>
+      <div style="overflow-x:auto"><table style="margin-top:6px"><thead><tr><th>SKU</th><th>Product page</th><th>Shown through</th><th>Today's card</th><th>Proposed card</th><th>Order unit</th><th>Price words</th><th>Orderable</th></tr></thead><tbody>${acc}</tbody></table></div></details>`;
+}
+function pvMode(m){ EN.pvMode=m; EN.pvCard=null; EN.pvCart=null; enDraw(); }
+function pvOpen(ix){ EN.pvCard=ix; EN.pvOpt=0; EN.pvMain=null; EN.pvCart=null; enDraw(); const d=$("#pvdetail"); if(d&&d.scrollIntoView) d.scrollIntoView({behavior:"smooth",block:"start"}); }
+function pvPick(v){ EN.pvOpt=+v; EN.pvMain=null; EN.pvCart=null; $("#pvdetail").innerHTML=pvDetail(); }
+function pvShow(u){ EN.pvMain=u; $("#pvdetail").innerHTML=pvDetail(); }
+function pvAdd(){ EN.pvCart=EN.pvOpt; $("#pvdetail").innerHTML=pvDetail(); }
+function pvDetail(){
+  const k=pvCards()[EN.pvCard]; if(!k) return ""; const o=k.options[EN.pvOpt]||k.options[0];
+  const main=EN.pvMain||o.image||k.image, pics=[...new Set([o.image].concat(k.media).filter(Boolean))];
+  const heldPg=k.staff_note&&EN.pv.held_pages.find(h=>h.skus.some(c=>k.codes.indexOf(c)>=0));
+  const specs=(k.specs||[]).filter(x=>x&&(x.label||x.value)).map(x=>`<tr><td><b>${esc(x.label||'')}</b></td><td>${esc(x.value||'')}</td></tr>`).join('');
+  const c=EN.pvCart!=null?(k.options[EN.pvCart]||o).cart:null;
+  return `<div class="pvdetail"><div>${pvImg(main,k.name)}${pics.length>1?`<div class="pvthumbs">${pics.map((u,i)=>`<img src="${esc(u)}" alt="" loading="lazy" data-i="${i}" onclick="pvShow(this.src)" onerror="this.remove()">`).join('')}</div>`:''}</div>
+    <div style="min-width:0">${k.staff_note?`<div class="pvstaff" style="margin:0 0 8px"><b>STAFF ONLY — dealers never see this</b> · ${esc(k.staff_note)}${heldPg&&heldPg.issues.length?`<div style="margin-top:3px">Held for: ${heldPg.issues.map(esc).join(' · ')}</div>`:''}</div>`:''}
+      <h3 style="margin:0 0 4px;overflow-wrap:anywhere">${esc(k.name)}</h3>
+      ${k.options.length>1?`<label>Option</label><div><select onchange="pvPick(this.value)" style="max-width:100%">${k.options.map((x,i)=>`<option value="${i}" ${i===(EN.pvOpt||0)?'selected':''}>${esc(x.label)}</option>`).join('')}</select></div>`:''}
+      <div style="margin:8px 0">${o.price_html||''}</div>
+      <div class="mut" style="font-size:12px">SKU <code>${esc(o.code)}</code> · ${esc(o.case_qty>1?'Case of '+o.case_qty:(o.uom||'Each'))}${o.orderable?'':' · <span class="needtxt">not orderable</span>'}</div>
+      <div style="margin-top:8px"><button class="btn" onclick="pvAdd()">Add to cart (preview only)</button></div>
+      ${c?`<div class="pvcart"><div class="mut" style="font-size:11px">The cart line a dealer would see — preview only, nothing was added to any cart</div><div><b>${esc(c.title)}</b></div><div class="mut">${esc(c.sub)}</div><div>${esc(c.money)}</div></div>`:''}
+      ${k.description?`<p style="font-size:13px;line-height:1.5;margin:10px 0">${esc(k.description)}</p>`:''}
+      ${(k.features||[]).length?`<ul style="font-size:12.5px;margin:6px 0 6px 18px">${k.features.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}
+      ${specs?`<table style="font-size:12px;margin-top:6px"><tbody>${specs}</tbody></table>`:''}
+      ${k.warranty?`<p style="font-size:12px"><b>Warranty:</b> ${esc(k.warranty)}</p>`:''}
+      ${(k.documents||[]).length?`<p style="font-size:12px"><b>Documents:</b> ${k.documents.map(d=>`<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.label||'Document')}</a>`).join(' · ')}</p>`:''}
+      <p class="mut" style="font-size:11.5px;margin-top:8px">${esc([k.category,k.subcategory].filter(Boolean).join(' › '))}${k.enriched?' · enriched page':' · current catalog content'}</p></div></div>`;
+}
+/* ── RELEASE D — PUBLISH & VERIFY. The dry run lists exactly what will be published (only Ready pages), every photo that
+   moves from the draft folder to the live folder, and the dealer accounting it must produce. "Approve & Publish" records
+   the approval for THAT dry run (its plan hash), copies the photos, publishes the pages in one database transaction and
+   checks the live result against the approved one — rolling back by itself if anything differs. Making it the new Gold
+   Standard (Finalize) is a separate step after the live storefront check. Nothing here touches a price. */
+function pubState(){ const P=EN&&EN.plan, d=P&&P.publication, live=P&&P.pages.some(p=>p.status==="published");
+  if(!d||(d.used_at&&!live)) return EN&&EN.pub?(EN.pub.publishable?"Dry run ready":"Dry run — see problems"):(d?"Rolled back — dry run first":"Dry run first");
+  if(!d.used_at) return "Approved — not carried out"; return P.window?"Published — finalize pending":"Gold Standard"; }
+async function pubPlan(){ if(EN.pubBusy) return; EN.pubBusy="Running the publication dry run…"; enDraw();
+  try{ EN.pub=await papi({action:"publish_plan",manufacturer:EN.slug}); EN.pubRes=null; }catch(e){ toast("Dry run not built: "+e.message); }
+  EN.pubBusy=null; enDraw(); }
+function fname(u){ return String(u||"").split("/").pop(); }
+function enPublish(){
+  const P=EN.plan, l=LINES.find(x=>x.slug===EN.slug)||{}, nm=l.name||EN.slug, d=P.publication;
+  const live=P.pages.filter(p=>p.status==="published");
+  if(d&&d.used_at&&live.length){
+    return `<h3>${esc(nm)} — ${P.window?'published, final verification pending':'published · Gold Standard'}</h3>
+      <p class="sub">Approval #${d.id} carried out ${esc(fmtT(d.used_at))}: ${live.map(p=>esc(p.name)).join(' · ')}. ${P.window?'Check the live storefront (desktop and phone), then finalize — or roll back.':'The verification run is the line\'s Gold Standard.'}</p>
+      ${EN.pubRes?pubChecks(EN.pubRes):''}
+      ${P.window?`<div class="gatebox g-wait"><div class="gh"><span class="gn">Needs you</span> <b>Final verification</b></div>
+        <p style="font-size:12.5px;margin:0 0 8px">Finalize runs ${esc(nm)}'s full verification (no baseline — this run becomes the Gold Standard, with the content fingerprint), proves Climbing Steps, Strongback and Ovation still read their Gold Standard fingerprints, then spends enrichment window #${esc(P.window.id)}. Any failure rolls the publication back and records the run.</p>
+        <button class="btn" onclick="pubFinalize(${d.id})" ${EN.pubBusy?'disabled':''}>Finalize — make this the Gold Standard</button>
+        <input type="text" id="pub_rb_reason" placeholder="Why roll back? (required to roll back)" style="min-width:240px"> <button class="btn ghost" onclick="pubRollback(${d.id})" ${EN.pubBusy?'disabled':''}>Roll back</button>
+        ${EN.pubBusy?`<div class="mut" style="margin-top:6px">${esc(EN.pubBusy)}</div>`:''}</div>`:''}`;
+  }
+  if(!EN.pub) return `<h3>Publish &amp; Verify</h3><p class="sub">First a dry run: exactly which pages go live (only Ready pages whose content &amp; images you approved — everything else stays on its current catalog card), the content and photos <b>you selected</b> (nothing Auto-Enrich merely suggested), every approved photo copied to the live folder, and the dealer result it must produce. Nothing is published by the dry run.</p>
+    <button class="btn" id="pubdry" onclick="pubPlan()" ${EN.pubBusy?'disabled':''}>${EN.pubBusy?esc(EN.pubBusy):'Run publication dry run'}</button>`;
+  const R=EN.pub, s=R.summary;
+  const tile=(n,lbl,good)=>`<div class="pvtile ${good===true?'good':(good===false?'bad':'')}"><b>${esc(n)}</b><span>${esc(lbl)}</span></div>`;
+  const tiles=tile(s.cards_today+" → "+s.cards_after,"dealer cards today → after")+tile(s.accounted+" / "+s.active_skus,"active SKUs represented",s.accounted===s.active_skus)
+    +tile(s.enriched_pages_live,"enriched pages go live")+tile(s.held_on_current_cards,"held — current catalog cards")+tile(s.missing,"missing SKUs",s.missing===0)
+    +tile(s.duplicates,"duplicate SKU cards",s.duplicates===0)+tile(s.commercial_changes,"commercial changes",s.commercial_changes===0)+tile(s.photos_promoted,"photos promoted to live");
+  const pages=R.ready.map(p=>`<div class="card sub2" style="margin:8px 0"><b>${esc(p.name)}</b> <span class="mut">· ${p.skus.map(esc).join(', ')} · ${esc(p.changes.status)} · draft window ${esc(p.changes.draft_window)} · ${esc(p.changes.photos)}</span>
+      ${p.selections?`<div class="apcheck">${p.selections.map(c=>`<span class="apchip ok">${esc(c.label)} ✓ ${esc(c.no_change?'no change':(c.choice?c.choice.replace(/_/g,' '):'chosen'))}</span>`).join('')}</div>`:''}
+      ${p.promote.length?`<div style="overflow-x:auto"><table style="margin-top:6px;font-size:12px"><thead><tr><th>Approved photo</th><th>→ live copy</th><th>Used as</th></tr></thead><tbody>${p.promote.map(x=>`<tr><td><code>${esc(fname(x.from))}</code>${x.kept_current?' <span class="mut">(today\'s photo, kept)</span>':''}</td><td><code>${esc(x.to.replace(/^.*\/product-content\//,''))}</code></td><td>${esc(x.uses.join(', '))}</td></tr>`).join('')}</tbody></table></div>`:'<div class="mut" style="font-size:12px;margin-top:4px">No photo to copy: dealers keep today\'s photos.</div>'}
+      ${p.deduped.length?`<div class="mut" style="font-size:12px;margin-top:4px">Same picture, one live copy: ${p.deduped.map(x=>`<code>${esc(fname(x.from))}</code> = <code>${esc(fname(x.same_as))}</code> (${esc(x.why)})`).join('; ')}</div>`:''}
+      ${p.after_photos.options.length>1?`<div style="font-size:12px;margin-top:4px">Options: ${p.after_photos.options.map(o=>`${esc(o.option||o.sku)} → <code>${esc(fname(o.image))}</code>`).join(' · ')}</div>`:''}
+      ${p.after_photos.card?`<div style="font-size:12px;margin-top:4px">Catalog card image: ${p.after_photos.card==='none'?'<b>No image</b> (placeholder)':`<code>${esc(fname(p.after_photos.card))}</code>`}</div>`:''}</div>`).join('');
+  const held=R.held.map(h=>`<li><b>${esc(h.name)}</b> <span class="mut">(${h.skus.map(esc).join(', ')})</span> — stays on its current catalog card; open: ${h.issues.map(esc).join(' · ')||'—'}</li>`).join('');
+  return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">Publication dry run — ${esc(nm)}</h3>${pill(R.publishable?'p-pass':'p-fail',R.publishable?'Ready to approve':'Cannot be approved')}<span style="flex:1"></span><button class="btn ghost" onclick="pubPlan()">Run again</button></div>
+    <p class="mut" style="font-size:12px;margin:4px 0">Plan <code>${esc(R.plan_hash.slice(0,16))}</code> — the approval is tied to exactly this dry run; if anything changes, it becomes invalid and a new dry run is needed. Retired, kept off: ${esc(s.retired_excluded.join(', ')||'none')}. Prices, tiers, UOM/case qty, MSRP/MAP, freight and commercial status are not touched.</p>
+    <div class="pvtiles" style="grid-template-columns:repeat(4,1fr)">${tiles}</div>
+    ${R.problems.length?`<div class="card err">${R.problems.map(esc).join('<br>')}</div>`:''}
+    <h3 style="margin-top:12px">Pages that will be published (${R.ready.length})</h3>${pages}
+    ${(R.awaiting||[]).length?`<h3 style="margin-top:12px">Waiting for your content &amp; image approval — not published (${R.awaiting.length})</h3><ul style="font-size:12.5px;margin:4px 0 0 18px">${R.awaiting.map(a=>`<li><b>${esc(a.name)}</b> <span class="mut">(${a.skus.map(esc).join(', ')})</span> — ${a.status==='kept_as_today'?'grouping kept as today: its SKUs stay on their current cards':'stays on its current catalog card until you approve: '+esc((a.waiting||[]).join(', '))} · <a href="#" onclick="enGo('approve');return false">Approve</a></li>`).join('')}</ul>`:''}
+    <h3 style="margin-top:12px">Held — not published (${R.held.length})</h3><ul style="font-size:12.5px;margin:4px 0 0 18px">${held}</ul>
+    ${EN.pubRes?pubChecks(EN.pubRes):''}
+    ${R.publishable?`<div class="gatebox g-wait" style="margin-top:12px"><div class="gh"><span class="gn">Approval</span> <b>Approve &amp; Publish ${esc(nm)}</b></div>
+      <p style="font-size:12.5px;margin:0 0 8px">Records your approval of plan <code>${esc(R.plan_hash.slice(0,16))}</code>, copies the ${s.photos_promoted} photos to the live folder, publishes the ${R.ready.length} pages in one database transaction and checks the live dealer view against this dry run — rolling back by itself if anything differs. Final Gold Standard step comes after the live storefront check.</p>
+      <input type="text" id="pub_reason" placeholder="Reason (saved with the approval)" style="min-width:280px;width:60%"> <button class="btn" onclick="pubGo()" ${EN.pubBusy?'disabled':''}>Approve &amp; Publish ${esc(nm)}</button>
+      ${EN.pubBusy?`<div class="mut" style="margin-top:6px">${esc(EN.pubBusy)}</div>`:''}</div>`:''}`;
+}
+function pubChecks(r){ const cs=r.checks||[]; return `<div class="card ${r.ok?'':'err'}" style="margin-top:10px"><b>${esc(r.title||'Result')}</b>${cs.map(c=>`<div style="display:flex;gap:8px;margin:3px 0">${pill(c.pass?'p-pass':'p-fail',c.pass?'Pass':'Fail')}<span style="font-size:12.5px">${esc(c.label||c.id)}${!c.pass&&c.detail?`<div class="needtxt">${esc(JSON.stringify(c.detail).slice(0,300))}</div>`:''}</span></div>`).join('')}${r.message?`<p style="font-size:12.5px">${esc(r.message)}</p>`:''}</div>`; }
+async function pubGo(){
+  const R=EN.pub, reason=(($("#pub_reason")||{}).value||"").trim(); if(!reason){ toast("Give a reason — it is saved with the approval"); return; }
+  if(EN.pubBusy) return;
+  try{
+    EN.pubBusy="Recording your approval of this exact dry run…"; enDraw();
+    const a=await papi({action:"publish_approve",manufacturer:EN.slug,plan_hash:R.plan_hash,reason});
+    const did=a.decision.id;
+    for(let i=0;i<30;i++){ EN.pubBusy="Copying photos to the live folder…"; enDraw(); const p=await papi({action:"publish_promote",manufacturer:EN.slug,decision_id:did}); if(!p.remaining) break; }
+    EN.pubBusy="Publishing and checking the live dealer view…"; enDraw();
+    const x=await papi({action:"publish_execute",manufacturer:EN.slug,decision_id:did});
+    EN.pubRes={ok:true,title:"Published — the live dealer view matches the approved dry run",checks:x.checks}; toast("Published — now check the storefront, then finalize");
+  }catch(e){ EN.pubRes={ok:false,title:"Not published",checks:(e.body&&e.body.checks)||[],message:e.message}; toast("Not published: "+e.message); }
+  EN.pubBusy=null; await enReload();
+}
+async function pubFinalize(did){
+  if(EN.pubBusy) return; EN.pubBusy="Running the final verification…"; enDraw();
+  try{ const r=await api({action:"mc_publish_finalize",manufacturer:EN.slug,decision_id:did}); EN.pubRes={ok:true,title:"Gold Standard saved (run #"+r.run_id+") — enrichment window spent",checks:r.checks.filter(c=>c.severity==="blocking")}; toast("Gold Standard saved"); }
+  catch(e){ EN.pubRes={ok:false,title:"Final verification failed — rolled back",checks:(e.body&&e.body.checks)||[],message:e.message}; toast("Rolled back: "+e.message); }
+  EN.pubBusy=null; await enReload();
+}
+async function pubRollback(did){
+  const reason=(($("#pub_rb_reason")||{}).value||"").trim(); if(!reason){ toast("Say why — it is recorded"); return; }
+  if(EN.pubBusy) return; EN.pubBusy="Rolling back…"; enDraw();
+  try{ await api({action:"mc_publish_rollback",manufacturer:EN.slug,decision_id:did,reason}); EN.pubRes={ok:true,title:"Rolled back — the previous dealer view is restored and the run recorded",checks:[]}; EN.pub=null; }
+  catch(e){ toast("Not rolled back: "+e.message); }
+  EN.pubBusy=null; await enReload();
+}
+/* masthead provides Lock */
+if(TOKEN)boot();else gate();
+</script></body></html>

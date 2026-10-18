@@ -142,6 +142,27 @@ async function signIn(addr, ip) {
       assert.strictEqual(pat.courses[0].exam.passed, true); assert.strictEqual(pat.courses[0].exam.attempts, 1);
       assert.ok(!/score/.test(JSON.stringify(team.body)), 'no score anywhere in the team view');
     });
+    await t('A grade that cannot be written: submit answers 409 grading_pending (no score), start is refused with the reason, status reports it; it is graded once the fault is gone', async () => {
+      await learner({ action: 'invite', dealer_id: NORTH, email: 'sam@north.example', full_name: 'Sam Learner' }, TMC);
+      const SC = await signIn('sam@north.example', '198.51.100.3');
+      const sid = (await learner({ action: 'me' }, SC)).body.learner.id;
+      const se = (await learner({ action: 'enroll', learner_id: sid, version_id: V }, TMC)).body.enrollment.id;
+      run(DB, `begin; select set_config('academy.op', 'test', true); insert into academy_attempts (enrollment_id, question_ids, started_at, draft_answers)
+               values ('${se}', array['${QX}']::uuid[], now() - interval '50 minutes', ${J({ [QX]: 'b' })}); commit;`);
+      const aid = one(`select id from academy_attempts where enrollment_id = '${se}'`).id;
+      run(DB, `create function public.zz_refuse() returns trigger language plpgsql as $f$ begin if new.action = 'submit_attempt' then raise exception 'test refused'; end if; return new; end $f$;
+               create trigger zz_refuse before insert on academy_events for each row execute function public.zz_refuse();`);
+      const r = await learner({ action: 'exam_submit', attempt_id: aid, answers: {} }, SC);
+      assert.strictEqual(r.status, 409, JSON.stringify(r.body)); assert.strictEqual(r.body.error, 'grading_pending'); assert.strictEqual(r.body.expired, true);
+      assert.match(r.body.message, /saved answers are kept/); assert.ok(!('score' in r.body) && !('passed' in r.body), 'no result without a grade');
+      const st = await learner({ action: 'exam_start', enrollment_id: se }, SC);
+      assert.strictEqual(st.status, 409); assert.strictEqual(st.body.error, 'grading_pending'); assert.match(st.body.message, /still being graded/);
+      const s1 = await learner({ action: 'exam_status', enrollment_id: se }, SC);
+      assert.strictEqual(s1.body.reason, 'grading_pending'); assert.strictEqual(s1.body.attempts[0].grading_failed, true);
+      run(DB, 'drop trigger zz_refuse on academy_events; drop function public.zz_refuse()');
+      const s2 = await learner({ action: 'exam_status', enrollment_id: se }, SC);
+      assert.strictEqual(s2.body.attempts[0].score, 100); assert.strictEqual(s2.body.attempts[0].expired, true); assert.strictEqual(s2.body.reason, 'cooldown');
+    });
     await t('Ending access stops the exam at once (the session ends; a new session cannot reach the old enrollment)', async () => {
       const mem = (await learner({ action: 'team' }, TMC)).body.roster.find(p => p.email === 'pat@north.example').membership_id;
       assert.strictEqual((await learner({ action: 'deactivate', membership_id: mem, reason: 'left' }, TMC)).status, 200);

@@ -1,0 +1,210 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>HCPS — Sales Reps & Staff</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+ @media(max-width:640px){.grid2{grid-template-columns:1fr}}
+ label.fl{display:block;font-size:12px;font-weight:700;color:var(--gray);margin:0 0 4px}
+ .in{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:14px;background:#fff}
+ table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
+ th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700;padding:8px;border-bottom:2px solid var(--line)}
+ td{padding:9px 8px;border-bottom:1px solid #eef2f6;vertical-align:middle}
+ tr.off td{opacity:.5}
+ .rolechip{display:inline-block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 8px;border-radius:20px}
+ .r-president{background:#eef4fb;color:#2B4071}.r-rep{background:#e9f7ee;color:#1f7a44}.r-relations{background:#fbf0e6;color:#9a5b12}
+ .acts{white-space:nowrap;text-align:right}
+ .acts .go{margin-left:4px}
+ .viewas{background:#7a1f1f;border-color:#5e1717;color:#fff}
+ .viewas:hover{background:#8f2626}
+ .cbrow{display:flex;gap:8px;align-items:center;margin-top:10px;font-weight:600;font-size:13px;color:var(--navy)}
+ details.hist{margin-top:16px}
+ details.hist summary{cursor:pointer;font-weight:800;color:var(--navy);font-size:15px}
+ .mut{color:var(--gray);font-size:12.5px}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Sales Reps &amp; Staff</h1>
+    <div class="sub">Add teammates, set their role &amp; account book, control route access — and open any rep's portal exactly as they see it with <b>View as Rep</b>.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+const ROLELBL={president:"President",rep:"Sales Rep",relations:"Customer Relations"};
+const API="/.netlify/functions/staff-auth";
+
+async function api(body,useAuth){
+  const h={"content-type":"application/json"}; if(useAuth!==false && TOKEN) h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch(API,{method:"POST",headers:h,body:JSON.stringify(body)});
+  return r.json().catch(()=>({}));
+}
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button> <a href="reset.html" style="margin-left:6px;font-size:13px;font-weight:600;color:var(--navy)">Forgot password?</a><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  const j=await api({action:"login",email,password},false);
+  if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+  HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  const j=await api({action:"list_users"},true);
+  if(j&&j.error==="tables_missing"){ $("#body").innerHTML=`<div class="msg err">Run <code>staff.sql</code> in Supabase first.</div>`; return; }
+  if(!j||!j.ok){
+    // Non-president (or expired). Show a clear, on-brand message rather than the old separate page.
+    $("#body").innerHTML=`<div class="card"><h2>Team management is President-only</h2>
+      <p class="hint">You're signed in as <b>${esc((ME&&(ME.name||ME.email))||"")}</b>${ME&&ME.rep_name?` · book: ${esc(ME.rep_name)}`:""}. Managing teammates and using View as Rep is limited to President accounts.</p>
+      <div style="margin-top:10px"><a class="go" href="/admin/rep-home.html">Go to your workspace →</a></div></div>`;
+    return;
+  }
+  render(j.users||[]);
+}
+
+function render(users){
+  const rows=users.map(u=>userRow(u)).join("")||`<tr><td colspan="6" class="hint">No teammates yet.</td></tr>`;
+  $("#body").innerHTML=`
+    <div class="card" style="border-left:4px solid var(--navy)">
+      <h2>Your own account</h2>
+      <p class="hint" style="margin:2px 0 10px">Signed in as <b>${esc((ME&&(ME.name||ME.email))||"")}</b>.
+        Your email signature is appended to the emails you send from Dealer 360 — this page manages your own record as well as the team's.</p>
+      <button class="go" onclick="editUser('${esc((ME&&ME.email)||"")}')">✍️ Edit my profile &amp; signature</button>
+    </div>
+
+    <div class="card"><h2>Add a team member</h2>
+      <div class="grid2">
+        <div><label class="fl">Name</label><input class="in" id="n_name" placeholder="Full name"></div>
+        <div><label class="fl">Work email</label><input class="in" id="n_email" type="email" placeholder="name@company.com"></div>
+        <div><label class="fl">Role</label><select class="in" id="n_role" onchange="roleHint()">
+          <option value="rep">Sales Rep</option><option value="relations">Customer Relations</option><option value="president">President</option></select></div>
+        <div><label class="fl">Account book (rep name)</label><input class="in" id="n_rep" placeholder="matches the 'rep' on their accounts"></div>
+      </div>
+      <label class="cbrow"><input type="checkbox" id="n_travel" style="width:auto"> Can plan &amp; save routes (travels)</label>
+      <div style="margin-top:12px"><button class="go" onclick="addUser()">Add team member</button> <span class="msg" id="addMsg" style="display:inline"></span></div>
+      <p class="hint" style="margin-top:8px">They set their own password the first time they sign in — no invite email needed.</p>
+    </div>
+
+    <div class="card"><h2>Team (${users.length})</h2>
+      <div class="mut" style="margin-bottom:4px">Use <b>View as</b> to open a rep's portal exactly as they see it — a full session, clearly banner-flagged and audit-logged. No password needed. <a href="/admin/permission-check.html">🔐 Run the permission check</a> to test what a rep or Relations account can and can't do.</div>
+      <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Book</th><th>Travel</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>
+
+    ${historyPanel()}`;
+  loadHistory();
+}
+function userRow(u){
+  const isMe = ME && u.email===ME.email;
+  const canView = u.active && u.role!=="president" && !isMe;
+  return `<tr class="${u.active?"":"off"}">
+    <td><b>${esc(u.name||"—")}</b>${isMe?' <span class="hint">(you)</span>':""}</td>
+    <td>${esc(u.email)}</td>
+    <td><span class="rolechip r-${esc(u.role)}">${esc(ROLELBL[u.role]||u.role)}</span></td>
+    <td>${esc(u.rep_name||"—")}</td>
+    <td>${u.role==="president"?"—":(u.can_travel?"✓":"—")}</td>
+    <td class="acts">
+      ${canView?`<button class="go sm viewas" onclick="viewAs('${esc(u.email)}','${esc((u.name||u.email)).replace(/'/g,"\\'")}')">👁 View as</button>`:""}
+      <button class="go sm" style="background:#fff;color:var(--navy)" onclick="editUser('${esc(u.email)}')">${isMe?"✍️ Edit mine":"Edit"}</button>
+      ${u.active?`<button class="go sm" style="background:#fff;color:var(--navy)" onclick="sendReset('${esc(u.email)}','${esc((u.name||u.email)).replace(/'/g,"\\'")}')" title="Email them a link to set a new password">🔑 Reset password</button>`:""}
+      ${isMe?"":(u.active?`<button class="go sm" style="background:#fff;color:#b42323;border-color:#f0c8c8" onclick="removeUser('${esc(u.email)}','${esc((u.name||u.email)).replace(/'/g,"\\'")}')">Remove</button>`
+                       :`<button class="go sm" style="background:#fff;color:var(--navy)" onclick="reactivate('${esc(u.email)}')">Restore</button>`)}
+    </td></tr>`;
+}
+function roleHint(){ const r=$("#n_role").value, t=$("#n_travel"); if(r==="president"){t.checked=true;t.disabled=true;} else {t.disabled=false;} }
+
+/* Send a teammate a password reset link.
+   This deliberately does NOT let an admin type a new password for someone. The rep
+   follows the link and chooses their own, so the password is never spoken aloud, never
+   sits in a text message, and never has to be changed again afterwards "just in case".
+   It also means nobody can later claim the admin knew their credentials. */
+async function sendReset(email,name){
+  if(!confirm(`Email ${name} a password reset link?\n\n`
+    +`They'll get a link at ${email} and set their own new password — you won't see it. `
+    +`The link expires in about an hour.\n\nTheir current password keeps working until they use it.`)) return;
+  const m=$("#addMsg"); if(m){ m.className="msg"; m.textContent="Sending…"; }
+  let j=null;
+  try{ j=await api({action:"send_reset",email,redirect_to:location.origin+"/admin/reset.html"}); }catch(e){ j=null; }
+  if(m){ m.className=(j&&j.ok)?"msg ok":"msg err";
+    m.textContent=(j&&j.message)||"Couldn't send that reset link — try again."; }
+  if(j&&j.ok) toastIf(`Reset link sent to ${email}`);
+}
+function toastIf(t){ try{ if(typeof toast==="function") toast(t); }catch(e){} }
+
+async function addUser(){
+  const email=($("#n_email").value||"").trim(), name=($("#n_name").value||"").trim(), role=$("#n_role").value, rep_name=($("#n_rep").value||"").trim(), can_travel=$("#n_travel").checked;
+  const m=$("#addMsg"); m.className="msg"; m.textContent="Adding…";
+  const j=await api({action:"add_user",email,name,role,rep_name,can_travel},true);
+  if(!j||!j.ok){ m.className="msg err"; m.textContent=(j&&j.message)||"Couldn't add."; return; }
+  await load();
+  // Say whether the setup email went out — the new person can't sign in until they use it.
+  const m2=$("#addMsg"); if(m2&&j.message){ m2.className=j.invite_sent?"msg":"msg err"; m2.textContent=j.message; }
+  toastIf(j.message);
+}
+async function editUser(email){
+  const j=await api({action:"list_users"},true); const u=((j&&j.users)||[]).find(x=>x.email===email); if(!u) return load();
+  const self = ME && u.email===ME.email;
+  $("#body").innerHTML=`<div class="card"><h2>${self?"Your profile":"Edit "+esc(u.name||u.email)}</h2>
+    <div class="grid2">
+      <div><label class="fl">Name</label><input class="in" id="e_name" value="${esc(u.name||"")}"></div>
+      <div><label class="fl">Email</label><input class="in" value="${esc(u.email)}" disabled></div>
+      <div><label class="fl">Role</label><select class="in" id="e_role" onchange="if(this.value==='president'){document.getElementById('e_travel').checked=true;}">
+        ${["rep","relations","president"].map(r=>`<option value="${r}"${u.role===r?" selected":""}>${ROLELBL[r]}</option>`).join("")}</select></div>
+      <div><label class="fl">Account book (rep name)</label><input class="in" id="e_rep" value="${esc(u.rep_name||"")}"></div>
+    </div>
+    <label class="cbrow"><input type="checkbox" id="e_travel" style="width:auto" ${u.can_travel?"checked":""}> Can plan &amp; save routes (travels)</label>
+    <div style="margin-top:12px"><label class="fl">Email signature <span class="mut" style="font-weight:600">— appended to ${self?"your":"their"} AI-composed Dealer 360 emails</span></label>
+      <textarea id="e_sig" rows="5" class="in" placeholder="e.g.\nGreg Campbell\nSales Representative · HomeCare Provider Services\n(937) 626-5141 · greg@homecareproviderservices.us">${esc(u.email_signature||"")}</textarea></div>
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="go" onclick="saveEdit('${esc(u.email)}')">Save</button>
+      <button class="go" style="background:#fff;color:var(--navy)" onclick="load()">Cancel</button></div>
+    <div class="msg" id="editMsg"></div></div>`;
+}
+async function saveEdit(email){
+  const patch={name:$("#e_name").value,role:$("#e_role").value,rep_name:$("#e_rep").value,can_travel:$("#e_travel").checked,email_signature:($("#e_sig")||{}).value||""};
+  const m=$("#editMsg"); m.className="msg"; m.textContent="Saving…";
+  const j=await api({action:"update_user",email,patch},true);
+  if(!j||!j.ok){ m.className="msg err"; m.textContent=(j&&j.message)||"Couldn't save."; return; }
+  load();
+}
+async function removeUser(email,name){
+  if(!confirm(`Remove ${name}? Their access is cut immediately. You can restore them later.`)) return;
+  await api({action:"remove_user",email},true); load();
+}
+async function reactivate(email){ await api({action:"update_user",email,patch:{active:true}},true); load(); }
+
+// ---- View as Rep ----
+async function viewAs(email,name){
+  if(!confirm(`Open ${name}'s portal as an admin session?\n\nYou'll see exactly what ${name} sees. A banner will show on every page and the session is logged. Use "Exit view-as" to return here.`)) return;
+  const j=await api({action:"impersonate",email},true);
+  if(!j||!j.ok){ alert((j&&j.message)||"Couldn't start the view-as session."); return; }
+  window.ACImpersonate.start(
+    {token:j.token, refresh:j.refresh, expires_in:j.expires_in, profile:j.profile},
+    {by_name:(ME&&(ME.name||ME.email))||"admin", rep_name:(j.profile&&j.profile.name)||name, rep_email:email, at:(j.impersonation&&j.impersonation.at)||""}
+  );
+}
+
+// ---- Audit trail ----
+function historyPanel(){
+  return `<details class="hist"><summary>View-as history <span class="hint" style="font-weight:600">— who opened whose portal</span></summary>
+    <div class="card" style="margin-top:10px"><div id="histBody" class="hint">Loading…</div></div></details>`;
+}
+async function loadHistory(){
+  const el=$("#histBody"); if(!el) return;
+  const j=await api({action:"impersonation_log"},true);
+  const rows=(j&&j.rows)||[];
+  if(!rows.length){ el.innerHTML="No view-as sessions recorded yet."; return; }
+  el.innerHTML=`<table><thead><tr><th>When</th><th>Admin</th><th>Viewed as</th><th>Event</th></tr></thead><tbody>${
+    rows.map(r=>`<tr><td>${esc(fmt(r.created_at))}</td><td>${esc(r.admin_name||r.admin_email||"—")}</td><td>${esc(r.target_name||r.target_email||"—")}</td><td>${r.action==="end"?"exited":"started"}</td></tr>`).join("")
+  }</tbody></table>`;
+}
+function fmt(s){ try{ const d=new Date(s); return d.toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); }catch(e){ return s||""; } }
+
+load();
+</script>
+</body></html>

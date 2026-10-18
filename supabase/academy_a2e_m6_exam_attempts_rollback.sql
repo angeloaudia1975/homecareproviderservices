@@ -18,7 +18,8 @@ begin
 end $$;
 drop index public.academy_attempts_learner_started;
 alter table public.academy_attempts drop constraint academy_attempts_expiry,
-  drop column learner_id, drop column expires_at, drop column draft_answers, drop column draft_saved_at, drop column expired;
+  drop column learner_id, drop column expires_at, drop column draft_answers, drop column draft_saved_at, drop column expired,
+  drop column grading_failures, drop column grading_failed_at, drop column grading_error;
 alter table public.academy_course_versions drop column exam_time_limit_minutes, drop column exam_cooldown_minutes,
   drop column exam_daily_limit;
 grant execute on function public.academy_op_start_attempt(text, uuid) to service_role;

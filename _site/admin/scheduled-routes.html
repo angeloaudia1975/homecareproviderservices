@@ -1,0 +1,1305 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#10263f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Routes">
+<link rel="manifest" href="/admin/scheduled-routes.webmanifest">
+<link rel="apple-touch-icon" href="/assets/hcps-logo.png">
+<title>HCPS — Scheduled Routes</title>
+<style>
+  :root{--navy:#10263f;--blue:#2f73b8;--orange:#F5821F;--line:#e4e8ee;--gray:#6b7683;--ok:#1f7a44;--bg:#f4f6f9}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:#1b2733;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%}
+  header{position:sticky;top:0;z-index:10;background:var(--navy);color:#fff;padding:calc(10px + env(safe-area-inset-top,0)) 14px 10px}
+  header .row{display:flex;align-items:center;gap:10px}
+  header h1{font-size:17px;margin:0;font-weight:800;letter-spacing:.2px;flex:1}
+  header .b{color:var(--orange);font-weight:800;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+  header a.full{color:#c9d4e2;font-size:12px;text-decoration:none;border:1px solid #33465f;border-radius:8px;padding:4px 8px}
+  .wrap{padding:12px 12px 40px;max-width:640px;margin:0 auto}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin:0 0 12px;box-shadow:0 1px 2px rgba(16,38,63,.04)}
+  .sub.addr{color:#3f4d5c;font-weight:600}
+  .grouplbl{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);margin:6px 2px 8px}
+  /* Today's route is the answer to the only question a rep has when they open this on
+     a phone, so it is visually louder than everything else in the list. */
+  .stop.todayr{border-color:var(--orange);box-shadow:0 3px 12px rgba(245,130,31,.18)}
+  .stop.todayr .nm{font-size:17px}
+  .rsum{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .rsum .nm{font-weight:800;font-size:16px;color:var(--navy)}
+  .rsum .mt{color:var(--gray);font-size:12.5px}
+  .stop{position:relative;border:1px solid var(--line);border-radius:14px;background:#fff;margin:0 0 12px;overflow:hidden}
+  .stop.done{opacity:.72}.stop.clk{cursor:pointer}
+  .sh{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;cursor:pointer}
+  .ord{flex:0 0 auto;width:30px;height:30px;border-radius:50%;background:var(--navy);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px}
+  .stop.done .ord{background:var(--ok)}.stop.here .ord{background:var(--orange)}
+  .ord.cal{background:#eef2f6;color:#2B4071;font-size:15px}
+  .sh .mid{flex:1;min-width:0}
+  .sh .nm{font-weight:700;color:var(--navy);font-size:15.5px;line-height:1.3}
+  .sh .sub{color:var(--gray);font-size:12.5px;margin-top:1px}
+  .eta{flex:0 0 auto;text-align:right}
+  .eta .t{font-weight:800;color:var(--blue);font-size:15px}
+  .eta .l{font-size:10px;color:var(--gray);text-transform:uppercase;letter-spacing:.4px}
+  .chip{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.3px;padding:2px 7px;border-radius:6px;text-transform:uppercase;vertical-align:middle}
+  .chip.plan{background:#eef2f6;color:#5b6672}.chip.here{background:#fff1e3;color:#b45309}.chip.done{background:#e7f6ee;color:var(--ok)}
+  .acts{display:flex;gap:7px;flex-wrap:wrap;padding:0 14px 13px}
+  .btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--navy);font:inherit;font-size:13.5px;font-weight:700;padding:9px 12px;border-radius:10px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+  .btn:active{transform:translateY(1px)}
+  .btn.pri{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .btn.go{background:var(--orange);color:#fff;border-color:var(--orange)}
+  .btn.wide{flex:1;justify-content:center}
+  .btn.sm{font-size:12.5px;padding:7px 10px}
+  .body{border-top:1px solid var(--line);padding:13px 14px;display:none;background:#fbfcfd}
+  .body.open{display:block}
+  label.fl{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);margin:10px 0 3px}
+  input.in,textarea.in{width:100%;font:inherit;font-size:15px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
+  textarea.in{min-height:58px;resize:vertical}
+  .voice{border:1px dashed #cdd6e0;border-radius:10px;background:#f7f9fc;padding:10px 11px;margin:4px 0 2px;font-size:12.5px;color:var(--gray)}
+  .save-row{display:flex;gap:8px;margin-top:12px}
+  .hint{color:var(--gray);font-size:12.5px}
+  .msg{padding:16px;text-align:center;color:var(--gray)}
+  .gate{max-width:360px;margin:40px auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px}
+  .gate input{width:100%;font:inherit;font-size:16px;padding:11px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px}
+  .phone{background:#0f2138;color:#fff;border:1px solid #22364f;border-radius:14px;padding:13px 14px;margin:0 0 14px}
+  .phone .t{font-weight:800}.phone .u{font-size:12px;color:#9db4d0;word-break:break-all;margin:4px 0 8px}
+  .phone .btn{background:#1b3352;color:#fff;border-color:#33507a}
+  .steps{background:#0b1a2e;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;color:#cdd9e8}
+  .steps b{color:#fff}
+  .modal{position:fixed;inset:0;background:rgba(16,38,63,.5);display:flex;align-items:flex-end;justify-content:center;z-index:50}
+  .sheet{background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:640px;max-height:88vh;overflow:auto;padding:16px}
+  .sheet h3{margin:0 0 8px;color:var(--navy)}
+  /* Recipient rows. Tall enough to hit with a thumb in a van, and the whole row is the target —
+     a 14px checkbox is not something to aim at one-handed. */
+  .rcpt{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;margin-bottom:6px;line-height:1.3}
+  .rcpt input{width:20px;height:20px;margin:1px 0 0;flex:0 0 auto}
+  .rcpt span{min-width:0;word-break:break-word}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:var(--navy);color:#fff;padding:10px 16px;border-radius:24px;font-size:13.5px;z-index:60;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+  /* ── Visit mode (Phase 1): one big thumb target per step, 16px fields so iOS never zooms ── */
+  .btn.xl{font-size:16.5px;padding:14px 16px;min-height:52px;justify-content:center;border-radius:12px}
+  .btn.xl.wide{width:100%}
+  .btn:disabled{opacity:.55;cursor:default}
+  input.in,textarea.in,select.in{font-size:16px}
+  select.in{width:100%;font:inherit;font-size:16px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:#1b2733}
+  .vmode .vtimer{display:flex;align-items:baseline;justify-content:space-between;background:#fff1e3;border:1px solid #f6c79a;border-radius:12px;padding:10px 14px;color:#8a4b0a;font-weight:700}
+  .vmode .vtimer b{font-size:26px;font-variant-numeric:tabular-nums;color:#b45309}
+  textarea.vnotes{min-height:110px}
+  .chip.fu-pending{background:#fff1e3;color:#b45309}.chip.fu-complete{background:#e7f6ee;color:var(--ok)}.chip.fu-none{background:#eef2f6;color:#5b6672}
+  .modal.full{align-items:stretch}
+  .sheet.full{max-height:none;height:100%;border-radius:0;padding:0 14px 14px;-webkit-overflow-scrolling:touch}
+  .sheethd{position:sticky;top:0;z-index:2;background:#fff;display:flex;align-items:center;gap:10px;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top,0)) 0 10px;border-bottom:1px solid var(--line);margin-bottom:10px;color:var(--navy)}
+  .sheethd b{font-size:15.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rvnote{background:#fff6ec;border:1px solid #f3d6ae;color:#8a5a08;border-radius:10px;padding:9px 11px;font-size:13px;margin:0 0 10px}
+  .rvnote.ok{background:#eef5fc;border-color:#cfe0f2;color:#2b4a6f}
+  .rv-sec{margin:0 0 14px}
+  .rv-sec h4{margin:0 0 6px;color:var(--navy);font-size:14.5px}
+  details.rv-sec>summary{cursor:pointer;list-style:none;padding:4px 0}
+  details.rv-sec>summary::-webkit-details-marker{display:none}
+  .rv-card{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff;margin:0 0 8px}
+  .rv-card.opp{border-color:#f6c79a;background:#fffaf4}
+  .rv-card.off{opacity:.45}
+  .rv-review{color:#8a5a08;background:#fff6ec;border-radius:8px;padding:5px 8px;font-size:12.5px;margin-top:6px}
+  .rv-checks{background:#fff6ec;border:1px solid #f3d6ae;color:#8a5a08;border-radius:10px;padding:9px 11px;font-size:13px;margin:0 0 10px}
+  .rv-checks ul{margin:6px 0 0 18px;padding:0}
+  .rv-top{display:flex;gap:8px;align-items:flex-start}
+  .rv-row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+  .rv-row>*{flex:1 1 130px;min-width:0}
+  .rv-row>.btn{flex:0 1 auto}
+  .rv-chk{display:flex;align-items:center;gap:8px;font-size:14px;padding:6px 0;min-height:36px}
+  .rv-chk input{width:22px;height:22px;flex:0 0 auto;margin:0}
+  .rv-add{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .rv-add>.in{flex:1 1 160px;min-width:0}
+  .rv-line{font-size:14px;padding:3px 0;border-bottom:1px dashed #edf0f4}
+  textarea.rv-list{min-height:46px}
+  details.rv-more>summary{cursor:pointer;padding:10px 0 2px;min-height:40px}
+  .hint.ok{color:var(--ok)}
+  .rv-done{text-align:center;padding:30px 4px}
+  .rv-done .big{font-size:22px;font-weight:800;color:var(--ok)}
+</style>
+</head><body>
+<header>
+  <div class="row"><span class="b">HCPS Field</span><h1>Scheduled Routes</h1><span id="netstat" onclick="openSyncPanel()" style="font-size:11px;font-weight:700;color:#9fd6b0;cursor:pointer"></span><a class="full" id="fullportal" href="/admin/hub.html?cat=sales">Full portal</a></div>
+  <div id="wsstrip" style="display:none;margin-top:8px;padding:7px 10px;border-radius:8px;background:#14532d;font-size:13px;line-height:1.5">🧑‍💼 <b style="color:#bbf7d0">My Sales Workspace</b> — your own routes and visits.
+    <span style="display:inline-flex;gap:8px;flex-wrap:wrap;margin-left:4px"><a href="/admin/command-center-rep.html" style="color:#fff;font-weight:700">My Command Center</a>
+    <a id="wsback" href="/admin/?workspace=off" onclick="HCPS.setWorkspace(false)" style="background:#fff;color:#14532d;border-radius:6px;padding:2px 9px;font-weight:800;text-decoration:none">← Back to Admin Dashboard</a></span></div>
+</header>
+<div class="wrap"><div id="app"><div class="msg">Loading…</div></div></div>
+
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/dealer-handout.js"></script>
+<script src="/admin/route-clock.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const jesc=s=>String(s==null?"":s).replace(/'/g,"\\'").replace(/"/g,"&quot;");
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+/* My Sales Workspace (President working his own book): say so, and offer the way back. */
+if(HCPS.workspace&&HCPS.workspace()){ $("#wsstrip").style.display=""; const fp=$("#fullportal"); if(fp) fp.style.display="none"; }
+let ROUTES=null, DAY=null, HANDOUT={ordering_url:DealerHandout.ORDERING_URL,updates:DealerHandout.UPDATES.slice()};
+let VSTRUCT={}, VTX={}, REC={};
+function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function fmtDate(ds){ if(!ds) return "Unscheduled"; const d=new Date(ds+"T00:00:00"); return d.toLocaleDateString([], {weekday:"long",month:"long",day:"numeric",year:"numeric"}); }
+function toast(m){ const t=document.createElement("div"); t.className="toast"; t.textContent=m; document.body.appendChild(t); setTimeout(()=>t.remove(),2200); }
+function qparam(k){ try{ return new URLSearchParams(location.search).get(k); }catch(e){ return null; } }
+
+async function rapi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/routes-api",{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){ TOKEN=null; gate("Session ended — sign in again."); throw new Error("401"); }
+  return r.json().catch(()=>({})); }
+async function esapi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/email-sync-api",{method:"POST",headers:h,body:JSON.stringify(body)}); return r.json().catch(()=>({})); }
+async function voiceApi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/visit-voice-api",{method:"POST",headers:h,body:JSON.stringify(body)}); return r.json().catch(()=>({})); }
+
+function gate(msg){ $("#app").innerHTML=`<div class="gate"><h3 style="margin:0 0 4px;color:var(--navy)">Sign in</h3><p class="hint" style="margin:0 0 12px">Your HCPS work email and password.</p>
+  <input id="lemail" type="email" placeholder="Email" autocomplete="username">
+  <input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()">
+  <button class="btn pri wide" onclick="submitTok()">Sign in</button>
+  <div id="lerr" style="color:#b42323;margin-top:8px;font-size:13px">${msg||""}</div></div>`;
+  setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},60); }
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+  const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+  HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot(); }
+
+// ---- Offline cache + write outbox (localStorage) ----
+/* OUTBOX:BEGIN — the field write queue (Phase 0G). test/phase0-outbox.test.js runs this block.
+   · Everything is kept PER PERSON (keyed by the signed-in email), so a second rep on the same
+     phone never sees — or sends under their own login — the first rep's cached routes or
+     unsynced visits.
+   · Sync goes in order and stops at the first item the server could not take right now (offline,
+     5xx, timeout), so a later save can never overtake an earlier one.
+   · An item the server REFUSES (a 4xx: not your dealer, bad input…) will never succeed by being
+     resent, so it leaves the queue for a review list — "need review" in the header — where it
+     can be retried or discarded. It no longer blocks, or silently re-sends, forever.
+   · A lapsed session stops the sync and keeps the queue until you sign in again. */
+function obUser(){ return String((ME&&ME.email)||"").trim().toLowerCase(); }
+function obKey(kind){ const u=obUser(); return u ? `sr_${kind}_${u}` : `sr_${kind}__noone`; }
+function obRead(kind){ try{ const a=JSON.parse(localStorage.getItem(obKey(kind))||"null"); return a==null?null:a; }catch(e){ return null; } }
+function obWrite(kind,v){ try{ localStorage.setItem(obKey(kind),JSON.stringify(v)); }catch(e){} }
+function cacheDay(id,j){ obWrite("day_"+id,j); }
+function loadCachedDay(id){ return obRead("day_"+id); }
+function cacheRoutes(j){ obWrite("routes",j); }
+function loadCachedRoutes(){ return obRead("routes"); }
+function outbox(){ const a=obRead("outbox"); return Array.isArray(a)?a:[]; }
+function setOutbox(a){ obWrite("outbox",a); updateStatus(); }
+function quarantine(){ const a=obRead("quarantine"); return Array.isArray(a)?a:[]; }
+function setQuarantine(a){ obWrite("quarantine",a); updateStatus(); }
+function obId(){ return Date.now()+"_"+Math.random().toString(36).slice(2,7); }
+function enqueue(body){ const a=outbox(); a.push({id:obId(),body,queued_at:new Date().toISOString(),tries:0}); setOutbox(a); }
+/* Queues saved before this change ("sr_outbox", one for everyone on the device) — and anything
+   queued while no one was identified — can't be attributed to a person, so they are never sent
+   automatically: they move to THIS person's review list, where Retry sends them as you. */
+function adoptLegacyOutbox(){
+  if(!obUser()) return;
+  const q=quarantine(); let moved=0;
+  for(const key of ["sr_outbox","sr_outbox__noone"]){
+    let old=[]; try{ old=JSON.parse(localStorage.getItem(key)||"[]"); }catch(e){ old=[]; }
+    if(Array.isArray(old)) for(const it of old){ if(!it||!it.body) continue; moved++;
+      q.push({id:it.id||obId(),body:it.body,error:"Saved on this device before sign-ins were kept apart — check it is yours, then Retry or Discard.",legacy:true,at:new Date().toISOString()}); }
+    try{ localStorage.removeItem(key); }catch(e){}
+  }
+  if(moved) setQuarantine(q);
+}
+// One raw send. kind: "ok" | "rejected" (4xx, or a 200 that says no) | "auth" (401) | "retry" (offline/5xx/408/429).
+async function obSend(body){
+  let r; try{ const h={"content-type":"application/json"}; if(TOKEN) h["authorization"]="Bearer "+TOKEN;
+    r=await fetch("/.netlify/functions/routes-api",{method:"POST",headers:h,body:JSON.stringify(body)}); }
+  catch(e){ return {kind:"retry",status:0,j:null}; }
+  let j=null; try{ j=await r.json(); }catch(e){}
+  if(r.status===401) return {kind:"auth",status:401,j};
+  if(r.status>=500||r.status===408||r.status===429) return {kind:"retry",status:r.status,j};
+  if(r.status>=400) return {kind:"rejected",status:r.status,j};
+  if(j&&j.ok) return {kind:"ok",status:r.status,j};
+  return {kind:"rejected",status:r.status,j};
+}
+function obErrorText(res){ return String((res.j&&(res.j.error||res.j.message))||("HTTP "+res.status)).slice(0,200); }
+function obSignedOut(){ TOKEN=null; gate("Session ended — sign in again. Your unsynced changes are kept on this device."); }
+let OB_FLUSHING=false;
+async function flushOutbox(){
+  if(!navigator.onLine||OB_FLUSHING||!TOKEN){ updateStatus(); return; }
+  OB_FLUSHING=true;
+  try{
+    const seen=new Set();                       // never send one item twice in a pass (e.g. storage full)
+    while(true){
+      const a=outbox(); if(!a.length) break;
+      const item=a[0]; if(seen.has(item.id)) break; seen.add(item.id); setStatusText("↻ Syncing…");
+      const res=await obSend(item.body);
+      if(res.kind==="ok"){ setOutbox(outbox().filter(x=>x.id!==item.id)); continue; }
+      if(res.kind==="rejected"){
+        const q=quarantine(); q.push({id:item.id,body:item.body,error:obErrorText(res),status:res.status,at:new Date().toISOString()});
+        setQuarantine(q); setOutbox(outbox().filter(x=>x.id!==item.id)); continue; }
+      if(res.kind==="auth"){ obSignedOut(); break; }
+      const cur=outbox(); const k=cur.findIndex(x=>x.id===item.id);           // retry later, order kept
+      if(k>=0){ cur[k].tries=(cur[k].tries||0)+1; cur[k].last_error=res.status?("HTTP "+res.status):"no connection"; setOutbox(cur); }
+      break;
+    }
+  } finally { OB_FLUSHING=false; updateStatus(); }
+}
+// Send now if possible. {sent} | {queued} | {rejected, error} — a refusal is shown, never queued.
+async function tryOrQueue(body){
+  if(!navigator.onLine){ enqueue(body); return {sent:false,queued:true}; }
+  if(outbox().length){                                     // earlier items first — keep the order
+    enqueue(body); const id=outbox().slice(-1)[0].id; await flushOutbox();
+    if(outbox().some(x=>x.id===id)) return {sent:false,queued:true};
+    const bad=quarantine().find(x=>x.id===id); if(bad) return {sent:false,rejected:true,error:bad.error};
+    return {sent:true,j:null}; }
+  const res=await obSend(body);
+  if(res.kind==="ok") return {sent:true,j:res.j};
+  if(res.kind==="rejected") return {sent:false,rejected:true,error:obErrorText(res)};
+  enqueue(body); if(res.kind==="auth") obSignedOut();
+  return {sent:false,queued:true};
+}
+function retryQuarantined(id){ const q=quarantine(); const it=q.find(x=>x.id===id); if(!it) return;
+  setQuarantine(q.filter(x=>x.id!==id)); const a=outbox(); a.push({id:it.id,body:it.body,queued_at:new Date().toISOString(),tries:0}); setOutbox(a);
+  return flushOutbox().then(()=>{ if(typeof renderSyncPanel==="function") renderSyncPanel(); }); }
+function discardQuarantined(id){ setQuarantine(quarantine().filter(x=>x.id!==id)); if(typeof renderSyncPanel==="function") renderSyncPanel(); }
+function setStatusText(t,c){ const el=$("#netstat"); if(el){ el.textContent=t; el.style.color=c||"#ffd7b0"; } }
+function updateStatus(){ const n=outbox().length, nq=quarantine().length, rv=nq?` · ⚠ ${nq} need review`:"";
+  if(!navigator.onLine) setStatusText("● Offline"+(n?` · ${n} to sync`:"")+rv,"#ffd7b0");
+  else if(n) setStatusText(`↻ ${n} to sync`+rv,"#ffd7b0");
+  else if(nq) setStatusText(`⚠ ${nq} need review`,"#ffd7b0");
+  else setStatusText("● Online","#9fd6b0"); }
+/* OUTBOX:END */
+// The review list behind "need review": what each refused item was, why, Retry / Discard.
+const OB_LABELS={visit_checkin:"Visit start",visit_end:"Visit end",visit_approve:"Approved visit summary",visit_followup_set:"Follow-up status",visit_email_save:"Follow-up email draft"};
+function obLabel(b){ const a=b&&b.action; if(a==="visit_email_save"&&b.sent) return "Follow-up email (sent)";
+  return a==="visit_report_save"?(b.status==="completed"?"Completed visit":"Visit notes"):(OB_LABELS[a]||String(a||"Change")); }
+function obDealer(b){ const id=b&&b.dealer_id; const st=DAY&&DAY.stops&&DAY.stops.find(x=>String(x.dealer_id)===String(id)); return (st&&(st.name||st.business_name))||"a dealer"; }
+function openSyncPanel(){ if(!quarantine().length && !outbox().length) return; renderSyncPanel(true); }
+function renderSyncPanel(open){
+  let p=document.getElementById("syncpanel");
+  if(!p){ if(!open) return; p=document.createElement("div"); p.id="syncpanel"; document.body.appendChild(p); }
+  const q=quarantine(), a=outbox();
+  if(!q.length && !a.length){ p.remove(); return; }
+  p.setAttribute("style","position:fixed;left:12px;right:12px;bottom:12px;max-height:70vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;z-index:70;box-shadow:0 6px 24px rgba(0,0,0,.25)");
+  p.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b style="color:var(--navy)">Unsynced changes</b><span style="flex:1"></span><button class="btn" onclick="document.getElementById('syncpanel').remove()">Close</button></div>
+    ${a.length?`<p class="hint" style="margin:0 0 10px">${a.length} waiting to send — they go automatically when you're back online.</p>`:""}
+    ${q.map(it=>`<div style="border-top:1px solid var(--line);padding:10px 0">
+      <div style="font-weight:700">${esc(obLabel(it.body))} · ${esc(obDealer(it.body))}</div>
+      <div class="hint" style="margin:2px 0 8px;color:#b42323">${esc(it.error||"Refused")}</div>
+      <button class="btn pri" onclick="retryQuarantined('${jesc(it.id)}')">Retry</button> <button class="btn" onclick="discardQuarantined('${jesc(it.id)}')">Discard</button></div>`).join("")}`;
+}
+
+// ---- Boot: deep-link ?route=<id> opens a route; otherwise show the route list ----
+function boot(){ if(!TOKEN){ gate(); return; }
+  const rid=qparam("route"), did=qparam("dealer");
+  // The profile decides what this person may do (assign / set a start point), so it is
+  // loaded before either view renders — including when a route link is opened directly.
+  // ?dealer=<id> (Phase 2A) is an unplanned visit started from Dealer 360: the same visit mode, one dealer, no route.
+  loadMyHome().then(()=>{ adoptLegacyOutbox(); if(rid){ openRoute(rid); } else if(did){ openDealerVisit(did); } else { showList(); } });
+}
+
+async function showList(){
+  if(!TOKEN){ gate(); return; }
+  $("#app").innerHTML=`<div class="msg">Loading your routes…</div>`;
+  let j=null;
+  try{ j=await rapi({action:"list_routes"}); }catch(e){ if(!TOKEN) return; j=null; }
+  if(j&&j.ok){ ROUTES=j.routes||[]; cacheRoutes(ROUTES); if(j.me){ ME=j.me; MYHOME=j.me.home_base||null; } }
+  else { const c=loadCachedRoutes(); if(c){ ROUTES=c; setStatusText("● Offline (cached)","#ffd7b0"); } }
+  if(!ROUTES){ $("#app").innerHTML=`<div class="msg">Couldn't load your routes${navigator.onLine?"":" — you're offline"}.</div>`; updateStatus(); return; }
+  renderList();
+  if(navigator.onLine){ updateStatus(); flushOutbox().then(updateStatus); }
+}
+function renderList(){
+  const today=todayStr();
+  const rs=(ROUTES||[]).slice();
+  /* Three buckets, because a rep standing in a parking lot is asking one question:
+     where am I going now. Today comes first and alone; dated routes ahead of today are
+     next; undated saved routes last. */
+  const todayR=rs.filter(r=>r.scheduled_date===today);
+  const upcoming=rs.filter(r=>r.scheduled_date&&r.scheduled_date>today).sort((a,b)=>String(a.scheduled_date).localeCompare(String(b.scheduled_date)));
+  const saved=rs.filter(r=>!r.scheduled_date).sort((a,b)=>String(b.updated_at||"").localeCompare(String(a.updated_at||"")));
+  const past=rs.filter(r=>r.scheduled_date&&r.scheduled_date<today).sort((a,b)=>String(b.scheduled_date).localeCompare(String(a.scheduled_date)));
+  const card=(r,big)=>{ const done=r.visited||0, n=r.stops_count||0; const prog=n?`${done}/${n}`:"—";
+    const drive=r.duration_s?` · ${Math.round(r.duration_s/60)} min`:"";
+    const miles=r.distance_m?` · ${Math.round(r.distance_m/1609)} mi`:"";
+    return `<div class="stop clk${big?" todayr":""}" onclick="openRoute('${jesc(r.id)}')"><div class="sh">
+      <div class="ord cal">${big?"🚗":"📅"}</div>
+      <div class="mid"><div class="nm">${esc(r.name||"Route")}</div>
+        <div class="sub">${esc(fmtDate(r.scheduled_date))} · ${n} stop${n===1?"":"s"}${drive}${miles}</div>
+        ${r.planned_by?`<div class="sub" style="color:#9db4d0">Planned for you by ${esc(r.planned_by)}</div>`:""}</div>
+      <div class="eta"><div class="t">${prog}</div><div class="l">visited</div></div>
+    </div></div>`; };
+  const phone=`<div class="phone">
+    <div class="t">📲 Add to your phone</div>
+    <div class="u" id="mlink">${esc(location.origin)}/my-routes</div>
+    <button class="btn sm" onclick="emailLink(this)">✉️ Email me the link</button>
+    <button class="btn sm" onclick="toggleInstall()">How to install</button>
+    <div id="installBox" hidden>
+      <div class="steps"><b>iPhone (Safari):</b> open the link in Safari → tap the <b>Share</b> button → <b>Add to Home Screen</b>.</div>
+      <div class="steps"><b>Android (Chrome):</b> open the link in Chrome → tap the <b>⋮</b> menu → <b>Add to Home screen</b> / <b>Install app</b>.</div>
+    </div>
+    <div id="linkmsg" class="hint" style="color:#9db4d0;margin-top:8px"></div>
+  </div>`;
+  let h=homeBaseBanner();
+  h+=`<div class="grouplbl">Today</div>`+(todayR.length?todayR.map(r=>card(r,true)).join("")
+      :`<div class="card hint">Nothing scheduled for today.</div>`);
+  h+=`<div class="grouplbl" style="margin-top:14px">Upcoming</div>`+(upcoming.length?upcoming.map(r=>card(r)).join("")
+      :`<div class="card hint">No upcoming routes yet.</div>`);
+  if(saved.length) h+=`<div class="grouplbl" style="margin-top:14px">Saved routes</div>`+saved.map(r=>card(r)).join("");
+  if(past.length) h+=`<div class="grouplbl" style="margin-top:14px">Earlier</div>`+past.map(r=>card(r)).join("");
+  h+=phone;
+  $("#app").innerHTML=h;
+  updateStatus();
+}
+/* ── This rep's own start location ───────────────────────────────────────────
+   A rep's route must never begin at whoever planned it. If they have no default of
+   their own, the app asks — once, at the top of their list — rather than quietly using
+   an address that isn't theirs. */
+let MYHOME=null;
+async function loadMyHome(){
+  try{ const j=await rapi({action:"my_settings"}); if(j&&j.ok){ MYHOME=j.home_base||null; ME=j.me||ME; } }catch(e){}
+}
+function homeBaseBanner(){
+  if(MYHOME) return "";
+  return `<div class="card hint" id="hbbanner" style="border-left:4px solid var(--orange)">
+    <b style="color:var(--navy);font-size:14px">Set your starting point</b><br>
+    Your routes start and end wherever you begin your day. Set it once and every route you open uses it.
+    <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn sm" onclick="useMyLocation(this)">📍 Use my current location</button>
+      <button class="btn sm" onclick="typeMyHome()">Type an address</button>
+    </div>
+    <div id="hbmsg" style="margin-top:7px"></div></div>`;
+}
+async function saveMyHome(hb,msgEl){
+  try{ const j=await rapi({action:"save_home_base",home_base:hb});
+    if(j&&j.ok){ MYHOME=j.home_base; if(msgEl) msgEl.textContent="✓ Saved."; showList(); return true; }
+    if(msgEl) msgEl.textContent=(j&&j.error)||"Couldn't save that."; }
+  catch(e){ if(msgEl) msgEl.textContent="Couldn't save — check your signal."; }
+  return false;
+}
+function useMyLocation(btn){
+  const m=$("#hbmsg");
+  if(!navigator.geolocation){ if(m) m.textContent="This phone won't share its location — type an address instead."; return; }
+  if(btn) btn.disabled=true; if(m) m.textContent="Getting your location…";
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    await saveMyHome({label:"My start",address:"",lat:pos.coords.latitude,lng:pos.coords.longitude},m);
+    if(btn) btn.disabled=false;
+  },err=>{ if(m) m.textContent="Couldn't get your location ("+(err&&err.message||"denied")+"). Type an address instead.";
+    if(btn) btn.disabled=false; },{enableHighAccuracy:true,timeout:12000});
+}
+async function typeMyHome(){
+  const a=window.prompt("What address should your routes start from?\n(Street, city, state)");
+  if(!a||!a.trim()) return;
+  const m=$("#hbmsg"); if(m) m.textContent="Looking that up…";
+  let g=null; try{ g=await rapi({action:"geocode",q:a.trim()}); }catch(e){}
+  const hit=g&&g.ok&&(g.result||(g.results&&g.results[0]));
+  if(hit&&isFinite(hit.lat)&&isFinite(hit.lng)){ await saveMyHome({label:"My start",address:a.trim(),lat:hit.lat,lng:hit.lng},m); return; }
+  if(m) m.textContent="Couldn't find that address. Try including the city and state, or use your current location.";
+}
+
+function toggleInstall(){ const b=$("#installBox"); if(b) b.hidden=!b.hidden; }
+async function emailLink(btn){
+  const m=$("#linkmsg"); if(m)m.textContent="Sending…"; if(btn)btn.disabled=true;
+  let j; try{ j=await rapi({action:"email_mobile_link"}); }catch(e){ j=null; }
+  if(m) m.textContent = (j&&j.ok)?("✓ Sent to "+(j.to||"your email")+" — open it on your phone."):((j&&j.message)||"Couldn't send — try again.");
+  if(btn)btn.disabled=false;
+}
+
+async function openRoute(id){
+  if(!TOKEN){ gate(); return; }
+  $("#app").innerHTML=`<div class="msg">Loading route…</div>`;
+  let j=null, offline=false;
+  try{ j=await rapi({action:"route_day",route_id:id}); }catch(e){ if(!TOKEN) return; j=null; }
+  if(j&&j.ok){ cacheDay(id,j); }
+  else { const c=loadCachedDay(id); if(c){ j=c; offline=true; } }
+  if(!j){ $("#app").innerHTML=`<div class="msg">Couldn't load this route${navigator.onLine?"":" — you're offline"}, and no cached copy.</div><div style="text-align:center"><button class="btn" onclick="showList()">‹ All routes</button></div>`; return; }
+  DAY=j;
+  if(!j.route){ $("#app").innerHTML=`<div class="msg">This route is empty.</div><div style="text-align:center"><button class="btn" onclick="showList()">‹ All routes</button></div>`; return; }
+  renderDay();
+  if(offline) setStatusText("● Offline (showing cached)","#ffd7b0"); else updateStatus();
+  if(navigator.onLine){ computeEtas(); flushOutbox().then(updateStatus); }
+}
+
+/* ── UNPLANNED VISIT (Phase 2A) ──────────────────────────────────────────────────────────────
+   Start Visit on Dealer 360 opens this page with ?dealer=<id>: the SAME visit mode as a route stop —
+   notes, dictation, End, AI review, approve, follow-up email — for one dealer with no route. The
+   phone makes a visit_key when the visit starts and sends it on every call, queued or not, so the
+   server always finds that one visit: a replay never opens a second one, and an unfinished visit
+   is resumed rather than doubled. The key is kept per dealer on this phone until the next visit. */
+function newVisitKey(){ return "v"+Date.now().toString(36)+Math.random().toString(36).slice(2,10); }
+function adhocKeyName(did){ return "adhoc_key_"+did; }
+async function openDealerVisit(did){
+  if(!TOKEN){ gate(); return; }
+  $("#app").innerHTML=`<div class="msg">Loading the visit…</div>`;
+  if(navigator.onLine) await flushOutbox();      // anything queued for this visit goes first
+  let key=obRead(adhocKeyName(did))||null, j=null, offline=false;
+  try{ j=await rapi({action:"route_day",dealer_id:did,visit_key:key||undefined}); }catch(e){ if(!TOKEN) return; j=null; }
+  if(j&&!j.ok&&j.error){
+    $("#app").innerHTML=`<div class="msg">${esc(j.error)}</div><div style="text-align:center"><a class="btn" href="/admin/dealer.html?id=${encodeURIComponent(did)}">‹ Dealer 360</a></div>`; return; }
+  if(!(j&&j.ok)){
+    j=loadCachedDay("adhoc_"+did); offline=true;
+    // No copy on this phone yet: the visit can still be started and noted; it syncs later.
+    if(!j) j={ok:true,route:{id:null,adhoc:true,dealer_id:did,name:"Unplanned visit",scheduled_date:todayStr(),needs_home_base:false},stops:[{dealer_id:did,name:"This dealer",visit:null}]};
+  } else {
+    const v=(j.stops&&j.stops[0]&&j.stops[0].visit)||null;
+    const doneLongAgo=v&&(v.completed_at||v.approved_at)&&(Date.now()-Date.parse(v.completed_at||v.approved_at)>2*3600e3);
+    if(v&&!doneLongAgo) key=v.visit_key||key||newVisitKey();      // the visit in progress (or just finished)
+    else if(doneLongAgo){ j.stops[0].visit=null; key=newVisitKey(); }   // that one is over: a new visit
+    else key=key||newVisitKey();      // not started on the server yet — keep the key anything queued carries
+  }
+  j.route=Object.assign({},j.route,{adhoc:true,dealer_id:did,visit_key:(j.route&&j.route.visit_key)||key});
+  obWrite(adhocKeyName(did),j.route.visit_key);
+  DAY=j; cacheDay(dayKey(),DAY);
+  renderDay();
+  if(offline) setStatusText("● Offline (showing cached)","#ffd7b0"); else updateStatus();
+}
+// The finished visit stays on screen; the next one gets its own key.
+function startAnotherVisit(){
+  if(!ADHOC()) return;
+  DAY.route.visit_key=newVisitKey(); obWrite(adhocKeyName(DAY.route.dealer_id),DAY.route.visit_key);
+  DAY.stops[0].visit=null; cacheDay(dayKey(),DAY); renderDay();
+}
+
+/* ── Assigning a route (president only) ─────────────────────────────────────
+   The missing link, made visible: a route is planned by one person and driven by
+   another, and until it is related to that person their portal has nothing to show.
+   The control lives on the route itself, where the decision is actually made. */
+let REPS=null;
+// In My Sales Workspace the President drives his own routes — the assign control is a management tool.
+function isBoss(){ return String((ME&&ME.role)||"").toLowerCase()==="president" && !(HCPS.workspace&&HCPS.workspace()); }
+function assignBarHtml(r){
+  if(!isBoss()) return "";
+  const who=r.assigned_to_rep||r.assigned_to_email;
+  return `<div class="mt" style="margin:-4px 0 10px;padding:10px 12px;border-radius:10px;background:#f4f7fb;border:1px solid var(--line)">
+    <div style="color:var(--gray)">${who
+      ? `Assigned to <b style="color:var(--navy)">${esc(who)}</b> — it appears in their portal automatically.`
+      : `<b style="color:#b4651a">Not assigned to anyone.</b> Only you can see this route. Assign it and it appears in that rep's portal.`}</div>
+    <div id="asgbox" style="margin-top:8px"><button class="btn sm" onclick="openAssign('${jesc(r.id)}')">${who?"Change who it's for":"Assign to a rep"}</button></div>
+  </div>`;
+}
+async function openAssign(id){
+  const box=$("#asgbox"); if(!box) return;
+  box.innerHTML=`<div class="mt" style="color:var(--gray)">Loading reps…</div>`;
+  if(!REPS){ try{ const j=await rapi({action:"assignable_reps"}); REPS=(j&&j.reps)||[]; }catch(e){ REPS=[]; } }
+  if(!REPS.length){ box.innerHTML=`<div class="mt" style="color:var(--gray)">No active staff accounts to assign to.</div>`; return; }
+  const cur=(DAY&&DAY.route&&DAY.route.assigned_to_email)||"";
+  box.innerHTML=`<select id="asgsel" class="btn" style="max-width:100%">
+      <option value="">— not assigned —</option>
+      ${REPS.map(x=>`<option value="${esc(x.email)}"${x.email===cur?" selected":""}>${esc(x.rep_name||x.name)}${x.has_home_base?"":" (no start point set)"}</option>`).join("")}
+    </select>
+    <button class="btn sm pri" style="margin-left:6px" onclick="doAssign('${jesc(id)}')">Save</button>
+    <div id="asgmsg" class="mt" style="color:var(--gray);margin-top:6px"></div>`;
+}
+async function doAssign(id){
+  const sel=$("#asgsel"), m=$("#asgmsg"); if(!sel) return;
+  if(m) m.textContent="Saving…";
+  try{ const j=await rapi({action:"assign_route",id,assigned_to_email:sel.value||""});
+    if(j&&j.ok){ if(m) m.textContent="✓ Saved"+(j.home_note?" — "+j.home_note:""); openRoute(id); return; }
+    if(m) m.textContent=(j&&j.error)||"Couldn't assign that."; }
+  catch(e){ if(m) m.textContent="Couldn't assign — check your signal."; }
+}
+
+/* ── VISIT MODE (Phase 1) ─────────────────────────────────────────────────────────────────
+   Start Visit → on-site timer, quick notes, dictation → End Visit → Review the AI summary →
+   approve attendees, follow-ups and opportunities → draft the follow-up email → Done.
+   Built for a phone in one hand: one big button per step, nothing to fill in that the notes
+   already say. Every write goes through the outbox, so it works with no signal, and the server
+   makes a replay a no-op (Phase 0F + 1): a double tap or a resend never duplicates a record. */
+const FU_LABEL={pending:"Follow-up pending",complete:"Follow-up complete",none:"No follow-up required"};
+function statusOf(s){ const v=s.visit; if(v&&(v.approved_at||v.completed_at)) return "done"; if(v&&v.ended_at) return "ended"; if(v&&(v.status==="checked_in"||v.checkin_at)) return "here"; return "plan"; }
+function ADHOC(){ return !!(DAY&&DAY.route&&DAY.route.adhoc); }
+// Notes and dictation are kept on the phone per visit: a route stop, or one unplanned visit (its key).
+function vkey(s){ return ADHOC() ? "adhoc_"+String(DAY.route.visit_key||"")+"_"+String(s.dealer_id||"")
+                                 : String((DAY&&DAY.route&&DAY.route.id)||"")+"_"+String(s.dealer_id||""); }
+// Which visit a call is about: the route stop, or (unplanned) the dealer plus this visit's key.
+function vctx(s){ const c={route_id:(DAY&&DAY.route&&DAY.route.id)||undefined,dealer_id:s.dealer_id}; if(ADHOC()) c.visit_key=DAY.route.visit_key; return c; }
+function dayKey(){ return ADHOC() ? "adhoc_"+DAY.route.dealer_id : DAY.route.id; }
+function fuChip(v){ const f=v&&v.followup_status; return f?`<span class="chip fu-${esc(f)}">${esc(FU_LABEL[f]||f)}</span>`:""; }
+function hms(ms){ ms=Math.max(0,ms|0); const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60); return (h?h+":"+String(m).padStart(2,"0"):String(m))+":"+String(s%60).padStart(2,"0"); }
+function minsBetween(a,b){ const x=Date.parse(a), y=Date.parse(b); return (isFinite(x)&&isFinite(y))?Math.max(0,Math.round((y-x)/60000)):null; }
+let VTIMER=null;
+function tickTimers(){ document.querySelectorAll(".vtimer[data-start]").forEach(el=>{ const st=Date.parse(el.getAttribute("data-start")); if(isFinite(st)) el.querySelector("b").textContent=hms(Date.now()-st); }); }
+function startTimers(){ if(VTIMER) clearInterval(VTIMER); tickTimers(); VTIMER=setInterval(tickTimers,1000); }
+
+function renderDay(){
+  const r=DAY.route, stops=DAY.stops||[];
+  const drive=r.duration_s?` · ${Math.round(r.duration_s/60)} min drive`:"";
+  const done=stops.filter(s=>statusOf(s)==="done").length;
+  const miles=r.distance_m?` · ${Math.round(r.distance_m/1609)} mi`:"";
+  if(ADHOC()){
+    const s0=stops[0]||{};
+    let a=`<div style="margin:0 0 10px"><a class="btn sm" href="/admin/dealer.html?id=${encodeURIComponent(r.dealer_id)}">‹ Dealer 360</a> <a class="btn sm" href="/admin/command-center-rep.html">📋 Command Center</a></div>`;
+    a+=`<div class="card"><div class="rsum"><span class="nm">Unplanned visit</span><span class="mt">${esc(fmtDate(r.scheduled_date||todayStr()))}</span></div>
+      <div class="mt" style="margin:4px 0 2px;color:var(--gray)">Not on a route — saved to ${esc(s0.name||"this dealer")} like any visit: summary, attendees, follow-ups and email.</div></div>`;
+    a+=stops.map((s,i)=>stopCard(s,i)).join("");
+    if(statusOf(s0)==="done") a+=`<button class="btn xl wide" style="margin-top:4px" onclick="startAnotherVisit()">▶ Start another visit here</button>`;
+    $("#app").innerHTML=a;
+    stops.forEach((s,i)=>{ if(statusOf(s)==="here") openBody(i); });
+    startTimers(); return;
+  }
+  let h=`<div style="margin:0 0 10px"><button class="btn sm" onclick="showList()">‹ All routes</button> <a class="btn sm" href="/admin/command-center-rep.html">📋 Command Center</a></div>`;
+  h+=`<div class="card"><div class="rsum"><span class="nm">${esc(r.name||"Route")}</span><span class="mt">${esc(fmtDate(r.scheduled_date))}</span></div>
+    <div class="mt" style="margin:4px 0 10px;color:var(--gray)">${stops.length} stop${stops.length===1?"":"s"}${drive}${miles} · ${done}/${stops.length} visited</div>
+    ${r.planned_by?`<div class="mt" style="margin:-6px 0 10px;color:var(--gray)">Planned for you by ${esc(r.planned_by)}</div>`:""}
+    ${r.needs_home_base?`<div class="mt" style="margin:-4px 0 10px;padding:9px 11px;border-radius:10px;background:#fff6ec;border:1px solid #f3d6ae;color:#8a5a08">
+      <b>No starting point set.</b> Drive times below are between stops only.
+      <button class="btn sm" style="margin-top:7px" onclick="showList()">Set my starting point</button></div>`:""}
+    ${assignBarHtml(r)}
+    <button class="btn sm" onclick="syncCalendar()">📆 Sync to Outlook</button>
+    <button class="btn sm" onclick="addToCalendar()">⬇︎ .ics file</button></div>`;
+  h+=stops.map((s,i)=>stopCard(s,i)).join("");
+  $("#app").innerHTML=h;
+  // The stop you are at opens by itself, so the timer and the notes are one glance away.
+  stops.forEach((s,i)=>{ if(statusOf(s)==="here") openBody(i); });
+  startTimers();
+}
+function stopCard(s,i){
+  const st=statusOf(s), v=s.visit||{};
+  const cls=st==="done"?"done":(st==="here"||st==="ended"?"here":"");
+  const chip=st==="done"?`<span class="chip done">visited</span> ${fuChip(v)}`
+    :st==="ended"?`<span class="chip here">summary due</span>`
+    :st==="here"?`<span class="chip here">on site</span>`:`<span class="chip plan">planned</span>`;
+  const loc=[s.city,s.state].filter(Boolean).join(", ");
+  const addr=[s.address,[s.city,s.state].filter(Boolean).join(", "),s.zip].filter(Boolean).join(" · ");
+  const navQ=(isFinite(s.lat)&&isFinite(s.lng))?`${s.lat},${s.lng}`:encodeURIComponent([s.address,s.city,s.state,s.zip].filter(Boolean).join(", "));
+  const navUrl=`https://www.google.com/maps/dir/?api=1&destination=${navQ}`;
+  const main = st==="plan" ? `<button class="btn go xl wide" onclick="checkIn(${i})">▶ Start visit</button>`
+    : st==="here" ? `<button class="btn pri wide" onclick="toggleBody(${i})">⏱ Visit in progress</button>`
+    : st==="ended" ? `<button class="btn go xl wide" onclick="openReview(${i})">Review summary →</button>`
+    : `<button class="btn wide" onclick="openSummary(${i})">View summary</button>`;
+  return `<div class="stop ${cls}" id="stop_${i}">
+    <div class="sh" onclick="toggleBody(${i})">
+      <div class="ord">${i+1}</div>
+      <div class="mid"><div class="nm">${esc(s.name)} ${chip}</div>
+        ${addr?`<div class="sub addr">${esc(addr)}</div>`:(loc?`<div class="sub">${esc(loc)}</div>`:"")}
+        <div class="sub">${s.contact_name?esc(s.contact_name):""}${s.contact_phone?`${s.contact_name?" · ":""}${esc(s.contact_phone)}`:""}${
+          s.visit_min?` · ${esc(String(s.visit_min))} min visit`:""}${v.duration_min!=null&&st!=="plan"&&st!=="here"?` · on site ${esc(String(v.duration_min))} min`:""}</div></div>
+      ${ADHOC()?"":`<div class="eta"><div class="t" id="eta_${i}">—</div><div class="l" id="etal_${i}">ETA</div></div>`}
+    </div>
+    <div class="acts">
+      <a class="btn" href="${navUrl}" target="_blank" rel="noopener">🧭 Navigate</a>
+      ${s.contact_phone?`<a class="btn" href="tel:${esc(String(s.contact_phone).replace(/[^0-9+]/g,''))}">📞 Call</a>`:""}
+      <button class="btn" onclick="openHandout('${jesc(s.dealer_id)}')">📄 Visit package</button>
+      ${st==="plan"&&!ADHOC()?`<button class="btn" onclick="headsUp(${i})">📣 Heads-up</button>`:""}
+      <a class="btn" href="/admin/dealer.html?id=${encodeURIComponent(s.dealer_id)}">📇 Dealer 360</a>
+      ${main}
+    </div>
+    <div class="body" id="body_${i}"></div>
+  </div>`;
+}
+function openBody(i){ const b=$("#body_"+i); if(!b) return; b.classList.add("open"); if(!b.dataset.loaded) loadStopBody(i); }
+function toggleBody(i){ const b=$("#body_"+i); if(!b) return; if(b.classList.contains("open")){ b.classList.remove("open"); return; } openBody(i); }
+function loadStopBody(i){
+  const s=DAY.stops[i], b=$("#body_"+i), st=statusOf(s); b.dataset.loaded="1";
+  if(st==="here") return visitPanel(i);
+  if(st==="ended"){ b.innerHTML=`<div class="hint">Visit ended${s.visit&&s.visit.duration_min!=null?` after ${esc(String(s.visit.duration_min))} min`:""}. Review the summary to save it.</div>
+    <button class="btn go xl wide" style="margin-top:10px" onclick="openReview(${i})">Review summary →</button>`; return; }
+  if(st==="done"){ b.innerHTML=`<button class="btn wide" onclick="openSummary(${i})">View summary</button>`; return; }
+  b.innerHTML=`<div class="hint">Tap <b>Start visit</b> when you walk in — the timer starts and your notes are kept with the visit.</div>`;
+}
+function visitPanel(i){
+  const s=DAY.stops[i], b=$("#body_"+i), k=vkey(s);
+  const notes=obRead("vnote_"+k)||"", tx=obRead("vtx_"+k)||"";
+  b.innerHTML=`<div class="vmode">
+    <div class="vtimer" data-start="${esc((s.visit&&s.visit.checkin_at)||new Date().toISOString())}">On site <b>0:00</b></div>
+    <label class="fl" for="vn_${i}">Quick notes</label>
+    <textarea class="in vnotes" id="vn_${i}" placeholder="Who you met, what you covered, what you promised…" oninput="keepNotes(${i})">${esc(notes)}</textarea>
+    <div class="voice" id="voice_${i}">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button class="btn go" id="rec_${i}" onclick="toggleRec(${i})">🎤 Dictate</button>
+        <span id="recmsg_${i}" class="hint">Talk through the meeting — it becomes the summary you review after.</span>
+      </div>
+      <textarea class="in" id="vt_${i}" placeholder="Dictation appears here" style="margin-top:8px;${tx?"":"display:none"}" oninput="keepNotes(${i})">${esc(tx)}</textarea>
+    </div>
+    <button class="btn go xl wide" style="margin-top:12px" onclick="endVisit(${i})">■ End visit</button>
+    <div id="vmsg_${i}" class="hint" style="margin-top:8px"></div></div>`;
+  startTimers();
+}
+function keepNotes(i){ const s=DAY.stops[i], k=vkey(s);
+  obWrite("vnote_"+k,(($("#vn_"+i)||{}).value||"")); obWrite("vtx_"+k,(($("#vt_"+i)||{}).value||"")); }
+
+// ---- Voice: the words only (the summary is built at review time) ----
+function blobToB64(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).replace(/^data:[^,]*,/,"")); r.onerror=rej; r.readAsDataURL(blob); }); }
+function toggleRec(i){ const r=REC[i]; if(r&&r.mr&&r.mr.state==="recording"){ stopRec(i); } else { startRec(i); } }
+async function startRec(i){
+  const btn=$("#rec_"+i), msg=$("#recmsg_"+i);
+  if(!navigator.onLine){ if(msg)msg.textContent="Dictation needs a connection — type quick notes for now; they're kept."; return; }
+  if(!navigator.mediaDevices||!window.MediaRecorder){ if(msg)msg.textContent="This device can't record here — type your notes."; return; }
+  let stream; try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){ if(msg)msg.textContent="Microphone blocked — allow mic access, or type your notes."; return; }
+  const mime=(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported("audio/webm"))?"audio/webm":((MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported("audio/mp4"))?"audio/mp4":"");
+  let mr; try{ mr=mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream); }catch(e){ mr=new MediaRecorder(stream); }
+  const chunks=[]; mr.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
+  mr.onstop=async()=>{ try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){} const blob=new Blob(chunks,{type:mr.mimeType||mime||"audio/webm"}); await processAudio(i,blob); };
+  const t0=Date.now(); const timer=setInterval(()=>{ const sec=Math.floor((Date.now()-t0)/1000); const m=$("#recmsg_"+i); if(m)m.textContent="● Recording "+Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0")+" — tap Stop"; if(sec>=240) stopRec(i); },500);
+  REC[i]={mr,stream,timer}; mr.start();
+  if(btn){ btn.textContent="■ Stop"; btn.classList.remove("go"); btn.classList.add("pri"); }
+}
+function stopRec(i){ const r=REC[i]; if(!r) return; if(r.timer) clearInterval(r.timer); try{ r.mr.stop(); }catch(e){}
+  const btn=$("#rec_"+i); if(btn){ btn.textContent="🎤 Dictate"; btn.classList.add("go"); btn.classList.remove("pri"); }
+  const msg=$("#recmsg_"+i); if(msg) msg.textContent="Transcribing…"; }
+async function processAudio(i,blob){
+  const s=DAY.stops[i], msg=$("#recmsg_"+i);
+  if(!blob||!blob.size){ if(msg)msg.textContent="Nothing recorded — try again."; return; }
+  if(blob.size>9*1024*1024){ if(msg)msg.textContent="That recording's too long — keep it under ~4 minutes."; return; }
+  let b64; try{ b64=await blobToB64(blob); }catch(e){ if(msg)msg.textContent="Couldn't read the recording."; return; }
+  let j; try{ j=await voiceApi({action:"transcribe",raw:true,dealer_id:s.dealer_id,audio_base64:b64,mime:blob.type||"audio/webm"}); }catch(e){ j=null; }
+  if(!j||j.ok===false||!j.transcript){ if(msg)msg.textContent=(j&&j.message)||"Couldn't transcribe — type your notes."; return; }
+  const ta=$("#vt_"+i); if(ta){ ta.style.display="block"; ta.value=(ta.value.trim()?ta.value.trim()+"\n\n":"")+j.transcript; keepNotes(i); }
+  if(msg) msg.textContent="✓ Added to your dictation — record again to add more.";
+}
+
+async function checkIn(i){
+  const s=DAY.stops[i]; const now=new Date().toISOString();
+  s.visit=Object.assign({},s.visit,{status:"checked_in",checkin_at:now});
+  renderDay(); cacheDay(dayKey(),DAY); if(navigator.onLine&&!ADHOC()) computeEtas();
+  // The arrival keeps the time it was tapped even if it syncs later (the timer runs from it).
+  const res=await tryOrQueue(Object.assign({action:"visit_checkin",at:now},vctx(s)));
+  // An unplanned visit already open here is resumed: take its id, its arrival time and its key.
+  const j=res.j||{};
+  if(ADHOC()&&res.sent&&j.ok){
+    if(j.visit_key&&j.visit_key!==DAY.route.visit_key){ DAY.route.visit_key=j.visit_key; obWrite(adhocKeyName(DAY.route.dealer_id),j.visit_key); }
+    // Resumed (started on another phone, or already ended there): show that visit as it really is.
+    if(j.resumed){ toast("Visit resumed ✓"); updateStatus(); openDealerVisit(DAY.route.dealer_id); return; }
+    s.visit=Object.assign({},s.visit,{id:j.report_id||(s.visit&&s.visit.id)||null},j.checkin_at?{checkin_at:j.checkin_at}:{},j.status==="completed"?{status:"completed",completed_at:now}:{});
+    cacheDay(dayKey(),DAY); renderDay(); }
+  toast(res.sent?(j.resumed?"Visit resumed ✓":"Visit started ✓"):res.rejected?("Couldn't start — "+res.error):"Started offline — will sync"); updateStatus();
+}
+async function endVisit(i){
+  const s=DAY.stops[i], k=vkey(s); keepNotes(i);
+  const at=new Date().toISOString(), notes=obRead("vnote_"+k)||"", tx=obRead("vtx_"+k)||"";
+  s.visit=Object.assign({},s.visit,{status:"ended",ended_at:at,duration_min:minsBetween(s.visit&&s.visit.checkin_at,at)});
+  cacheDay(dayKey(),DAY); renderDay();
+  // The notes go up first, so they are on the visit even if the summary has to wait for signal.
+  if(notes||tx) await tryOrQueue(Object.assign({action:"visit_report_save",status:"in_progress",fields:{notes},transcript:tx||undefined},vctx(s)));
+  const res=await tryOrQueue(Object.assign({action:"visit_end",at,started_at:(s.visit&&s.visit.checkin_at)||null},vctx(s)));
+  updateStatus();
+  if(res.rejected){ toast("Couldn't end the visit — "+res.error); return; }
+  openReview(i);
+}
+
+/* ---- Review: the AI's suggestions, the rep's decisions ---- */
+let REV=null;
+const LISTS=[["products_discussed","Products discussed"],["dealer_interests","Dealer interests"],["dealer_concerns","Dealer concerns"],["objections","Objections"],
+  ["competitors","Competitors mentioned"],["pricing_requests","Pricing requests"],["samples_requested","Samples requested"],["literature_requested","Literature requested"],["training_requested","Training requested"]];
+function emptySuggestion(notes){ const s={meeting_summary:String(notes||"").slice(0,1500),rep_commitments:[],dealer_commitments:[],attendees:[],follow_ups:[],opportunities:[],
+  suggested_next_action:{text:"",due_date:""},interest_slugs:[]}; LISTS.forEach(([k])=>s[k]=[]); return s; }
+function fullSheet(title){
+  const old=document.getElementById("rvwrap"); if(old) old.remove();
+  const wrap=document.createElement("div"); wrap.className="modal full"; wrap.id="rvwrap";
+  wrap.innerHTML=`<div class="sheet full"><div class="sheethd"><b>${esc(title)}</b><button class="btn sm" onclick="closeReview()">Close</button></div><div id="rv_body"></div></div>`;
+  document.body.appendChild(wrap); return wrap;
+}
+function closeReview(){ const w=document.getElementById("rvwrap"); if(w) w.remove(); REV=null; if(DAY) renderDay(); }
+async function openReview(i){
+  const s=DAY.stops[i], k=vkey(s);
+  fullSheet("Visit summary · "+s.name);
+  const notes=obRead("vnote_"+k)||"", tx=obRead("vtx_"+k)||"";
+  REV={i,manual:false,contacts:[],mfrs:[],report_id:null};
+  const body=$("#rv_body");
+  if(!navigator.onLine){ REV.manual=true; REV.sug=emptySuggestion(notes||tx); REV.msg="You're offline — the AI summary needs a connection. Review by hand now, or come back to it with signal."; renderReview(); return; }
+  body.innerHTML=`<div class="msg">✨ Summarizing your notes…<div class="hint" style="margin-top:6px">Suggestions only — nothing is saved until you approve.</div></div>`;
+  let j=null;
+  try{ j=await rapi(Object.assign({action:"visit_analyze",notes:notes||undefined,transcript:tx||undefined,local_date:todayStr()},vctx(s))); }catch(e){ j=null; }
+  if(!REV) return;
+  if(j){ REV.contacts=j.contacts||[]; REV.mfrs=j.manufacturers||[]; REV.report_id=j.report_id||null; }
+  if(j&&j.ok&&j.suggestion){ REV.sug=j.suggestion; if(j.suggestion.partial) partialNote(j.suggestion.partial); }
+  else { REV.manual=true; REV.err=(j&&j.error)||"no_connection"; REV.sug=emptySuggestion(notes||tx);
+    REV.msg=(j&&j.message)||"Couldn't reach the AI. Your notes are saved — try the AI again, or fill in the summary yourself."; }
+  renderReview();
+}
+/* Try the AI again without leaving the review. The notes it reads are the ones kept on this phone
+   (and already saved on the visit). Anything the rep added by hand — attendees, follow-ups, deals,
+   a summary they rewrote — is carried over into the new suggestion rather than thrown away. */
+function canRetryAi(){ return REV && (REV.manual||REV.partial) && !["ai_unavailable","no_notes"].includes(REV.err); }
+/* The summary came back but the follow-ups and/or the deals didn't: show what we have and say which. */
+const SECTION_NAME={commitments:"the commitments",follow_ups:"the follow-ups",opportunities:"the opportunities"};
+const SECTION_PART={commitments:"commitments",follow_ups:"followups",opportunities:"deals"};
+function missingSections(kind){ return Array.isArray(kind)?kind:kind==="actions"?["commitments","follow_ups","opportunities"]:kind?[String(kind)]:[]; }
+function partialNote(kind){
+  const miss=missingSections(kind).filter(k=>SECTION_NAME[k]); const names=miss.map(k=>SECTION_NAME[k]);
+  const what=names.length>1?names.slice(0,-1).join(", ")+" and "+names[names.length-1]:(names[0]||"the follow-ups and deals");
+  REV.partial=true; REV.missing=miss;
+  REV.msg=`The summary is in, but the AI didn't finish ${what}. Add them below, or try the AI again — nothing you type is lost.`;
+}
+/* The four AI parts are compared on the server (quantity, model, contact, promised date, what was
+   asked for). Anything that disagrees is listed here and marked on its card — never chosen for the rep. */
+function checksHtml(g){
+  const c=(g&&g.checks)||[]; if(!c.length) return "";
+  return `<div class="rv-checks" id="rv_checks"><b>⚠ Check before approving</b> — ${c.length===1?"this doesn't":"these don't"} line up across the AI's answers or with your notes:<ul>${c.map(x=>`<li>${esc(x.message)}</li>`).join("")}</ul></div>`;
+}
+function noteHtml(){
+  return REV.msg?`<div class="rvnote">${esc(REV.msg)}${canRetryAi()?`<div style="margin-top:8px"><button class="btn go wide" id="rv_retry" onclick="tryAiAgain(this)">✨ Try AI again</button><div id="rv_aimsg" class="hint" style="margin-top:6px"></div></div>`:""}</div>`
+    :`<div class="rvnote ok">Suggested from your notes — edit anything, untick what's wrong. Nothing is saved until you approve.</div>`;
+}
+function reviewHint(item){ return item&&item.review?`<div class="rv-review">⚠ ${esc(item.review)}</div>`:""; }
+async function tryAiAgain(btn){
+  if(!REV) return; const s=DAY.stops[REV.i], k=vkey(s), m=$("#rv_aimsg");
+  if(!navigator.onLine){ if(m) m.textContent="Still offline — the AI needs a connection."; return; }
+  const notes=obRead("vnote_"+k)||"", tx=obRead("vtx_"+k)||"";
+  const before=collectReview(), fallback=emptySuggestion(notes||tx).meeting_summary;
+  // After a partial summary only the missing parts are asked for; everything else stays as it is.
+  const missing=(!REV.manual&&REV.partial)?(REV.missing||[]).slice():[];
+  const retryParts=missing.map(x=>SECTION_PART[x]).filter(Boolean);
+  if(btn){ btn.disabled=true; btn.textContent="✨ Summarizing…"; } if(m) m.textContent="";
+  let j=null; try{ j=await rapi({action:"visit_analyze",...vctx(s),notes:notes||undefined,transcript:tx||undefined,local_date:todayStr(),refresh:true,
+    retry_parts:retryParts.length?retryParts:undefined}); }catch(e){ j=null; }
+  if(!REV) return;
+  if(j){ REV.contacts=j.contacts||REV.contacts; REV.mfrs=j.manufacturers||REV.mfrs; REV.report_id=j.report_id||REV.report_id; }
+  if(!(j&&j.ok&&j.suggestion)){
+    REV.err=(j&&j.error)||"no_connection";
+    if(btn){ btn.disabled=false; btn.textContent="✨ Try AI again"; }
+    if(m) m.textContent=(j&&j.message)||"Couldn't reach the AI. Your notes and anything typed below are kept.";
+    return;
+  }
+  const g=j.suggestion;
+  if(j.merged && retryParts.length){ fillMissing(g,missing); return; }
+  if(before.summary.meeting_summary && before.summary.meeting_summary!==String(fallback||"").trim()) g.meeting_summary=before.summary.meeting_summary;
+  for(const p of before.participants) if(/^at_m_/.test(p.key)) g.attendees.push({key:p.key,name:p.name,title:p.title,contact_id:p.contact_id,email:p.email||""});
+  for(const t of before.tasks) if(/^fu_m_/.test(t.key)) g.follow_ups.push({key:t.key,title:t.title,due_date:t.due_date||"",priority:t.priority,from:"other"});
+  for(const o of before.opportunities) if(/^op_m_/.test(o.key)) g.opportunities.push(Object.assign({},o));
+  REV.sug=g; REV.manual=false; REV.partial=false; REV.msg=null; REV.err=null; REV.retried=true;
+  if(g.partial) partialNote(g.partial);
+  renderReview();
+}
+/* Try AI again after a partial summary: only the sections that were missing are filled in. Every
+   other section — and anything the rep typed, ticked or changed — is left exactly as it is; cards
+   that were already there only get their "check" mark updated. */
+function fillMissing(g,missing){
+  const still=new Set(missingSections(g.partial)), filled=missing.filter(x=>!still.has(x));
+  const manual=(box,attr,re)=>[...box.querySelectorAll(".rv-card")].filter(c=>re.test(c.getAttribute(attr)||""));
+  const refill=(sel,attr,re,cards,empty)=>{ const box=$(sel); if(!box) return; const keep=manual(box,attr,re);
+    box.innerHTML=cards; keep.forEach(c=>box.appendChild(c)); if(!box.querySelector(".rv-card")) box.innerHTML=`<div class="hint">${empty}</div>`; };
+  if(filled.includes("follow_ups")){
+    refill("#rv_fu","data-fu",/^fu_m_/,(g.follow_ups||[]).map(f=>followCard(f,true)).join(""),"No follow-ups suggested.");
+    const na=g.suggested_next_action||{}, t=$("#rv_na");
+    if(t && !t.value.trim() && na.text){ t.value=na.text; const d=$("#rv_na_d"); if(d&&!d.value) d.value=na.due_date||""; const on=$("#rv_na_on"); if(on) on.checked=!na.duplicate_of; }
+    REV.sug.follow_ups=g.follow_ups; REV.sug.suggested_next_action=g.suggested_next_action;
+  }
+  if(filled.includes("opportunities")){
+    refill("#rv_op","data-op",/^op_m_/,(g.opportunities||[]).map(o=>oppCard(o)).join(""),"No opportunity detected.");
+    REV.sug.opportunities=g.opportunities;
+  }
+  if(filled.includes("commitments")){
+    const fmt=a=>(a||[]).map(c=>(c.text||"")+(c.due_date?` — by ${c.due_date}`:"")).join("\n");
+    const r=$("#rv_repc"), d=$("#rv_dlrc"); if(r&&!r.value.trim()) r.value=fmt(g.rep_commitments); if(d&&!d.value.trim()) d.value=fmt(g.dealer_commitments);
+    REV.sug.rep_commitments=g.rep_commitments; REV.sug.dealer_commitments=g.dealer_commitments;
+  }
+  // The checks now cover the whole summary: marks on cards that were already there are refreshed.
+  const byKey={}; for(const x of (g.follow_ups||[]).concat(g.opportunities||[])) byKey[x.key]=x;
+  for(const c of document.querySelectorAll("#rv_fu .rv-card, #rv_op .rv-card")){
+    const k=c.getAttribute("data-fu")||c.getAttribute("data-op"); const old=c.querySelector(".rv-review"); if(old) old.remove();
+    if(byKey[k]&&byKey[k].review) c.insertAdjacentHTML("beforeend",reviewHint(byKey[k]));
+  }
+  const nr=$("#rv_na_review"); if(nr) nr.innerHTML=reviewHint(g.suggested_next_action);
+  REV.sug.checks=g.checks; REV.sug.partial=g.partial; REV.retried=true;
+  REV.partial=false; REV.msg=null; REV.missing=[]; if(still.size) partialNote([...still]);
+  const note=document.querySelector("#rv_body > .rvnote"); if(note) note.outerHTML=noteHtml();
+  const oldChecks=$("#rv_checks"); if(oldChecks) oldChecks.remove();
+  const note2=document.querySelector("#rv_body > .rvnote"); if(note2) note2.insertAdjacentHTML("afterend",checksHtml(g));
+}
+function optList(list,cur){ return list.map(o=>`<option value="${esc(o.v)}"${String(o.v)===String(cur||"")?" selected":""}>${esc(o.l)}</option>`).join(""); }
+function mfrOptions(cur){ return optList([{v:"",l:"Manufacturer…"}].concat((REV.mfrs||[]).map(m=>({v:m.slug,l:m.name}))),cur); }
+function contactOptions(cur){
+  const people=(REV.contacts||[]).map(c=>({v:c.id,l:c.name+(c.title?` · ${c.title}`:"")}));
+  return optList([{v:"",l:"Contact (optional)"}].concat(people),cur);
+}
+function renderReview(){
+  const s=DAY.stops[REV.i], g=REV.sug||emptySuggestion("");
+  const commits=a=>(a||[]).map(c=>(c.text||"")+(c.due_date?` — by ${c.due_date}`:"")).join("\n");
+  const filled=LISTS.filter(([k])=>(g[k]||[]).length).length;
+  const at=(g.attendees||[]).map(a=>attendeeCard(a)).join("");
+  const fu=(g.follow_ups||[]).map(f=>followCard(f,!REV.manual)).join("");
+  const op=(g.opportunities||[]).map(o=>oppCard(o)).join("");
+  const na=g.suggested_next_action||{};
+  $("#rv_body").innerHTML=`
+    ${noteHtml()}
+    ${checksHtml(g)}
+    <div class="rv-sec"><h4>Meeting summary</h4><textarea class="in" id="rv_sum" rows="4">${esc(g.meeting_summary||"")}</textarea></div>
+    <details class="rv-sec"${filled?" open":""}><summary><h4 style="display:inline">What came up</h4> <span class="hint">${filled} section${filled===1?"":"s"}</span></summary>
+      ${LISTS.filter(([k])=>(g[k]||[]).length).map(([k,l])=>listField(k,l,g)).join("")}
+      ${filled<LISTS.length?`<details class="rv-more"><summary class="hint">＋ ${LISTS.length-filled} more section${LISTS.length-filled===1?"":"s"} (objections, samples, training…)</summary>
+        ${LISTS.filter(([k])=>!(g[k]||[]).length).map(([k,l])=>listField(k,l,g)).join("")}</details>`:""}
+      <label class="fl">Rep commitments</label><textarea class="in" id="rv_repc" rows="2" placeholder="What you promised — one per line">${esc(commits(g.rep_commitments))}</textarea>
+      <label class="fl">Dealer commitments</label><textarea class="in" id="rv_dlrc" rows="2" placeholder="What they promised or asked for">${esc(commits(g.dealer_commitments))}</textarea>
+    </details>
+    <div class="rv-sec"><h4>Who attended</h4><div id="rv_at">${at||`<div class="hint">No one named yet.</div>`}</div>
+      <div class="rv-add"><select class="in" id="rv_atpick"><option value="">Add someone on file…</option>${(REV.contacts||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}${c.title?` · ${esc(c.title)}`:""}</option>`).join("")}</select>
+        <input class="in" id="rv_atname" placeholder="…or type a new name"><button class="btn" onclick="addAttendee()">Add</button></div></div>
+    <div class="rv-sec"><h4>Follow-ups <span class="hint">→ My Tasks</span></h4><div id="rv_fu">${fu||`<div class="hint">No follow-ups suggested.</div>`}</div>
+      <button class="btn wide" onclick="addFollow()">＋ Add a follow-up</button></div>
+    <div class="rv-sec"><h4>Opportunities <span class="hint">→ Pipeline</span></h4><div id="rv_op">${op||`<div class="hint">No opportunity detected.</div>`}</div>
+      <button class="btn wide" onclick="addOpp()">＋ Add an opportunity</button></div>
+    <div class="rv-sec"><h4>Next action</h4>
+      <label class="rv-chk"><input type="checkbox" id="rv_na_on"${na.text&&!na.duplicate_of?" checked":""}> Make it a task</label>
+      ${na.duplicate_of?`<div class="hint">Already a follow-up above${na.dup_title?` (“${esc(na.dup_title)}”)`:""} — left unticked so it isn't done twice.</div>`:""}
+      <div id="rv_na_review">${reviewHint(na)}</div>
+      <input class="in" id="rv_na" value="${esc(na.text||"")}" placeholder="e.g. Send pricing + literature"><input class="in" type="date" id="rv_na_d" value="${esc(na.due_date||"")}" style="margin-top:6px"></div>
+    <button class="btn go xl wide" onclick="approveVisit()">✓ Approve &amp; save</button>
+    <button class="btn wide" style="margin-top:8px" onclick="closeReview()">Not now — review later</button>
+    <div id="rv_msg" class="hint" style="margin:10px 0 30px"></div>`;
+}
+// Only the sections the meeting actually touched are shown open; the rest wait behind one tap.
+function listField(k,l,g){ const a=(g[k]||[]).map(x=>typeof x==="object"?(x.text||x.title||""):x).filter(Boolean);
+  return `<label class="fl">${esc(l)}</label><textarea class="in rv-list" data-k="${k}" rows="${Math.max(1,a.length)}" placeholder="One per line">${esc(a.join("\n"))}</textarea>`; }
+function attendeeCard(a){
+  const matched=a.contact_id?((REV.contacts||[]).find(c=>String(c.id)===String(a.contact_id))||{name:a.matched_name||a.name}):null;
+  return `<div class="rv-card" data-at="${esc(a.key)}" data-cid="${esc(a.contact_id||"")}">
+    <div class="rv-top"><label class="rv-chk"><input type="checkbox" class="rv-on" checked></label>
+      <div style="flex:1;min-width:0"><input class="in rv-name" value="${esc(a.name||"")}"><input class="in rv-title" value="${esc(a.title||"")}" placeholder="Title" style="margin-top:6px"></div></div>
+    ${matched?`<div class="hint ok">✓ On file: ${esc(matched.name||a.name)}</div>`
+      :`<label class="rv-chk"><input type="checkbox" class="rv-new" checked> Add as a new Dealer 360 contact</label><input class="in rv-email" type="email" placeholder="Email (optional)" value="${esc(a.email||"")}">`}
+  </div>`;
+}
+function followCard(f,ai){
+  const dup=!!f.dup_of;   // looks like a repeat of an earlier follow-up: shown, but unticked
+  return `<div class="rv-card${dup?" off":""}" data-fu="${esc(f.key)}" data-ai="${ai?"1":""}">
+    <div class="rv-top"><label class="rv-chk"><input type="checkbox" class="rv-on"${dup?"":" checked"} onchange="this.closest('.rv-card').classList.toggle('off',!this.checked)"></label>
+      <input class="in rv-t" value="${esc(f.title||"")}" style="flex:1"></div>
+    <div class="rv-row"><input class="in rv-d" type="date" value="${esc(f.due_date||"")}">
+      <select class="in rv-p">${optList([{v:"high",l:"High"},{v:"normal",l:"Normal"},{v:"low",l:"Low"}],f.priority||"normal")}</select></div>
+    ${dup?`<div class="hint">Looks like a repeat of “${esc(f.dup_title||"another follow-up")}” — left unticked. Tick it if it's separate work.</div>`
+      :(f.from&&f.from!=="other"?`<div class="hint">${esc(String(f.from).replace(/_/g," "))}</div>`:"")}
+    ${reviewHint(f)}
+  </div>`;
+}
+function oppCard(o){
+  const s=DAY.stops[REV.i];
+  return `<div class="rv-card opp" data-op="${esc(o.key)}">
+    <div class="rv-top"><label class="rv-chk"><input type="checkbox" class="rv-on" checked onchange="this.closest('.rv-card').classList.toggle('off',!this.checked)"></label>
+      <div style="flex:1;min-width:0"><div class="hint" style="font-weight:800;color:var(--orange)">OPPORTUNITY DETECTED · ${esc(s.name)}</div><input class="in rv-t" value="${esc(o.title||"")}"></div></div>
+    <div class="rv-row"><select class="in rv-m">${mfrOptions(o.manufacturer)}</select><input class="in rv-pr" value="${esc(o.product||"")}" placeholder="Product / model"></div>
+    <div class="rv-row"><input class="in rv-q" type="number" inputmode="numeric" min="0" value="${o.quantity!=null?esc(String(o.quantity)):""}" placeholder="Qty">
+      <input class="in rv-v" type="number" inputmode="decimal" min="0" value="${o.value!=null?esc(String(o.value)):""}" placeholder="Est. value $"></div>
+    ${o.value_source==="catalog"?`<div class="hint">Priced from the catalog: ${esc(String(o.quantity||1))} × $${esc(String(o.unit_price))}${o.product_name?` (${esc(o.product_name)})`:""}</div>`:""}
+    <div class="rv-row"><select class="in rv-c">${contactOptions(o.contact_id)}</select>
+      <select class="in rv-s">${optList([{v:"identified",l:"Identified"},{v:"contacted",l:"Contacted"},{v:"quoted",l:"Quoted"}],o.stage||"identified")}</select></div>
+    <label class="fl">Expected close</label><input class="in rv-e" type="date" value="${esc(o.expected_close||"")}">
+    ${reviewHint(o)}
+  </div>`;
+}
+function addAttendee(){
+  const pick=$("#rv_atpick"), nm=$("#rv_atname"); const cid=pick&&pick.value, name=(nm&&nm.value||"").trim();
+  const c=cid?(REV.contacts||[]).find(x=>String(x.id)===String(cid)):null;
+  if(!c&&!name) return;
+  const a={key:"at_m_"+Date.now(),name:c?c.name:name,title:c?(c.title||""):"",contact_id:c?c.id:null};
+  const box=$("#rv_at"); if(box.querySelector(".hint")&&!box.querySelector(".rv-card")) box.innerHTML="";
+  box.insertAdjacentHTML("beforeend",attendeeCard(a)); if(pick) pick.value=""; if(nm) nm.value="";
+}
+function addFollow(){ const box=$("#rv_fu"); if(!box.querySelector(".rv-card")) box.innerHTML="";
+  box.insertAdjacentHTML("beforeend",followCard({key:"fu_m_"+Date.now(),title:"",priority:"normal"},false)); const t=box.lastElementChild.querySelector(".rv-t"); if(t) t.focus(); }
+function addOpp(){ const box=$("#rv_op"); if(!box.querySelector(".rv-card")) box.innerHTML="";
+  box.insertAdjacentHTML("beforeend",oppCard({key:"op_m_"+Date.now(),title:"",stage:"identified"})); const t=box.lastElementChild.querySelector(".rv-t"); if(t) t.focus(); }
+function collectReview(){
+  const v=(el,sel)=>{ const x=el.querySelector(sel); return x?String(x.value||"").trim():""; };
+  const split=t=>String(t||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  const commits=t=>split(t).map(x=>{ const m=x.match(/^(.*?)\s+—\s+by\s+(\d{4}-\d{2}-\d{2})$/); return m?{text:m[1],due_date:m[2]}:{text:x,due_date:""}; });
+  const summary={meeting_summary:String(($("#rv_sum")||{}).value||"").trim(),rep_commitments:commits(($("#rv_repc")||{}).value),dealer_commitments:commits(($("#rv_dlrc")||{}).value),
+    suggested_next_action:{text:String(($("#rv_na")||{}).value||"").trim(),due_date:String(($("#rv_na_d")||{}).value||"")}};
+  document.querySelectorAll("#rv_body .rv-list").forEach(t=>summary[t.getAttribute("data-k")]=split(t.value));
+  const participants=[...document.querySelectorAll("#rv_at .rv-card")].filter(c=>c.querySelector(".rv-on").checked).map(c=>({key:c.getAttribute("data-at"),
+    name:v(c,".rv-name"),title:v(c,".rv-title"),contact_id:c.getAttribute("data-cid")||null,email:v(c,".rv-email")||null,
+    add_as_contact:!!(c.querySelector(".rv-new")&&c.querySelector(".rv-new").checked),source:REV.manual?"rep":"ai"})).filter(p=>p.name);
+  const tasks=[...document.querySelectorAll("#rv_fu .rv-card")].filter(c=>c.querySelector(".rv-on").checked).map(c=>({key:c.getAttribute("data-fu"),
+    title:v(c,".rv-t"),due_date:v(c,".rv-d")||null,priority:v(c,".rv-p")||"normal",kind:"followup",ai:c.getAttribute("data-ai")==="1"})).filter(t=>t.title);
+  if(($("#rv_na_on")||{}).checked && summary.suggested_next_action.text)
+    tasks.push({key:"next_action",title:summary.suggested_next_action.text,due_date:summary.suggested_next_action.due_date||null,priority:"normal",kind:"next_action",ai:!REV.manual});
+  const opportunities=[...document.querySelectorAll("#rv_op .rv-card")].filter(c=>c.querySelector(".rv-on").checked).map(c=>({key:c.getAttribute("data-op"),
+    title:v(c,".rv-t"),manufacturer:v(c,".rv-m"),product:v(c,".rv-pr"),quantity:v(c,".rv-q")===""?null:Number(v(c,".rv-q")),
+    value:v(c,".rv-v")===""?null:Number(v(c,".rv-v")),contact_id:v(c,".rv-c")||null,stage:v(c,".rv-s")||"identified",expected_close:v(c,".rv-e")||null})).filter(o=>o.title);
+  return {summary,participants,tasks,opportunities};
+}
+async function approveVisit(){
+  const s=DAY.stops[REV.i], k=vkey(s), m=$("#rv_msg");
+  const c=collectReview();
+  if(!c.summary.meeting_summary && !c.tasks.length && !c.opportunities.length){ if(m){ m.style.color="#b42323"; m.textContent="Add a one-line summary first."; } return; }
+  const btn=document.querySelector("#rv_body .btn.go"); if(btn){ btn.disabled=true; btn.textContent="Saving…"; }
+  const body=Object.assign({action:"visit_approve",...vctx(s),started_at:(s.visit&&s.visit.checkin_at)||null,
+    notes:obRead("vnote_"+k)||undefined,transcript:obRead("vtx_"+k)||undefined,interest_slugs:(REV.sug&&REV.sug.interest_slugs)||[]},c);
+  const res=await tryOrQueue(body); updateStatus();
+  if(res.rejected){ if(btn){ btn.disabled=false; btn.textContent="✓ Approve & save"; } if(m){ m.style.color="#b42323"; m.textContent=res.error||"Couldn't save."; } return; }
+  const j=(res.j)||{}, now=new Date().toISOString();
+  s.visit=Object.assign({},s.visit,{status:"completed",approved_at:now,completed_at:now,id:j.report_id||(s.visit&&s.visit.id)||REV.report_id||null,
+    followup_status:j.followup_status||((c.tasks.length||c.opportunities.length)?"pending":"none")});
+  cacheDay(dayKey(),DAY);
+  const cr=j.created||{};
+  $("#rv_body").innerHTML=`<div class="rv-done">
+    <div class="big">✓ Visit saved${res.sent?"":" on this phone"}</div>
+    <div class="hint" style="margin:6px 0 14px">${res.sent
+      ? `${cr.tasks||0} follow-up${cr.tasks===1?"":"s"} → My Tasks · ${cr.opportunities||0} opportunit${cr.opportunities===1?"y":"ies"} → Pipeline${cr.contacts?` · ${cr.contacts} new contact${cr.contacts===1?"":"s"}`:""}`
+      : "No signal — it syncs by itself, and sending it twice never doubles anything."}</div>
+    ${fuChip(s.visit)}
+    <button class="btn go xl wide" style="margin-top:16px" onclick="draftVisitEmail(${REV.i})"${res.sent?"":" disabled"}>✉ Draft follow-up email</button>
+    <button class="btn xl wide" style="margin-top:8px" onclick="finishVisit()">Done</button></div>`;
+}
+function finishVisit(){ const s=REV&&DAY.stops[REV.i]; if(s){ const k=vkey(s); obWrite("vnote_"+k,""); obWrite("vtx_"+k,""); } closeReview(); toast("Visit done ✓"); }
+
+/* ---- After the visit: summary, follow-up status, email ---- */
+async function openSummary(i){
+  const s=DAY.stops[i]; fullSheet("Visit · "+s.name); REV={i,manual:false,contacts:[],mfrs:[]};
+  const box=$("#rv_body");
+  if(!navigator.onLine){ box.innerHTML=`<div class="msg">The full summary needs a connection.</div>${fuChip(s.visit)}`; return; }
+  box.innerHTML=`<div class="msg">Loading…</div>`;
+  let j=null; try{ j=await rapi(Object.assign({action:"visit_report_get",detail:true},vctx(s),ADHOC()&&s.visit&&s.visit.id?{report_id:s.visit.id}:{})); }catch(e){ j=null; }
+  const r=j&&j.report; if(!r){ box.innerHTML=`<div class="msg">Couldn't load this visit.</div>`; return; }
+  REV.report_id=r.id;
+  const sm=r.summary||null, f=r.fields||{};
+  const list=(a,l)=>(a&&a.length)?`<div class="rv-line"><b>${esc(l)}:</b> ${esc(a.map(x=>typeof x==="object"?(x.text||""):x).join("; "))}</div>`:"";
+  const st=(t)=>t.status==="done"?"✓":t.status==="dismissed"?"–":"○";
+  box.innerHTML=`<div class="rv-sec">${r.duration_min!=null?`<div class="hint">On site ${esc(String(r.duration_min))} min</div>`:""}
+      ${sm?`<p style="margin:6px 0">${esc(sm.meeting_summary||"")}</p>${LISTS.map(([k,l])=>list(sm[k],l)).join("")}${list(sm.rep_commitments,"Rep commitments")}${list(sm.dealer_commitments,"Dealer commitments")}`
+         :`<p style="white-space:pre-wrap">${esc([f.purpose,f.notes].filter(Boolean).join("\n")||"No summary on this visit.")}</p>`}</div>
+    ${(j.participants||[]).length?`<div class="rv-sec"><h4>Attended</h4>${j.participants.map(p=>`<div class="rv-line">${esc(p.name_snapshot)}${p.title_snapshot?` · ${esc(p.title_snapshot)}`:""}</div>`).join("")}</div>`:""}
+    ${(j.tasks||[]).length?`<div class="rv-sec"><h4>Follow-ups</h4>${j.tasks.map(t=>`<div class="rv-line">${st(t)} ${esc(t.title)}${t.due_date?` <span class="hint">· ${esc(t.due_date)}</span>`:""}</div>`).join("")}</div>`:""}
+    ${(j.opportunities||[]).length?`<div class="rv-sec"><h4>Opportunities</h4>${j.opportunities.map(o=>`<div class="rv-line">${esc(o.title)} <span class="hint">· ${esc(o.stage)}${o.value?` · $${esc(String(Math.round(o.value)))}`:""}</span></div>`).join("")}</div>`:""}
+    <div class="rv-sec">${fuChip(r)} ${r.followup_manual?`<span class="hint">set by hand</span>`:""}
+      <div class="rv-row" style="margin-top:8px">${r.followup_status!=="complete"?`<button class="btn" onclick="setFollow(${i},'complete')">Mark follow-up complete</button>`:""}
+        ${r.followup_manual?`<button class="btn" onclick="setFollow(${i},'auto')">Back to automatic</button>`:""}</div></div>
+    ${r.approved_at?`<button class="btn go xl wide" onclick="draftVisitEmail(${i})">✉ ${r.followup_email&&r.followup_email.saved_at?"Open follow-up email draft":"Draft follow-up email"}</button>`:""}
+    <a class="btn xl wide" style="margin-top:8px" href="/admin/dealer.html?id=${encodeURIComponent(s.dealer_id)}">📇 Open in Dealer 360</a>
+    <div id="rv_msg" class="hint" style="margin:10px 0 30px"></div>`;
+  REV.email=r.followup_email||null;
+}
+async function setFollow(i,status){
+  const s=DAY.stops[i];
+  const res=await tryOrQueue(Object.assign({action:"visit_followup_set",status},vctx(s)));
+  if(res.rejected){ toast(res.error||"Couldn't change it"); return; }
+  if(res.j&&res.j.followup_status) s.visit=Object.assign({},s.visit,{followup_status:res.j.followup_status});
+  cacheDay(dayKey(),DAY); openSummary(i);
+}
+async function draftVisitEmail(i){
+  const s=DAY.stops[i], m=$("#rv_msg");
+  if(!navigator.onLine){ if(m){ m.style.color="#b42323"; m.textContent="Drafting needs a connection — the visit is saved."; } return; }
+  if(m){ m.style.color=""; m.textContent="Drafting from the approved summary…"; }
+  // The visit as saved: its id, who attended (the email goes to them first) and any saved draft.
+  let reportId=(s.visit&&s.visit.id)||(REV&&REV.report_id)||null, attendees=[], saved=REV&&REV.email;
+  try{ const g=await rapi(Object.assign({action:"visit_report_get",detail:true},vctx(s),reportId&&ADHOC()?{report_id:reportId}:{}));
+    if(g&&g.report){ reportId=reportId||g.report.id; if(g.report.followup_email) saved=g.report.followup_email; }
+    attendees=((g&&g.participants)||[]).filter(p=>p&&p.attended!==false).map(p=>({name:p.name_snapshot||"",title:p.title_snapshot||"",email:String(p.email_snapshot||"").trim()}));
+  }catch(e){}
+  if(saved&&saved.saved_at&&saved.body){ if(m) m.textContent=""; openDraft(s,saved.subject||"",saved.body||"","","Follow-up email — your saved draft",{visit:true,saved:true,to:saved.to,attendees}); return; }
+  const pick=pickVisitRecipients(recipientRows(s),attendees,"");
+  let j=null;
+  try{ const h={"content-type":"application/json"}; if(TOKEN) h["authorization"]="Bearer "+TOKEN;
+    const r=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:h,body:JSON.stringify({action:"draft",dealer_id:s.dealer_id,template:"visit_followup",visit_report_id:reportId,contact_name:pick.greet})});
+    j=await r.json().catch(()=>null); }catch(e){ j=null; }
+  if(m) m.textContent="";
+  if(j&&j.ok&&j.subject){ openDraft(s,j.subject,j.body||"",j.signature||"","Follow-up email — review before sending",{visit:true,attendees,warnings:j.warnings}); return; }
+  if(m){ m.style.color="#b42323"; m.textContent=(j&&(j.message||j.error))||"Couldn't draft the email."; }
+}
+/* WHO A VISIT FOLLOW-UP GOES TO (Phase 1). Pure — tested.
+   · A saved draft keeps the address it was going to.
+   · One attendee with an email → that person, ticked.
+   · Several attendees with emails → all listed first, none ticked: the rep chooses.
+   · Nobody who attended has an email → the account's main contact, as before.
+   Attendees are listed first and never twice; attendees with no email are named so the rep knows. */
+function pickVisitRecipients(rows,attendees,savedTo){
+  const low=x=>String(x||"").trim().toLowerCase();
+  const att=(attendees||[]).filter(a=>a&&a.name);
+  const attRows=att.filter(a=>RCPT_RE.test(String(a.email||"").trim())).map(a=>({name:a.name,email:String(a.email).trim(),title:a.title||"",source:"attendee"}));
+  const seen=new Set(attRows.map(a=>low(a.email)));
+  const all=attRows.concat((rows||[]).filter(r=>r&&r.email&&!seen.has(low(r.email))));
+  const want=low(savedTo);
+  let pre=new Set(), note="", greet="";
+  if(want){ if(all.some(r=>low(r.email)===want)) pre.add(want); }
+  else if(attRows.length===1){ pre.add(low(attRows[0].email)); greet=attRows[0].name; }
+  else if(attRows.length>1){ note=`${attRows.length} people at the meeting have an email — tick who this goes to.`; }
+  else if(all.length){ pre.add(low(all[0].email)); greet=all[0].name||""; }
+  const noEmail=att.filter(a=>!RCPT_RE.test(String(a.email||"").trim())).map(a=>a.name);
+  return { rows:all, pre, note, greet, noEmail, extra: want&&!all.some(r=>low(r.email)===want) ? String(savedTo).trim() : "" };
+}
+async function headsUp(i){
+  if(!navigator.onLine){ toast("Heads-up needs a connection"); return; }
+  const s=DAY.stops[i];
+  const etaEl=$("#eta_"+i); const eta=(etaEl&&etaEl.textContent||"").trim(); const etaTxt=(eta&&eta!=="—")?eta:"";
+  /* THE DATE OF THIS STOP, not the date the route starts. On a multi-day route
+     they are different for every stop after the first overnight, and sending a
+     dealer day one's date with day three's arrival time is worse than sending
+     nothing. Falls back to the route date only before the ETAs have computed. */
+  const when = s._dateISO || (DAY.route&&DAY.route.scheduled_date) || "";
+  toast("Preparing heads-up…");
+  let j; try{ j=await rapi({action:"previsit_draft",dealer_id:s.dealer_id,date:when,eta:etaTxt,
+    /* the contact the card shows and the TO field uses — the draft used to greet
+       whoever was on the dealer record instead, which is how a note to Steve Lyons
+       opened "Hi Jeremiah". */
+    contact_name:s.contact_name||""}); }catch(e){ j=null; }
+  if(!j||!j.ok){ toast((j&&j.message)||"Couldn't prepare the heads-up"); return; }
+  openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending");
+}
+/* ---- WHO THE EMAIL GOES TO -------------------------------------------------
+   The pre-visit heads-up and the after-visit follow-up are drafted by different code and sent by
+   this one, so the recipient picker lives here and serves both.
+
+   It used to be a single box holding one address that the server had chosen — whichever contact
+   row came back first. An account where the owner, the buyer and the billing clerk all deal with
+   us could only ever be written to at that one address, and a rep who wanted anyone else had to
+   remember it and type it. */
+
+/* The people this stop can be emailed. A day cached before this shipped carries no list on its
+   stops, so the one address it does have becomes a list of one rather than an empty picker —
+   this app is used in a van with no signal and that cache can be days old. */
+function recipientRows(s){
+  const list=(s&&Array.isArray(s.contacts))?s.contacts.slice():[];
+  if(list.length) return list;
+  const e=String((s&&s.contact_email)||"").trim();
+  return e?[{name:String((s&&s.contact_name)||"").trim(),email:e,title:"",source:"contact"}]:[];
+}
+/* Anything a person might type into a free-text address box: commas, semicolons, spaces, or a
+   pasted "Name <addr>" pair. Returns the pieces in order with the empties gone — it does not
+   judge them, because telling someone their typo is not an address is splitRecipients' job. */
+function parseEmails(text){
+  return String(text==null?"":text).replace(/[<>]/g," ").split(/[,;\s]+/).map(x=>x.trim()).filter(Boolean);
+}
+const RCPT_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/* ONE EMAIL, ONE PRIMARY. The first address picked is the To and the rest are copied — a note to
+   a person who happens to have colleagues, rather than a group memo. Case and repetition collapse,
+   because the same address is often on both a contact row and the account record. Anything
+   malformed is handed back rather than quietly dropped: a rep who mistypes an address should be
+   told, not left believing a dealer was written to.
+   Pure, so the rule can be tested without a browser. */
+function splitRecipients(list){
+  const seen=new Set(), good=[], bad=[];
+  (list||[]).forEach(raw=>{
+    const a=String(raw==null?"":raw).trim(); if(!a) return;
+    if(!RCPT_RE.test(a)){ bad.push(a); return; }
+    const k=a.toLowerCase(); if(seen.has(k)) return; seen.add(k);
+    good.push(a);
+  });
+  return { to:good[0]||"", cc:good.slice(1), bad:bad };
+}
+/* The greeting follows the person it is addressed to: tick Stacey instead of Bryant and "Hi
+   Bryant," becomes "Hi Stacey,". Only a line that already looks like a greeting is touched, and
+   only the first one — whatever the rep has written underneath is never rewritten. A replacer
+   function rather than a replacement string, because a name is data and "$&" in a replacement
+   string is not. */
+function swapGreeting(body,name){
+  const first=String(name==null?"":name).trim().split(/\s+/)[0]||"";
+  if(!first) return body;
+  /* The name goes in through the replacer's return value, never through a replacement string —
+     a "$&" or "$1" in a replacement string is an instruction, and a name is not. */
+  return String(body==null?"":body).replace(/^(\s*)Hi [^,\n]{1,40},/, (m,lead)=>lead+"Hi "+first+",");
+}
+/* opts.visit — the follow-up to an approved visit: adds Copy and Save draft (kept on the visit,
+   synced like everything else), and a send is recorded on the visit. opts.to — the address a saved
+   draft was going to, ticked instead of the first contact. Nothing ever sends without the tap. */
+let DRAFT=null;
+function openDraft(s,subject,body,signature,title,opts){
+  opts=opts||{};
+  const full=body+(signature?`\n\n${signature}`:"");
+  let rows, pre, extra, pickNote="", noEmail=[];
+  if(opts.visit){
+    const p=pickVisitRecipients(recipientRows(s),opts.attendees||[],opts.to||"");
+    rows=p.rows; extra=p.extra; pickNote=p.note; noEmail=p.noEmail;
+    pre=(r)=>p.pre.has(String(r.email||"").trim().toLowerCase());
+  } else {
+    rows=recipientRows(s);
+    const want=String(opts.to||"").trim().toLowerCase();
+    pre=want&&rows.some(r=>String(r.email||"").toLowerCase()===want) ? (r=>String(r.email||"").toLowerCase()===want) : ((r,i)=>i===0);
+    extra=want&&!rows.some(r=>String(r.email||"").toLowerCase()===want)?opts.to:"";
+  }
+  DRAFT=opts.visit?{visit:true,dealer_id:s.dealer_id,route_id:(DAY&&DAY.route&&DAY.route.id)||null,report_id:(s.visit&&s.visit.id)||(REV&&REV.report_id)||null,
+    visit_key:ADHOC()?DAY.route.visit_key:null}:null;
+  const people=rows.length
+    ? rows.map((r,i)=>`<label class="rcpt"><input type="checkbox" class="d_p" data-email="${esc(r.email)}" data-name="${esc(r.name)}"${pre(r,i)?" checked":""} onchange="draftWho()">
+        <span><b>${esc(r.name||r.email)}</b>${r.title?` <span class="hint">· ${esc(r.title)}</span>`:""}${r.source==="attendee"?` <span class="hint">· at the meeting</span>`:""}${r.source==="account"?` <span class="hint">· account email</span>`:""}<br><span class="hint">${esc(r.email)}</span></span></label>`).join("")
+    : `<div class="hint">No email on file for this account — type one below.</div>`;
+  const old=document.getElementById("draftwrap"); if(old) old.remove();
+  const wrap=document.createElement("div"); wrap.className="modal"; wrap.id="draftwrap"; wrap.onclick=e=>{ if(e.target===wrap) wrap.remove(); };
+  wrap.innerHTML=`<div class="sheet">
+    <h3>${esc(title||"Email — review before sending")}</h3>
+    ${(opts.warnings||[]).map(w=>`<div class="rvnote">${esc(w)}</div>`).join("")}
+    <label class="fl">To</label>
+    ${pickNote?`<div class="hint" style="margin:0 0 6px;color:#8a5a08">${esc(pickNote)}</div>`:""}
+    <div id="d_people">${people}</div>
+    ${noEmail.length?`<div class="hint" style="margin:0 0 6px">Also at the meeting, no email on file: ${esc(noEmail.join(", "))}</div>`:""}
+    <input class="in" id="d_extra" placeholder="another email address (optional)" value="${esc(extra)}" oninput="draftWho()">
+    <div id="d_who" class="hint" style="margin-top:6px"></div>
+    <label class="fl">Subject</label><input class="in" id="d_sub" value="${esc(subject)}">
+    <label class="fl">Message</label><textarea class="in" id="d_body" style="min-height:200px">${esc(full)}</textarea>
+    <div class="hint" style="margin-top:6px">Nothing sends until you tap Send. It goes from your Outlook.</div>
+    ${opts.visit?`<div class="save-row" style="margin-top:12px">
+      <button class="btn wide" onclick="copyDraft()">⧉ Copy</button>
+      <button class="btn wide" onclick="saveDraft(this)">Save draft</button>
+    </div>`:""}
+    <div class="save-row" style="margin-top:${opts.visit?8:12}px">
+      <button class="btn wide" onclick="this.closest('.modal').remove()">Close</button>
+      <button class="btn go wide" onclick="sendDraft('${jesc(s.dealer_id)}',this)">Send from my Outlook</button>
+    </div>
+    <div id="d_msg" class="hint" style="margin-top:8px"></div></div>`;
+  document.body.appendChild(wrap);
+  draftWho();
+}
+/* What the picker currently adds up to: the ticked addresses in the order shown, then anything
+   typed, and the name of whoever is first — which is who the greeting belongs to. */
+function draftPicked(){
+  const out=[]; let firstName="";
+  document.querySelectorAll("#d_people .d_p").forEach(el=>{
+    if(!el.checked) return;
+    out.push(el.getAttribute("data-email")||"");
+    if(!firstName) firstName=el.getAttribute("data-name")||"";
+  });
+  parseEmails(($("#d_extra")||{}).value||"").forEach(a=>out.push(a));
+  return { list:out, firstName:firstName };
+}
+/* Keep the summary line and the greeting in step with the ticks, so what the rep is about to do
+   is written on the screen before they do it. */
+function draftWho(){
+  const p=draftPicked(), r=splitRecipients(p.list), who=$("#d_who");
+  if(who){
+    who.style.color="";
+    if(r.to){
+      who.textContent="To "+r.to+(r.cc.length?" · copy to "+r.cc.join(", "):"")
+        +(r.bad.length?"  ·  not an email address: "+r.bad.join(", "):"");
+    } else {
+      who.textContent=r.bad.length?("Not an email address: "+r.bad.join(", "))
+        :"Tick at least one person, or type an address.";
+    }
+    if(r.bad.length) who.style.color="#b42323";
+  }
+  const body=$("#d_body");
+  if(body && r.to && p.firstName){
+    /* Only a ticked contact carries a name to greet. A typed-in address has none, so the
+       greeting is left exactly as drafted rather than blanked. */
+    const swapped=swapGreeting(body.value,p.firstName);
+    if(swapped!==body.value) body.value=swapped;
+  }
+}
+async function sendDraft(dealer_id,btn){
+  const picked=draftPicked(), r=splitRecipients(picked.list);
+  const subject=($("#d_sub")||{}).value||"", body=($("#d_body")||{}).value||"";
+  const m=$("#d_msg");
+  if(r.bad.length){ if(m){m.style.color="#b42323";m.textContent="Check this address: "+r.bad.join(", ");} return; }
+  if(!r.to){ if(m){m.style.color="#b42323";m.textContent="Pick at least one recipient.";} return; }
+  if(m){ m.style.color=""; m.textContent=r.cc.length?`Sending to ${1+r.cc.length} people…`:"Sending…"; }
+  if(btn) btn.disabled=true;
+  let j; try{ j=await esapi({action:"send",dealer_id,to:r.to,cc:r.cc,subject,body_text:body}); }catch(e){ j=null; }
+  if(j&&j.ok){ toast(r.cc.length?`Email sent to ${1+r.cc.length} ✓`:"Email sent ✓");
+    // A visit's follow-up is marked sent on the visit, so the summary and Dealer 360 show it went.
+    if(DRAFT&&DRAFT.visit){ const d=DRAFT; tryOrQueue(Object.assign(draftSaveBody(d,{to:r.to,cc:r.cc,subject,body}),{sent:true})).then(()=>{ if(REV) REV.email=null; updateStatus(); }); }
+    const modal=document.getElementById("draftwrap"); if(modal) modal.remove(); }
+  else { if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't send — you can also send from Dealer 360."; } if(btn) btn.disabled=false; }
+}
+function draftSaveBody(d,email){ const b={action:"visit_email_save",dealer_id:d.dealer_id,email};
+  if(d.report_id) b.report_id=d.report_id; else if(d.route_id) b.route_id=d.route_id; else if(d.visit_key) b.visit_key=d.visit_key; return b; }
+function draftNow(){ const picked=draftPicked(), r=splitRecipients(picked.list);
+  return {to:r.to,cc:r.cc,subject:($("#d_sub")||{}).value||"",body:($("#d_body")||{}).value||""}; }
+async function copyDraft(){
+  const e=draftNow(), text=(e.subject?`Subject: ${e.subject}\n\n`:"")+e.body, m=$("#d_msg");
+  let ok=false; try{ if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); ok=true; } }catch(_){}
+  if(!ok){ const t=$("#d_body"); if(t){ t.focus(); t.select(); try{ ok=document.execCommand("copy"); }catch(_){} } }
+  if(m){ m.style.color=ok?"var(--ok)":"#b42323"; m.textContent=ok?"✓ Copied — paste it into any email.":"Couldn't copy here — select the message and copy it."; }
+}
+async function saveDraft(btn){
+  if(!DRAFT) return; const m=$("#d_msg"), e=draftNow();
+  if(btn) btn.disabled=true;
+  const res=await tryOrQueue(draftSaveBody(DRAFT,e)); updateStatus();
+  if(btn) btn.disabled=false;
+  if(res.rejected){ if(m){ m.style.color="#b42323"; m.textContent=res.error||"Couldn't save the draft."; } return; }
+  if(REV) REV.email=Object.assign({},e,{saved_at:new Date().toISOString()});
+  if(m){ m.style.color="var(--ok)"; m.textContent=res.sent?"✓ Draft saved on the visit.":"✓ Saved on this phone — syncs when you have signal."; }
+}
+
+// ---- Visit package (shared handout) ----
+async function openHandout(dealer_id){
+  if(!navigator.onLine){ toast("Visit package needs a connection"); return; }
+  const w=window.open("","_blank"); if(!w){ toast("Allow pop-ups for the visit package"); return; }
+  w.document.write('<!doctype html><meta charset="utf-8"><body style="font:15px Arial;margin:28px;color:#5b6672">Preparing visit package…</body>'); w.document.close();
+  try{ const s=await rapi({action:"get_settings",key:"handout"}); if(s&&s.ok&&s.value){ HANDOUT={ordering_url:s.value.ordering_url||DealerHandout.ORDERING_URL, updates:Array.isArray(s.value.updates)&&s.value.updates.length?s.value.updates:DealerHandout.UPDATES.slice()}; } }catch(e){}
+  let c={}; try{ const r=await rapi({action:"business_case",dealer_ids:[dealer_id]}); c=(r&&r.cases&&r.cases[dealer_id])||{}; }catch(e){}
+  try{ w.document.open(); w.document.write(DealerHandout.html(c,{HANDOUT,ME})); w.document.close(); }catch(e){}
+}
+
+/* ---- ETAs (also stores arrival ms per stop for the calendar export) ----
+   This ran its own clock: one unbroken accumulation, in the phone's timezone,
+   with no idea that a stop could end the day. A saved three-day Kentucky loop
+   therefore showed stop 10 at 12:25 AM and stop 14 at 7:07 AM, all on day one's
+   date — and since the heads-up email, the .ics export and the Outlook sync all
+   read these same numbers, every one of them was wrong in the same way.
+   The arithmetic now comes from RouteClock, which the planner's own itinerary is
+   built on: it ends the day at an overnight and resumes next morning, and it
+   works in each stop's zone — this loop crosses the Central/Eastern line at
+   Glasgow, which a browser-local clock cannot see. */
+async function computeEtas(){
+  const r=DAY.route, stops=DAY.stops||[];
+  const useHome = r.round_trip && r.home_base && isFinite(r.home_base.lat) && isFinite(r.home_base.lng);
+  if(!stops.length || stops.some(s=>!(isFinite(s.lat)&&isFinite(s.lng)))) return;
+  const coords=[]; if(useHome) coords.push([r.home_base.lng,r.home_base.lat]);
+  stops.forEach(s=>coords.push([s.lng,s.lat]));
+  if(coords.length<2) return;
+  let legs=[]; try{ const d=await rapi({action:"directions",coords}); legs=(d&&d.legs)||[]; }catch(e){}
+  if(legs.length<coords.length-1) return;
+  if(typeof RouteClock==="undefined") return;   // no clock, no invented times
+
+  const depart=(r.home_base&&r.home_base.depart_time)||"08:00";
+  const items=RouteClock.routeItinerary({
+    stops, legs, leadingLeg:useHome,
+    startDate:(r.scheduled_date||todayStr()),
+    startMinutes:RouteClock.parseTimeMin(depart, 8*60),
+    defaultVisit:30
+  });
+  if(!items.length) return;
+
+  DAY._days=RouteClock.dayCount(items);
+  for(let k=0;k<stops.length;k++){
+    const it=items[k];
+    stops[k]._arrive=it.arriveAbs;
+    stops[k]._tz=it.tz;
+    stops[k]._dateISO=it.dateISO;     // the date THIS stop falls on, for the heads-up
+    stops[k]._dayIndex=it.dayIndex;
+    const el=$("#eta_"+k);
+    if(el) el.textContent=RouteClock.fmtAbs(it.arriveAbs, it.tz);
+    /* On a multi-day route "ETA" alone is a lie of omission — the rep needs to know
+       which day, and so does anyone reading over their shoulder. */
+    const lab=$("#etal_"+k);
+    if(lab) lab.textContent = DAY._days>1 ? ("ETA · Day "+(it.dayIndex+1)) : "ETA";
+  }
+}
+
+// ---- Direct Outlook sync (Graph); falls back to the .ics download if not permitted yet ----
+async function syncCalendar(){
+  const r=DAY.route, stops=DAY.stops||[];
+  if(!navigator.onLine){ toast("Calendar sync needs a connection"); return; }
+  if(!stops.some(s=>s._arrive)){ try{ await computeEtas(); }catch(e){} }
+  const times={}; stops.forEach(s=>{ if(s.dealer_id && s._arrive) times[s.dealer_id]=s._arrive; });
+  toast("Syncing to Outlook…");
+  let j; try{ j=await rapi({action:"route_calendar_sync",route_id:r.id,times}); }catch(e){ j=null; }
+  if(j&&j.ok){ toast(`Synced to Outlook ✓ · ${j.events} visit${j.events===1?"":"s"}`); return; }
+  toast((j&&j.message)||"Outlook not ready — downloading a calendar file instead");
+  addToCalendar();
+}
+// ---- Calendar export (.ics): master route event + one event per dealer visit ----
+function icsEsc(s){ return String(s==null?"":s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n"); }
+function icsStamp(ms){ const d=new Date(ms); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"T"+p(d.getHours())+p(d.getMinutes())+"00"; }
+function icsDay(ds){ return String(ds||todayStr()).replace(/-/g,""); }
+function nextDayStr(ds){ const d=new Date((ds||todayStr())+"T00:00:00"); d.setDate(d.getDate()+1); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate()); }
+function routeUrl(id){ return location.origin+"/admin/scheduled-routes.html?route="+encodeURIComponent(id); }
+function addToCalendar(){
+  const r=DAY.route, stops=DAY.stops||[];
+  const uid=(r.id||"route")+"@hcps";
+  const times=stops.map(s=>s._arrive).filter(x=>x);
+  const L=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//HCPS//Scheduled Routes//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH"];
+  // Master route event
+  L.push("BEGIN:VEVENT","UID:"+uid+"-master","SUMMARY:"+icsEsc("Route: "+(r.name||"Sales route")));
+  if(times.length){ const start=Math.min.apply(null,times);
+    const lastArrive=Math.max.apply(null,times); const lastVisit=(stops[stops.length-1]&&stops[stops.length-1].visit_min!=null?stops[stops.length-1].visit_min:30);
+    L.push("DTSTART:"+icsStamp(start),"DTEND:"+icsStamp(lastArrive+lastVisit*60000)); }
+  else { L.push("DTSTART;VALUE=DATE:"+icsDay(r.scheduled_date),"DTEND;VALUE=DATE:"+nextDayStr(r.scheduled_date)); }
+  const summaryList=stops.map((s,i)=>`${i+1}. ${s.name}${s._arrive?" — "+new Date(s._arrive).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):""}${s.city?", "+s.city+(s.state?" "+s.state:""):""}`).join("\n");
+  const masterDesc=(r.round_trip?"Round trip. ":"")+(r.duration_s?Math.round(r.duration_s/60)+" min driving. ":"")+stops.length+" stops.\n\n"+summaryList+"\n\nOpen route: "+routeUrl(r.id);
+  L.push("DESCRIPTION:"+icsEsc(masterDesc),"END:VEVENT");
+  // Per-dealer visit events (only when we have arrival times)
+  stops.forEach((s,i)=>{ if(!s._arrive) return; const vis=(s.visit_min!=null?s.visit_min:30);
+    const desc=(s.contact_name?"Contact: "+s.contact_name+(s.contact_phone?" · "+s.contact_phone:"")+"\n":"")+"Stop "+(i+1)+" of "+stops.length+" on "+(r.name||"route")+"\nOpen route: "+routeUrl(r.id);
+    L.push("BEGIN:VEVENT","UID:"+uid+"-"+i,"SUMMARY:"+icsEsc("Visit: "+s.name),
+      "DTSTART:"+icsStamp(s._arrive),"DTEND:"+icsStamp(s._arrive+vis*60000),
+      "LOCATION:"+icsEsc([s.address,s.city,s.state,s.zip].filter(Boolean).join(", ")),
+      "DESCRIPTION:"+icsEsc(desc),"END:VEVENT"); });
+  L.push("END:VCALENDAR");
+  const blob=new Blob([L.join("\r\n")],{type:"text/calendar;charset=utf-8"});
+  const url=URL.createObjectURL(blob); const a=document.createElement("a");
+  a.href=url; a.download=(r.name||"route").replace(/[^a-z0-9]+/gi,"_").replace(/^_|_$/g,"")+".ics";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
+  toast(times.length?"Calendar file ready — open it to add to Outlook":"Added route (all-day) — open to add to Outlook");
+}
+
+// ---- Connectivity ----
+window.addEventListener("online", ()=>{ updateStatus(); flushOutbox().then(()=>{ if(navigator.onLine && TOKEN){ if(DAY&&DAY.route) (ADHOC()?openDealerVisit(DAY.route.dealer_id):openRoute(DAY.route.id)); else showList(); } }); });
+window.addEventListener("offline", ()=>updateStatus());
+if("serviceWorker" in navigator){ try{ navigator.serviceWorker.register("/admin/sr-sw.js").catch(()=>{}); }catch(e){} }
+
+updateStatus();
+boot();
+</script>
+</body></html>
