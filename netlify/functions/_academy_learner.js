@@ -134,6 +134,7 @@ async function versionOutline(versionIds) {
 }
 LEARNER.my_courses = async (event, learner) => {
   const enr = await myEnrollments(learner);
+  const examsOpen = await A.switchOn('academy_exams');
   const { vers, courses, mods, lessons } = await versionOutline(enr.map(e => e.version_id));
   const prog = enr.length ? await A.sbGet(`academy_progress?enrollment_id=${idsIn(enr.map(e => e.id))}&select=enrollment_id,lesson_id,status,resume_block`) : [];
   const out = enr.map(e => {
@@ -151,7 +152,7 @@ LEARNER.my_courses = async (event, learner) => {
     return { enrollment_id: e.id, status: e.status, due_on: e.due_on, course: c.title || 'Course', version: v.version, version_status: v.status,
       lessons_total: all.length, lessons_completed: done, next_lesson_id: next ? next.id : null, outline };
   }).filter(Boolean);
-  return { ok: true, courses: out };
+  return { ok: true, courses: out, exams_open: examsOpen };
 };
 
 /* One lesson of one of the learner's own enrollments, drawn by the SAME payload builder and renderer as the staff
@@ -206,6 +207,47 @@ LEARNER.practice_check = async (event, learner, b) => {
   if (!r || r.invalid) A.refuse(400, 'invalid', 'Choose an answer first.');
   return { ok: true, correct: r.correct, explanation: r.explanation };   // never the answer key
 };
+/* ---------------- the final exam (A2E / M6). The limits (one open attempt, cooldown, daily limit, time limit and expiry)
+   are enforced by the database operations academy_exam_op_*; answer keys and explanations never leave the database.
+   Switch academy_exams (off until Angelo approves the pilot). Every exam action is POST. */
+async function examsOn() { if (!(await A.switchOn('academy_exams'))) A.refuse(403, 'flag_off', 'The final exam is not open yet.'); }
+const ownEnrollment = async (learner, id) => {
+  const eid = A.uuid(id, 'enrollment');
+  if (!(await myEnrollments(learner)).some(e => String(e.id) === eid)) A.refuse(404, 'not_found', 'Course not found.');
+  return eid;
+};
+// answers: {question id: "a" | ["a","c"]}; the database checks each one against the attempt's own questions
+const answersOf = v => { if (v == null) return {}; if (typeof v !== 'object' || Array.isArray(v)) A.refuse(400, 'invalid', 'Those answers are not valid.'); return v; };
+LEARNER.exam_status = async (event, learner, b) => {
+  await examsOn();
+  const eid = await ownEnrollment(learner, b.enrollment_id);
+  return Object.assign({ ok: true }, await A.accessOp('exam_op_status', { p_actor: actorOf(learner), p_enrollment_id: eid }));
+};
+LEARNER.exam_start = async (event, learner, b) => {
+  await examsOn();
+  const eid = await ownEnrollment(learner, b.enrollment_id);
+  const r = await A.accessOp('exam_op_start', { p_actor: actorOf(learner), p_enrollment_id: eid });
+  if (!r.ok) return A.respond(event, 409, Object.assign({ error: r.reason, message: EXAM_WAIT[r.reason] || 'You cannot start the exam just now.' }, r));
+  return r;
+};
+const EXAM_WAIT = {
+  open_attempt: 'You already have an exam in progress. Finish it first.',
+  cooldown: 'You can take the exam again after a short break.',
+  daily_limit: 'You have used today’s exam attempts. You can try again tomorrow.',
+};
+LEARNER.exam_view = async (event, learner, b) => {
+  await examsOn();
+  return Object.assign({ ok: true }, await A.accessOp('exam_op_view', { p_actor: actorOf(learner), p_attempt_id: A.uuid(b.attempt_id, 'attempt') }));
+};
+LEARNER.exam_save = async (event, learner, b) => {
+  await examsOn();
+  return await A.accessOp('exam_op_save', { p_actor: actorOf(learner), p_attempt_id: A.uuid(b.attempt_id, 'attempt'), p_answers: answersOf(b.answers) });
+};
+LEARNER.exam_submit = async (event, learner, b) => {
+  await examsOn();
+  return await A.accessOp('exam_op_submit', { p_actor: actorOf(learner), p_attempt_id: A.uuid(b.attempt_id, 'attempt'), p_answers: answersOf(b.answers) });
+};
+
 LEARNER.save_progress = async (event, learner, b) => {
   const status = A.oneOf(b.status, ['viewed', 'completed'], 'Progress');
   const rb = Number(b.resume_block); if (!Number.isInteger(rb) || rb < 0 || rb > 500) A.refuse(400, 'invalid', 'That screen is not valid.');
@@ -238,6 +280,10 @@ TM.team = async (event, learner) => {
   const enr = memIds.length ? await A.sbGet(`academy_enrollments?membership_id=${idsIn(memIds)}&select=id,learner_id,version_id,membership_id,status,due_on`) : [];
   const { vers, courses, mods, lessons } = await versionOutline(enr.map(e => e.version_id));
   const prog = enr.length ? await A.sbGet(`academy_progress?enrollment_id=${idsIn(enr.map(e => e.id))}&status=eq.completed&select=enrollment_id`) : [];
+  // exam results for a Training Manager: passed or not and how many attempts — never a score (A2E plan)
+  const atts = enr.length ? await A.sbGet(`academy_attempts?enrollment_id=${idsIn(enr.map(e => e.id))}&select=enrollment_id,passed,submitted_at`) : [];
+  const examOf = id => { const a = atts.filter(x => String(x.enrollment_id) === String(id)), done = a.filter(x => x.submitted_at);
+    return { attempts: done.length, passed: done.some(x => x.passed === true), last_at: done.map(x => x.submitted_at).sort().pop() || null }; };
   const lessonCount = vid => { const ms = mods.filter(m => String(m.version_id) === String(vid)).map(m => String(m.id)); return lessons.filter(l => ms.includes(String(l.module_id))).length; };
   const roster = mems.map(m => {
     const p = people.find(x => String(x.id) === String(m.learner_id)) || {};
@@ -247,7 +293,7 @@ TM.team = async (event, learner) => {
       courses: enr.filter(e => String(e.membership_id) === String(m.id)).map(e => {
         const v = vers.find(x => String(x.id) === String(e.version_id)) || {}; const c = courses.find(x => String(x.id) === String(v.course_id)) || {};
         return { enrollment_id: e.id, course: c.title || 'Course', version: v.version, status: e.status, due_on: e.due_on,
-          lessons_total: lessonCount(e.version_id), lessons_completed: prog.filter(x => String(x.enrollment_id) === String(e.id)).length };
+          lessons_total: lessonCount(e.version_id), lessons_completed: prog.filter(x => String(x.enrollment_id) === String(e.id)).length, exam: examOf(e.id) };
       }) };
   });
   return { ok: true, dealers: ids.map(id => ({ id, name: names[id] || 'Dealership' })), roster,

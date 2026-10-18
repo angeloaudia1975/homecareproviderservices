@@ -55,3 +55,21 @@ label.ac-field { display: grid; gap: 6px; font-weight: 600; font-size: 14px; }
 @media (min-width: 720px) { h1 { font-size: 30px; } .ac-card { padding: 24px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 #view > * + * { margin-top: 16px; }
+/* final exam (A2E) */
+.ac-rules { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.ac-attempts { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.ac-attempts li { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--ac-line); }
+.ac-attempts li:first-child { border-top: 0; }
+.ac-pill.ok { background: #e8f5ee; color: var(--ac-ok); }
+.ac-examhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ac-clock { font-variant-numeric: tabular-nums; font-weight: 700; background: #eef3f8; color: var(--ac-navy); border-radius: 99px; padding: 6px 12px; }
+.ac-clock.low { background: #fdecea; color: var(--ac-err); }
+.ac-q { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; min-width: 0; }
+.ac-q legend { font-weight: 700; font-size: 18px; line-height: 1.35; margin-bottom: 8px; padding: 0; }
+.ac-choice { display: flex; gap: 12px; align-items: flex-start; min-height: 48px; padding: 12px 14px; border: 1px solid #b9c4d0; border-radius: 10px; cursor: pointer; background: #fff; }
+.ac-choice input { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--ac-blue-dk); }
+.ac-choice:has(input:checked) { border-color: var(--ac-blue-dk); background: #eef5fb; }
+.ac-choice:focus-within { outline: 3px solid var(--ac-orange); outline-offset: 2px; }
+.ac-jump { display: flex; flex-wrap: wrap; gap: 8px; }
+.ac-jump .ac-btn { min-width: 48px; padding: 0 10px; }
+.ac-score { font-size: 40px; font-weight: 800; margin: 0; font-variant-numeric: tabular-nums; }

@@ -3056,6 +3056,19 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     (fingerprint 8ab57055… / cec33a5e…, 22 functions, 15 for the server); before/after fingerprints PASS; public-key
     probe 30/30 BLOCKED; Golden v1 draft; six learner switches OFF. Never rerun or roll back M5. PR #20 merge needs his
     separate authorization; after merge + deploy comes A2E (examinations).
+  - **PR #20 MERGED by Angelo (18 Oct 2026 14:00 UTC, main 0507d58) and verified live:** `/academy/` serves the learner
+    page ("The HCPS Academy is not open yet"), learner API and sign-in answer 403 flag_off, handoff `{enabled:false}`,
+    mail worker answers 202, strict CSP + DENY on /academy/*, site and Connect 360 pages 200.
+- **A2E — final exams with server-enforced limits (Stage 3; development authorized by Angelo 18 Oct 2026 08:54 CT after
+  A2B; migration M6 NOT run).** Runbook `docs/academy/A2E_EXAMS.md`. Rules (binding once installed):
+  - Exams start, save and submit ONLY through `academy_exam_op_*` (status, start, view, save, submit; server role only);
+    the server role loses EXECUTE on M1's start/submit attempt and INSERT/UPDATE/DELETE on `academy_attempts`. M1/M3 code
+    unchanged and called inside the M6 operations.
+  - Policy per course version: one open attempt per learner, `exam_cooldown_minutes` (60) from the end of the last
+    attempt (an expired one: its deadline), `exam_daily_limit` (3) per America/Chicago day, `exam_time_limit_minutes`
+    (45, decision I pending). Past the deadline an attempt is graded with the answers saved before it.
+  - Learners see questions and choices only; results are score, pass/fail and topics. Training Managers see passed /
+    not passed and the attempt count, never a score. New switch `academy_exams` (exactly true = on; OFF).
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
