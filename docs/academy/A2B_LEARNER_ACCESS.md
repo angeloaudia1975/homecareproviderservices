@@ -75,6 +75,28 @@ background run).
    operations answer 503).
 6. Switches, the sender address and the pilot each need their own approval.
 
+## Production preflight (read-only, run by Angelo 18 Oct 2026 08:40 CT) — PASS
+
+`ready_for_m5` true · PostgreSQL 17.6 · M5 absent (0 functions) · learner rows 0 · switches `{academy_admin: true}` only ·
+Golden v1 `draft`.
+
+| Baseline (must be identical after M5) | Value |
+|---|---|
+| M1 | 19 functions · `a809004b8fe77dce69cfc555ff984bdb` (= accepted post-M3 value) |
+| M2 | 15 · `794f3c3e007bf3cc6d72b574aac614e3` (= accepted) |
+| M3 | 24 · `9f41ee27d9ea6b271b35ea5ec1a25c7e` (= accepted) |
+| M3.1 | 2 · `1306b90bb29549c2c1e2aec0428cdb0f` (= accepted) |
+| M4 | 6 · `d3bf8e1fd57483a40c7f3b84a3632b39` (first recorded here) |
+| outside grants | 2964 · `34086791aa2ce27d2d60890bac8946bc` |
+| outside policies | 29 · `219ac18ed7a25a0db2d9a50c5b8a88e7` |
+| outside columns | 128 tables · `89ee9111a4a9834e08ebaff523b7a768` |
+| outside functions | 108 · `5a4f7cf7e3f8074d35813d39493f9272` |
+| key rows | dealers 447, dealer_users 4, staff_users 3, orders 3, order_items 3, monthly_sales 12,575, academy_courses 1, lessons 17, questions 111, media 39, events 524 |
+
+Expected to change with M5 only: academy grants (252 · `7af6d10e…` → fewer: the server role loses INSERT/UPDATE/DELETE
+on the learner-side tables), academy columns (180 / 18 tables → + the 2 new tables and their columns), RLS 18/18 → 20/20
+with 0 policies.
+
 ## Tests
 
 `test/academy-m5.pg.test.js`, `test/academy-a2b.pg.test.js`, `test/academy-learner.browser.js` (strict CSP from
