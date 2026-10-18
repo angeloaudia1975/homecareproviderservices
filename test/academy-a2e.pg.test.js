@@ -195,7 +195,8 @@ async function signIn(addr, ip) {
       const noTok = await call(ADMIN.handler, body, { headers: { 'x-academy-request': undefined } }); assert.strictEqual(noTok.status, 401);
       assert.strictEqual((await admin('junk-token', body)).status, 401);
       assert.strictEqual((await admin('adm', Object.assign({ role: 'president', p_actor: 'staff:admin@test.example', actor: 'staff:admin@test.example' }, body))).status, 403, 'an admin claiming the President role');
-      assert.strictEqual((await admin('own', body)).status, 403, 'an owner');
+      const ow = await admin('own', body); assert.strictEqual(ow.status, 403, 'an owner');
+      assert.strictEqual(ow.body.error, 'president_only', 'refused by the API itself, before the database is asked');
       assert.notStrictEqual((await admin('oldp', body)).status, 200, 'an inactive President');
       assert.strictEqual((await call(ADMIN.handler, body, { cookie: LC, headers: { 'x-academy-request': undefined } })).status, 401, 'a learner session is not a staff sign-in');
       assert.strictEqual((await call(ADMIN.handler, body, { cookie: TMC, headers: { 'x-academy-request': undefined } })).status, 401, 'nor is a Training Manager session');
