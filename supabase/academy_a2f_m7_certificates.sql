@@ -15,8 +15,8 @@
 --   * academy_cert_op_verify(number) — what the public verification page may show: number, holder, dealership, course,
 --     issue and expiry dates, status valid / expired / revoked, issuer HCPS. Never an email, a score, a revocation
 --     reason or anything about Golden credentials. Reads only.
--- The server role loses EXECUTE on M1's academy_op_issue_certificate and academy_op_revoke_certificate, so these are
--- the only ways to issue or revoke. RULE 19: no new table or view. Operations are SECURITY DEFINER with a pinned
+-- The server role loses EXECUTE on M1's academy_op_issue_certificate and academy_op_revoke_certificate, and INSERT /
+-- UPDATE / DELETE / TRUNCATE on academy_certificates (it keeps SELECT), so these are the only ways to issue or revoke. RULE 19: no new table or view. Operations are SECURITY DEFINER with a pinned
 -- search path, executable by service_role only; the helper by the owner only.
 -- Run order: after M1–M6. Rollback: academy_a2f_m7_certificates_rollback.sql (refused while any certificate exists).
 -- =============================================================================================

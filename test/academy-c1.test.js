@@ -187,9 +187,9 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
   await t('an unknown action is 404 for an administrator', async () => {
     const w = world(); assert.strictEqual((await call(mod(w), { action: 'drop_everything' }, as('admin'))).status, 404);
   });
-  await t('nothing in C1 can issue or revoke a certificate, start/submit/correct an exam, or change a switch', async () => {
+  await t('nothing in C1 can issue a certificate, start/submit/correct an exam, or change a switch (revoking is A2F: President only, through M7)', async () => {
     const w = world(); const m = mod(w); const ops = withOps(w);
-    for (const action of ['issue_certificate', 'revoke_certificate', 'start_attempt', 'submit_attempt', 'correct_attempt', 'set_switch', 'set_flag', 'delete_course', 'list_questions', 'get_question'])
+    for (const action of ['issue_certificate', 'start_attempt', 'submit_attempt', 'correct_attempt', 'set_switch', 'set_flag', 'delete_course', 'list_questions', 'get_question'])
       assert.strictEqual((await call(m, { action, id: CERT1 }, as('pres'))).status, 404, action);
     assert.strictEqual(ops.length, 0); assert.strictEqual(w.writes.length, 0);
   });

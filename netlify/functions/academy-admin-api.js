@@ -16,7 +16,8 @@
        returned here; audit history is scrubbed of answers before it leaves the server. The one place an answer key is
        READ is preview_check (A2D Stage 2): it grades a single PRACTICE answer on the server and returns only right/wrong
        and the explanation; exam questions are refused there.
-     - Changes are POST only. Nothing here issues or revokes an HCPS certificate, changes a switch, or touches ordering.
+     - Changes are POST only. Nothing here issues an HCPS certificate (only a passed exam does, through M7), changes a switch,
+       or touches ordering. Revoking one (revoke_certificate) is the President's alone, checked here and in the database.
      - A2D Stage 3 (Course Builder, _academy_builder.js) adds its actions to the same maps, behind the same gate. Its
        question-bank editor is the one staff screen that READS answer keys (the staff editor, per the A2D plan); lesson
        previews and audit rows never carry them. Every builder write is an audited M2/M3 database operation. */
@@ -90,7 +91,7 @@ const eventOut = e => ({ id: e.id, at: e.at, actor_type: e.actor_type, actor: e.
                          action: e.action, before: scrub(e.before, 0), after: scrub(e.after, 0) });
 
 const CREDENTIAL = {
-  hcps: { issuer: 'hcps', label: 'HCPS-issued certification', note: 'Issued and verified by HCPS. Not a manufacturer credential.' },
+  hcps: { issuer: 'hcps', label: 'HCPS-issued certification', note: 'Issued and verified by HCPS. Not issued or endorsed by Golden Technologies or any manufacturer.' },
   manufacturer: { issuer: 'manufacturer', label: 'Manufacturer-issued credential', note: 'Issued by the manufacturer. HCPS tracks it and checks the evidence; HCPS does not issue it.' },
   none: { issuer: 'none', label: 'Training only', note: 'No credential is issued.' },
 };
@@ -547,10 +548,28 @@ READ.list_certificates = async () => {
   const vs = await byIds('academy_course_versions', rows.map(r => r.version_id), 'id,course_id,version');
   const cs = await byIds('academy_courses', vs.map(v => v.course_id), 'id,title,slug');
   const vmap = Object.fromEntries(vs.map(v => [String(v.id), v])), cmap = Object.fromEntries(cs.map(c => [String(c.id), c]));
+  const now = Date.now();
   return { ok: true, issuer: CREDENTIAL.hcps, certificates: rows.map(r => {
     const v = vmap[String(r.version_id)] || {}, c = cmap[String(v.course_id)] || {};
-    return Object.assign({}, r, { issuer: 'hcps', course: c.title || null, version: v.version || null });
-  }) };
+    const st = r.status === 'revoked' ? 'revoked' : (r.expires_at && new Date(r.expires_at).getTime() <= now ? 'expired' : 'valid');
+    const left = r.expires_at ? Math.floor((new Date(r.expires_at).getTime() - now) / 86400000) : null;
+    return Object.assign({}, r, { issuer: 'hcps', course: c.title || null, version: v.version || null, test: isTest(c),
+      display_status: st, expiring_soon: st === 'valid' && left != null && left <= 60, days_left: st === 'valid' ? left : null });
+  }), summary: (() => { const t = { valid: 0, expiring_soon: 0, expired: 0, revoked: 0 };
+    for (const r of rows) { const v = vmap[String(r.version_id)] || {}; if (isTest(cmap[String(v.course_id)])) continue;
+      const st = r.status === 'revoked' ? 'revoked' : (r.expires_at && new Date(r.expires_at).getTime() <= now ? 'expired' : 'valid');
+      t[st]++; if (st === 'valid' && r.expires_at && new Date(r.expires_at).getTime() - now <= 60 * 86400000) t.expiring_soon++; }
+    return t; })() };
+};
+/* Revoking an HCPS certificate (A2F / M7): the active President only — checked here AND in the database at the moment of
+   the change (academy_cert_op_revoke); a reason of 5–500 characters; audited with before/after. The certificate stays on
+   record and verifies as "revoked"; the reason is never shown publicly. */
+WRITE.revoke_certificate = async (staff, b) => {
+  requirePresident(staff);
+  const reason = A.text(b.reason, 500, 'Reason');
+  if (reason.trim().length < 5) A.refuse(400, 'invalid', 'Give a reason of at least 5 characters.');
+  const r = await A.accessOp('cert_op_revoke', { p_actor: A.actorLabel(staff), p_certificate_id: A.uuid(b.id, 'certificate'), p_reason: reason });
+  return { ok: true, audited: true, certificate: r.certificate };
 };
 READ.list_external_certs = async (staff, b) => {
   let q = `academy_external_certs?select=id,learner_id,course_id,manufacturer_slug,status,training_started_at,training_completed_at,exam_opened_at,exam_reported_at,certificate_uploaded_at,upload_media_id,evidence_type,evidence_ref,verified_by,verified_at,certificate_ref,expires_at,note,created_at`;

@@ -3086,6 +3086,29 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     `academy_exam_op_accommodate` (**the active HCPS President only** — owner decision, PR #22 comment 6253802978 —
     enforced in the database from staff_users at the moment of the change AND in the API; reason, audited, 0–240, future
     attempts only; guard `academy_exam_enrollment_guard` refuses any other write); Command Center → Learners → Exam time.
+- **Golden certification launch directive (Angelo, 18 Oct 2026 16:30 CT — standing until the first Golden launch).**
+  Continue autonomously through authorized coding, testing, documentation, PR preparation and independent-review requests
+  without routine confirmations; GitHub is the shared source of truth; ask for an independent (ChatGPT) review at every
+  security-sensitive milestone. Phases: 1 finish A2E / prepare M6 · 2 A2F certificates · 3 dealership training management ·
+  4 learner end-to-end · 5 production readiness checklist · 6 controlled Golden pilot package. Never: install production
+  migrations without approval, merge unapproved PRs, reinstall / roll back M1–M5, turn on learner / exam / certificate
+  switches, enable learner emails, publish the Golden course, contact real dealers, start real email delivery. Do not
+  block on pilot interviews, signed commitments or administrative forms. Escalate only security failures, missing
+  permissions, material costs and genuine owner-policy decisions. **Every update states:** (1) the verified % toward the
+  initial Golden Academy launch, (2) what is completed, (3) PR links, exact commit heads and test results, (4) true
+  blockers needing the owner, (5) the next authorized development action.
+- **A2F — HCPS certificates (M7, built 18 Oct 2026; NOT run in production).** Runbook `docs/academy/A2F_CERTIFICATES.md`.
+  Rules (binding once installed): a certificate is earned ONLY through `academy_cert_op_claim` — the learner's own passed
+  attempt (actor exactly `learner:<id>`), active membership, enrollment not withdrawn, dealership read in the database
+  from that membership; one per enrollment (repeat = the same one); 12 months; then M1's issue (switch, graded pass,
+  question set, HCPS course, never TEST). A pass claims it automatically when `academy_certificates` is on; a failure to
+  issue never fails the graded exam (`certificate_pending`). Revocation = the active HCPS **President only** (database AND
+  API), reason 5–500, audited; a revoked certificate stays on record and verifies as revoked; no automatic re-issue.
+  Public verification (`/academy/verify/`, `academy-verify` GET) shows only what the certificate prints — never an email,
+  score, attempt or revocation reason. Every certificate surface says HCPS-issued and "not issued or endorsed by Golden
+  Technologies". The server role loses EXECUTE on M1 issue/revoke and write rights on `academy_certificates`. Training
+  Managers see number, status, validity and expiring-soon (≤60 days) for their own dealership + branches, never a score.
+  Open owner decision (not blocking): re-certification after expiry (recommended: a new course version).
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
