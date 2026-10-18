@@ -88,3 +88,15 @@ audited with the President's name and reason; 0 removes it. Cross-dealership: a 
 - Reasonable accommodation as an audited per-enrollment extension set before an attempt — **President only** in the
   database and the API (comment 6253802978); 0–240 extra minutes; reason required; future attempts only (never extends a
   running attempt); no learner or Training Manager request flow.
+
+## Production preflight — PASSED (Angelo ran it, 18 Oct 2026 17:57 CT; read-only)
+
+`ready_for_m6` **true** · Postgres 17.6 · attempts 0 · learner rows 0 · switches `{academy_admin: true}` only · Golden v1 draft.
+Code fingerprints = the recorded production values: M1 19 / `a809004b8fe77dce69cfc555ff984bdb` (post-M3, CRLF) ·
+M2 15 / `794f3c3e…` · M3 24 / `9f41ee27…` · M3.1 2 / `1306b90b…` · M4 6 / `d3bf8e1f…` · M5 22 / `cec33a5e…` · M6 0.
+Baseline to compare after M6 (must be identical): outside_grants 2964 / `34086791aa2ce27d2d60890bac8946bc` ·
+outside_policies 29 / `219ac18ed7a25a0db2d9a50c5b8a88e7` · outside_columns 128 / `89ee9111a4a9834e08ebaff523b7a768` ·
+outside_functions 108 / `5a4f7cf7e3f8074d35813d39493f9272`. Expected to change: academy_grants 232 / `0b9b1d36…`
+(server loses INSERT/UPDATE/DELETE on academy_attempts) and academy_columns 200 / `02864fbd…` (+5 attempts, +3 versions,
++1 enrollments). Academy RLS 20/20, 0 policies. Key rows: dealers 447, monthly_sales 12,575, academy_events 524,
+courses 1, lessons 17, questions 111, media 39, learners 0, enrollments 0. M6 NOT installed — awaiting the owner's approval.
