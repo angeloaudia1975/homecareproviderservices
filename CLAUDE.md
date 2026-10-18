@@ -3086,6 +3086,9 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     `academy_exam_op_accommodate` (**the active HCPS President only** — owner decision, PR #22 comment 6253802978 —
     enforced in the database from staff_users at the moment of the change AND in the API; reason, audited, 0–240, future
     attempts only; guard `academy_exam_enrollment_guard` refuses any other write); Command Center → Learners → Exam time.
+  - **M6 RUN and ACCEPTED in production (18 Oct 2026 ~18:05 CT, run by Angelo):** 8/8 install checks, postcheck 13 / 6 / 0 / 2 triggers,
+    fingerprint `372d3fbe…` (Windows paste), M1–M5 + outside fingerprints unchanged, probe 15/15 BLOCKED. **Never rerun or roll back M6.**
+    PR #22 merge/deploy, `academy_exams` and all learner switches still need separate approval.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
