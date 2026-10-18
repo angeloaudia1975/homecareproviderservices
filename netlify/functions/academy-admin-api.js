@@ -480,9 +480,10 @@ WRITE.enroll_learner = async (staff, b) => {
 };
 WRITE.withdraw_enrollment = async (staff, b) => ({ ok: true, audited: true,
   result: await A.accessOp('enroll_op_withdraw', { p_actor: A.actorLabel(staff), p_enrollment_id: A.uuid(b.enrollment_id, 'enrollment'), p_reason: A.text(b.reason, 500, 'Reason') }) });
-/* A2E reasonable accommodation: extra exam time for ONE enrollment (0 removes it). President only here; the database
-   (academy_exam_op_accommodate, M6) also requires an active HCPS administrator and a reason, audits it, and applies it
-   only to attempts started afterwards. Reading it needs M6 (the column does not exist before). */
+/* A2E reasonable accommodation: extra exam time for ONE enrollment (0 removes it). President only here, and the database
+   (academy_exam_op_accommodate, M6) checks again that the actor is the ACTIVE HCPS President (role read from staff_users
+   at the moment of the change), requires a reason, audits it, and applies it only to attempts started afterwards.
+   Reading it needs M6 (the column does not exist before). */
 READ.exam_accommodations = async (staff, b) => {
   const lid = A.uuid(b.learner_id, 'learner');
   const rows = await all(`academy_enrollments?select=id,version_id,status,exam_extra_minutes&learner_id=eq.${enc(lid)}`);
