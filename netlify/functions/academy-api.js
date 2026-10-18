@@ -2,6 +2,7 @@
    cookie (_academy_session.js + academy_sessions, A2B / M5). Connect 360 and Partner 360 tokens are never accepted here.
      PUBLIC   request_code · verify_code · handoff_redeem      (POST; they open a session)
      LEARNER  me · my_courses · lesson · practice_check · save_progress · sign_out
+     EXAM (A2E, switch academy_exams)  exam_status · exam_start · exam_view · exam_save · exam_submit
      TRAINING MANAGER  team · courses · invite · revoke_invite · deactivate · reactivate · enroll · withdraw
    Refused with 403 flag_off while the academy_learner switch is off (invitations also need academy_invites, the
    Partner 360 entry also needs academy_handoff). State-changing calls must come from the Academy's own pages

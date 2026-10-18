@@ -1,0 +1,180 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>HCPS — Account Assignment</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0}
+ .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+ .kpi.un{border-left:4px solid #c2410c;background:#fdf4ef}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700}
+ .kpi .v{font-size:25px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ .kpi .s{font-size:11px;color:var(--gray)}
+ .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+ .bar input[type=search],.bar select{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff}
+ .pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:700;color:var(--gray);cursor:pointer}
+ .pill.on{background:#10263f;color:#fff;border-color:#10263f}
+ table{width:100%;border-collapse:collapse;margin-top:6px}
+ th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:middle}
+ th{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:700;position:sticky;top:0;background:#f7f8fa;z-index:2}
+ td.num{text-align:right;font-variant-numeric:tabular-nums}
+ .badge{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.4px;padding:1px 6px;border-radius:5px;margin-left:6px;vertical-align:middle}
+ .badge.hq{background:#e8f0ff;color:#2B4071}.badge.br{background:#f0ecff;color:#5a3ea8}
+ .repsel{font:inherit;font-size:13px;padding:5px 7px;border:1px solid var(--line);border-radius:7px;background:#fff;min-width:150px}
+ .repsel.unset{color:var(--gray);border-color:#e6b894;background:#fffaf6}
+ .selbar{position:sticky;bottom:0;background:#10263f;color:#fff;border-radius:12px;padding:10px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px;box-shadow:0 -2px 12px rgba(0,0,0,.12)}
+ .selbar select{font:inherit;font-size:14px;padding:7px 9px;border-radius:8px;border:0}
+ .dim{color:var(--gray)}
+ .grow{max-height:none}
+ .tblwrap{max-height:64vh;overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Account Assignment</h1>
+    <div class="sub">Assign every dealer to a sales rep — fast. Filter to unassigned, pick a rep per row, or tick several and set them all at once. Assignments are stored on the account, so renames and merges never wipe them.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money=n=>"$"+Math.round(Number(n)||0).toLocaleString("en-US");
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+const ADMIN=new Set(["president","admin","owner"]);
+const isAdmin=()=>ME&&ADMIN.has(String(ME.role||"").toLowerCase());
+
+let DATA=null, SEL=new Set(), FILTER="all", Q="";
+
+function gate(msg){$("#body").innerHTML=`<div class="gate card"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username" style="margin-bottom:8px"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button> <a href="reset.html" style="margin-left:6px;color:#10263f;font-size:13px;font-weight:600">Forgot password?</a><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+  const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+  HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+}
+function lock(){ HCPS.signOut(); TOKEN=null; location.reload(); }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  try{
+    const h={}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+    const r=await fetch("/.netlify/functions/dealers-api",{headers:h});
+    if(r.status===401){ gate("Your session ended — sign in again."); return; }
+    const j=await r.json(); if(j.error){ $("#body").innerHTML=`<div class="msg err">Couldn't load: ${esc(j.error)}</div>`; return; }
+    DATA=j; render();
+  }catch(e){ $("#body").innerHTML=`<div class="msg err">Couldn't load: ${esc(String(e))}</div>`; }
+}
+
+function repOptionList(){
+  const s=new Set((DATA.repOptions||[]).filter(Boolean));
+  for(const d of (DATA.dealers||[])) if(d.rep) s.add(d.rep);
+  return [...s].sort((a,b)=>a.localeCompare(b));
+}
+function repCounts(){
+  const m={};
+  for(const d of (DATA.dealers||[])){ const r=d.rep||""; m[r]=(m[r]||0)+1; }
+  return m;
+}
+function visibleDealers(){
+  let ds=(DATA.dealers||[]).slice();
+  if(FILTER==="unassigned") ds=ds.filter(d=>!d.rep);
+  else if(FILTER!=="all") ds=ds.filter(d=>String(d.rep||"")===FILTER);
+  if(Q){ const q=Q.toLowerCase(); ds=ds.filter(d=>String(d.name||"").toLowerCase().includes(q)||String(d.city||"").toLowerCase().includes(q)||String(d.state||"").toLowerCase().includes(q)||String(d.master||"").toLowerCase().includes(q)); }
+  return ds.sort((a,b)=>(b.sales||0)-(a.sales||0));
+}
+
+function render(){
+  if(!isAdmin()){ $("#body").innerHTML=`<div class="msg err"><b>President/Admin only.</b> Account assignment is limited to management accounts.</div>`; return; }
+  const dealers=DATA.dealers||[];
+  const total=dealers.length, assigned=dealers.filter(d=>d.rep).length, un=total-assigned;
+  const counts=repCounts(), reps=repOptionList();
+  const kpis=`<div class="kpis">
+    <div class="kpi"><div class="l">Total accounts</div><div class="v">${total}</div></div>
+    <div class="kpi"><div class="l">Assigned</div><div class="v">${assigned}</div><div class="s">${total?Math.round(assigned/total*100):0}% of book</div></div>
+    <div class="kpi un"><div class="l">Unassigned</div><div class="v">${un}</div><div class="s">need a rep</div></div>
+    ${reps.map(r=>`<div class="kpi"><div class="l">${esc(r)}</div><div class="v">${counts[r]||0}</div></div>`).join("")}
+  </div>`;
+
+  const pills=`<div class="bar">
+    <span class="pill ${FILTER==='all'?'on':''}" onclick="setFilter('all')">All (${total})</span>
+    <span class="pill ${FILTER==='unassigned'?'on':''}" onclick="setFilter('unassigned')">Unassigned (${un})</span>
+    ${reps.map(r=>`<span class="pill ${FILTER===r?'on':''}" onclick="setFilter('${esc(r).replace(/'/g,"\\'")}')">${esc(r)} (${counts[r]||0})</span>`).join("")}
+    <input type="search" id="q" placeholder="Search dealer, city, state…" value="${esc(Q)}" oninput="setQ(this.value)" style="margin-left:auto;min-width:220px">
+  </div>`;
+
+  const ds=visibleDealers();
+  const optsHtml=r=>`<option value="">— unassigned —</option>`+reps.map(x=>`<option value="${esc(x)}"${String(r||"")===x?" selected":""}>${esc(x)}</option>`).join("");
+  let rows=ds.map(d=>{
+    const badge = (d.branches&&d.branches.length)?`<span class="badge hq" title="${d.branches.length} branch location${d.branches.length>1?'s':''}">HQ ·${d.branches.length}</span>`
+                : d.master?`<span class="badge br" title="Branch of ${esc(d.master)}">branch</span>`:"";
+    const loc=[d.city,d.state].filter(Boolean).join(", ");
+    return `<tr>
+      <td><input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')"></td>
+      <td><b>${esc(d.name)}</b>${badge}${d.master?`<div class="hint" style="text-transform:none">↳ ${esc(d.master)}</div>`:""}</td>
+      <td>${loc?esc(loc):`<span class="dim">—</span>`}</td>
+      <td class="num">${money(d.sales)}</td>
+      <td><select class="repsel ${d.rep?'':'unset'}" onchange="setRep('${d.id}',this.value,this)">${optsHtml(d.rep)}</select></td>
+    </tr>`;
+  }).join("");
+  if(!ds.length) rows=`<tr><td colspan="5" class="dim" style="padding:18px;text-align:center">No accounts match this filter.</td></tr>`;
+
+  const table=`<div class="tblwrap"><table><thead><tr>
+      <th style="width:34px"><input type="checkbox" ${allShownSelected(ds)?"checked":""} onclick="toggleAll(this)" title="Select all shown"></th>
+      <th>Dealer</th><th>Location</th><th class="num">Sales</th><th style="width:180px">Assigned rep</th>
+    </tr></thead><tbody>${rows}</tbody></table></div>`;
+
+  const bulk = SEL.size ? `<div class="selbar">
+      <span><b>${SEL.size}</b> selected</span>
+      <span>Assign to:</span>
+      <select id="bulkrep"><option value="">— unassigned —</option>${reps.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join("")}</select>
+      <button class="go sm orange" onclick="applyBulk()">Apply to ${SEL.size}</button>
+      <button class="go sm" style="background:#2B4071" onclick="clearSel()">Clear</button>
+      <span id="bulkmsg" style="margin-left:6px;font-size:12.5px;opacity:.9"></span>
+    </div>` : "";
+
+  $("#body").innerHTML=kpis+pills+table+bulk;
+}
+
+function setFilter(f){ FILTER=f; render(); }
+function setQ(v){ Q=v; renderTableOnly(); }
+function renderTableOnly(){ // lightweight: re-render whole page keeps it simple + correct
+  const q=$("#q"); const pos=q?q.selectionStart:null; render(); const q2=$("#q"); if(q2&&pos!=null){ q2.focus(); try{q2.setSelectionRange(pos,pos);}catch(e){} }
+}
+function toggleSel(id){ if(SEL.has(id))SEL.delete(id); else SEL.add(id); render(); }
+function allShownSelected(ds){ return ds.length>0 && ds.every(d=>SEL.has(d.id)); }
+function toggleAll(el){ const ds=visibleDealers(); if(el.checked) ds.forEach(d=>SEL.add(d.id)); else ds.forEach(d=>SEL.delete(d.id)); render(); }
+function clearSel(){ SEL.clear(); render(); }
+
+async function api(body){
+  const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){ lock(); throw new Error("session ended"); }
+  const j=await r.json().catch(()=>({}));
+  if(!(r.ok&&j.ok)) throw new Error(j.error||("HTTP "+r.status));
+  return j;
+}
+async function setRep(id,rep,el){
+  const d=(DATA.dealers||[]).find(x=>x.id===id); if(!d) return;
+  const prev=d.rep||""; if(el) el.disabled=true;
+  try{ await api({action:"rep",dealer_id:id,dealer_name:d.name,rep_name:rep}); d.rep=rep;
+    if(el){ el.classList.toggle("unset",!rep); el.style.outline="2px solid #7fe0a3"; setTimeout(()=>{if(el)el.style.outline="";},700); }
+    // update KPIs/pills without losing scroll
+    setTimeout(render,720);
+  }catch(e){ if(el){ el.value=prev; el.disabled=false; } alert("Couldn't save: "+(e.message||e)); }
+}
+async function applyBulk(){
+  const rep=($("#bulkrep")||{}).value||"";
+  const ids=[...SEL]; if(!ids.length) return;
+  const msg=$("#bulkmsg"); if(msg) msg.textContent="Saving…";
+  try{
+    await api({action:"rep_bulk",dealer_ids:ids,rep_name:rep});
+    for(const d of (DATA.dealers||[])) if(SEL.has(d.id)) d.rep=rep;
+    SEL.clear(); render();
+  }catch(e){ if(msg){ msg.textContent="Failed: "+(e.message||e); } }
+}
+
+load();
+</script>
+</body></html>

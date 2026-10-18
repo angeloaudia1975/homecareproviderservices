@@ -1,0 +1,110 @@
+# HCPS Academy — A2E Final exams with server-enforced limits (M6 + application code)
+
+Status: built on branch `academy/a2e-exams`, PR for review. **M6 is NOT run in production.** The new switch
+`academy_exams` is OFF (and the learner switches stay OFF); the Golden course stays an unpublished draft.
+
+## What it does (Learner Launch plan, Stage 3)
+
+| Rule | Where it is enforced |
+|---|---|
+| One open attempt at a time **per learner, across all their courses** (open = not submitted and before its deadline) | `academy_exam_limits` inside `academy_exam_op_start`, under a per-learner lock |
+| 60 minutes between attempts **per enrollment** (from the end of the last one; for an expired attempt, from its deadline) — an attempt in course A never holds course B | same; `exam_cooldown_minutes` on the version |
+| At most 3 attempts started per calendar day, America/Chicago (DST-safe), **per enrollment** — course A's attempts never use up course B's | same; `exam_daily_limit` on the version |
+| A grade that cannot be written is never swallowed: recorded on the attempt (`grading_failures`, `grading_failed_at`, `grading_error` = SQLSTATE: message), an `expire_failed` / `submit_failed` audit row when the error is new or different, a database WARNING, and returned to the caller; graded again (same saved answers → same result) by the next exam call; meanwhile that enrollment cannot start (`grading_pending`) and a submit answers `ok:false` (`grading_pending` after the deadline, `grading_failed` before it, answers kept) → API 409, never a result | `academy_exam_grading_failed`, `academy_exam_expire`, `academy_exam_op_submit` |
+| Every lesson of the ENROLLED version completed by THIS enrollment before the exam starts (`completed` only — `viewed` never counts; another enrollment's or another version's progress never counts; a version with no lessons never opens an exam) | `academy_exam_limits` (`lessons_incomplete` with counts) inside `academy_exam_op_start` — the only way to start, the server cannot call M1 directly |
+| Time limit 45 minutes for 25 questions (approved by Angelo, 18 Oct 2026); an attempt open past its deadline is graded with the answers saved before it (answers sent later never count); resuming after a lost connection keeps the original deadline | `academy_exam_expire`, `exam_time_limit_minutes` on the version |
+| Reasonable accommodation: extra minutes for ONE enrollment, set only by the HCPS President (owner decision, PR #22 comment 6253802978 — database AND API; an active admin or owner, an inactive President, learners and Training Managers are refused; the role is read from staff_users at the moment of the change) with a reason (Command Center → Learners → Exam time), audited; applies to attempts started afterwards; a running attempt keeps its deadline | `academy_exam_op_accommodate`, `academy_enrollments.exam_extra_minutes` (0–240), guard trigger `academy_exam_enrollment_guard` |
+| Answer keys and explanations never leave the database | questions are read only through `academy_exam_op_view`; the result is M1's score, pass/fail and topics to study |
+| Grading, draw, verified facts, published version | unchanged M1/M3 code, CALLED by the M6 operations (M1/M3 byte-identical) |
+| No way around the limits | the server role loses EXECUTE on M1's `academy_op_start_attempt` / `academy_op_submit_attempt` and INSERT/UPDATE/DELETE on `academy_attempts` |
+| An attempt's learner, enrollment, start and deadline never change | trigger `academy_exam_attempt_defaults` (sets learner and deadline on insert, refuses changes) |
+
+Learner pages (`/academy/`): **Final exam** on each course card (when `academy_exams` is on) → rules, attempt history and
+the next allowed start (or "Finish every lesson first: N of M lessons completed") → in-page "Start now" confirmation → one question per screen with a countdown, answers saved as
+they are chosen, with the save state and a connection notice ("You are offline… the clock keeps running"; saved again
+when the connection returns) and resume after a reload → review (unanswered highlighted) → submit → result
+(score, pass/fail, topics to review) → back to the exam page with the cooldown shown. Training Managers see, per
+employee and course, **exam passed / not passed yet (N attempts)** — never a score.
+
+## Files
+
+| File | sha256 |
+|---|---|
+| `supabase/academy_a2e_m6_exam_attempts.sql` (as committed, LF) | `b8601093f35191e0427f9bf86b7a0091ae0da68fec266496add749eed7f8494c` |
+| same, pasted with Windows line endings | `f1e41a6f50839440963c1d91f5ddcc0149471640242ec72700890fd01f9c86fb` |
+| `supabase/academy_a2e_m6_exam_attempts_rollback.sql` (refused while any attempt or accommodation exists) | `f1a63108262e9105b5e6872bb6c8323b325eed1195a5454dcb567d740f885e86` |
+| `supabase/academy_a2e_m6_preflight.sql` (read-only; `ready_for_m6`) | `6cadb2f1b8fef826b25519e2cfce76ef57ad9334e9907a10349a08f84af6c508` |
+| `supabase/academy_a2e_m6_postcheck.sql` (read-only) | `4c70e4488ec9808afff1681469cbdf6d910dd91a68ac43ec9b7fd9201cd45631` |
+| `scripts/academy_m6_public_probe_browser.js` (public key only; 11 functions + 4 table checks = 15) | `a4bd9b3743c0be213cddb1b9d6322930e5dbf0f07cd25bcc80ace5644762cc5a` |
+
+Installed-code fingerprint (`m6_code_fingerprint`): `bbcee77700aed2a5d9870d7ea17e787d` (Unix) /
+`372d3fbe777b89abaccf2ff996793afa` (Windows paste). Rehearsed locally on PG16: preflight `ready_for_m6` true → 8/8
+install checks → postcheck 13 functions / 6 for the server / 0 public, M1 start/submit not callable by the server, no
+attempt writes → preflight again: everything outside the Academy and the M1–M5 code fingerprints identical; only the
+Academy grants (server loses attempt writes) and columns (+12: 8 on attempts, 3 on versions, 1 on enrollments) change.
+
+## Production procedure (NOT authorized yet)
+
+1. Read-only preflight `academy_a2e_m6_preflight.sql`: `ready_for_m6` true; record the fingerprints.
+2. Angelo checks the sha256 in the editor and runs the migration himself; all 8 install checks `ok = true`.
+3. Postcheck: the fingerprint above; 13 / 6 / 0; triggers 2; `m1_start_submit_server` [false, false]; attempts 0; switches unchanged.
+4. Preflight again: outside-the-Academy and M1–M5 fingerprints identical.
+5. Public-key probe: all 15 BLOCKED.
+6. Merge + deploy (without M6 the exam actions answer 503; with `academy_exams` off they answer 403 flag_off).
+7. Switching `academy_exams` on for the pilot is a separate approval.
+
+Note for the earlier acceptance files: after M6, the M1 acceptance checks that call `academy_op_start_attempt` as the
+server role are expected to be refused — that is the point of M6. Use the M6 suites instead.
+
+## Tests
+
+`test/academy-m6.pg.test.js` (32), `test/academy-a2e.pg.test.js` (12), `test/academy-learner.browser.js` (exam flow, the
+lesson gate, a lost connection mid-exam and the ungraded state at 390 and 1280, axe), `test/academy-c1.browser.js` (Exam
+time in the Command Center), `test/academy-a2e.mutants.js` (45 + control, all killed; one candidate dropped as equivalent under M5). Edges covered: 20 simultaneous starts → 1 attempt; cooldown 59:59 refused /
+60:00 allowed; 3rd attempt of the day allowed, 4th refused until local midnight, on the day daylight saving ends
+(25-hour day) and starts (23-hour day); expiry grades only answers saved in time; no key or explanation in any learner
+response; withdrawn enrollment and ended access refused; across two courses one open attempt blocks the other course while
+cooldown and daily limit stay per course; a grading failure (injected by a test-only trigger on the audit table) is
+recorded, audited once per distinct error, raised as a WARNING, blocks only that enrollment, makes submit answer
+grading_pending / grading_failed (409) and is graded deterministically once the fault is gone; a failure to record the
+failure still returns the call's answer. Lesson gate: no lessons / one of two / viewed-only refused, all completed starts;
+another course's or an older version's progress never counts; a withdrawn enrollment refused; 20 simultaneous starts with
+a lesson unfinished create nothing, then exactly one. Accommodation: learner, Training Manager, active admin, active owner, inactive President, forged actors, a President
+demoted a moment ago, unknown staff, no reason, out of range, anon and authenticated refused (API: no / junk token 401,
+admin and owner 403, learner / Training Manager sessions 401, spoofed actor or role ignored); the owner cannot write it by hand; +15 gives the next attempt 60 minutes and leaves a running attempt alone;
+audited with the President's name and reason; 0 removes it. Cross-dealership: a learner at another dealership gets 404 /
+403 on every exam action.
+
+## Pre-activation checks (kept from the independent review, not done yet)
+
+- The real Netlify production deployment check of the exam pages and actions after the merge.
+- The trusted client-IP validation on Netlify's edge (`docs/academy/ip-verify/`) before any learner switch goes on.
+
+## Owner decisions (Angelo, PR #22 comment 6252980040, 18 Oct 2026)
+
+- 45-minute hard time limit for 25 randomized questions, 80% to pass — kept (the earlier "no time limit" comment
+  6252939569 is superseded).
+- Every lesson of the enrolled version completed first, enforced in the database — built.
+- Reasonable accommodation as an audited per-enrollment extension set before an attempt — **President only** in the
+  database and the API (comment 6253802978); 0–240 extra minutes; reason required; future attempts only (never extends a
+  running attempt); no learner or Training Manager request flow.
+
+## Production preflight — PASSED (Angelo ran it, 18 Oct 2026 17:57 CT; read-only)
+
+`ready_for_m6` **true** · Postgres 17.6 · attempts 0 · learner rows 0 · switches `{academy_admin: true}` only · Golden v1 draft.
+Code fingerprints = the recorded production values: M1 19 / `a809004b8fe77dce69cfc555ff984bdb` (post-M3, CRLF) ·
+M2 15 / `794f3c3e…` · M3 24 / `9f41ee27…` · M3.1 2 / `1306b90b…` · M4 6 / `d3bf8e1f…` · M5 22 / `cec33a5e…` · M6 0.
+Baseline to compare after M6 (must be identical): outside_grants 2964 / `34086791aa2ce27d2d60890bac8946bc` ·
+outside_policies 29 / `219ac18ed7a25a0db2d9a50c5b8a88e7` · outside_columns 128 / `89ee9111a4a9834e08ebaff523b7a768` ·
+outside_functions 108 / `5a4f7cf7e3f8074d35813d39493f9272`. Expected to change: academy_grants 232 / `0b9b1d36…`
+(server loses INSERT/UPDATE/DELETE on academy_attempts) and academy_columns 200 / `02864fbd…` (+5 attempts, +3 versions,
++1 enrollments). Academy RLS 20/20, 0 policies. Key rows: dealers 447, monthly_sales 12,575, academy_events 524,
+courses 1, lessons 17, questions 111, media 39, learners 0, enrollments 0. M6 NOT installed — awaiting the owner's approval.
+
+## M6 RUN and ACCEPTED in production (18 Oct 2026 ~18:05 CT; evidence supplied by Angelo, PR #22 comments 6256282798 / 6256331845)
+
+- Run once by Angelo in the SQL editor (project `ycqmztthwldytkzyvmiv`) from the approved head `9e9df5c` (sha256 LF `b8601093…`, CRLF `f1e41a6f…`); **8/8 install checks true**.
+- Postcheck: 13 functions · 6 server-callable · 0 public · 2 triggers · 0 attempts · M1 start/submit for the server `[false,false]` · no server writes on attempts · limits 45 / 60 / 3 · fingerprint `372d3fbe777b89abaccf2ff996793afa` (the precomputed Windows-paste form).
+- Repeat preflight: `m6_installed` true; M1–M5 and M3.1 fingerprints unchanged; outside grants / policies / columns / functions = the before-baseline above; Academy grants 232 → 228 and columns 200 → 212 (as expected: 8 attempt + 3 version + 1 enrollment columns); RLS 20/20; learner rows 0; only `academy_admin` on; Golden v1 draft.
+- Public-key probe (`scripts/academy_m6_public_probe_browser.js`, public key verified first): **ALL 15 BLOCKED (401)**.
+- **Never rerun or roll back M6.** Still separate approvals: PR #22 merge + deploy, live Netlify / client-IP validation, `academy_exams` and every learner switch, learner email, Golden publication. M7 not installed.

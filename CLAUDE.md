@@ -3056,6 +3056,39 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     (fingerprint 8ab57055… / cec33a5e…, 22 functions, 15 for the server); before/after fingerprints PASS; public-key
     probe 30/30 BLOCKED; Golden v1 draft; six learner switches OFF. Never rerun or roll back M5. PR #20 merge needs his
     separate authorization; after merge + deploy comes A2E (examinations).
+  - **PR #20 MERGED by Angelo (18 Oct 2026 14:00 UTC, main 0507d58) and verified live:** `/academy/` serves the learner
+    page ("The HCPS Academy is not open yet"), learner API and sign-in answer 403 flag_off, handoff `{enabled:false}`,
+    mail worker answers 202, strict CSP + DENY on /academy/*, site and Connect 360 pages 200.
+- **A2E — final exams with server-enforced limits (Stage 3; development authorized by Angelo 18 Oct 2026 08:54 CT after
+  A2B; migration M6 NOT run).** Runbook `docs/academy/A2E_EXAMS.md`. Rules (binding once installed):
+  - Exams start, save and submit ONLY through `academy_exam_op_*` (status, start, view, save, submit; server role only);
+    the server role loses EXECUTE on M1's start/submit attempt and INSERT/UPDATE/DELETE on `academy_attempts`. M1/M3 code
+    unchanged and called inside the M6 operations.
+  - Policy per course version: one open attempt per learner, `exam_cooldown_minutes` (60) from the end of the last
+    attempt (an expired one: its deadline), `exam_daily_limit` (3) per America/Chicago day, `exam_time_limit_minutes`
+    (45, decision I pending). Past the deadline an attempt is graded with the answers saved before it.
+  - Learners see questions and choices only; results are score, pass/fail and topics. Training Managers see passed /
+    not passed and the attempt count, never a score. New switch `academy_exams` (exactly true = on; OFF).
+  - **Review corrections (ChatGPT review of PR #22, 18 Oct 2026; verdict HOLD):** one open attempt is PER LEARNER across
+    courses; cooldown and daily limit are PER ENROLLMENT (cross-course tests). A grade that cannot be written is NEVER
+    swallowed: `academy_exam_grading_failed` records it on the attempt (grading_failures / grading_failed_at /
+    grading_error), audits it once per distinct error (expire_failed / submit_failed), raises a WARNING and returns it;
+    the next exam call grades it again; meanwhile that enrollment refuses a start (`grading_pending`) and a submit answers
+    `ok:false` (`grading_pending` / `grading_failed`) → API 409, never a result. Owner decisions still open (no
+    requirement changed): the 45-minute limit for 25 questions and whether 17/17 lessons must be complete first.
+    Pre-activation checks kept: the real Netlify production check and the trusted client-IP validation.
+  - **Final exam policy (Angelo, PR #22 comment 6252980040 + chat, 18 Oct 2026 — supersedes the "no time limit" comment
+    6252939569):** 45-minute hard limit, 25 randomized questions, 80% to pass; EVERY lesson of the enrolled version
+    completed by that enrollment before a start, enforced in the database (`completed` only; other enrollments / versions
+    never count; no lessons = no exam); 60-minute cooldown, 3 starts per Chicago day per enrollment, one open attempt per
+    learner, unlimited retakes; autosave + resume of the SAME attempt without resetting its deadline; grading at the
+    deadline from answers saved in time. **Reasonable accommodation:** extra minutes per enrollment only through
+    `academy_exam_op_accommodate` (**the active HCPS President only** — owner decision, PR #22 comment 6253802978 —
+    enforced in the database from staff_users at the moment of the change AND in the API; reason, audited, 0–240, future
+    attempts only; guard `academy_exam_enrollment_guard` refuses any other write); Command Center → Learners → Exam time.
+  - **M6 RUN and ACCEPTED in production (18 Oct 2026 ~18:05 CT, run by Angelo):** 8/8 install checks, postcheck 13 / 6 / 0 / 2 triggers,
+    fingerprint `372d3fbe…` (Windows paste), M1–M5 + outside fingerprints unchanged, probe 15/15 BLOCKED. **Never rerun or roll back M6.**
+    PR #22 merge/deploy, `academy_exams` and all learner switches still need separate approval.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

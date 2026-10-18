@@ -46,8 +46,8 @@ run(DB, `alter table public.dealers add column is_test boolean not null default 
          insert into auth.users (id, email) values ('${DUID}', 'buyer@hqmed.example');
          insert into public.dealer_users values ('${DUID}', 'buyer@hqmed.example', '${HQ}', 'approved');`);
 file(DB, SUP('academy_a1_foundation.sql')); run(DB, 'grant all on all tables in schema public to service_role');
-for (const f of ['academy_a2a_m1_audited_ops.sql', 'academy_a2c_m2_content_ops.sql', 'academy_a2d_m3_author_ops.sql', 'academy_a2d_m3_1_save_lesson.sql', 'academy_c2_m4_publish_ops.sql', 'academy_a2b_m5_learner_access.sql']) file(DB, SUP(f));
-run(DB, `insert into app_settings (key, value) values ('phase2_flags', ${J({ academy_admin: true, academy_learner: true, academy_invites: true, academy_handoff: true })}) on conflict (key) do update set value = excluded.value`);
+for (const f of ['academy_a2a_m1_audited_ops.sql', 'academy_a2c_m2_content_ops.sql', 'academy_a2d_m3_author_ops.sql', 'academy_a2d_m3_1_save_lesson.sql', 'academy_c2_m4_publish_ops.sql', 'academy_a2b_m5_learner_access.sql', 'academy_a2e_m6_exam_attempts.sql']) file(DB, SUP(f));
+run(DB, `insert into app_settings (key, value) values ('phase2_flags', ${J({ academy_admin: true, academy_learner: true, academy_invites: true, academy_handoff: true, academy_exams: true })}) on conflict (key) do update set value = excluded.value`);
 const id = q => JSON.parse(run(DB, q)).id;
 const C = id(`select academy_content_op_create_course(${PRES}, null, ${J({ slug: 'golden-lift-chair-sales', title: 'Golden Lift Chair Sales Certification', course_type: 'hcps_certification', manufacturer_slug: 'golden-technologies' })})`);
 const V = id(`select academy_content_op_create_version(${PRES}, null, '${C}', '{"exam_questions":1}')`);
@@ -105,7 +105,7 @@ async function page(browser, width, opts) {
   return pg;
 }
 const noSideScroll = pg => pg.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
-const smallTargets = pg => pg.evaluate(() => [...document.querySelectorAll('button, a[href], input, select')].filter(e => { const r = e.getBoundingClientRect(); return r.width && r.height && r.height < 44 && r.right > 0 && !e.closest('.hl'); }).map(e => e.outerHTML.slice(0, 80)));
+const smallTargets = pg => pg.evaluate(() => [...document.querySelectorAll('button, a[href], input, select')].filter(e => { const r = e.getBoundingClientRect(); return r.width && r.height && r.height < 44 && r.right > 0 && !e.closest('.hl') && !e.closest('.ac-choice'); }).map(e => e.outerHTML.slice(0, 80)));
 async function axe(pg) {
   if (!AXE) return [];
   await pg.addScriptTag({ path: AXE });
@@ -180,6 +180,85 @@ async function signIn(pg, email) {
       }
       const sp = await page(browser, 390, { bypassCSP: true }); await sp.goto(ORIGIN + '/academy/'); await sp.waitForSelector('#em');
       assert.deepStrictEqual(await axe(sp), [], 'axe sign-in'); await sp.close();
+    });
+    await t('Final exam on a phone (390) and desktop (axe): rules, start with an in-page confirmation, one question per screen, answers saved and resumed after a reload, submit, result; the cooldown is shown; the Training Manager sees "exam passed" (no score)', async () => {
+      for (const [w, ax] of [[390, false], [1280, true]]) {
+        if (w === 1280) run(DB, `begin; select set_config('academy.op', 'test', true); delete from academy_attempts where true; commit;`);   // test only: a fresh attempt for the desktop run
+        const pg = await page(browser, w, { bypassCSP: ax });
+        run(DB, `delete from academy_login_codes where true`);   // test only: stay under the sign-in code limit across runs
+        await signIn(pg, 'pat@north.example'); await pg.waitForSelector('text=Golden Lift Chair Sales Certification');
+        await pg.click('text=Final exam'); await pg.waitForSelector('text=45 minutes once you start');
+        if (w === 390) {   // the lesson gate: the database refuses the exam until every lesson is complete
+          await pg.waitForSelector('text=/Finish every lesson first: \\d of 2 lessons completed/');
+          assert.strictEqual(await pg.locator('button:has-text("Start the exam")').count(), 0, 'no start button before the lessons are done');
+          assert.ok(await noSideScroll(pg)); assert.deepStrictEqual(await smallTargets(pg), []); await shot(pg, 'exam-390-lessons-first');
+          const pat = JSON.parse(run(DB, `select to_jsonb(x) from (select e.id as e, l.id as l from academy_enrollments e join academy_learners l on l.id = e.learner_id where l.email = 'pat@north.example') x`));
+          for (const lid of [L1, L2]) run(DB, `select academy_progress_op_save('learner:${pat.l}', '${pat.e}', '${lid}', 'completed', 0)`);
+          await pg.reload(); await pg.waitForSelector('button:has-text("Start the exam")');
+        }
+        assert.ok(await noSideScroll(pg)); assert.deepStrictEqual(await smallTargets(pg), []); if (ax) assert.deepStrictEqual(await axe(pg), [], 'axe exam page');
+        await shot(pg, `exam-${w}-rules`);
+        await pg.click('text=Start the exam'); await pg.click('text=/Start now/'); await pg.waitForSelector('text=Question 1 of 1');
+        assert.ok(!/answer_key|explanation/.test(await pg.content()), 'no key on the page');
+        assert.match(await pg.textContent('.ac-clock'), /^4[45]:\d\d left$/);
+        if (w === 390) {   // lose the connection mid-exam: the answer is kept on screen, saved once back online; the clock runs on
+          await pg.context().setOffline(true);
+          await pg.click('.ac-choice:has-text("B")'); await pg.waitForSelector('text=/offline|Connection lost/');
+          await shot(pg, 'exam-390-offline');
+          await pg.context().setOffline(false); await pg.waitForSelector('text=Saved', { timeout: 15000 });
+          assert.deepStrictEqual(Object.values(JSON.parse(run(DB, `select draft_answers from academy_attempts where submitted_at is null`))), ['b'], 'saved after reconnecting');
+        }
+        await pg.click('.ac-choice:has-text("A")'); await pg.waitForSelector('text=Saved');
+        assert.ok(await noSideScroll(pg)); assert.deepStrictEqual(await smallTargets(pg), []); if (ax) assert.deepStrictEqual(await axe(pg), [], 'axe question');
+        await shot(pg, `exam-${w}-question`);
+        await pg.reload(); await pg.waitForSelector('text=Question 1 of 1');
+        assert.ok(await pg.isChecked('.ac-choice:has-text("A") input'), 'the saved answer came back');
+        await pg.click('text=Review and submit'); await pg.waitForSelector('text=You answered 1 of 1 questions.');
+        await pg.click('text=Submit my answers'); await pg.waitForSelector('text=You passed');
+        assert.ok((await pg.textContent('.ac-score')).includes('100%'));
+        if (ax) assert.deepStrictEqual(await axe(pg), [], 'axe result');
+        await shot(pg, `exam-${w}-result`);
+        await pg.click('text=Back to the exam page'); await pg.waitForSelector('text=Take a short break before your next attempt.');
+        assert.ok(await pg.isVisible('.ac-attempts >> text=Passed'));
+        assert.deepStrictEqual(pg.errors.filter(e => !/favicon|status of 409|ERR_INTERNET_DISCONNECTED|Failed to fetch/.test(e)), []);
+        await pg.close();
+      }
+      run(DB, `delete from academy_login_codes where true`);
+      const tm = await page(browser, 390); await signIn(tm, 'tm@hqmed.example'); await tm.waitForSelector('text=Hello, Terry Manager');
+      await tm.click('text=My team'); await tm.waitForSelector('text=exam passed');
+      assert.ok(!/\d+%/.test(await tm.textContent('#view')), 'no score in the team view'); await tm.close();
+    });
+    await t('A grade that cannot be written (axe, 390 and 1280): time runs out in the page → "Your exam is being graded" with no score; the exam page says it is still being graded; once the fault is gone it shows the result', async () => {
+      run(DB, `create function public.zz_refuse() returns trigger language plpgsql as $f$ begin if new.action = 'submit_attempt' then raise exception 'test refused'; end if; return new; end $f$;
+               create trigger zz_refuse before insert on academy_events for each row execute function public.zz_refuse();`);
+      for (const w of [390, 1280]) {
+        run(DB, `begin; select set_config('academy.op', 'test', true); delete from academy_attempts where true; commit;`);   // test only
+        const enr = JSON.parse(run(DB, `select to_jsonb(e) from academy_enrollments e join academy_learners l on l.id = e.learner_id where l.email = 'pat@north.example' limit 1`)).id;
+        const qid = JSON.parse(run(DB, `select to_jsonb(q) from academy_questions q where use = 'exam' limit 1`)).id;
+        run(DB, `begin; select set_config('academy.op', 'test', true); insert into academy_attempts (enrollment_id, question_ids, started_at, draft_answers)
+                 values ('${enr}', array['${qid}']::uuid[], now() - interval '44 minutes 56 seconds', ${J({ [qid]: 'a' })}); commit;`);
+        const aid = JSON.parse(run(DB, `select to_jsonb(a) from academy_attempts a where enrollment_id = '${enr}'`)).id;
+        const pg = await page(browser, w, { bypassCSP: true });
+        run(DB, `delete from academy_login_codes where true`);
+        await signIn(pg, 'pat@north.example'); await pg.waitForSelector('text=Golden Lift Chair Sales Certification');
+        await pg.evaluate(h => { location.hash = h; }, `take?a=${aid}&e=${enr}`); await pg.waitForSelector('text=Question 1 of 1');
+        await pg.waitForSelector('text=Your exam is being graded', { timeout: 15000 });
+        assert.ok(!/\d+%/.test(await pg.textContent('#view')), 'no score without a grade');
+        assert.ok(await pg.isVisible('text=saved answers are kept'));
+        assert.ok(await noSideScroll(pg)); assert.deepStrictEqual(await smallTargets(pg), []); assert.deepStrictEqual(await axe(pg), [], 'axe ungraded');
+        await shot(pg, `exam-${w}-ungraded`);
+        await pg.click('text=Back to the exam page'); await pg.waitForSelector('text=still being graded');
+        assert.ok(await pg.isVisible('.ac-attempts >> text=Being graded'));
+        assert.ok(!(await pg.isVisible('text=Start the exam')), 'no new start while it waits');
+        assert.deepStrictEqual(pg.errors.filter(e => !/favicon|status of 409/.test(e)), []);
+        await pg.close();
+      }
+      run(DB, 'drop trigger zz_refuse on academy_events; drop function public.zz_refuse()');
+      const pg = await page(browser, 390);
+      run(DB, `delete from academy_login_codes where true`);
+      await signIn(pg, 'pat@north.example'); await pg.waitForSelector('text=Golden Lift Chair Sales Certification');
+      await pg.click('text=Final exam'); await pg.waitForSelector('.ac-attempts >> text=Passed');
+      assert.ok(await pg.isVisible('.ac-attempts >> text=time ran out')); await pg.close();
     });
     await t('Partner 360 handoff: the link signs the dealer user in, the code is removed from the address bar at once, and the same link never works twice', async () => {
       const m = await HAND.handler({ httpMethod: 'POST', headers: { origin: 'https://hcpsonlineordering.netlify.app', authorization: 'Bearer buyer' }, body: '{"action":"mint"}' });

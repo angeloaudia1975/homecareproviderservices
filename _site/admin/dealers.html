@@ -1,0 +1,979 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS — Dealer Master &amp; Merge</title>
+<link rel="stylesheet" href="/admin/admin-shell.css"></head>
+<body>
+<header id="ac-head"></header>
+<div class="wrap">
+<div class="top"><div><h1>HomeCare Provider Services</h1><div class="sub">Dealer master — merge duplicates &amp; manage accounts</div></div>
+  <div><input type="search" id="q" placeholder="Search dealer or alias…" oninput="render()" style="width:280px"></div></div>
+<div id="body"><div class="msg">Loading…</div></div>
+<div id="dlg"></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const money=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const jesc=s=>String(s).replace(/'/g,"\\'").replace(/"/g,"&quot;");
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+const isPres=()=>!!(ME&&ME.role==="president");
+// Dealer Manager is an admin tool. Sales reps (and other non-admin roles) work in Dealer 360 & CRM.
+const ADMIN_ROLES={president:1,admin:1,owner:1};
+const isAdminRole=()=>!!(ME&&ADMIN_ROLES[String(ME.role||"").toLowerCase()]);
+const isRelations=()=>!!(ME&&String(ME.role||"").toLowerCase()==="relations");
+let DATA=null,TOKEN=HCPS.token(),TAB=(location.hash==="#logins"?"logins":"all"),SEL=new Set(),SELP=new Set(),DETAIL=null,STATUS_FILTER="active",SORT={key:"sales",dir:-1};
+// Deep-link: /admin/dealers.html?dealer=<id> opens that dealer's record directly
+// (used by the Map's "Open in Dealer Manager" link). Applied once, after data loads.
+let FOCUS=new URLSearchParams(location.search).get("dealer")||null;
+const SUF=/\b(inc|incorporated|llc|corp|corporation|co|company|ltd|lp|pllc|plc|dba|the)\b/gi;
+function jnorm(n){return String(n||"").toUpperCase().replace(/HEALTH ?CARE/g,"HEALTHCARE").replace(/[.,'&/#-]/g," ").replace(SUF," ").replace(/\s+/g," ").trim();}
+const COMMON=new Set(["MEDICAL","SUPPLY","SUPPLIES","PHARMACY","HOME","HEALTHCARE","HEALTH","CARE","EQUIPMENT","EQUIP","MOBILITY","DRUG","DRUGS","STORE","CENTER","SERVICES","MART","MED","OF","AND","DME","PLUS","GA","TN","KY","IN"]);
+
+async function load(){
+  try{
+    const h={}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+    const r=await fetch("/.netlify/functions/dealers-api",{headers:h});
+    if(r.status===401){gate();return;}
+    const j=await r.json(); if(j.error){showErr(j.error);return;}
+    DATA=j;
+    if(FOCUS){ if((DATA.dealers||[]).some(d=>d.id===FOCUS)){ DETAIL=FOCUS; TAB="all"; } FOCUS=null; }
+    render();
+  }catch(e){showErr(String(e));}
+}
+function gate(msg){$("#body").innerHTML=`<div class="gate card"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username" style="margin-bottom:8px"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button> <a href="reset.html" style="display:inline-block;margin-left:6px;color:#10263f;font-size:13px;font-weight:600">Forgot password?</a><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+function showErr(m){$("#body").innerHTML=`<div class="msg err"><b>Couldn't load.</b><br>${esc(m)}<br><br><button class="go" onclick="load()">Retry</button></div>`;}
+function setTab(t){TAB=t;DETAIL=null;render();}
+function setStatusFilter(value){if(!["active","inactive","all"].includes(value))return;STATUS_FILTER=value;SEL.clear();render();}
+
+function reviewList(){return DATA.dealers.filter(d=>d.status==="review");}
+function suggestedPairs(){
+  const ds=DATA.dealers, toks=d=>new Set(jnorm(d.name).split(" ").filter(w=>w&&!COMMON.has(w)));
+  const NM=new Set(DATA.nomerge||[]);
+  const T=ds.map(toks), out=[], seen=new Set();
+  for(let i=0;i<ds.length;i++)for(let j=i+1;j<ds.length;j++){
+    const a=T[i],b=T[j]; if(a.size<1||b.size<1)continue;
+    const [sm,bg]=a.size<=b.size?[a,b]:[b,a];
+    let inter=0; sm.forEach(w=>{if(bg.has(w))inter++;});
+    const uni=new Set([...a,...b]).size, jac=inter/uni;
+    const subset = inter===sm.size;                          // all significant words of the smaller appear in the larger
+    const na=jnorm(ds[i].name), nb=jnorm(ds[j].name);
+    const prefix = na.slice(0,8)===nb.slice(0,8) && na.length>7;
+    // subset match, OR strong overlap (Jaccard) — the Jaccard bar drops "same chain,
+    // different city" pairs (e.g. VAMC Decatur vs VAMC Lexington = 0.5) as non-dupes.
+    if((subset&&inter>=1)||(inter>=2&&jac>=0.55)||(prefix&&inter>=1)){
+      const k=[ds[i].id,ds[j].id].sort().join("|"); if(seen.has(k)||NM.has(k))continue; seen.add(k);
+      out.push({a:ds[i],b:ds[j],score:inter+(subset?1:0)+(prefix?1:0)+jac});
+    }
+  }
+  return out.sort((x,y)=>y.score-x.score||(y.a.sales+y.b.sales)-(x.a.sales+x.b.sales));
+}
+function filtered(){const q=($("#q")?.value||"").trim().toLowerCase();
+  const ds=DATA.dealers.filter(d=>STATUS_FILTER==="all"||(STATUS_FILTER==="active"?d.active!==false:d.active===false));
+  if(!q) return sortDealers(ds);
+  // Relevance rank so a single keystroke surfaces the accounts that START with it: name-prefix first,
+  // then a word in the name starting with it, then name-contains, then alias / other fields.
+  const score=d=>{ const n=(d.name||"").toLowerCase();
+    if(n.startsWith(q)) return 6;
+    if(n.split(/\s+/).some(w=>w.startsWith(q))) return 5;
+    if(n.includes(q)) return 4;
+    if((d.aliases||[]).some(a=>String(a).toLowerCase().startsWith(q))) return 3;
+    if((d.aliases||[]).some(a=>String(a).toLowerCase().includes(q))) return 2;
+    if([d.email,d.city,d.state,d.address].some(x=>String(x||"").toLowerCase().includes(q))) return 1;
+    return 0; };
+  return ds.map(d=>[score(d),d]).filter(x=>x[0]>0).sort((a,b)=>b[0]-a[0]||a[1].name.localeCompare(b[1].name)).map(x=>x[1]);
+}
+function emailStatus(d){
+  if(!DATA||DATA.email_verified_supported!==true||!d.email) return "";
+  if(d.email_verified) return ` <span class="chip acc" title="Email confirmed">✓ verified</span>`;
+  return ` <span class="chip rev" title="Email not verified yet">pending verification</span>${isRelations()?"":` <a class="link" style="cursor:pointer;font-size:11px" onclick="event.stopPropagation();verifyEmail('${d.id}')" title="Mark this email verified">✓ verify</a>`}`;
+}
+async function verifyEmail(id){
+  const r=await post({action:"verify_email",dealer_id:id,verified:true},"Verifying…");
+  if(r&&r.ok){ await load(); render(); }
+  else if(r&&(r.message||r.error)){ alertDlg(r.message||r.error); }
+}
+const SORTDEF={sales:-1,name:1,state:1,email:-1,updated:1};
+const SORTLBL={sales:"Revenue (high→low)",name:"Name (A→Z)",state:"State",email:"Has email first",updated:"Recently ordered"};
+function setSort(k){ if(SORT.key===k) SORT.dir*=-1; else {SORT.key=k;SORT.dir=SORTDEF[k]||1;} render(); }
+function sortDealers(list){
+  const cmp={
+    name:(a,b)=>a.name.localeCompare(b.name),
+    sales:(a,b)=>a.sales-b.sales,
+    state:(a,b)=>(a.state||"~").localeCompare(b.state||"~")||(a.city||"").localeCompare(b.city||"")||a.name.localeCompare(b.name),
+    email:(a,b)=>((a.email?1:0)-(b.email?1:0))||a.name.localeCompare(b.name),
+    updated:(a,b)=>((a.monthsSince==null?999:a.monthsSince)-(b.monthsSince==null?999:b.monthsSince))||b.sales-a.sales,
+  }[SORT.key]||((a,b)=>a.sales-b.sales);
+  return list.slice().sort((a,b)=>SORT.dir*cmp(a,b));
+}
+function render(){
+  if(!DATA)return;
+  // Dealer Manager: management, and a Relations Manager (Phase 0K — every dealer, no management
+  // powers; the merge / assignment / portal-login / import tools stay hidden and president-only on
+  // the server). A rep who lands here (old link, bookmark) is sent to their workspace.
+  if(ME && !isAdminRole() && !isRelations()){
+    $("#body").innerHTML=`<div class="msg"><div class="card" style="max-width:520px;margin:24px auto;text-align:center">
+      <div style="font-size:34px;margin-bottom:6px">🔒</div>
+      <h2 style="margin:0 0 6px">Dealer Manager is admin-only</h2>
+      <p class="hint" style="margin:0 0 14px">This page manages the master dealer database (merging, locations, portal accounts). Your account workspace is <b>Dealer 360 &amp; CRM</b> — open any assigned dealer for their full record, and sort your book by sales, health or last order.</p>
+      <a class="go orange" href="/admin/dealer.html">Go to Dealer 360 &amp; CRM →</a>
+    </div></div>`;
+    return;
+  }
+  if(!isPres() && TAB!=='all') TAB='all';   // reps only have their own dealer list
+  if(DETAIL) return renderDetail();
+  const rev=reviewList().length, dup=suggestedPairs().length;
+  const N=DATA.dealers.length||1;
+  const withEmail=DATA.dealers.filter(d=>d.email).length, withAddr=DATA.dealers.filter(d=>d.address||d.city).length;
+  const kpis=`<div class="kpis">
+    <div class="kpi"><div class="l">Active dealers</div><div class="v">${DATA.dealers.filter(d=>d.active!==false).length}</div></div>
+    <div class="kpi"><div class="l">Emails on file</div><div class="v ${withEmail<N?'warn':''}">${withEmail}<span style="font-size:12px;color:var(--gray)">/${DATA.dealers.length}</span></div></div>
+    <div class="kpi"><div class="l">Addresses on file</div><div class="v ${withAddr<N?'warn':''}">${withAddr}<span style="font-size:12px;color:var(--gray)">/${DATA.dealers.length}</span></div></div>
+    <div class="kpi"><div class="l">Review queue</div><div class="v warn">${rev}</div></div>
+    <div class="kpi"><div class="l">Suggested dupes</div><div class="v orange">${dup}</div></div></div>`;
+  const plog=(DATA.logins||[]).filter(l=>l.status==="pending").length;
+  const pchg=(DATA.changeRequests||[]).length;
+  const roleLbl=ME&&ME.role?(ME.role==='president'?'President':ME.role==='rep'?'Sales Rep':'Customer Relations'):"";
+  const tabs=`<div class="tabs" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
+    <button class="tab ${TAB==='all'?'on':''}" onclick="setTab('all')">${isPres()||isRelations()?'All dealers':'My dealers'}</button>
+    ${isPres()?`
+    <button class="tab ${TAB==='review'?'on':''}" onclick="setTab('review')">Review queue${rev?` (${rev})`:""}</button>
+    <button class="tab ${TAB==='dupes'?'on':''}" onclick="setTab('dupes')">Suggested duplicates${dup?` (${dup})`:""}</button>
+    <button class="tab ${TAB==='logins'?'on':''}" onclick="setTab('logins')">Pending logins${plog?` (${plog})`:""}</button>
+    <button class="tab ${TAB==='changes'?'on':''}" onclick="setTab('changes')">Account changes${pchg?` (${pchg})`:""}</button>
+    <button class="tab ${TAB==='activity'?'on':''}" onclick="setTab('activity')">Activity &amp; carts${(DATA.openCarts&&DATA.openCarts.length)?` (${DATA.openCarts.length})`:""}</button>
+    <button class="tab ${TAB==='import'?'on':''}" onclick="setTab('import')">Import contacts</button>
+    <button class="go sm orange" style="margin-left:auto" onclick="openAddDealer()" title="Create a new dealer or branch location">＋ Add dealer</button>
+    <button class="go sm" style="background:#2B4071" onclick="prefillAll()" title="Check each dealer's territory-rule lines into their access grid (account numbers preserved)">Apply access rules to all</button>`:""}
+    </div>`;
+  $("#body").innerHTML=kpis+tabs+mergeBar()+`<div id="app"></div>`;
+  ({all:renderAll,review:renderReview,dupes:renderDupes,logins:renderLogins,changes:renderChanges,activity:renderActivity,import:renderImport}[TAB])();
+}
+function mergeBar(){
+  if(SEL.size<1 || !isPres()) return "";   // merging is the president's (server-enforced too)
+  const names=[...SEL].map(id=>DATA.dealers.find(d=>d.id===id)?.name).filter(Boolean);
+  const shown=names.slice(0,6).map(n=>esc(n)).join(" · ")+(names.length>6?` · +${names.length-6} more`:"");
+  const action = SEL.size>=2
+    ? `<button class="go orange sm" onclick="openMerge()">Merge ${SEL.size} selected →</button> <button class="go blue sm" onclick="clearSel()">Clear</button>`
+    : `<span class="hint" style="margin-right:10px">Tick one more account to merge</span><button class="go blue sm" onclick="clearSel()">Clear</button>`;
+  return `<div class="mergebar" style="position:sticky;top:0;z-index:8"><div><span class="sel">${SEL.size} selected</span> · ${shown}</div><div>${action}</div></div>`;
+}
+function toggleSel(id){SEL.has(id)?SEL.delete(id):SEL.add(id);render();}
+function clearSel(){SEL.clear();render();}
+function visibleIds(){return (TAB==='review'?reviewList():filtered()).map(d=>d.id);}
+function allSelected(){const v=visibleIds();return v.length>0&&v.every(id=>SEL.has(id));}
+function toggleAll(el){const v=visibleIds();el.checked?v.forEach(id=>SEL.add(id)):v.forEach(id=>SEL.delete(id));render();}
+function sortArrow(k){return SORT.key===k?(SORT.dir>0?" ▲":" ▼"):"";}
+// ---- Inline "Assigned Rep" column (admin only) ----
+function repOptionList(){
+  const s=new Set((DATA.repOptions||[]).filter(Boolean));
+  for(const d of (DATA.dealers||[])) if(d.rep) s.add(d.rep);
+  return [...s].sort((a,b)=>a.localeCompare(b));
+}
+function repCell(d){
+  if(!isPres()) return d.rep?esc(d.rep):`<span class="dim">—</span>`;
+  const opts=repOptionList();
+  return `<select onchange="setRepInline('${d.id}',this.value,this)" onclick="event.stopPropagation()" title="Assign a sales rep" style="font:inherit;font-size:12px;padding:3px 5px;border:1px solid var(--line);border-radius:6px;max-width:120px;${d.rep?'':'color:var(--gray)'}">`
+    +`<option value="">— unassigned —</option>`
+    +opts.map(r=>`<option value="${esc(r)}"${String(d.rep||"")===r?" selected":""}>${esc(r)}</option>`).join("")
+    +`</select>`;
+}
+async function setRepInline(id,rep,el){
+  const d=(DATA.dealers||[]).find(x=>x.id===id); if(!d) return;
+  const prev=d.rep||"";
+  if(el) el.disabled=true;
+  try{
+    await post({action:"rep",dealer_id:id,dealer_name:d.name,rep_name:rep});
+    d.rep=rep;
+    if(el){ el.style.color=rep?"":"var(--gray)"; el.style.outline="2px solid #1c7a44"; setTimeout(()=>{if(el)el.style.outline="";},800); }
+  }catch(e){ if(el) el.value=prev; alertDlg("Couldn't save the rep: "+(e.message||e)); }
+  finally{ if(el) el.disabled=false; }
+}
+function renderAll(){
+  const ds=filtered();
+  const sortSel=Object.keys(SORTLBL).map(k=>`<option value="${k}" ${SORT.key===k?"selected":""}>${SORTLBL[k]}${SORT.key===k?(SORT.dir>0?" ▲":" ▼"):""}</option>`).join("");
+  let h=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0">Dealer accounts <span class="hint" style="text-transform:none">(${ds.length} shown — ${isPres()?"tick 2+ (or “Select all”) then “Merge selected”, or ":""}click a dealer to manage)</span></h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><label class="hint" style="text-transform:none">Status: <select id="dealer_status_filter" aria-label="Filter dealer account status" onchange="setStatusFilter(this.value)"><option value="active" ${STATUS_FILTER==="active"?"selected":""}>Active</option><option value="inactive" ${STATUS_FILTER==="inactive"?"selected":""}>Inactive</option><option value="all" ${STATUS_FILTER==="all"?"selected":""}>All accounts</option></select></label><label class="hint" style="text-transform:none">Sort: <select onchange="setSort(this.value)">${sortSel}</select></label></div></div>
+    <div class="dtable"><table style="margin-top:8px"><thead><tr><th>${isPres()?`<input type="checkbox" ${allSelected()?"checked":""} onclick="toggleAll(this)" title="Select all shown">`:""}</th>
+      <th class="link" onclick="setSort('name')" style="cursor:pointer">Dealer${sortArrow('name')}</th>
+      <th>Address / email</th><th class="buys">Buys</th>
+      <th class="num link" onclick="setSort('sales')" style="cursor:pointer">Sales${sortArrow('sales')}</th>
+      <th class="rep">Rep</th><th class="rep">Access</th><th class="mng"></th></tr></thead><tbody>`;
+  for(const d of ds){
+    const loc=[d.city,d.state].filter(Boolean).join(", ");
+    const contact=`<div class="hint" style="text-transform:none;line-height:1.5">
+        ${d.address?`${esc(d.address)}${loc?", "+esc(loc):""}`:(loc?`📍 ${esc(loc)}`:`<span class="chip rev">no address</span>`)}<br>
+        ${d.email?`✉ <a href="mailto:${esc(d.email)}" style="color:var(--blue)">${esc(d.email)}</a>${emailStatus(d)}`:`<span class="chip rev">no email</span>`}${d.phone?` · ${esc(d.phone)}`:""}</div>`;
+    h+=`<tr class="drow" style="cursor:pointer" onclick="if(!event.target.closest('input,a,button,select,label'))openDetail('${d.id}')" title="Click to manage ${esc(d.name)}"><td>${isPres()?`<input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')">`:""}</td>
+      <td class="lbl"><a class="link" style="cursor:pointer" onclick="openDetail('${d.id}')">${esc(d.name)}</a> ${d.status==="review"?`<span class="chip rev">review</span>`:""}${d.status==="prospect"?`<span class="chip al">prospect</span>`:""}
+        ${d.active===false?`<span class="chip rev">inactive</span>`:""}${d.aliases.filter(a=>a!==d.name).slice(0,3).map(a=>`<span class="chip al">${esc(a)}</span>`).join("")}
+        ${(d.accounts&&d.accounts.length)?`<div class="hint" style="margin:2px 0 0">acct: ${d.accounts.slice(0,6).map(esc).join(", ")}</div>`:""}</td>
+      <td>${contact}</td>
+      <td class="buys">${d.buysLines.map(l=>`<span class="chip">${esc(DATA.mfrName[l]||l)}</span>`).join("")||`<span class="dim">—</span>`}</td>
+      <td class="num">${money(d.sales)}</td>
+      <td class="rep">${repCell(d)}</td>
+      <td class="rep">${d.access.length?`<span class="chip acc">${d.access.length} line${d.access.length>1?"s":""}</span>`:`<span class="dim">none</span>`}</td>
+      <td class="mng link" onclick="openDetail('${d.id}')">Manage →</td></tr>`;
+  }
+  h+=`</tbody></table></div></div>`; $("#app").innerHTML=h;
+}
+function renderReview(){
+  const ds=reviewList();
+  if(!ds.length){$("#app").innerHTML=`<div class="card"><div class="ok">✓ Review queue is empty.</div><div class="hint" style="margin-top:6px">New dealer names from future report loads land here for you to confirm or merge.</div></div>`;return;}
+  let h=`<div class="card"><h2>Review queue — new names from recent loads</h2><div class="hint">Each is a name a report used that didn't match a known dealer. Confirm it's genuinely new, or merge it into the right existing dealer (tick it plus the real dealer on the All-dealers tab).</div>
+    <table><thead><tr><th><input type="checkbox" ${allSelected()?"checked":""} onclick="toggleAll(this)" title="Select all shown"></th><th>New dealer name</th><th>Line(s)</th><th class="num">Sales</th><th></th></tr></thead><tbody>`;
+  for(const d of ds){
+    h+=`<tr><td><input type="checkbox" ${SEL.has(d.id)?"checked":""} onclick="toggleSel('${d.id}')"></td>
+      <td class="lbl">${esc(d.name)}</td><td>${d.buysLines.map(l=>`<span class="chip">${esc(DATA.mfrName[l]||l)}</span>`).join("")}</td>
+      <td class="num">${money(d.sales)}</td>
+      <td><button class="go blue sm" onclick="confirmNew('${d.id}')">Confirm as new</button> <button class="go sm" onclick="openDetail('${d.id}')">Manage</button></td></tr>`;
+  }
+  h+=`</tbody></table></div>`; $("#app").innerHTML=h;
+}
+function pairKey(p){return [p.a.id,p.b.id].sort().join("|");}
+function togglePair(k){SELP.has(k)?SELP.delete(k):SELP.add(k);render();}
+function allPairsSel(){const ps=suggestedPairs();return ps.length>0&&ps.every(p=>SELP.has(pairKey(p)));}
+function toggleAllPairs(el){const ps=suggestedPairs();el.checked?ps.forEach(p=>SELP.add(pairKey(p))):ps.forEach(p=>SELP.delete(pairKey(p)));render();}
+function pairsBar(){
+  if(SELP.size<1) return "";
+  return `<div class="mergebar" style="position:sticky;top:0;z-index:8"><div><span class="sel">${SELP.size} pair${SELP.size>1?"s":""} selected</span> · each folds the smaller account into the larger</div>
+    <div><button class="go orange sm" onclick="askMergePairs()">Merge ${SELP.size} pair${SELP.size>1?"s":""} →</button> <button class="go blue sm" onclick="SELP.clear();render()">Clear</button></div></div>`;
+}
+function askMergePairs(){
+  const ps=suggestedPairs().filter(p=>SELP.has(pairKey(p)));
+  if(!ps.length)return;
+  const lines=ps.map(p=>{const s=p.a.sales>=p.b.sales?p.a:p.b,l=s===p.a?p.b:p.a;return `<div>• fold <b>${esc(l.name)}</b> → <b>${esc(s.name)}</b></div>`;}).join("");
+  showDlg(`<h3>Merge ${ps.length} suggested pair${ps.length>1?"s":""}?</h3><div class="hint">Each pair keeps the bigger account; the other's sales history + aliases fold in and its name becomes an alias. This can't be auto-undone (use Manage → Split if needed).</div>
+    <div style="margin:10px 0;max-height:220px;overflow:auto;font-size:13px">${lines}</div>
+    <div style="text-align:right"><button class="go blue sm" onclick="closeDlg()">Cancel</button>
+    <button class="go orange sm" onclick="closeDlg();doMergePairs()">Merge all</button></div>`);
+}
+async function doMergePairs(){
+  const ps=suggestedPairs().filter(p=>SELP.has(pairKey(p)));
+  let done=0;
+  for(const p of ps){ const s=p.a.sales>=p.b.sales?p.a:p.b, l=s===p.a?p.b:p.a;
+    try{ await post({action:"merge",survivor_id:s.id,loser_ids:[l.id]},null); done++; }catch(e){} }
+  SELP.clear(); await load(); alertDlg(`Merged ${done} pair${done===1?"":"s"}.`);
+}
+function renderDupes(){
+  const pairs=suggestedPairs();
+  if(!pairs.length){$("#app").innerHTML=`<div class="card"><div class="ok">✓ No likely duplicates detected.</div></div>`;return;}
+  let h=pairsBar()+`<div class="card"><h2>Suggested duplicates <span class="hint" style="text-transform:none">(${pairs.length} — tick the pairs you agree with, then “Merge selected pairs”; each keeps the bigger account and folds the other's history + aliases in)</span></h2>
+    <table><thead><tr><th><input type="checkbox" ${allPairsSel()?"checked":""} onclick="toggleAllPairs(this)" title="Select all pairs"></th><th>Likely same dealer</th><th class="num">Sales A / B</th><th>Merge into</th><th></th></tr></thead><tbody>`;
+  for(const p of pairs){
+    const surv=p.a.sales>=p.b.sales?p.a:p.b, loser=surv===p.a?p.b:p.a, k=pairKey(p);
+    h+=`<tr><td><input type="checkbox" ${SELP.has(k)?"checked":""} onclick="togglePair('${k}')"></td>
+      <td><b>${esc(p.a.name)}</b> <span class="dim">↔</span> <b>${esc(p.b.name)}</b></td>
+      <td class="num dim">${money(p.a.sales)} / ${money(p.b.sales)}</td>
+      <td>${esc(surv.name)}</td>
+      <td><button class="go orange sm" onclick="askMerge('${surv.id}',['${loser.id}'])">Merge →</button>
+          <button class="go sm" onclick="notDup('${p.a.id}','${p.b.id}')">Not a dup</button>
+          <button class="go sm" onclick="openDetail('${p.a.id}')">A</button>
+          <button class="go sm" onclick="openDetail('${p.b.id}')">B</button></td></tr>`;
+  }
+  h+=`</tbody></table></div>`; $("#app").innerHTML=h;
+}
+function openMerge(){
+  const ids=[...SEL]; const ds=ids.map(id=>DATA.dealers.find(d=>d.id===id)).filter(Boolean);
+  const suggested=ds.slice().sort((a,b)=>b.sales-a.sales)[0];
+  let picks=ds.map(d=>`<label class="pick ${d.id===suggested.id?"on":""}" onclick="pickSurv(this,'${d.id}')"><input type="radio" name="surv" ${d.id===suggested.id?"checked":""} style="margin-right:8px">${esc(d.name)} <span class="dim">— ${money(d.sales)}, ${d.aliases.length} alias(es)</span></label>`).join("");
+  showDlg(`<h3>Merge ${ds.length} dealers</h3><div class="hint">Pick the account to keep. The others' sales, aliases, line-access and rep fold into it, and their names become aliases so future reports route here automatically.</div>
+    ${picks}<div style="margin-top:14px;text-align:right"><button class="go blue sm" onclick="closeDlg()">Cancel</button>
+    <button class="go orange sm" id="domerge" onclick="doMergeFromDlg('${suggested.id}')">Merge into selected</button></div>`);
+}
+let DLGSURV=null;
+function pickSurv(el,id){document.querySelectorAll(".pick").forEach(p=>p.classList.remove("on"));el.classList.add("on");el.querySelector("input").checked=true;DLGSURV=id;$("#domerge").setAttribute("onclick",`doMergeFromDlg('${id}')`);}
+function doMergeFromDlg(defId){const surv=DLGSURV||defId;const losers=[...SEL].filter(id=>id!==surv);closeDlg();doMerge(surv,losers);}
+function askMerge(survId,loserIds){
+  const surv=DATA.dealers.find(d=>d.id===survId), losers=loserIds.map(i=>DATA.dealers.find(d=>d.id===i));
+  showDlg(`<h3>Confirm merge</h3><div>Fold ${losers.map(l=>`<b>${esc(l.name)}</b>`).join(", ")} into <b>${esc(surv.name)}</b>?</div>
+    <div class="hint" style="margin-top:8px">Combines their sales history and aliases. Future reports using either name route to ${esc(surv.name)}. This can't be auto-undone (use Manage → Split if needed).</div>
+    <div style="margin-top:14px;text-align:right"><button class="go blue sm" onclick="closeDlg()">Cancel</button>
+    <button class="go orange sm" onclick="closeDlg();doMerge('${survId}',${JSON.stringify(loserIds).replace(/"/g,"&quot;")})">Merge</button></div>`);
+}
+async function doMerge(survId,loserIds){
+  await post({action:"merge",survivor_id:survId,loser_ids:loserIds},"Merging…");
+  SEL.clear(); await load();
+}
+async function confirmNew(id){await post({action:"confirm",dealer_id:id},"Saving…");await load();}
+async function notDup(a,b){DATA.nomerge=(DATA.nomerge||[]).concat([[a,b].sort().join("|")]);render();try{await post({action:"nomerge",id_a:a,id_b:b});}catch(e){}}
+
+function openDetail(id){DETAIL=id;window.scrollTo(0,0);render();}
+function openDealerByName(name){const x=DATA.dealers.find(d=>d.name===name); if(x)openDetail(x.id);}
+function backList(){DETAIL=null;render();}
+/* Collapse duplicate manufacturer rows in the ordering-access box. Exact-name dupes
+   (e.g. "Golden Technologies" twice) merge by normalized name; the Bongo / AIRAVANT-BongoRx
+   pair merges via an alias. Each surviving line keeps the slug with the dealer's account/buys
+   history so saving access preserves the account number. */
+function canonKey(name){ let s=String(name||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+  if(/airavant|bongo/.test(s)) return "airavant-bongorx";
+  return s; }
+function dedupeMfrs(mfrs,d){
+  const acctSlugs=new Set((d.accounts||[]).map(a=>String(a).split(":")[0]));
+  const buys=new Set(d.buysLines||[]), acc=new Set(d.access||[]);
+  const groups=new Map();
+  for(const m of (mfrs||[])){ const k=canonKey(m.name);
+    if(!groups.has(k)) groups.set(k,{names:[],slugs:[]});
+    const g=groups.get(k); g.names.push(m.name); g.slugs.push(m.slug); }
+  const out=[];
+  for(const g of groups.values()){
+    const pick=g.slugs.find(s=>acctSlugs.has(s))||g.slugs.find(s=>buys.has(s))||g.slugs.find(s=>acc.has(s))||g.slugs[0];
+    const name=g.names.slice().sort((a,b)=>String(a).localeCompare(b))[0];
+    out.push({slug:pick, name, slugs:g.slugs, checked:g.slugs.some(s=>acc.has(s)), buys:g.slugs.some(s=>buys.has(s))}); }
+  return out.sort((a,b)=>String(a.name).localeCompare(b.name));
+}
+function accountStatusPanel(d){
+  const active=d.active!==false;
+  return `<div class="card" style="margin:0 0 14px">
+    <h2>Account status <span class="chip ${active?"acc":"rev"}">${active?"Active":"Inactive"}</span></h2>
+    <div class="hint" style="text-transform:none;margin-bottom:10px">${active
+      ?"Active accounts appear in CRM worklists and are eligible for follow-up and outreach."
+      :"Inactive accounts are excluded from current tasks, engagement and marketing; old records remain accessible."}</div>
+    ${isAdminRole()?`<button class="go sm ${active?"orange":"blue"}" onclick="openStatusChange('${d.id}',${active?"false":"true"})">${active?"Deactivate account":"Reactivate account"}</button>`
+      :`<span class="hint">Account status is changed by management.</span>`}
+    <div class="hint" style="margin-top:8px;text-transform:none">Sales history and manufacturer ordering access are managed separately; this action does not revoke portal logins or deactivate other locations.</div>
+  </div>`;
+}
+function openStatusChange(id,nextActive){
+  if(!isAdminRole())return;
+  const d=(DATA.dealers||[]).find(x=>x.id===id);if(!d)return;
+  const verb=nextActive?"Reactivate":"Deactivate";
+  showDlg(`<h3>${verb} ${esc(d.name)}?</h3>
+    <p class="hint" style="text-transform:none">${nextActive?"The dealer will again be eligible for open work queues and automated outreach.":"This specific dealer will leave active tasks, follow-ups, worklists and campaigns. Historical transactions and other locations are preserved."}</p>
+    <div class="fld"><label>Reason (required)</label><select id="status_reason">
+      <option value="">Choose a reason…</option>
+      ${nextActive?`<option value="Account reactivated">Account reactivated</option>`:
+        `<option value="Closed business">Closed business</option><option value="No longer a customer">No longer a customer</option><option value="Invalid / duplicate account">Invalid / duplicate account</option><option value="Other">Other</option>`}
+    </select></div>
+    <div class="fld"><label>Additional notes (optional unless Other)</label><textarea id="status_notes" rows="3" maxlength="300"></textarea></div>
+    <div id="status_feedback" class="st"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="go sm" onclick="closeDlg()">Cancel</button><button id="status_confirm" class="go sm ${nextActive?"blue":"orange"}" onclick="saveStatusChange('${id}',${nextActive})">Confirm ${verb.toLowerCase()}</button></div>`);
+}
+async function saveStatusChange(id,nextActive){
+  const choice=String($("#status_reason")?.value||"").trim(),notes=String($("#status_notes")?.value||"").trim();
+  const msg=$("#status_feedback");if(!choice||(choice==="Other"&&!notes)){if(msg)msg.textContent="Select a reason and add details if Other.";return;}
+  const btn=$("#status_confirm");if(btn)btn.disabled=true;
+  try{ const r=await post({action:"set_active",dealer_id:id,active:nextActive,reason:choice+(notes?": "+notes:"")});
+    closeDlg();await load();DETAIL=id;render();
+    if(r.warnings&&r.warnings.length)alertDlg("Status saved, but cleanup needs review: "+r.warnings.join("; "));
+  }catch(e){const f=$("#status_feedback");if(f)f.textContent=String(e.message||e);}
+  finally{const b=$("#status_confirm");if(b)b.disabled=false;}
+}
+function renderDetail(){
+  const d=DATA.dealers.find(x=>x.id===DETAIL); if(!d){DETAIL=null;return render();}
+  const mfrs=dedupeMfrs(DATA.manufacturers,d);   // collapse duplicate manufacturer rows (Golden ×2, Bongo/AIRAVANT…)
+  const dLogins=(DATA.logins||[]).filter(l=>l.dealer_id===d.id);
+  const ro=isRelations();   // Customer Relations: read-only here (server-enforced in dealers-api)
+  const accset=new Set(d.access);
+  let acc=mfrs.map(m=>`<label class="accitem ${m.checked?"on":""}"><input type="checkbox" value="${esc(m.slug)}" ${m.checked?"checked":""} ${ro?"disabled":""} onchange="this.parentNode.classList.toggle('on',this.checked)">${esc(m.name)}${m.buys?` <span class="chip" style="margin-left:auto">buys</span>`:""}</label>`).join("");
+  const fld=(k,lab,val,ph)=>`<div class="fld"><label>${lab}</label><input id="f_${k}" value="${esc(val||"")}" placeholder="${ph||""}" ${ro?"readonly":""}></div>`;
+  const relStyle="margin:8px 0 0;padding:9px 12px;border-radius:8px;font-size:13px;background:#eef3fb;border:1px solid #d8e3f4";
+  const relBanner = d.master
+    ? `<div style="${relStyle}">↳ Branch of <a onclick="openDealerByName('${jesc(d.master)}')" style="cursor:pointer;color:var(--blue);font-weight:700">${esc(d.master)}</a> <span class="hint" style="text-transform:none">— revenue rolls up to this HQ</span></div>`
+    : ((d.branches&&d.branches.length)
+       ? `<div style="${relStyle}">🏢 <b>Headquarters</b> · ${d.branches.length} branch location${d.branches.length===1?"":"s"} roll up here: ${d.branches.map(bn=>`<span class="chip" style="cursor:pointer" onclick="openDealerByName('${jesc(bn)}')">${esc(bn)}</span>`).join(" ")}</div>`
+       : "");
+  $("#body").innerHTML=`
+   <div class="backbar"><button class="go" onclick="backList()">← All dealers</button><div class="lbl" style="font-size:18px">${esc(d.name)} ${d.status==="review"?`<span class="chip rev">review</span>`:""}</div>${(isPres()&&!d.master)?`<button class="go sm orange" onclick="addBranchTo('${d.id}')" title="Add a branch location under this dealer">＋ Add branch</button>`:""}<a class="go sm blue" href="/admin/dealer.html?id=${d.id}">📇 360 Profile</a></div>
+   ${relBanner}
+   ${accountStatusPanel(d)}
+   <div class="grid2">
+     <div class="card"><h2>Account details</h2>
+       ${fld("business_name","Dealer name",d.name)}
+       ${fld("contact_name","Contact name",d.contact_name)}
+       ${fld("email","Email",d.email,"name@dealer.com")}
+       ${fld("phone","Phone",d.phone)}
+       ${fld("website","Website",d.website,"https://…")}
+       ${fld("address","Address",d.address)}
+       <div style="display:flex;gap:8px">${fld("city","City",d.city)}${fld("state","State",d.state)}${fld("zip","ZIP",d.zip)}</div>
+       <div class="fld"><label>Owner rep</label><input list="repopts" id="f_rep" value="${esc(d.rep)}" placeholder="rep…" ${ro?"readonly":""}><datalist id="repopts">${DATA.repOptions.map(r=>`<option value="${esc(r)}">`).join("")}</datalist></div>
+       ${ro?`<div class="hint" style="text-transform:none;margin-top:6px">🔒 Read-only for Customer Relations — owner, ordering access and account settings are changed by management. Notes, contacts, tasks and email live in the <a class="link" href="/admin/dealer.html?id=${d.id}">360 Profile</a>.</div>`:`<button class="go" onclick="saveDetail('${d.id}','${jesc(d.name)}')">Save details</button> <span id="stD" class="st"></span>`}
+       ${(d.status==="review"&&!ro)?`<button class="go blue sm" style="margin-left:8px" onclick="confirmNew('${d.id}')">Confirm as new dealer</button>`:""}
+     </div>
+     <div class="card"><h2>Ordering access (manufacturer lines)</h2>
+       <div class="hint">Tick the manufacturers this dealer is allowed to order on the portal. Default is none until you grant them. “buys” marks lines they already have sales with.</div>
+       <div class="accgrid" id="accgrid">${acc}</div>
+       <div style="margin-top:12px">${ro?"":`<button class="go" onclick="saveAccess('${d.id}')">Save access</button>`}
+         ${isPres()?`<button class="go blue sm" style="margin-left:8px" onclick="prefillAccess('${d.id}')" title="Check every line this dealer is eligible for under your territory rules (account numbers preserved)">Fill from territory rules</button>`:""}
+         <span id="stA" class="st"></span></div>
+       <h2 style="margin-top:18px">Portal access <span class="hint" style="text-transform:none">— what this dealer actually sees on the portal. The lines you tick above override the territory rules; territory rules apply only when the grid is left empty.</span></h2>
+       <div id="paccess" class="hint" style="margin-top:4px">Computing…</div>
+       <h2 style="margin-top:18px">History &amp; aliases</h2>
+       <div>Sales <b>${money(d.sales)}</b> · commission <b>${money(d.comm)}</b> · ${d.recs} records · active ${d.periods.length} month(s)${d.lastPeriod?` · last ${esc(d.lastPeriod)}`:""}</div>
+       <div style="margin-top:8px">${d.aliases.map(a=>`<span class="chip al">${esc(a)}</span>`).join("")||`<span class="dim">no alternate spellings</span>`}</div>
+       ${(d.accounts&&d.accounts.length)?`<h3 style="margin-top:14px">Manufacturer account numbers</h3><div>${d.accounts.map(a=>`<span class="chip">${esc(a)}</span>`).join("")}</div>`:""}
+       <h2 style="margin-top:18px">Addresses on file ${(d.addresses&&d.addresses.length)?`(${d.addresses.length})`:""}</h2>
+       <div class="hint">Every location imported for this account. The top one (⭐) is the corporate/HQ address used across the app.</div>
+       ${(d.addresses&&d.addresses.length)?`<table style="margin-top:6px"><tbody>${d.addresses.map((x,i)=>`<tr>
+           <td style="width:20px">${i===0?"⭐":""}</td>
+           <td class="lbl">${esc([x.address,[x.city,x.state].filter(Boolean).join(", "),x.zip].filter(Boolean).join(" · "))}</td>
+           <td class="hint">${esc(x.label||"")}</td></tr>`).join("")}</tbody></table>`
+        :`<div class="dim" style="margin-top:6px">${d.address?`<b>${esc([d.address,[d.city,d.state].filter(Boolean).join(", "),d.zip].filter(Boolean).join(" · "))}</b><br>`:""}No additional addresses stored yet — run <b>create_tables.sql</b> in Supabase, then re-run <b>Import contacts</b> to load every location.</div>`}
+       <h2 style="margin-top:18px">Contacts on file ${(d.contacts&&d.contacts.length)?`(${d.contacts.length})`:""}</h2>
+       <div class="hint">Every person &amp; email imported for this account. Any of these emails can be used to register for the ordering portal. Pick one as the account's <b>default email</b> — it's used on the dealer record and order emails.</div>
+       ${(d.contacts&&d.contacts.length)?`<table style="margin-top:6px"><tbody>${d.contacts.map(c=>`<tr>
+           <td style="width:110px;white-space:nowrap">${c.email?(sameEmail(c.email,d.email)?`<span class="chip acc">★ default</span>`:ro?"":`<button class="go sm" onclick="setDefaultEmail('${d.id}','${jesc(c.email)}','${jesc(c.name||'')}','${jesc(c.phone||'')}')">Make default</button>`):""}</td>
+           <td class="lbl">${esc(c.name||"—")}</td>
+           <td>${c.email?`<a href="mailto:${esc(c.email)}" style="color:var(--blue)">${esc(c.email)}</a>`:`<span class="dim">no email</span>`}</td>
+           <td class="hint">${esc([c.title,c.role].filter(Boolean).join(" · "))}${c.phone?` · ☎ ${esc(c.phone)}`:""}${c.cell?` · 📱 ${esc(c.cell)}`:""}</td></tr>`).join("")}</tbody></table>`
+        :`<div class="dim" style="margin-top:6px">No additional contacts stored yet — run <b>create_tables.sql</b> in Supabase, then re-run <b>Import contacts</b> to load every email from your master list.</div>`}
+       <h2 style="margin-top:18px">Portal sign-in (login email)</h2>
+       <div class="hint">This is the email the dealer actually types to sign in to the ordering portal. It is separate from the contact email above — change it here if they registered with a typo, and it updates their real login credential.</div>
+       ${dLogins.length? dLogins.map(l=>`<div class="loginedit" style="margin-top:8px">
+           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+             <span class="chip ${l.status==='approved'?'acc':(l.status==='pending'?'':'rev')}">${esc(l.status||'—')}</span>
+             <input id="le_${l.uid}" value="${esc(l.email||"")}" placeholder="login email" style="min-width:230px;flex:1">
+             <button class="go sm" onclick="setLoginEmail('${l.uid}')">Update login email</button>
+             <button class="go sm" onclick="deleteLogin('${l.uid}','${jesc(l.email||"")}')" title="Remove this portal login entirely">Delete login</button>
+             <span id="le_st_${l.uid}" class="st"></span>
+           </div></div>`).join("")
+         :`<div class="dim" style="margin-top:6px">No portal login is linked to this dealer yet. When someone registers on the ordering portal and you approve &amp; link them here, their sign-in email will appear in this spot.</div>`}
+     </div>
+   </div>
+   <div class="card" style="margin-top:14px${ro?";display:none":""}">
+     <h2>Contract pricing <span class="hint" style="text-transform:none">— set this dealer's negotiated per-product prices; they override list pricing in the portal for this dealer only. Prices set on a headquarters apply to its branches too.</span></h2>
+     ${(d.access&&d.access.length)
+        ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 4px">
+             <label class="hint" style="text-transform:none">Line</label>
+             <select id="cpline" onchange="cpLoadLine('${d.id}')">
+               <option value="">Choose a manufacturer line…</option>
+               ${cpLineOptions(d)}
+             </select>
+             <input id="cpfilter" placeholder="Filter by code or name…" oninput="cpRender()" style="flex:1;min-width:180px">
+             <span id="cpst" class="st"></span>
+           </div>
+           <div id="cptable"><div class="hint" style="margin-top:8px">Pick a line to load its products and set contract prices.</div></div>`
+        : `<div class="dim" style="margin-top:6px">Grant this dealer at least one manufacturer line (in “Ordering access” above) before setting contract prices.</div>`}
+   </div>`;
+  loadPortalAccess(d.id);
+}
+// ---- Portal access (rules-computed, read-only) + fill-from-rules ----
+const PACCESS={};
+function mfrLabel(slug){ const m=(DATA.manufacturers||[]).find(x=>x.slug===slug); return m?m.name:slug; }
+async function loadPortalAccess(id){
+  const host=()=>document.getElementById("paccess");
+  const draw=r=>{ const h=host(); if(!h)return;
+    if(!r||!r.access){ h.innerHTML=`<span class="warn">Couldn't compute access.</span>`; return; }
+    const chip=(s,cls)=>`<span class="chip ${cls}" title="${esc(s)}">${esc(mfrLabel(s))}</span>`;
+    const yours=r.access.your_accounts||[], avail=r.access.available||[];
+    const gold=(r.access.golden&&r.access.golden!=="None")?`<span class="chip acc">Golden: ${esc(r.access.golden)}</span>`:"";
+    const ov=r.access.ovation?`<span class="chip acc">Ovation ✓</span>`:"";
+    h.innerHTML=`
+      <div style="margin:4px 0"><b>Your accounts</b> <span class="hint" style="text-transform:none">(has an account #)</span>: ${yours.length?yours.map(s=>chip(s,"acc")).join(" "):'<span class="dim">none on file</span>'}</div>
+      <div style="margin:4px 0"><b>Available to order</b> <span class="hint" style="text-transform:none">(eligible, no account yet)</span>: ${avail.length?avail.map(s=>chip(s,"al")).join(" "):'<span class="dim">none</span>'}</div>
+      ${(gold||ov)?`<div style="margin:6px 0">${gold} ${ov}</div>`:""}
+      ${r.governedBy?`<div class="hint" style="text-transform:none">Access inherited from HQ: <b>${esc(r.governedBy)}</b></div>`:""}
+      <div class="hint" style="text-transform:none">This is exactly what the dealer sees on the portal. When you've ticked lines above, those are authoritative; if the grid is empty it falls back to territory rules by state.${r.lat_known===false?" (Strongback's Indiana cutoff can't be checked — no map location for this account yet.)":""}</div>`;
+  };
+  if(PACCESS[id]){ draw(PACCESS[id]); return; }
+  const h=host(); if(h)h.textContent="Computing…";
+  try{ const r=await post({action:"portal_access",dealer_id:id}); PACCESS[id]=r; draw(r); }
+  catch(e){ const hh=host(); if(hh)hh.innerHTML=`<span class="warn">Couldn't compute: ${esc(e.message||e)}</span>`; }
+}
+async function prefillAccess(id){
+  if(!confirm("Fill this dealer's grid with every line they're eligible for under your territory rules? Account numbers already on file are kept."))return;
+  await post({action:"prefill_access",dealer_id:id},"Filling…","#stA");
+  delete PACCESS[id];
+  await load(); DETAIL=id; render();
+}
+async function prefillAll(){
+  if(!confirm("Pre-fill EVERY dealer's ordering-access grid from your territory rules?\n\nFor each dealer this ticks the lines they're eligible for under the rules (account numbers preserved). The grid is authoritative, so this sets what each dealer can order on the portal — after it runs you can still hand-tick or untick any dealer's lines to override."))return;
+  try{ const r=await post({action:"prefill_access_all"}); for(const k in PACCESS) delete PACCESS[k]; alertDlg(`Applied territory rules to ${r.dealers} dealers (${r.lines} line grants).`); await load(); render(); }
+  catch(e){ alertDlg("Error: "+(e.message||e)); }
+}
+// ---- Contract pricing panel ----
+let CP={dealerId:null,slug:"",products:[],over:{}};
+function mfrNameBySlug(slug){ const m=(DATA.manufacturers||[]).find(x=>x.slug===slug); return m?m.name:slug; }
+function cpLineOptions(d){ return (d.access||[]).map(s=>`<option value="${esc(s)}">${esc(mfrNameBySlug(s))}</option>`).join(""); }
+function cpCssId(code){ return String(code).replace(/[^a-zA-Z0-9_-]/g,"_"); }
+async function cpLoadLine(dealerId){
+  const slug=(($("#cpline")||{}).value||""); const st=$("#cpst");
+  CP={dealerId,slug,products:[],over:{}};
+  const host=$("#cptable");
+  if(!slug){ if(host)host.innerHTML=`<div class="hint" style="margin-top:8px">Pick a line to load its products.</div>`; return; }
+  if(st){st.textContent="Loading…";st.className="st";}
+  try{
+    const h={}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+    const cr=await fetch("/.netlify/functions/catalog-api?manufacturer="+encodeURIComponent(slug),{headers:h});
+    if(cr.status===401){ lock(); return; }
+    const cj=await cr.json().catch(()=>({}));
+    if(!cr.ok||cj.error) throw new Error(cj.message||cj.error||("catalog HTTP "+cr.status));   // an unread catalog is not an empty one
+    const prods=[...(cj.products||[]),...((cj.custom||[]).map(c=>({code:c.code,name:c.name,base_price:c.base_price})))].filter(p=>p&&p.code);
+    const pj=await post({action:"list_contract_prices",dealer_id:dealerId});
+    const over={}; (pj.prices||[]).filter(r=>r.manufacturer===slug).forEach(r=>over[r.code]=Number(r.price));
+    CP.products=prods; CP.over=over;
+    if(st){st.textContent="";st.className="st";}
+    cpRender();
+  }catch(e){ if(st){st.textContent="Couldn't load — "+(e.message||e);st.className="st warn";} }
+}
+function cpRender(){
+  const host=$("#cptable"); if(!host)return;
+  const f=(($("#cpfilter")||{}).value||"").trim().toLowerCase();
+  let list=CP.products;
+  if(f) list=list.filter(p=>String(p.code).toLowerCase().includes(f)||String(p.name||"").toLowerCase().includes(f));
+  const nOver=Object.keys(CP.over).length;
+  if(!CP.products.length){ host.innerHTML=`<div class="hint" style="margin-top:8px">No catalog products found for this line.</div>`; return; }
+  if(!list.length){ host.innerHTML=`<div class="hint" style="margin:8px 0 4px">${nOver} contract price${nOver===1?"":"s"} set on this line.</div><div class="hint">No products match that filter.</div>`; return; }
+  const rows=list.map(p=>{
+    const listTxt=(p.base_price!=null&&isFinite(Number(p.base_price)))?money(Number(p.base_price)):"—";
+    const has=CP.over[p.code]!=null; const val=has?CP.over[p.code]:"";
+    const cid=cpCssId(p.code);
+    return `<tr${has?' style="background:#eefaf0"':''}>
+      <td class="lbl">${esc(p.name||p.code)}<div class="hint">${esc(p.code)}</div></td>
+      <td class="hint" style="white-space:nowrap">List ${listTxt}</td>
+      <td style="white-space:nowrap"><span class="hint">$</span> <input id="cp_${cid}" type="number" min="0" step="0.01" value="${val}" placeholder="—" style="width:90px" onkeydown="if(event.key==='Enter')cpSave('${jesc(p.code)}')"></td>
+      <td style="white-space:nowrap"><button class="go sm" onclick="cpSave('${jesc(p.code)}')">Save</button>${has?` <button class="go sm" onclick="cpClear('${jesc(p.code)}')">Clear</button>`:""} <span id="cpst_${cid}" class="st"></span></td>
+    </tr>`;
+  }).join("");
+  host.innerHTML=`<div class="hint" style="margin:8px 0 4px">${nOver} contract price${nOver===1?"":"s"} set on this line for this dealer. Blank = they pay list/tier price.</div>
+    <table><thead><tr><th>Product</th><th>List</th><th>Contract $</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+async function cpSave(code){
+  const inp=document.getElementById("cp_"+cpCssId(code)); if(!inp)return;
+  const raw=(inp.value||"").trim(); const st=$("#cpst_"+cpCssId(code));
+  if(raw===""){ if(st){st.textContent="Enter a price or Clear";st.className="st warn";} return; }
+  const price=Number(raw); if(!isFinite(price)||price<0){ if(st){st.textContent="Bad price";st.className="st warn";} return; }
+  const prod=CP.products.find(p=>String(p.code)===String(code));
+  await post({action:"set_contract_price",dealer_id:CP.dealerId,manufacturer:CP.slug,code,name:prod?prod.name:"",price});
+  CP.over[code]=Math.round(price*100)/100; cpRender();
+}
+async function cpClear(code){
+  await post({action:"clear_contract_price",dealer_id:CP.dealerId,manufacturer:CP.slug,code});
+  delete CP.over[code]; cpRender();
+}
+async function setLoginEmail(uid){
+  const inp=document.getElementById("le_"+uid); if(!inp)return;
+  const email=(inp.value||"").trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ alertDlg("Enter a valid email address.");return; }
+  await post({action:"set_login_email",uid,email},"Updating…","#le_st_"+uid);
+  const st=$("#le_st_"+uid); if(st){st.textContent="Login email updated ✓";st.className="st ok";}
+  await load(); render();
+}
+async function deleteLogin(uid,email){
+  if(!confirm(`Delete the portal login ${email||"(this account)"}? This removes their sign-in entirely — they'd have to register again. This does NOT delete the dealer record.`))return;
+  await post({action:"delete_login",uid},"Deleting…"); await load(); render();
+}
+async function saveDetail(id,origName){
+  const g=k=>($("#f_"+k)?.value||"").trim();
+  const fields={action:"edit",dealer_id:id,business_name:g("business_name"),contact_name:g("contact_name"),email:g("email"),phone:g("phone"),website:g("website"),address:g("address"),city:g("city"),state:g("state"),zip:g("zip")};
+  await post(fields,"Saving…","#stD");
+  const rep=g("rep"); await post({action:"rep",dealer_id:id,dealer_name:g("business_name")||origName,rep_name:rep},null,"#stD");
+  $("#stD").textContent="Saved ✓";$("#stD").className="st ok";
+  await load(); // refresh aggregates (name change re-links)
+  DETAIL=id; render();
+}
+function sameEmail(a,b){return String(a||"").trim().toLowerCase()===String(b||"").trim().toLowerCase()&&!!String(a||"").trim();}
+async function setDefaultEmail(id,email,name,phone){
+  // Making a contact the default sets it as the account's primary contact: email,
+  // and also the contact name + phone (only when that contact has them, so we never
+  // blank an existing value).
+  const patch={action:"edit",dealer_id:id,email};
+  if(name) patch.contact_name=name;
+  if(phone) patch.phone=phone;
+  await post(patch,"Setting default…");
+  const d=DATA.dealers.find(x=>x.id===id);
+  if(d){ d.email=email; if(name)d.contact_name=name; if(phone)d.phone=phone; }
+  render();
+}
+async function saveAccess(id){
+  const d=DATA.dealers.find(x=>x.id===id)||{};
+  const sel=[...document.querySelectorAll("#accgrid input:checked")].map(x=>x.value);
+  // when we merged duplicate manufacturer rows, carry the account number onto the surviving slug
+  const canonOf={}; dedupeMfrs(DATA.manufacturers,d).forEach(g=>g.slugs.forEach(s=>canonOf[s]=g.slug));
+  const refCarry={}; (d.accounts||[]).forEach(a=>{const p=String(a).split(":");const slug=p[0],ref=p.slice(1).join(":");if(slug&&ref){refCarry[canonOf[slug]||slug]=ref;}});
+  const result=await post({action:"access",dealer_id:id,manufacturers:sel,refCarry},"Saving…","#stA");
+  $("#stA").textContent=result.branch_warning?"Access saved; branch sync needs review":("Saved ✓"+(result.branch_sync&&result.branch_sync.filled?" · "+result.branch_sync.filled+" branch account(s) inherited":""));
+  $("#stA").className=result.branch_warning?"st warn":"st ok";
+  if(result.branch_warning) alertDlg(result.branch_warning);
+  if(d)d.access=sel;
+}
+async function post(body,working,stSel){
+  const st=stSel?$(stSel):null; if(st&&working){st.textContent=working;st.className="st";}
+  const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){ lock(); throw new Error("session ended"); }
+  const j=await r.json().catch(()=>({}));
+  if(!(r.ok&&j.ok)){const m="Error: "+(j.error||r.status); if(st){st.textContent=m;st.className="st warn";} else alertDlg(m); throw new Error(m);}
+  return j;
+}
+function showDlg(html){$("#dlg").innerHTML=`<div class="dlg" onclick="if(event.target===this)closeDlg()"><div class="dlgbox">${html}</div></div>`;}
+function closeDlg(){$("#dlg").innerHTML="";DLGSURV=null;}
+function alertDlg(m){showDlg(`<h3>Notice</h3><div>${esc(m)}</div><div style="margin-top:14px;text-align:right"><button class="go sm" onclick="closeDlg()">OK</button></div>`);}
+
+/* ---------- Add a new dealer / branch ---------- */
+function openAddDealer(parentId,parentName){
+  const dl=(DATA.dealers||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const parentOpts=`<option value="">— none (this is a standalone / corporate account) —</option>`+
+    dl.map(d=>`<option value="${esc(d.id)}"${d.id===parentId?" selected":""}>${esc(d.name)}</option>`).join("");
+  const mfrs=(DATA.manufacturers||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const mfrOpts=mfrs.map(m=>`<option value="${esc(m.slug)}"${m.slug==="golden-technologies"?" selected":""}>${esc(m.name)}</option>`).join("");
+  showDlg(`<h3>${parentId?`Add a branch of “${esc(parentName||"")}”`:"Add a new dealer"}</h3>
+    <div class="hint" style="margin-bottom:10px">Create a dealer or a branch location. The <b>ZIP code</b> is what commission imports use to route Golden orders to the right branch, so add it for every physical location.</div>
+    <div class="fld"><label>Business name <span style="color:#b42323">*</span></label><input id="ad_name" placeholder="e.g. Queen City Med Mart"></div>
+    <div class="fld" style="margin-top:8px"><label>Branch of (leave as “none” for a standalone or corporate account)</label>
+      <select id="ad_parent">${parentOpts}</select></div>
+    <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <div class="fld"><label>Contact name</label><input id="ad_contact"></div>
+      <div class="fld"><label>Phone</label><input id="ad_phone"></div>
+      <div class="fld"><label>Email <span class="hint" style="text-transform:none">— unverified is fine, verify later</span></label><input id="ad_email" type="email"></div>
+      <div class="fld"><label>HCPS account #</label><input id="ad_hcps"></div>
+    </div>
+    <div class="fld" style="margin-top:8px"><label>Street address</label><input id="ad_address"></div>
+    <div class="grid3" style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-top:8px">
+      <div class="fld"><label>City</label><input id="ad_city"></div>
+      <div class="fld"><label>State</label><input id="ad_state" maxlength="2" placeholder="OH" style="text-transform:uppercase"></div>
+      <div class="fld"><label>ZIP <span style="color:#b42323">*</span> <span class="hint" style="text-transform:none">(branch match key)</span></label><input id="ad_zip" placeholder="45241"></div>
+    </div>
+    <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <div class="fld"><label>Manufacturer account (optional — auto-matches imports)</label><select id="ad_mfr">${mfrOpts}</select></div>
+      <div class="fld"><label>Account # with that manufacturer</label><input id="ad_acct" placeholder="e.g. 230206"></div>
+    </div>
+    <div class="fld" style="margin-top:8px"><label>Notes</label><input id="ad_notes"></div>
+    <div id="ad_st" class="st"></div>
+    <div style="margin-top:14px;text-align:right">
+      <button class="go sm" onclick="closeDlg()">Cancel</button>
+      <button class="go orange sm" id="ad_save" onclick="submitAddDealer()">Create dealer</button></div>`);
+  setTimeout(()=>{const el=$("#ad_name");if(el)el.focus();},60);
+}
+async function submitAddDealer(){
+  const v=id=>((document.getElementById(id)||{}).value||"").trim();
+  const name=v("ad_name");
+  const st=$("#ad_st");
+  if(!name){ if(st){st.textContent="Enter a business name.";st.className="st warn";} return; }
+  const parent_id=v("ad_parent")||null;
+  const zip=v("ad_zip");
+  if(!zip && !confirm("No ZIP code entered. Commission imports won't be able to route orders to this location by ZIP. Add it anyway without a ZIP?")) return;
+  const accounts=[]; const mfr=v("ad_mfr"), acct=v("ad_acct");
+  if(mfr && acct) accounts.push({manufacturer:mfr,account_ref:acct});
+  const payload={action:"create_dealer",business_name:name,parent_id,
+    contact_name:v("ad_contact"),email:v("ad_email"),phone:v("ad_phone"),
+    address:v("ad_address"),city:v("ad_city"),state:v("ad_state").toUpperCase(),zip,
+    hcps_account:v("ad_hcps"),notes:v("ad_notes"),accounts};
+  const btn=$("#ad_save"); if(btn)btn.disabled=true;
+  try{
+    const r=await post(payload,"Creating…","#ad_st");
+    closeDlg(); await load();
+    if(r&&r.dealer_id){ DETAIL=r.dealer_id; TAB='all'; render(); }
+    else render();
+  }catch(e){ if(btn)btn.disabled=false; }
+}
+// Add a branch straight from a dealer's detail view (parent pre-filled).
+function addBranchTo(id){ const d=(DATA.dealers||[]).find(x=>x.id===id); openAddDealer(id, d&&d.name); }
+
+/* ---------- Pending logins (dealer portal accounts) ---------- */
+function fmtDate(s){try{return new Date(s).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}catch(e){return "";}}
+async function approveLogin(uid){
+  const inp=document.getElementById("lnk_"+uid); let did="";
+  if(inp){const q=inp.value.trim(); const m=DATA.dealers.find(d=>d.name.toLowerCase()===q.toLowerCase());
+    if(q&&!m){alertDlg("Pick a dealer from the list to link this registration to, or use “Create new dealer”.");return;} did=m?m.id:"";}
+  const l=(DATA.logins||[]).find(x=>x.uid===uid);
+  if(!did && !(l&&l.dealer_id)){ alertDlg("Link this registration to a dealer first (type a name and pick from the list), or use “Create new dealer”.");return; }
+  await post({action:"approve_login",uid,dealer_id:did||undefined},"Approving…"); await load(); TAB="logins"; render();
+}
+async function createDealerForLogin(uid){
+  const l=(DATA.logins||[]).find(x=>x.uid===uid); if(!l)return;
+  const r=l.req||{}; const name=(r.company||"").trim();
+  if(!name){ alertDlg("This registration didn't include a company name — link it to an existing dealer instead.");return; }
+  if(!confirm(`Create a new dealer “${name}” from this registration and approve the login?`))return;
+  await post({action:"approve_login",uid,new_dealer:{
+    business_name:name, contact_name:r.contact||"", email:l.email||"", phone:r.phone||"",
+    address:r.address||"", city:r.city||"", state:r.state||"", zip:r.zip||""
+  }},"Creating dealer…"); await load(); TAB="logins"; render();
+}
+async function revokeLogin(uid,status){ await post({action:"revoke_login",uid,status},"Saving…"); await load(); TAB="logins"; render(); }
+// Re-point an already-approved login to the correct dealer (no re-send of the welcome email).
+async function reassignLogin(uid){
+  const inp=document.getElementById("re_"+uid); if(!inp)return;
+  const q=inp.value.trim(); const m=DATA.dealers.find(d=>d.name.toLowerCase()===q.toLowerCase());
+  if(!q){ alertDlg("Type a dealer name and pick from the list to assign this account.");return; }
+  if(!m){ alertDlg("Pick a dealer from the list (exact name) to assign, or use “Create new dealer”.");return; }
+  const cur=(DATA.logins||[]).find(x=>x.uid===uid);
+  if(cur&&cur.dealer_id===m.id){ alertDlg("That account is already assigned to “"+m.name+"”.");return; }
+  if(!confirm(`Assign ${inp.getAttribute('data-email')||'this login'} to “${m.name}”? They'll immediately see that dealer's lines and pricing.`))return;
+  await post({action:"approve_login",uid,dealer_id:m.id},"Assigning…"); await load(); TAB="logins"; render();
+}
+function editLoginEmail(uid,cur){
+  showDlg(`<h3>Fix login email</h3>
+    <div class="hint">This changes the email the dealer types to sign in to the ordering portal. Use it to correct a typo from registration.</div>
+    <div class="fld" style="margin-top:10px"><label>Login email</label><input id="dlg_le" value="${esc(cur||"")}" placeholder="name@dealer.com"></div>
+    <div id="dlg_le_st" class="st"></div>
+    <div style="margin-top:14px;text-align:right"><button class="go sm" onclick="closeDlg()">Cancel</button>
+      <button class="go orange sm" onclick="saveLoginEmailDlg('${uid}')">Save login email</button></div>`);
+  setTimeout(()=>{const el=$("#dlg_le");if(el){el.focus();el.select();}},50);
+}
+async function saveLoginEmailDlg(uid){
+  const email=($("#dlg_le")?.value||"").trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){const st=$("#dlg_le_st");if(st){st.textContent="Enter a valid email.";st.className="st warn";}return;}
+  await post({action:"set_login_email",uid,email},"Saving…","#dlg_le_st");
+  closeDlg(); await load(); TAB="logins"; render();
+}
+function reqLine(r){ if(!r)return ""; const loc=[r.city,r.state].filter(Boolean).join(", ");
+  const bits=[r.contact,r.phone,r.address,loc,r.zip].map(x=>(x||"").trim()).filter(Boolean);
+  return bits.length?`<div class="hint" style="margin-top:3px">${esc(bits.join(" · "))}</div>`:""; }
+/* ---------- Account changes (dealer self-service edits awaiting approval) ---------- */
+function chgLine(lbl,val){ return val?`<div><span class="dim" style="font-size:11px">${esc(lbl)}:</span> <b>${esc(val)}</b></div>`:""; }
+function addrStr(a){ if(!a)return ""; return [a.address,[a.city,a.state].filter(Boolean).join(", "),a.zip].filter(Boolean).join(" · "); }
+async function approveChange(id){ await post({action:"approve_change",id},"Applying…"); await load(); TAB="changes"; render(); }
+async function rejectChange(id){ if(!confirm("Reject this change request? The dealer's account will stay as-is."))return; await post({action:"reject_change",id},"Saving…"); await load(); TAB="changes"; render(); }
+function renderChanges(){
+  const app=$("#app"); const C=DATA.changeRequests||[];
+  const rows=C.length? C.map(r=>{const c=r.changes||{};
+    const bits=[chgLine("Contact",c.contact_name),chgLine("Phone",c.phone),chgLine("Email",c.email),
+      chgLine("Shipping",addrStr(c.shipping)),chgLine("Billing",addrStr(c.billing))].filter(Boolean).join("");
+    return `<tr>
+      <td class="lbl">${esc(r.dealer_name||r.email||"—")}${r.email?`<div class="hint" style="margin-top:2px">${esc(r.email)}</div>`:""}</td>
+      <td>${bits||'<span class="dim">no fields</span>'}</td>
+      <td>${fmtDate(r.created_at)}</td>
+      <td style="white-space:nowrap"><button class="go orange sm" onclick="approveChange('${r.id}')">Approve &amp; apply</button>
+        <button class="go sm" onclick="rejectChange('${r.id}')">Reject</button></td></tr>`;}).join("")
+    : `<tr><td colspan="4" class="empty">No account-change requests right now.</td></tr>`;
+  app.innerHTML=`<div class="card">
+    <h2>Account changes <span class="hint" style="text-transform:none">— dealers who edited their own contact, shipping, or billing details in the portal. Approve to apply the change to the dealer record (shipping/billing are also stored as addresses on file).</span></h2>
+    <table><thead><tr><th>Dealer</th><th>Requested changes</th><th>Submitted</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+  </div>`;
+}
+/* ---------- Activity & carts (dealer logins + open/unordered carts) ---------- */
+function fmtWhen(s){ if(!s)return "—"; try{const d=new Date(s),now=Date.now(),diff=(now-d)/1000;
+  if(diff<60)return "just now"; if(diff<3600)return Math.round(diff/60)+"m ago"; if(diff<86400)return Math.round(diff/3600)+"h ago";
+  return d.toLocaleDateString("en-US",{month:"short",day:"numeric"})+" "+d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}); }catch(e){return "";} }
+function dur(m){ if(m==null)return "—"; if(m<1)return "<1 min"; if(m<60)return m+" min"; const h=Math.floor(m/60),r=m%60; return h+"h"+(r?" "+r+"m":""); }
+function renderActivity(){
+  const app=$("#app"); const S=DATA.recentSessions||[], C=DATA.openCarts||[];
+  const liveCount=S.filter(s=>s.live).length;
+  const cartVal=C.reduce((t,c)=>t+(c.value||0),0), cartItems=C.reduce((t,c)=>t+(c.itemCount||0),0);
+  const kpis=`<div class="kpis" style="margin-top:0">
+    <div class="kpi"><div class="l">Online now</div><div class="v ${liveCount?'ok':''}">${liveCount}</div></div>
+    <div class="kpi"><div class="l">Open carts</div><div class="v ${C.length?'orange':''}">${C.length}</div></div>
+    <div class="kpi"><div class="l">Items waiting</div><div class="v">${cartItems}</div></div>
+    <div class="kpi"><div class="l">Open cart value (est.)</div><div class="v">${money(cartVal)}</div></div></div>`;
+  const cartRows=C.length? C.map(c=>{const preview=(c.lines||[]).slice(0,4).map(l=>`${l.qty}× ${esc(l.name||l.code)}`).join(", ")+((c.lines||[]).length>4?` +${c.lines.length-4} more`:"");
+    return `<tr>
+      <td class="lbl">${esc(c.dealer_name||c.email||"—")}${c.email?`<div class="hint" style="margin-top:2px">${esc(c.email)}</div>`:""}</td>
+      <td class="num">${c.itemCount}</td><td class="num">${money(c.value)}</td>
+      <td class="hint">${esc(preview)}</td>
+      <td>${fmtWhen(c.updated_at)}</td>
+      <td>${c.dealer_id?`<button class="go sm" onclick="openDetail('${c.dealer_id}')">Open dealer</button>`:""}</td></tr>`;}).join("")
+    : `<tr><td colspan="6" class="empty">No open carts — every dealer's cart is empty or already ordered.</td></tr>`;
+  const sessRows=S.length? S.map(s=>`<tr>
+      <td class="lbl">${s.live?'<span class="chip acc">● live</span> ':''}${esc(s.dealer_name||s.email||"—")}</td>
+      <td>${fmtWhen(s.login_at)}</td><td>${fmtWhen(s.last_seen_at)}</td><td>${dur(s.mins)}</td>
+      <td>${s.dealer_id?`<button class="go sm" onclick="openDetail('${s.dealer_id}')">Open</button>`:""}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="empty">No dealer logins recorded yet.</td></tr>`;
+  app.innerHTML=kpis+`<div class="card">
+      <h2>Open carts <span class="hint" style="text-transform:none">— dealers with products in their cart that haven't been ordered yet. Great for a follow-up call.</span></h2>
+      <table><thead><tr><th>Dealer</th><th class="num">Items</th><th class="num">Est. value</th><th>What's in it</th><th>Updated</th><th></th></tr></thead><tbody>${cartRows}</tbody></table>
+    </div>
+    <div class="card">
+      <h2>Recent logins <span class="hint" style="text-transform:none">— when each dealer signed in and how long they stayed (a heartbeat updates while their tab is open).</span></h2>
+      <table><thead><tr><th>Dealer</th><th>Logged in</th><th>Last seen</th><th>Duration</th><th></th></tr></thead><tbody>${sessRows}</tbody></table>
+    </div>`;
+}
+function renderLogins(){
+  const app=$("#app"); const L=DATA.logins||[];
+  const pending=L.filter(l=>l.status==="pending"), approved=L.filter(l=>l.status==="approved"), revoked=L.filter(l=>l.status==="revoked");
+  const dlOpts=`<datalist id="dealerlist">${DATA.dealers.slice(0,1200).map(d=>`<option value="${esc(d.name)}">`).join("")}</datalist>`;
+  const pRows=pending.length? pending.map(l=>{const r=l.req||{}; const company=(r.company||"").trim();
+    const linkCell = l.dealer_name
+      ? `<div><b>${esc(l.dealer_name)}</b> <span class="chip acc">matched on file</span></div>`
+      : `<input id="lnk_${l.uid}" list="dealerlist" value="${esc(company)}" placeholder="link to dealer…" style="width:230px">`;
+    return `<tr>
+      <td class="lbl">${esc(l.email)}${company?`<div class="hint" style="margin-top:3px">Registered as: <b>${esc(company)}</b></div>`:""}${reqLine(r)}</td>
+      <td>${linkCell}</td>
+      <td>${fmtDate(l.created_at)}</td>
+      <td style="white-space:nowrap"><button class="go orange sm" onclick="approveLogin('${l.uid}')">Approve</button>
+          ${l.dealer_name?"":`<button class="go blue sm" onclick="createDealerForLogin('${l.uid}')">Create new dealer</button>`}
+          <button class="go sm" onclick="editLoginEmail('${l.uid}','${jesc(l.email||"")}')">Fix email</button>
+          <button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Reject</button>
+          <button class="go sm" onclick="deleteLogin('${l.uid}','${jesc(l.email||"")}')">Delete</button></td></tr>`;}).join("")
+    : `<tr><td colspan="4" class="empty">No pending registrations.</td></tr>`;
+  const aRows=approved.map(l=>{const r=l.req||{}; const company=(r.company||"").trim();
+    return `<tr>
+      <td class="lbl">${esc(l.email)}${company?`<div class="hint" style="margin-top:3px">Registered as: <b>${esc(company)}</b></div>`:""}${reqLine(r)}</td>
+      <td><input id="re_${l.uid}" data-email="${jesc(l.email||"")}" list="dealerlist" value="${esc(l.dealer_name||"")}" placeholder="assign a dealer…" style="width:220px">${l.dealer_name?"":`<div class="hint" style="margin-top:3px;color:#b45309">No dealer assigned</div>`}</td>
+      <td><span class="chip acc">approved</span></td>
+      <td style="white-space:nowrap"><button class="go orange sm" onclick="reassignLogin('${l.uid}')">Save dealer</button>
+      ${company?`<button class="go blue sm" onclick="createDealerForLogin('${l.uid}')">Create new dealer</button>`:""}
+      <button class="go sm" onclick="editLoginEmail('${l.uid}','${jesc(l.email||"")}')">Fix email</button>
+      <button class="go sm" onclick="revokeLogin('${l.uid}','revoked')">Revoke</button>
+      <button class="go sm" onclick="deleteLogin('${l.uid}','${jesc(l.email||"")}')">Delete</button></td></tr>`;}).join("");
+  const rRows=revoked.map(l=>`<tr><td class="lbl">${esc(l.email)}</td><td>${esc(l.dealer_name||"—")}</td><td><span class="chip rev">revoked</span></td>
+      <td><button class="go blue sm" onclick="revokeLogin('${l.uid}','approved')">Re-approve</button></td></tr>`).join("");
+  app.innerHTML=`${dlOpts}<div class="card">
+    <h2>Pending logins <span class="hint" style="text-transform:none">— anyone who registered on the ordering portal. Link each to a dealer (or create one), then Approve to enable ordering (only their entitled lines show).</span></h2>
+    <table><thead><tr><th>Registrant</th><th>Dealer account</th><th>Registered</th><th></th></tr></thead><tbody>${pRows}</tbody></table>
+  </div>
+  ${approved.length?`<div class="card"><h2>Active accounts (${approved.length}) <span class="hint" style="text-transform:none">— reassign any account to the correct dealer (or create one from their registration). Changes apply immediately; the welcome email is only sent on first approval.</span></h2><table><thead><tr><th>Registrant</th><th>Dealer account</th><th>Status</th><th></th></tr></thead><tbody>${aRows}</tbody></table></div>`:""}
+  ${revoked.length?`<div class="card"><h2>Revoked (${revoked.length})</h2><table><thead><tr><th>Email</th><th>Dealer</th><th>Status</th><th></th></tr></thead><tbody>${rRows}</tbody></table></div>`:""}`;
+}
+
+/* ---------- Import contacts (master list -> dealers) ---------- */
+const IMPORT_LINES=[
+  ["golden-technologies","Golden Account","Golden Account Number"],
+  ["access4u","Access4u Account","Access4u Account Number"],
+  ["pedifix","Pedifix Account","Pedifix Account Number"],
+  ["gce","GCE Account","GCE Account Number"],
+  ["climbing-steps","Climbing Steps Account","Climbing Steps Account Number"],
+  ["strongback-mobility","Strongback Account",null],
+  ["corsicana","Corsicana Account",null],
+  ["airavant-bongorx","Bongo RX Account",null],
+  ["bemis","Bemis Account",null],
+  ["ovation-medical","Ovation Medical",null],
+];
+let IMPORT={rows:null,create:true,busy:false,result:null,fname:""};
+// RFC-4180-ish CSV parser: quotes, escaped quotes, embedded commas + newlines.
+function parseCSV(text){
+  const rows=[]; let field="",row=[],q=false,i=0; const n=text.length;
+  const pf=()=>{row.push(field);field="";}, pr=()=>{pf();rows.push(row);row=[];};
+  if(text.charCodeAt(0)===0xFEFF) i=1;                       // strip BOM
+  for(;i<n;i++){ const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){field+='"';i++;} else q=false; } else field+=c; }
+    else { if(c==='"')q=true; else if(c===",")pf(); else if(c==="\r"){} else if(c==="\n")pr(); else field+=c; }
+  }
+  if(field.length||row.length)pr();
+  return rows;
+}
+function importFromText(text,fname){
+  const grid=parseCSV(text); if(grid.length<2){alertDlg("That file has no data rows.");return;}
+  const head=grid[0].map(h=>String(h||"").trim());
+  const col=name=>head.indexOf(name);
+  const need=col("Company Name"); if(need<0){alertDlg("Couldn't find a 'Company Name' column — is this the HCPS master list?");return;}
+  const get=(r,name)=>{const k=col(name);return k>=0?String(r[k]||"").trim():"";};
+  // group EVERY row by company so we capture all contacts/emails (not just the first)
+  const groups=new Map(), order=[];
+  for(let ri=1;ri<grid.length;ri++){ const r=grid[ri]; const company=get(r,"Company Name"); if(!company)continue;
+    const key=jnorm(company); if(!groups.has(key)){groups.set(key,{first:r,rows:[]});order.push(key);} groups.get(key).rows.push(r); }
+  const splitEmails=s=>String(s||"").split(/[;,|\s]+/).map(x=>x.trim()).filter(x=>/@/.test(x));
+  const out=order.map(key=>{ const g=groups.get(key), r=g.first, company=get(r,"Company Name");
+    const addr=[get(r,"Address 1"),get(r,"Address 2")].filter(Boolean).join(", ");
+    const contact=[get(r,"Contact First"),get(r,"Contact Last")].filter(Boolean).join(" ");
+    const lines=[]; for(const [slug,flag,num] of IMPORT_LINES){ const yes=get(r,flag).toLowerCase()==="yes"; const acct=num?get(r,num):""; if(yes||acct)lines.push({slug,account:acct}); }
+    const contacts=[], seenE=new Set();
+    for(const rr of g.rows){ const nm=[get(rr,"Contact First"),get(rr,"Contact Last")].filter(Boolean).join(" ");
+      const title=get(rr,"Contact Title"), role=get(rr,"Contact Role"),
+            ph=get(rr,"Direct Phones")||get(rr,"Contact Phones")||get(rr,"Office Phones"), cell=get(rr,"Cell Phone");
+      for(const em of splitEmails(get(rr,"Contact Emails"))){ const lo=em.toLowerCase(); if(seenE.has(lo))continue; seenE.add(lo); contacts.push({email:em,name:nm,title,role,phone:ph,cell}); } }
+    // every distinct address across this company's rows (label = the source company name)
+    const addresses=[], seenA=new Set();
+    for(const rr of g.rows){ const a1=[get(rr,"Address 1"),get(rr,"Address 2")].filter(Boolean).join(", ");
+      if(!a1)continue; const ak=`${a1}|${get(rr,"City")}|${get(rr,"State")}`.toLowerCase().trim(); if(seenA.has(ak))continue; seenA.add(ak);
+      addresses.push({address:a1,city:get(rr,"City"),state:get(rr,"State"),zip:get(rr,"ZIP"),label:company}); }
+    return {company,address:addr,city:get(r,"City"),state:get(r,"State"),zip:get(r,"ZIP"),
+      contact,email:(contacts[0]&&contacts[0].email)||get(r,"Contact Emails"),phone:get(r,"Office Phones"),lines,contacts,addresses};
+  });
+  IMPORT={rows:out,create:true,replace:false,busy:false,result:null,fname};
+  render();
+}
+function onImportFile(inp){ const f=inp.files&&inp.files[0]; if(!f)return; const rd=new FileReader();
+  rd.onload=()=>importFromText(String(rd.result||""),f.name); rd.readAsText(f); }
+function importPreview(){
+  const known=new Set(); for(const d of (DATA?.dealers||[])){ known.add(jnorm(d.name)); (d.aliases||[]).forEach(a=>known.add(jnorm(a))); }
+  let match=0; const lc={};
+  for(const r of IMPORT.rows){ if(known.has(jnorm(r.company)))match++; for(const l of (r.lines||[]))lc[l.slug]=(lc[l.slug]||0)+1; }
+  return {total:IMPORT.rows.length,match,create:IMPORT.rows.length-match,lc};
+}
+async function applyImport(){
+  if(!IMPORT.rows||IMPORT.busy)return; IMPORT.busy=true; render();
+  try{
+    const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+    const replace=IMPORT.replace===true;
+    // Replace is destructive: ask the server what it would remove (nothing is written by a
+    // preview), show it, and only send the replace once it's confirmed. Merge needs no preview.
+    if(replace){
+      const pr=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"import_contacts",rows:IMPORT.rows,create:IMPORT.create,replace:true,preview:true})});
+      const pj=await pr.json().catch(()=>({})); const p=pj.preview;
+      if(!p){ IMPORT.busy=false; IMPORT.result={topError:String(pj.error||"Couldn't preview the replace.")}; render(); return; }
+      const ok=confirm(`Replace contacts for the ${p.dealers_in_file} dealer${p.dealers_in_file===1?"":"s"} in this file?\n\n`+
+        `This removes ${p.contacts_to_remove} contact${p.contacts_to_remove===1?"":"s"} and ${p.addresses_to_remove} address${p.addresses_to_remove===1?"":"es"} on those dealers, `+
+        `then loads ${p.contacts_in_file} contact${p.contacts_in_file===1?"":"s"} and ${p.addresses_in_file} address${p.addresses_in_file===1?"":"es"} from the file.`+
+        (p.would_create?`\n${p.would_create} new dealer${p.would_create===1?"":"s"} will be created first.`:"")+
+        `\n\nDealers not in this file are not touched.`);
+      if(!ok){ IMPORT.busy=false; render(); return; }
+    }
+    const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"import_contacts",rows:IMPORT.rows,create:IMPORT.create,replace,confirm_replace:replace})});
+    const j=await r.json().catch(()=>({}));
+    IMPORT.result = j.result || {};
+    if(j.error && j.result && j.result.message) IMPORT.result.topError=j.result.message;
+    else if(j.error) IMPORT.result.topError=String(j.error);
+    IMPORT.busy=false; await load(); TAB="import"; IMPORT_KEEP(); render();
+  }catch(e){ IMPORT.busy=false; IMPORT.result={topError:String(e.message||e)}; render(); }
+}
+async function runDiag(){
+  const out=$("#diagOut"); if(out)out.innerHTML=`<div class="muted" style="margin-top:10px">Checking…</div>`;
+  try{
+    const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+    const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:h,body:JSON.stringify({action:"diag"})});
+    const j=await r.json().catch(()=>({}));
+    if(!(r.ok&&j.ok)){ const m=(j.error||("HTTP "+r.status));
+      out.innerHTML=`<div class="msg" style="text-align:left;margin-top:10px;background:#fdecec;border-color:#f3c0c0;color:#b42323"><b>The updated dealers-api function is NOT live yet.</b><br>The server said: <code>${esc(String(m))}</code><br>Deploy <b>netlify/functions/dealers-api.js</b> to homecareproviderservices (commit it + redeploy), then click Check setup again.</div>`; return; }
+    const c=j.dealer_contacts||{}, a=j.dealer_addresses||{};
+    const line=(nm,x)=> x.exists?`✅ <b>${nm}</b>: exists — <b>${x.count==null?"?":x.count}</b> row(s) stored`:`❌ <b>${nm}</b>: MISSING — run <b>create_tables.sql</b> in Supabase`;
+    const allGood=c.exists&&a.exists;
+    out.innerHTML=`<div class="msg" style="text-align:left;margin-top:10px;${allGood?'':'background:#fff3e0;border-color:#f2d9b0;color:#8a4b0d'}">
+      Live function: <b>${esc(j.build||"unknown")}</b><br>${line("dealer_contacts",c)}<br>${line("dealer_addresses",a)}
+      ${allGood?`<br><span class="ok">Setup looks correct — upload your CSV above and Apply import; the counts should climb.</span>`:`<br>Fix the ❌ item above, then re-import.`}</div>`;
+  }catch(e){ out.innerHTML=`<div class="msg" style="text-align:left;margin-top:10px;background:#fdecec;border-color:#f3c0c0;color:#b42323">${esc(String(e.message||e))}</div>`; }
+}
+let _IMPRES=null; function IMPORT_KEEP(){_IMPRES=IMPORT.result;}   // survive load()'s render reset
+function renderImport(){
+  const app=$("#app"); if(!app)return;
+  if(_IMPRES && !IMPORT.result){IMPORT.result=_IMPRES;_IMPRES=null;}
+  if(!IMPORT.rows){
+    app.innerHTML=`<div class="card" style="padding:18px">
+      <h3 style="margin:0 0 6px">Import dealer contacts &amp; addresses</h3>
+      <p class="muted" style="margin:0 0 12px">Upload your master list (CSV). Each company is matched to an existing dealer by name/alias; unmatched companies are created so <b>every dealer is loaded</b>. Addresses, primary contact, phone, and per-line account numbers are filled in, and line access is turned on wherever an account exists.</p>
+      <input type="file" accept=".csv,text/csv" onchange="onImportFile(this)">
+      <p class="muted" style="margin:12px 0 0;font-size:12px">Expected columns: Company Name, Address 1/2, City, State, ZIP, Office Phones, Contact First/Last, Contact Emails, and the per-line “… Account / … Account Number” columns.</p>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid #eef2f6">
+        <button class="go blue sm" onclick="runDiag()">🔎 Check setup</button>
+        <span class="muted" style="font-size:12px;margin-left:8px">Not saving contacts/addresses? Click this — it tells you whether the tables exist and whether the updated function is live.</span>
+        <div id="diagOut"></div>
+      </div>
+    </div>`; return;
+  }
+  const p=importPreview();
+  const mfrName=Object.fromEntries((DATA.manufacturers||[]).map(m=>[m.slug,m.name]));
+  const lineRows=IMPORT_LINES.filter(([s])=>p.lc[s]).map(([s])=>`<tr><td>${esc(mfrName[s]||s)}</td><td class="r">${p.lc[s]}</td></tr>`).join("");
+  const res=IMPORT.result;
+  const resHtml=(()=>{ if(!res)return "";
+    if(res.topError){ return `<div class="msg" style="margin-top:14px;background:#fdecec;border-color:#f3c0c0;color:#b42323"><b>Import couldn't store contacts/addresses.</b><br>${esc(res.topError)}</div>`; }
+    const errs=(res.errors&&res.errors.length)?`<br><span style="color:#b42323">Some writes failed: ${res.errors.map(esc).join("; ")}</span>`:"";
+    const warn=(res.contacts===0&&!(res.errors&&res.errors.length))?`<br><span style="color:#b42323">0 contacts stored — make sure the two tables exist (run <b>create_tables.sql</b>), then re-import.</span>`:"";
+    return `<div class="msg ok" style="margin-top:14px"><b>Import complete.</b><br>
+      Matched existing: <b>${res.matched||0}</b> · Created new: <b>${res.created||0}</b> · Dealers updated: <b>${res.updated||0}</b> · Line-access rows set: <b>${res.entitlements||0}</b><br>
+      <b>${res.contacts||0}</b> contact email${res.contacts===1?"":"s"} stored · <b>${res.addresses||0}</b> address${res.addresses===1?"":"es"} stored${warn}${errs}
+      ${(res.unmatched&&res.unmatched.length)?`<br>Skipped (not created): ${res.unmatched.length}`:""}</div>`;
+  })();
+  app.innerHTML=`<div class="card" style="padding:18px">
+    <h3 style="margin:0 0 4px">Review import — ${esc(IMPORT.fname)}</h3>
+    <p class="muted" style="margin:0 0 12px">${p.total} companies found.</p>
+    <div class="kpis" style="margin:0 0 12px">
+      <div class="kpi"><div class="l">Will match existing</div><div class="v">${p.match}</div></div>
+      <div class="kpi"><div class="l">Will be created</div><div class="v orange">${p.create}</div></div>
+      <div class="kpi"><div class="l">Total dealers after</div><div class="v">${(DATA.dealers.length)+p.create}</div></div>
+    </div>
+    <table class="tbl" style="max-width:360px"><thead><tr><th>Line access to set</th><th class="r">Dealers</th></tr></thead><tbody>${lineRows||'<tr><td colspan=2 class="muted">none</td></tr>'}</tbody></table>
+    <label style="display:flex;gap:8px;align-items:center;margin:14px 0 6px;font-size:14px">
+      <input type="checkbox" ${IMPORT.create?"checked":""} onchange="IMPORT.create=this.checked"> Create dealers for unmatched companies (recommended — loads all dealers)</label>
+    <label style="display:flex;gap:8px;align-items:center;margin:2px 0 6px;font-size:14px">
+      <input type="checkbox" ${IMPORT.replace===true?"checked":""} onchange="IMPORT.replace=this.checked"> Replace the contacts &amp; addresses of the dealers in this file (you'll see what will be removed first). Off = merge: adds and updates, never erases.</label>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+      <button class="go orange" ${IMPORT.busy?"disabled":""} onclick="applyImport()">${IMPORT.busy?"Importing…":"Apply import"}</button>
+      <button class="go blue sm" onclick="IMPORT={rows:null,create:true,busy:false,result:null,fname:''};render()">Choose a different file</button>
+    </div>
+    ${resHtml}
+  </div>`;
+}
+load();
+</script></body></html>

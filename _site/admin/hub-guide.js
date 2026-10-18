@@ -1,0 +1,578 @@
+/* HCPS Admin — feature-guide content for the category landing pages (hub.html).
+ * Keyed by the tool's label (matches admin-chrome.js HUBS). Each entry is a plain-language
+ * product overview so an administrator can understand a tool's full scope before opening it.
+ * Fields (all optional; hub.html renders only what's present):
+ *   tagline      one strong sentence under the title
+ *   what         "What it does" paragraph
+ *   features[]   Main features
+ *   data         What data it uses
+ *   actions[]    What you can do
+ *   reports[]    Reports & analytics available
+ *   connects[]   How it connects to the rest of the platform
+ *   problems     What problems it solves / why use it
+ *   workflow     How it fits the sales/admin workflow
+ *   intelligence Automation, AI, reporting or intelligence built in
+ */
+window.HUB_GUIDE = {
+
+  /* ---------------- SALES & MARKETING ---------------- */
+  "Scheduling Console": {
+    tagline: "The command center for every dealer appointment — self-booked or rep-scheduled — with Outlook, Zoom, reminders, and Dealer 360 all wired in behind the scenes.",
+    what: "The Scheduling Console runs HCPS's dealer meeting program end to end. Dealers self-book a live 30-minute slot from the Dealer Hub (online Zoom meetings or on-site field visits), and it books instantly: the Outlook event is created on the assigned rep's calendar, the dealer is invited, both sides get a confirmation and a 24-hour reminder, and the appointment is recorded in Dealer 360 against the right dealer, contact, and rep. From here you assign or reschedule requests, mark meetings complete with notes, manage availability, block travel days, and review every upcoming appointment in one place.",
+    features: [
+      "Live self-scheduling for verified dealers — only open 30-minute slots are shown; booked and blocked times are removed automatically",
+      "Two meeting types with separate availability: online (Zoom, fixed Central hours) and field visits (Wed & Thu, in the dealer's local time zone)",
+      "Instant Outlook calendar event on the assigned rep's calendar, with a dealer invitation",
+      "Confirmation email to the dealer and rep, plus an automatic 24-hour reminder to both",
+      "Double-booking prevention — one appointment per rep calendar per time, enforced at the database",
+      "Availability manager: change days/hours per meeting type, edit the Zoom link, block vacation or travel dates, set the default owner",
+      "Appointment queue: assign a rep, book the time, and move requests through Scheduled → Completed → Follow-up",
+      "Upcoming view: every future appointment with a jump to its Outlook event",
+      "Time-zone correct throughout — field visits honor the dealer's local time, online meetings are Central"
+    ],
+    data: "Reads and writes the service_requests table (requests, bookings, calendar + Zoho references, reminders), the availability config in app_settings, staff_users for rep calendars, and the canonical dealer/contact records for matching and Dealer 360 logging.",
+    actions: [
+      "Set availability per meeting type — days, hours, Zoom link, blocked dates",
+      "Assign a rep and book (or reschedule) an appointment from a request",
+      "Link an appointment to the correct Dealer 360 record",
+      "Mark a meeting completed with notes and spin up a follow-up task",
+      "Cancel an appointment (removes the Outlook event) or reopen it",
+      "Review all upcoming appointments and open their calendar events"
+    ],
+    connects: [
+      "Outlook / Microsoft 365 via Microsoft Graph for calendar events, invitations, and confirmation + reminder email",
+      "Dealer Hub self-scheduling widget feeds bookings straight in",
+      "Dealer 360 gets a timeline entry and (on completion) a follow-up task",
+      "Zoho CRM gets a best-effort Task linked to the dealer's Account",
+      "Assigned-rep routing uses the same rep assignments as the rest of the portal"
+    ],
+    problems: "Turns back-and-forth scheduling emails into self-service: dealers pick a time that's actually open, the invite and reminders go out automatically, nobody double-books a rep, and every meeting is captured as a measurable Dealer 360 touch point instead of living in someone's inbox.",
+    workflow: "Set your availability once, then let dealers book. Work the queue and the Upcoming list day to day; after each meeting, mark it complete with notes so the follow-up is queued and the account history stays current.",
+    intelligence: "Live slot generation net of real Outlook busy time, DST-correct time-zone conversion, database-enforced double-booking prevention, and automatic 24-hour reminders."
+  },
+
+  /* ---------------- SALES DATA & ANALYTICS ---------------- */
+  "Command Center 360": {
+    tagline: "Your interactive business-intelligence cockpit — every sales number on the platform, drillable from the big picture down to a single order.",
+    what: "Command Center 360 turns all of your imported sales, commission, and engagement data into one live, clickable model of the business. Instead of static reports you start at a summary and drill straight through Manufacturer → State → Company → Dealer → Product → Order, with every metric tracing back to the exact records that produced it.",
+    features: [
+      "Manufacturer sales trends over time, with rising/declining momentum",
+      "State-level and territory revenue rollups",
+      "Company and dealer rankings — top and bottom performers, growers and decliners",
+      "Product performance and line-mix per dealer",
+      "Reorder-cadence and momentum indicators",
+      "Six-month forecasting from cadence plus weighted pipeline",
+      "Dealer engagement and health overlay",
+      "Campaign performance readback",
+      "Retired lines kept in history but dropped from active run-rate"
+    ],
+    data: "Reads the aggregated sales cube built from monthly_sales (orders, quantities, amounts, commissions), the canonical dealer master with its alias/merge layer, live rep assignments from the directory, manufacturer catalog data, and dealer engagement signals.",
+    actions: [
+      "Filter by period, manufacturer line, rep, state, or company",
+      "Click any metric to drill into the underlying records",
+      "Compare year-over-year and period-over-period",
+      "Isolate a single rep's book or one manufacturer line",
+      "Print or export any view"
+    ],
+    reports: ["Manufacturer performance", "State & territory revenue", "Company / dealer leaderboards", "Product-level detail", "Six-month forecast", "Momentum & at-risk lists"],
+    connects: [
+      "Shares the same canonical dealer records as Dealer 360 and the Dealer Manager",
+      "Rep assignments come from the directory that also scopes the Sales Rep Portal",
+      "Commission figures come from Commission Import",
+      "Engagement/health feeds Who to Call and Today's Opportunities",
+      "Open deals from Pipeline feed the forecast"
+    ],
+    problems: "Answers “what is actually happening in the business” without exporting to spreadsheets — where growth is coming from, which accounts are slipping, which lines are trending, and what next quarter looks like.",
+    workflow: "Start here for the weekly review or before a territory trip: read the summary, drill into a rep or state, then jump straight into the dealers that need attention.",
+    intelligence: "Automatic momentum and trend detection, cadence-based forecasting, and rep-scoped views — a rep sees only their own book while the president sees everything."
+  },
+  "Rep Performance & Goals": {
+    tagline: "Every rep's scorecard — sales versus target, year-over-year, book health, and a live leaderboard.",
+    what: "Turns the sales cube into per-rep performance: how each rep is tracking against goal, how their book is trending year over year, which of their accounts are growing or slipping, and where they rank against the team.",
+    features: ["Sales vs. target with attainment %", "Year-over-year comparison", "Book health mix (active / at-risk / dormant)", "Team leaderboard", "Per-rep account roster", "Goal setting per rep"],
+    data: "monthly_sales aggregated by the live rep assignment (dealer_directory), rep goals/targets, and dealer engagement.",
+    actions: ["Set and adjust rep goals", "View any rep's book (president) or your own (rep)", "Drill into a rep's dealers", "Compare periods and years"],
+    reports: ["Attainment vs. goal", "Year-over-year growth", "Leaderboard", "Book-health breakdown", "Rep account roster"],
+    connects: ["Rep assignments come from the same directory that scopes the whole portal", "Aligns with Command Center 360 and Who to Call", "Earnings context comes from Commission Import"],
+    problems: "Answers “how is each rep doing and who needs coaching” at a glance, with the numbers to back the conversation.",
+    workflow: "Weekly 1:1s and quarterly reviews — and spotting a rep whose book is slipping before it shows up in revenue.",
+    intelligence: "Rep-scoped automatically: a rep sees only their own numbers; leadership sees the full team."
+  },
+  "My Commissions": {
+    tagline: "Your own commissions and sales — total territory commission and your earned share, by month, line, and dealer.",
+    what: "Your personal earnings view. It totals the commission your assigned accounts generated, then shows both the total and your earned share based on your commission split (the remainder is retained by HCPS/President), broken down by month, by manufacturer line, and by dealer so you can see exactly where your income comes from.",
+    features: ["Total territory commission and your earned share", "Company/President share for full transparency", "Commission by month (last 12)", "Commission by manufacturer line", "Top dealers by commission"],
+    data: "The same sales cube as the rest of the portal, filtered to the accounts assigned to you in the directory — nobody else's numbers.",
+    actions: ["Review your monthly commission trend", "See which lines and dealers pay you most", "Cross-check a figure against Rep Performance"],
+    reports: ["Commission by month", "Commission by line", "Top dealers by commission"],
+    connects: ["Scoped by the same rep assignment as every other tool", "Underlying sales detail lives in Rep Performance and Command Center 360"],
+    problems: "Answers “what am I earning and from where” without waiting on a report — and flags if an account you own isn't showing up (a sign your assignment needs fixing).",
+    workflow: "Check it after each commission import, and before a territory review, to know your best accounts and lines.",
+    intelligence: "Figures reflect only your assigned accounts; if something's missing, confirm your rep name is assigned to that dealer in the directory."
+  },
+  "Commission Report": {
+    tagline: "President's monthly view of commission income: total generated, each rep's share, and the company's share.",
+    what: "The company-side commission picture. For any period it shows the total commission each rep's territory generated, the share paid out to the rep, and the share the company/President retains — then lays out the President/company share for every rep, month by month, so you can see the income each territory produces over time.",
+    features: ["Total → rep share → President share summary", "Per-rep table with each rep's split %", "Monthly matrix of company share by rep", "Toggle the matrix to rep share or total commission", "Editable split settings per rep"],
+    data: "The same sales cube as the rest of the portal (all reps, since this is President-only), combined with each rep's commission split from settings.",
+    actions: ["Pick a period to see total, rep, and company shares", "Read the month-by-month company income per rep", "Set or adjust a rep's commission split"],
+    reports: ["Total / rep / President share by period", "Company share by rep by month", "Rep share and total-commission matrix views"],
+    connects: ["Splits also drive each rep's My Commissions page", "Rep attribution matches Rep Performance and Analytics"],
+    problems: "Answers “how much does the company actually make from each rep's territory, each month” — and keeps the rep-facing numbers honest by using the same splits.",
+    workflow: "Review after each commission import to see the month's rep and company shares; adjust a split here whenever an arrangement changes.",
+    intelligence: "President-only. Reps without a split set are shown but not broken out until you configure their percentage."
+  },
+  "Rep Usage & Adoption": {
+    tagline: "President's view of how each rep is actually using the platform — adoption, not just logins.",
+    what: "Shows, per rep, when they last signed in, how many days they were active, real active time (counted only while the app is in front of them), which tools and dealer accounts they opened, and the meaningful work they logged — touches, notes, tasks completed, routes, and opportunities — rolled into one engagement score.",
+    features: ["Last login, active days, and real active time", "Tools used and dealer accounts opened", "Touches, notes, tasks, routes & opportunities per rep", "Engagement score that rewards work over minutes", "A 'logged in, no activity' flag", "Per-rep activity timeline drill-down"],
+    data: "Login/active time and tool/dealer views from staff_sessions + rep_activity (usage capture), combined with the rep-attributed CRM, visit, route and pipeline records already on file.",
+    actions: ["Switch the window (7 / 30 / 90 days)", "Click a rep to see their full activity timeline", "Spot reps who log in but don't work the tools", "Confirm the platform is part of the daily routine"],
+    reports: ["Per-rep adoption table", "Engagement leaderboard", "Idle-but-logged-in flags", "Individual activity timeline"],
+    connects: ["Reads the same rep records that power Dealer 360, Territory Map, and Tasks", "Complements Rep Performance & Goals (sales outcomes) with adoption (behavior)"],
+    problems: "Answers 'are my reps actually using this, and using it well' with evidence — so training and coaching target the right people.",
+    workflow: "Check weekly to confirm adoption, catch a rep who's drifted off the platform, and reward the ones working it hardest.",
+    intelligence: "President-only. Active time counts foreground use, so leaving the portal open doesn't inflate the numbers."
+  },
+  "Pipeline & Forecast": {
+    tagline: "Open deals plus a data-driven six-month revenue forecast.",
+    what: "Combines your open opportunities (weighted by stage) with reorder-cadence projections to forecast the next six months of revenue — so you can see what's committed, what's likely, and where the gaps are.",
+    features: ["Open-deal pipeline by stage", "Weighted pipeline value", "Six-month forecast from cadence plus pipeline", "Per-rep and per-line breakdowns", "Gap-to-goal view", "Stage history on each deal — every stage and status change recorded from the day history started (earlier moves aren't invented)", "Conversion tab — deals created (and from visits), pipeline added, deals entering Quoted, won, lost, win rate, time in stage, by rep and by manufacturer, for 30 days to 12 months", "Possible order matches — an order from the same dealer for the same manufacturer within 120 days after a deal was created (a possible match, not proof)"],
+    data: "Opportunities/deals (kept in sync with Zoho), monthly_sales reorder cadence, and rep assignments.",
+    actions: ["Review and filter open deals", "See the forecast by rep or line", "Identify light months before they arrive"],
+    reports: ["Pipeline by stage", "Weighted forecast", "Cadence-based projection", "Conversion: created, won, lost, win rate, time in stage — by rep and by manufacturer"],
+    connects: ["Deals sync two-way with Zoho CRM Plus", "Cadence comes from the sales cube", "Feeds the Command Center 360 forecast"],
+    problems: "Replaces gut-feel forecasting with a number grounded in real reorder patterns and live deals.",
+    workflow: "Monthly forecasting and pipeline review — deciding where to push before quarter-end.",
+    intelligence: "Automatic stage-weighting and cadence-based revenue projection."
+  },
+  "Analytics Deep Dive": {
+    tagline: "The granular layer — cadence, orders, master accounts, and rep assignments behind every number.",
+    what: "The detailed analytical workbench beneath Command Center 360: order-by-order cadence, master-account rollups (HQ plus branches), product mix, and the live rep-assignment map that everything else is built on.",
+    features: ["Order cadence & frequency", "Master / branch account rollups", "Product and line mix", "Rep-assignment auditing", "Retired-line handling"],
+    data: "The full monthly_sales cube, the dealer master with alias/merge, and directory rep assignments.",
+    actions: ["Audit how sales roll up to companies", "Verify rep assignments", "Inspect cadence for any account"],
+    reports: ["Order cadence", "Master-account totals", "Product mix", "Assignment coverage"],
+    connects: ["The canonical layer shared with Command Center 360, Dealer 360, and Rep Performance"],
+    problems: "When a headline number looks off, this is where you trace it back to the underlying orders and assignments.",
+    workflow: "Data QA, assignment cleanup, and deep single-account analysis."
+  },
+  "Manufacturer Performance": {
+    tagline: "Revenue by manufacturer line — sliced by rep, state, and company.",
+    what: "A focused view of how each manufacturer line performs across your territory: total revenue, which reps and states drive it, and which dealers buy it — so you can manage each manufacturer relationship with real numbers.",
+    features: ["Revenue by line", "Rep / state / company breakdown per line", "Top dealers per line", "Trend over time"],
+    data: "monthly_sales by manufacturer, dealer geography, and rep assignments.",
+    actions: ["Pick a line and see its whole footprint", "Identify states to expand a line into", "Prep manufacturer business reviews"],
+    reports: ["Per-line revenue", "Geographic distribution", "Dealer roster per line"],
+    connects: ["Same cube as Command Center 360", "Supports Campaign Studio targeting and the Dealer Handout crossover pick"],
+    problems: "Manufacturer QBRs and line-expansion decisions, backed by data instead of anecdote."
+  },
+  "Commission Import": {
+    tagline: "Load manufacturer commission reports and reconcile them against sales.",
+    what: "Bring in the commission statements manufacturers send you, map them to dealers and reps, and reconcile paid commissions against the sales on record — so rep earnings and margins are accurate.",
+    features: ["Upload manufacturer commission files", "Column mapping", "Dealer/rep matching via the alias layer", "Reconciliation against monthly_sales", "Exception flagging"],
+    data: "Manufacturer commission files written to monthly_sales.commission, plus the dealer alias/merge layer and rep assignments.",
+    actions: ["Import files", "Resolve unmatched rows", "Reconcile against sales", "Feed rep commission views"],
+    reports: ["Commissions by rep / line / dealer", "Reconciliation exceptions"],
+    connects: ["Powers My Commissions in the Sales Rep Portal", "Feeds Rep Performance earnings and Command Center commission metrics"],
+    problems: "Accurate rep pay and margin visibility without hand-keying statements.",
+    intelligence: "Alias-based auto-matching of messy manufacturer names to your canonical dealers."
+  },
+  "Sales Report Import": {
+    tagline: "Load manufacturer order/sales reports — products, quantities, branches — auto-dated into monthly sales.",
+    what: "The intake for sales data: upload the order/sales reports manufacturers provide and the importer parses products, quantities, amounts, and branch/customer names, matches them to your dealers, and writes them into the monthly sales cube that powers the entire platform.",
+    features: ["Multi-format upload", "Product & quantity parsing", "Branch/customer matching via the alias layer", "Automatic period-dating", "Duplicate protection"],
+    data: "Writes monthly_sales; uses the dealer master plus alias/merge.",
+    actions: ["Import files", "Review matches", "Correct unmatched customers", "Commit to the sales cube"],
+    reports: ["Import summaries", "Unmatched-customer worklist"],
+    connects: ["The source that feeds Command Center 360, Dealer Health, Opportunities, the Dealer Handout — everything sales"],
+    problems: "Turns raw manufacturer spreadsheets into clean, attributed sales the whole platform can trust.",
+    intelligence: "Automatic period-dating and fuzzy customer matching to canonical dealers."
+  },
+  "Dealer Intelligence Import": {
+    tagline: "A manufacturer's dealer report, read from the original file, matched to HCPS dealers and kept as the manufacturer's own statements.",
+    what: "MI-1c. Takes an accepted dealer-intelligence report from Manufacturer Report History (first: Strongback's monthly PDF), reads the stored original on the server after checking its SHA-256, and shows a preview of every dealer it prints: Strongback's tier, trend, amounts, last order, ErgoSteel and chair-on-the-floor wording exactly as printed, the contacts and notes on each dealer page, a match proposal with its evidence, and the differences from HCPS records. Nothing is written until an administrator imports it; dealers that are not an obvious single match go to a review queue where a person decides, with a reason. Strongback's figures are never added to HCPS sales or commissions, and an import never creates, merges or re-assigns a dealer.",
+    features: ["Server-side reading of the stored original (SHA-256 checked)", "Every figure kept as printed, with its page position", "Match proposals with evidence: sales history, aliases, names, cities", "Review queue: one decision at a time, reason required, conflict-safe", "Held names stay held (Wyatt's Pharmacy)", "Read-only comparison with HCPS sales and records", "Append-only audit trail"],
+    data: "mfr_intel_reports, mfr_dealer_snapshots, mfr_dealer_observations, mfr_intel_events — written only by hcps_mfr_intel_import / hcps_mfr_intel_match; source files from mfr_sources.",
+    actions: ["Preview a report", "Import it after review", "Decide a match", "Search HCPS dealers"],
+    reports: ["Per-dealer extraction and evidence", "Strongback vs HCPS reconciliation", "Audit trail"],
+    connects: ["Reads accepted reports from Manufacturer Report History", "Matches against Dealer Manager records and Sales Report Import history — read-only", "Dealer 360 display and suggestions are later, separately approved units"],
+    problems: "Turns a manufacturer's monthly PDF into dealer-level intelligence without letting the manufacturer's numbers or contacts leak into HCPS's own records.",
+  },
+  "Manufacturer Intelligence": {
+    tagline: "One page for every manufacturer report: what arrived, what is missing, what is in HCPS and what waits for a person.",
+    what: "The management view of the manufacturer report automation. For each manufacturer and month it shows whether the report arrived and was registered, whether its commission data is in HCPS, and whether it is missing — a report is missing only when its profile expects it monthly and its due date has passed. The monthly reconciliation covers last month and is ready on the 15th; reports that arrive later are marked late and keep processing. Read-only: nothing is imported or published from this page.",
+    features: ["Monthly reconciliation (ready on the 15th)", "Report arrivals by month and report type", "Missing only when a profile expects it", "Late reports flagged, still processed", "Waiting-for-a-person counts with links", "Ship-To review counts"],
+    data: "Reads mfr_report_profiles, mfr_sources (report records), mfr_report_items (captured email), monthly_sales commission coverage and the Ship-To review queue.",
+    actions: ["See what is missing this month", "Open the item that needs a person"],
+    reports: ["Monthly reconciliation", "Arrivals by month", "Pending approvals"],
+    connects: ["Manufacturer Report History (Inbox, Needs attention, register)", "Ship-To Review", "Commission Report Import coverage"],
+    problems: "Replaces chasing manufacturer reports by memory: missing, late and stuck reports show up on their own.",
+  },
+  "Commission Reconciliation": {
+    tagline: "What Strongback owes, what it says is due, and what it has actually paid — order by order, never added together.",
+    what: "Contract commission tracking for manufacturers whose commission is a fixed contract rate (today: Strongback, 9% of eligible wholesale sales). For every order it shows the sale date, dealer, eligible sale, Earned — Contract Rate 9%, the statement (SR032) line that reports it, the amount reported due, the amount confirmed paid, what is confirmed unpaid (only where a recorded remittance shows a shortfall) and what is payment status unknown (no record either way — never shown as debt). Every payment names its remittance reference, so one remittance is counted once wherever it is recorded. Earned comes from the sales on file and the registered order exports (an order counts only once its status is a completed sale; the sale date is the created date, never a payment-due date). Reported due comes from the registered SR032 PDFs, read from the stored original. Paid needs payment evidence — a statement saying \"commission due\" is not a payment. A statement line with no matching sale goes to review and never becomes a sale. Read-only except the President's payment evidence and review decisions; nothing here posts to sales.",
+    features: ["Earned · Reported due · Confirmed paid · Confirmed unpaid · Payment status unknown", "Drilldown by order, dealer, sale month, reporting month, manufacturer", "Unmatched statement lines → review", "Payment not confirmed / potentially overdue labels", "Statement totals checked against their lines", "Posting preview (nothing posted)"],
+    data: "Reads monthly_sales (sales-report lane), registered order exports and SR032 statements (mfr_sources, stored originals SHA-256 checked) and the President's evidence (mfr_commission_events, once installed).",
+    actions: ["See what is earned but not reported", "Review unmatched statement lines", "Record a payment with its remittance reference and evidence (President)"],
+    reports: ["Commission by order", "By dealer / month / reporting month", "Statements and payment state", "Posting preview"],
+    connects: ["Manufacturer Report History (the registered files)", "Ship-To Review → Import check (posting an export, with approval)", "Commission Report Import coverage (Earned — Contract Rate months)"],
+    problems: "Shows commission earned but never reported, reported but never paid, and statement lines that match no sale — without ever counting the same commission twice.",
+  },
+  "Ship-To Review": {
+    tagline: "Every order in a manufacturer's order report goes to the right HCPS location — or waits for a person. Never the headquarters by default.",
+    what: "Phase C of the manufacturer report automation. Reads each registered order export from its stored original (SHA-256 checked), groups the lines into orders and decides each order's HCPS branch with the strict rules: a verified mapping, a saved ZIP assignment, a single-location dealer, or a ship-to ZIP / street that matches exactly one branch. Anything weaker — a shared ZIP, a new location, a billing address only, no ship-to, lines that disagree, no dealer match — goes to Needs Ship-To Review. A person picks the location (and fills in missing ship-to details); Save & Continue stores a versioned correction beside the manufacturer's file, can remember the ship-to for future orders, revalidates the report and moves to the next order. A report is Ready only when every order has a branch; until then it is held as a whole. Nothing here imports sales or commissions.",
+    features: ["Order-level queue (not invoice lines)", "Strict branch rules — no headquarters fallback", "Correction screen: existing branch + missing ship-to details", "Versioned, append-only corrections; the file never changes", "Verified mappings: manufacturer + account + ship-to (never account alone)", "Save & Continue revalidates the whole report", "Corrected report download (original columns + HCPS columns)", "Read-only shadow check against booked history"],
+    data: "mfr_shipto_corrections, mfr_shipto_mappings, mfr_shipto_events — written only by hcps_mfr_shipto_correct / hcps_mfr_shipto_retire; report files from mfr_sources; reads dealers, account numbers, aliases and saved ZIP assignments.",
+    actions: ["Review an order", "Choose the HCPS location", "Add missing ship-to details", "Remember a ship-to", "Retire a mapping", "Download the corrected report", "Run the shadow check"],
+    reports: ["Reports held / ready", "Orders needing review by reason", "Verified mappings", "Shadow: same / held / different vs history"],
+    connects: ["Reads registered order exports from Manufacturer Report History", "Uses the same dealer matching as Sales Report Import", "Honours ZIP assignments saved in Commission Report Import", "Automatic import (later, separately approved) will only take Ready reports"],
+    problems: "Stops multi-branch dealers' orders from landing on the headquarters (or the first branch) when the report doesn't say where they shipped.",
+  },
+  "Manufacturer Report History": {
+    tagline: "Every report file a manufacturer sends, kept as the original — with when HCPS received it, the period it covers and every decision.",
+    what: "The register of manufacturer REPORT files (MI-1b): order/sales exports, commission statements and dealer-intelligence reports such as Strongback's monthly PDF. Each file is stored privately exactly as received, identified by its SHA-256 so the same file is never registered twice, and carries its received date, the manufacturer's prepared date (only when the report states one), the months it covers, and an audit trail of who accepted, rejected or corrected it. A corrected report supersedes the earlier one without deleting it. Registering a file imports nothing; publishing a dealer report's intelligence to Dealer 360 is a separate step that arrives with MI-1c.",
+    features: ["Original file kept in private storage", "Same file never registered twice (SHA-256)", "Received date vs manufacturer prepared date — never invented", "Report period", "Accept / reject with reasons", "Corrections supersede, never overwrite", "Publication kept separate from acceptance", "Append-only audit trail", "Inbox: report email captured automatically from Outlook (behind a switch)", "Needs attention: unknown senders, changed formats, corrections, unreadable files — with Try again / Dismiss / Not a report"],
+    data: "mfr_sources (the Manufacturer Center register, report kinds) and mfr_source_events; files in the private mfr-sources bucket.",
+    actions: ["Register a report file", "Accept or reject it", "Register a correction", "Download the original", "Review captured report email", "Decide on a Needs attention item"],
+    reports: ["Report history by manufacturer and kind", "Audit trail per file"],
+    connects: ["Shares the Manufacturer Center source register", "Sales Report Import and Commission Report Import load the transactions; MI-1c will stage dealer intelligence from accepted dealer reports"],
+    problems: "Proves which manufacturer file every number came from, and keeps corrections from silently replacing history.",
+    intelligence: "Server-side hashing and file-type checks; database-enforced rules for dates, periods, corrections and publication."
+  },
+  "Email Sync": {
+    tagline: "Outlook email matched to dealers in Dealer 360 — plus live SPF/DKIM/DMARC deliverability monitoring.",
+    what: "Pulls staff Outlook mail through Microsoft Graph and automatically attaches each message to the right dealer — building a shared communication history on every account, flagging senders it couldn't place for a one-click assign. It also carries a Deliverability panel that pulls DMARC monitoring data (via Postmark) so you can see, from the mailbox providers' own reports, how much of your outbound mail is passing SPF, DKIM, and DMARC — and which sources are sending as your domain.",
+    features: ["Microsoft Graph inbox + sent ingestion", "Auto-match by contact email, domain, and name", "Unmatched-sender queue with one-click assign", "Noise controls: Not important / Ignore / Ignore whole domain", "Automatic no-reply / notification hiding", "Domain learning that grows over time", "Deliverability: SPF/DKIM/DMARC pass rates & sending-source breakdown from DMARC monitoring"],
+    data: "email_messages, dealer_contacts, dealer_domains, the dealer alias layer, and Postmark DMARC reports.",
+    actions: ["Run or schedule the sync", "Assign an unmatched sender to a dealer (and back-fill their past mail)", "Ignore noise reversibly", "Watch email deliverability (SPF/DKIM/DMARC) and catch spoofing or misconfiguration"],
+    reports: ["Unmatched senders", "Ignored / hidden lists", "Per-dealer email timeline", "Deliverability — SPF/DKIM/DMARC pass rates and every source sending as your domain"],
+    connects: ["Writes the email history shown in Dealer 360 & CRM", "Grows dealer_contacts used by matching and Campaign Studio", "Protects the campaigns sent from Campaign Studio by keeping authentication healthy"],
+    problems: "Every rep sees the full email thread with a dealer, no conversation stays siloed — and you finally have eyes on whether your email is authenticating and landing instead of getting marked as spam.",
+    intelligence: "Automatic dealer matching, domain learning, no-reply/notification auto-hiding, and independent DMARC-based deliverability monitoring."
+  },
+  "Activation & Go-Live": {
+    tagline: "The master switch — Development / Sandbox / Live — and your official go-live date.",
+    what: "Controls the platform's operating mode and go-live date, so you can build and test in Sandbox and flip to Live when you're ready — no code change required.",
+    features: ["Dev / Sandbox / Live mode switch", "Official go-live date", "Environment-aware behavior across every function"],
+    data: "Platform / app settings.",
+    actions: ["Switch environment", "Set the go-live date"],
+    connects: ["Every function reads the environment flag — e.g. email and tasks are tagged by environment"],
+    problems: "Safe rollout — test without affecting live dealers, then go live in one click."
+  },
+
+  /* ---------------- SALES & MARKETING ---------------- */
+  "Today's Opportunities": {
+    tagline: "The single next-best action for every dealer, ranked.",
+    what: "A daily, ranked list of the highest-value move for each dealer — hot buying intent, overdue reorders, cross-sell openings, and dormant win-backs — so reps always know exactly what to do next.",
+    features: ["Ranked next-best-action per dealer", "Buying-intent signals", "Overdue-reorder detection from each dealer's own cadence", "Cross-sell suggestions", "Dormant-account flags"],
+    data: "Sales cadence, engagement/intent signals, open opportunities, and line eligibility (what each dealer is approved to carry).",
+    actions: ["Work the ranked list", "Open any dealer", "Log the outcome"],
+    reports: ["Opportunity mix by type", "Per-rep worklists"],
+    connects: ["Draws on Dealer Health, the sales cube, and eligibility", "Feeds My Tasks", "Aligns with the Dealer Handout crossover pick"],
+    problems: "Reps stop guessing who to work and focus on the single highest-value action.",
+    intelligence: "Automatic ranking and signal detection from the platform's engine."
+  },
+  "Who to Call": {
+    tagline: "The daily call worklist — intent, overdue reorders, and dormant accounts.",
+    what: "A focused calling list built from real signals: dealers showing buying intent, dealers overdue for a reorder based on their own rhythm, and dormant accounts that are slipping away.",
+    features: ["Prioritized call list", "A plain reason for every dealer on it", "Cadence-based overdue detection", "Dormant win-back surfacing"],
+    data: "Sales cadence, engagement, and intent signals.",
+    actions: ["Call, log the outcome, and spin up follow-up tasks"],
+    connects: ["Shares signals with Today's Opportunities and Dealer Health", "Logs activity to Dealer 360", "Creates My Tasks"],
+    problems: "Fills a rep's day with the calls that actually move revenue."
+  },
+  "Dealer Health": {
+    tagline: "Every dealer scored on recency, rhythm, and trend.",
+    what: "A health score for each dealer — how recently they bought, how steady their rhythm is, and whether they're trending up or down — so at-risk accounts surface before they lapse.",
+    features: ["Composite health score", "Recency / rhythm / trend components", "At-risk flags", "Portfolio-wide rollup"],
+    data: "monthly_sales cadence and engagement.",
+    actions: ["Sort by risk", "Open at-risk dealers", "Trigger outreach"],
+    reports: ["Health distribution", "At-risk list", "Trend movers"],
+    connects: ["Feeds Who to Call and Today's Opportunities", "Rep-scoped to each rep's book"],
+    problems: "Catch churn early instead of noticing after the revenue is already gone.",
+    intelligence: "Automatic scoring and at-risk detection."
+  },
+  "Dealer Manager": {
+    tagline: "The master dealer database — records, locations, hierarchy, and portal access.",
+    what: "The system of record for dealers: business details, multiple locations, HQ/branch hierarchy, merges and aliases, contract pricing, portal accounts, and email verification — the spine every other tool reads from.",
+    features: ["Add and edit dealers", "Multi-location and parent/branch hierarchy", "Merge duplicates and manage aliases", "Contract pricing", "Portal login approvals", "Email verification and pending-verification account creation", "Relevance-ranked instant search from the first character"],
+    data: "dealers, dealer_addresses, dealer_aliases, dealer_contacts, and dealer_manufacturers.",
+    actions: ["Add / edit dealers", "Merge duplicates", "Approve portal logins", "Set contract pricing", "Verify emails", "Create accounts with an unverified email to confirm later"],
+    connects: ["The canonical source for Command Center, Dealer 360, Analytics, Zoho sync, and ordering pricing/logins"],
+    problems: "One clean, deduplicated dealer list that keeps every other tool accurate.",
+    intelligence: "Alias normalization plus relevance-ranked instant search."
+  },
+  "Dealer 360 & CRM": {
+    tagline: "The full account command center — activity, contacts, tasks, and next best action.",
+    what: "Everything about one dealer on a single screen: sales history, the full email timeline, contacts, notes, tasks, buying intent, opportunities, manufacturer accounts, and the recommended next action — the rep's home base for any account.",
+    features: ["Relationship Timeline — every visit, call, note, email, task, deal, order, appointment and portal visit in one history, each shown once, newest first, with filters and Load older", "Email threads pulled in by Email Sync", "Contacts", "Notes and tasks", "Buying intent and opportunities", "Manufacturer accounts and pricing", "Next-best-action", "Visit logging"],
+    data: "The sales cube, email_messages, dealer_contacts, tasks, opportunities, and engagement.",
+    actions: ["Log calls and visits", "Add notes and tasks", "Create opportunities", "Send email follow-ups", "Review full history"],
+    reports: ["Per-dealer activity", "Buying history", "Opportunity list"],
+    connects: ["Pulls from Email Sync, the sales cube, Dealer Health, and My Tasks", "Pushes notes, tasks, and contacts to Zoho CRM Plus"],
+    problems: "No more hunting across inboxes and spreadsheets — the whole relationship lives in one place.",
+    intelligence: "Auto-surfaced buying intent, next-best-action, and automatically attached email. The timeline folds a visit's note and log entry into the visit itself, and rolls portal browsing up into one line a day with milestones (first sign-in, back after 30+ days, a cart over $500)."
+  },
+  "Territory Map": {
+    tagline: "Dealer map, drive routing, saved trips — and the printable Dealer Handout.",
+    what: "A geographic view of your territory with routing and trip planning, plus the visit-prep Dealer Handout and business-case packets that turn a drive into a productive sales day.",
+    features: ["Dealer map with status coloring", "Optimized drive routes", "Multi-day itineraries and saved trips", "Territory scorecard", "Dealer Handout: 60/120/180-day purchase-gap read, a rotating regional crossover pick, CardChamp, and the assigned-rep contact", "Business-case visit packets"],
+    data: "Geocoded dealer addresses, the sales cube, contacts, engagement, and regional sales trends.",
+    actions: ["Plan and optimize routes", "Save trips", "Print handouts and business-case packets", "Log visits"],
+    reports: ["Territory scorecard", "Per-visit business case"],
+    connects: ["Uses the sales cube and directory", "The handout's crossover pick comes from regional sales trends", "Visits log back to Dealer 360"],
+    problems: "Plan efficient trips and walk into every visit already prepared.",
+    intelligence: "Route optimization plus the handout's regional crossover recommendation, which rotates from visit to visit."
+  },
+  "Sales Reps & Staff": {
+    tagline: "Team accounts, roles, and territory ownership.",
+    what: "Manage staff logins and what each person can see: roles (president, relations, rep), the rep-name mapping to the directory, travel flags, and active status — the control layer behind portal scoping.",
+    features: ["Add and edit staff accounts", "Role assignment", "Rep-name mapping to the directory", "Can-travel flag", "Active / inactive status"],
+    data: "staff_users and dealer_directory.",
+    actions: ["Add staff", "Set roles", "Map a rep to their directory name", "Deactivate a departed rep"],
+    connects: ["Roles and rep-name drive data scoping across every endpoint — a rep sees their own book, relations sees all dealers, the president sees everything"],
+    problems: "The right people see the right data — reps their book, leadership the whole picture."
+  },
+  "My Tasks": {
+    tagline: "Your task queue — auto-built from dealer signals plus anything you add.",
+    what: "A follow-up engine: tasks the platform creates automatically from dealer signals (overdue reorders, visit follow-ups, expected orders) alongside anything you add manually — so nothing slips.",
+    features: ["Auto-generated and manual tasks", "Priorities and due dates", "Linked to the dealer they belong to", "Visit-driven follow-ups"],
+    data: "Tasks, engagement signals, and visit notes.",
+    actions: ["Complete, snooze, add, or reassign tasks"],
+    connects: ["Created from Dealer 360 visits, Today's Opportunities, and Who to Call", "The masthead badge shows your open count on every page"],
+    problems: "Turns intentions into tracked follow-through.",
+    intelligence: "Automatic task generation from dealer signals and visit notes."
+  },
+  "My Sales Workspace": {
+    tagline: "Your own dealer book, worked the way a sales rep works it — without leaving the President account or using View-as.",
+    what: "My Sales Workspace switches the working sales pages to the dealers assigned to you (dealers.rep_email = your email, resolved exactly as it is for every rep). Your Command Center, routes, Dealer 360 list, My Tasks and Pipeline then show only your own accounts and your own work, and everything stays fully operational: start and end visits, record and transcribe, approve the AI visit summary and attendees, create tasks and deals, draft the follow-up email. Your President permissions are unchanged — the workspace narrows what the lists show, never what you may do. A green banner marks the mode on every page, with Back to Admin Dashboard to leave it.",
+    features: ["Your own day: priorities, today's route, meeting prep and visit results", "Field app: Start/End Visit, transcription, AI Visit Summary, attendee approval, follow-up email", "My Tasks and Pipeline limited to your own tasks and deals", "Dealer 360 picker and Route Planner limited to your own dealers", "Back to Admin Dashboard on every workspace page"],
+    data: "The same records as the rep tools — dealers (rep_email), routes, visit reports, tasks and opportunities — scoped by the shared ownership resolver.",
+    actions: ["Work your own accounts end to end", "Return to the Admin Dashboard"],
+    connects: ["Opened from the masthead button or the Sales & Marketing hub", "Your normal sign-in still lands on the Admin Dashboard", "Rep Command Center remains the management view of any rep's day, read-only"],
+    problems: "The President is also a working rep; this gives that job its own focused workspace without giving up the admin tools.",
+    intelligence: "Same Visit Intelligence as the reps — AI drafts, you approve before anything is saved."
+  },
+  "Rep Command Center": {
+    tagline: "A sales rep's whole day on one screen — what to do, what happened at each visit, and what to follow up on now.",
+    what: "The Command Center answers a rep's three questions from data the platform already keeps: what do I need to do today, what happened during my visits, and what do I need to follow up on. It reads the rep's own routes, tasks, opportunities and approved visit summaries — filtered on the server to that rep — and orders the panels by the time of day: the plan in the morning, the visits while they're in the field, the results and follow-ups at the end of the day. The president and Customer Relations can pick any rep to view their day, read-only.",
+    features: ["Morning Brief — what to focus on today and why, written once a day from your own work and your book's relationship signals (Customer Relations: every dealer's), stored, and flagged when things change", "End-of-Day Recap — today's numbers (visits, people met, commitments, follow-up tasks, tasks completed, deals and estimated pipeline added, follow-up emails, what is still open) with a short written summary and tomorrow's priorities; you write your own with one tap", "Daily header with open tasks, overdue items, pending follow-ups and weighted pipeline", "Today's priorities (overdue, due today, high priority, booked meetings, deals past their date)", "Today's route with each stop's visit status and follow-up status", "Meeting prep per stop — last visit, last purchase, 60/120/180-day activity, recent products, open tasks and deals, concerns, notes, trend, crossover line, contacts", "Visit progress and today's visit activity (attendees, summary, tasks, deals, contacts added, follow-up email)", "Follow-up queue built from visit commitments and the tasks they created", "End-of-day results — Today's Follow-Up Progress (e.g. 8 of 12 actions completed)", "Tomorrow preview"],
+    data: "Routes, dealer_visit_reports (approved summaries, participants, follow-up status), dealer_tasks, opportunities, sales history, notes and contacts — read live, nothing copied.",
+    actions: ["Open today's route in the field app", "Complete a follow-up task", "Jump to Dealer 360 for any dealer", "President / Relations: choose a rep to view"],
+    connects: ["Visits come from the field app's Start → End → Review → Approve flow", "Tasks are the same records as My Tasks; deals are the same as Pipeline", "Each visit also shows on the dealer's Dealer 360 Visits & Meetings card"],
+    problems: "A rep no longer has to open five pages to know where to go, what to say, and what they promised.",
+    intelligence: "The page is drawn from live data first; only then is today's Morning Brief written (once a day, stored, refreshable every 10 minutes). Every item in it points at a real task, deal, follow-up or dealer signal — if the AI can't manage that, the rule-based priorities stand in. The End-of-Day Recap's numbers are counted from your records; the AI only writes the sentences around them, and a summary whose numbers don't match the counts is thrown away. Visit summaries were drafted by AI and approved by the rep before anything was saved."
+  },
+  "Pipeline": {
+    tagline: "Your open deals and weighted pipeline.",
+    what: "The working view of open opportunities — stages, values, and next steps — kept in sync with Zoho so the pipeline reads the same everywhere.",
+    features: ["Open deals by stage", "Weighted pipeline value", "Owner and next-step tracking", "Two-way Zoho sync"],
+    data: "Opportunities/deals shared with Zoho CRM Plus.",
+    actions: ["Advance deals", "Update values and next steps", "Filter by rep or stage"],
+    connects: ["Syncs two-way with Zoho CRM Plus", "Feeds the six-month forecast in Pipeline & Forecast and Command Center 360"],
+    problems: "One trustworthy pipeline instead of competing spreadsheets."
+  },
+  "Zoho Sync": {
+    tagline: "Two-way CRM sync — accounts, contacts, pipeline, and notes.",
+    what: "Keeps Supabase (your system of record) and Zoho CRM Plus in step: pushes dealers to Accounts, contacts to Contacts, opportunities to Deals, and notes across — and pulls deal-stage and account changes back — with a dashboard showing heartbeat, webhooks, and recent activity.",
+    features: ["Incremental content-hash push (only changed records move)", "Inbound webhooks for Accounts, Deals, and Contacts", "Deal-stage pull-back", "Sync heartbeat and health tiles", "Invalid-email surfacing with a Fix link"],
+    data: "dealers, dealer_contacts, and opportunities ↔ the matching Zoho modules.",
+    actions: ["Monitor sync health", "Fix flagged email addresses", "Trigger and verify webhooks"],
+    reports: ["Sync state", "Webhook activity", "Recent events", "Emails to fix"],
+    connects: ["Bridges the whole platform to Zoho CRM Plus — the marketing and automation engine that drives Campaign Studio"],
+    problems: "Your operational data and your CRM/marketing engine stay consistent automatically.",
+    intelligence: "Content-hash incremental sync — only records that actually changed are pushed."
+  },
+  "CardChamp": {
+    tagline: "Referral activity, conversions, and commission for the CardChamp partnership.",
+    what: "Tracks the CardChamp payment-processing partnership — which dealers you've referred, how many convert, and the commission it earns — and is the value-added service now featured on the Dealer Handout.",
+    features: ["Referral tracking", "Conversion status", "Commission reporting"],
+    data: "The partner-services / CardChamp dataset.",
+    actions: ["Log referrals", "Track status", "Report commission earned"],
+    connects: ["Promoted on the Dealer Handout as a dealer value-add", "A dealer-services revenue line alongside product sales"],
+    problems: "Turns payment processing into a dealer value-add and a new revenue stream."
+  },
+  "Target Audiences": {
+    tagline: "Build campaign lists from dealers and contacts — filter, pick, save.",
+    what: "A segment builder: filter dealers and contacts by geography, lines carried, health, and activity to build static or auto-refreshing audiences for campaigns.",
+    features: ["Multi-criteria filtering", "Static or dynamic (auto-refreshing) lists", "Contact-level targeting", "Saved, reusable audiences"],
+    data: "Dealers, contacts, and sales/health signals.",
+    actions: ["Build, preview, save, and reuse audiences"],
+    connects: ["Feeds Campaign Studio", "Syncs to Zoho Campaigns"],
+    problems: "Precise targeting instead of blasting the whole list."
+  },
+  "Campaign Studio": {
+    tagline: "Brief in, audience + copy + sequence out — drafted into Zoho Campaigns.",
+    what: "An assisted campaign builder: describe the goal and it generates a target audience, the copy, and a send sequence, then drafts the whole thing into Zoho Campaigns for your review before it sends.",
+    features: ["Brief-to-campaign generation", "Audience, copy, and sequence together", "Drafts into Zoho Campaigns", "Performance readback"],
+    data: "Target Audiences, contacts, and dealer data; Zoho Campaigns.",
+    actions: ["Brief a campaign", "Edit the generated content", "Push to Zoho", "Track results"],
+    reports: ["Campaign performance via Zoho and Command Center 360"],
+    connects: ["Uses Target Audiences", "Drafts into Zoho CRM Plus", "Results surface in analytics"],
+    problems: "Go from an idea to a ready-to-send, well-targeted campaign in minutes.",
+    intelligence: "AI-generated audience, copy, and send sequence from a short brief."
+  },
+  "Academy Command Center": {
+    tagline: "Run the HCPS Training & Certification Academy from Connect 360.",
+    what: "The administration desk for the Academy: build courses for any manufacturer, manage draft and published course versions with their modules and lessons, keep product facts with their sources, follow learners and dealerships, and review manufacturer credentials. HCPS-issued certifications and manufacturer-issued credentials (such as Golden's) are always kept apart. HCPS administrators only; publishing a version is reserved for the President.",
+    features: ["Overview of courses, learners, dealerships and credentials", "Course and version management — drafts, review, President-only publishing", "Modules and lessons on draft versions (published versions never change)", "Product facts with source, date and full history", "Learner and dealership summaries; Training Manager role", "HCPS-issued vs manufacturer-issued credentials, side by side", "Complete activity history"],
+    data: "The academy_* tables and product_facts (Supabase); sensitive changes run as audited database operations.",
+    actions: ["Create a course or a new draft version", "Add modules and lessons", "Submit for review / publish (President)", "Record, replace or withdraw a product fact", "Grant or remove a Training Manager", "Verify or reject a manufacturer credential"],
+    reports: ["Academy overview", "Dealership training summary", "Activity history"],
+    connects: ["Learners use the Academy on the HCPS website", "Product facts are shared HCPS product information", "Switched on and off by the Academy switches (all OFF until approved)"],
+    problems: "Give dealers consistent, accurate product training and credentials, with every change recorded and nothing published without the President.",
+  },
+  "AI Style Guide": {
+    tagline: "One set of writing rules every AI email generator follows.",
+    what: "The centralized voice and phrasing rules for all AI-written dealer emails — the Dealer 360 AI composer and Automated Campaigns both read it. Edit the text here and it applies everywhere immediately, with no deploy.",
+    features: ["Single source of truth for AI email tone", "Don't-say / say-instead rules", "Live edit — no redeploy", "Reset to the built-in default anytime"],
+    data: "app_settings.ai_style_guide (falls back to the built-in default).",
+    actions: ["Edit the guide", "Save (goes live instantly)", "Reset to default"],
+    reports: [],
+    connects: ["Read by the Dealer 360 AI email composer and Campaign Studio", "Backs the automatic banned-phrase safety check"],
+    problems: "Keep every automated dealer email sounding like a knowledgeable rep bringing a real opportunity — never desperate or generic — and change the rules in one place.",
+    intelligence: "Injected into every AI email prompt; drafts that slip in a banned phrase are auto-regenerated."
+  },
+  "Product Interest": {
+    tagline: "Turn portal browsing into targeted campaigns — dealers who show intent but haven't ordered.",
+    what: "Reads the behavioral signals flowing in from the ordering and Golden portals and answers the campaign question directly: for any product or manufacturer line, which dealers viewed, searched, or carted it recently but haven't actually ordered it? Select them and build a ready-to-use campaign audience in one click.",
+    features: ["Pick a specific product (SKU) or a whole manufacturer line", "Window control (30 / 60 / 90 days)", "Signal toggles — views & clicks, cart activity, searches", "Automatically excludes dealers who already ordered it", "Per-dealer intent score, signal breakdown & last-touch", "One-click audience → Campaign Studio / Target Audiences"],
+    data: "intent_events (portal behavior from all sources incl. the Golden federation), monthly_sales (to exclude buyers), and the dealer master + rep directory.",
+    actions: ["Choose a product or line and window", "Review the ranked dealer list", "Select dealers and build a named audience", "Hand off to Campaign Studio to send"],
+    reports: ["Interested-but-not-buying list per product or line", "Intent breakdown (views / carts / searches) per dealer"],
+    connects: ["Consumes the same intent stream that powers Dealer 360 and Command Center", "Writes a static audience into Target Audiences", "Feeds Campaign Studio for a Golden-branded send"],
+    problems: "Converts real buying signals into precise re-marketing — pitch the exact line a dealer has been eyeing, not a generic blast.",
+    workflow: "Weekly: pick a line you want to grow, pull the interested non-buyers, and launch a targeted campaign.",
+    intelligence: "Behavioral intent scoring with automatic buyer exclusion."
+  },
+  "Golden Activity": {
+    tagline: "A live window into the Golden ordering platform — every dealer touch, in one dashboard.",
+    what: "The portfolio view of what's happening inside the HCPS-owned Golden ordering platform right now: who logged in, which products are being viewed, what's sitting in carts, what's been abandoned, and what's being ordered — fed in real time through the federation connector and attributed to the right HCPS dealer.",
+    features: ["30-day KPIs — logins, views, searches, cart adds, abandoned carts, orders, order value", "Top products viewed across dealers", "Recent orders with value and line count", "Recent logins and abandoned carts", "Unmatched-event visibility (events that didn't map to a dealer)"],
+    data: "The federation tables (federation_events, federation_orders) and intent_events tagged source='golden'.",
+    actions: ["Monitor live Golden dealer behavior", "Spot the products drawing the most interest", "Jump into a dealer or into the audience builder"],
+    reports: ["Activity KPIs", "Top products", "Recent orders / logins / abandoned carts"],
+    connects: ["The same signals that update Dealer 360, engagement, and Who-to-Call", "Links straight into the Product-Interest audience builder"],
+    problems: "A single trustworthy read on Golden portal engagement without logging into Golden — and it turns that read into sales action.",
+    workflow: "A daily glance to see momentum, catch abandoned carts worth a call, and find products to campaign on.",
+    intelligence: "Real-time federated ingestion with per-dealer identity resolution."
+  },
+
+  /* ---------------- ONLINE ORDERING ---------------- */
+  "Catalog": {
+    tagline: "Products, SKUs, categories, and descriptions for every manufacturer line.",
+    what: "The product catalog behind the dealer ordering portal — manage items, SKUs, categories, pricing references, and descriptions per manufacturer line so dealers browse an accurate, complete catalog.",
+    features: ["Product and SKU management", "Categories and per-line organization", "Descriptions and specs", "MSRP / pricing references"],
+    data: "Catalog data served to the dealer ordering platform.",
+    actions: ["Add and edit products", "Organize categories", "Maintain each manufacturer's catalog"],
+    connects: ["Feeds the dealer ordering portal", "MSRP references feed the retail-value figure on the Dealer Handout"],
+    problems: "Dealers order from a correct, current catalog — fewer errors, faster orders."
+  },
+  "Product Images": {
+    tagline: "Upload and manage product photography.",
+    what: "The image library for the catalog — upload, replace, and organize product photos so the ordering portal looks professional and products are easy to recognize.",
+    features: ["Image upload and replace", "Per-product association", "Library management"],
+    connects: ["Images render across the ordering portal and catalog"],
+    problems: "A polished, visual catalog that helps dealers buy with confidence."
+  },
+  "Product Content Enrichment & Review": {
+    tagline: "Merge manufacturer website + PDF catalog with your HCPS record, pick the best version, and approve before dealers see it.",
+    what: "The enrichment desk for product pages. For any existing HCPS product it runs two importers against the same record — the manufacturer's website and their PDF/catalog — then merges and compares all three sources so nothing is missed. Every piece of information is labeled with where it came from (Current HCPS Data, Manufacturer Website, or Manufacturer PDF), and you pick the best version field by field before it publishes. New, conflicting, missing, and duplicate content are all flagged up front.",
+    features: ["Three-source merge & compare — HCPS · Website · PDF", "Provenance label on every field", "Per-field “best version” selection", "Per-image approve + set primary + duplicate detection", "Sizing / specification table review", "New / conflict / missing / duplicate flags", "Approved-only gate — dealers only see published content"],
+    data: "Reads the existing catalog record, scraped website content, and extracted PDF content; writes the reviewed result to the product_content layer (approved rows only reach the portal).",
+    actions: ["Run website + PDF import on a product", "Compare sources and choose the best version of each field", "Approve individual images and pick the primary", "Review and accept sizing/spec tables", "Approve & publish to Partner 360"],
+    connects: ["Publishes to the Partner 360 Product Detail page", "Enriches the same catalog the ordering portal serves", "MSRP follows the fixed per-manufacturer rule (Ovation = single-unit × 2)"],
+    problems: "Turns thin catalog rows into complete, trustworthy product pages — with a human approval step so only vetted content, images, and specs ever reach dealers.",
+    workflow: "Existing HCPS product → website import → PDF/catalog import → merge & compare → review flags → approve → publish.",
+    intelligence: "Cross-source field reconciliation with duplicate-image detection (filename, dimensions & visual hash)."
+  },
+  "Featured Products": {
+    tagline: "Curate the promoted items dealers see first.",
+    what: "Choose which products get top billing on the ordering portal — promotions, new arrivals, and priority lines — to steer dealer attention and drive the sales you want.",
+    features: ["Featured-item curation", "Priority ordering", "Promotion highlighting"],
+    connects: ["Drives merchandising on the ordering portal home"],
+    problems: "Merchandise the portal to push the lines you're trying to grow."
+  },
+  "Portal Home Content": {
+    tagline: "Hero banner, promos, and the “what's new” tiles dealers see on login.",
+    what: "Edit the dealer ordering portal's landing content — hero banner, promotions, and news tiles — so dealers see current messaging and offers the moment they log in.",
+    features: ["Hero / banner editor", "Promotion blocks", "What's-new tiles"],
+    connects: ["The ordering portal's front door", "Complements the “what's new” section on the Dealer Handout"],
+    problems: "Keep the dealer portal fresh and on-message without a developer."
+  },
+  "Contract Pricing": {
+    tagline: "Per-dealer negotiated pricing by product.",
+    what: "Set and manage the negotiated pricing each dealer sees in the ordering portal — contract prices by product and line so every dealer orders at their agreed terms.",
+    features: ["Per-dealer price overrides", "By product and line", "Live in the dealer's portal"],
+    data: "Pricing held on the dealer record.",
+    actions: ["Set and adjust contract prices per dealer"],
+    connects: ["The ordering portal shows each dealer their own pricing", "Part of the Dealer Manager record"],
+    problems: "Accurate, dealer-specific pricing without manual quotes."
+  },
+  "Dealer Portal Accounts": {
+    tagline: "Registrations, approvals, and ordering access.",
+    what: "Approve and manage the dealer logins for the ordering portal — new registrations wait here for your approval, and you control who has ordering access.",
+    features: ["Pending-registration approvals", "Access control", "Account status"],
+    actions: ["Approve or deny registrations", "Manage who can order"],
+    connects: ["Gates the ordering portal", "Tied to the dealer record in Dealer Manager"],
+    problems: "Control who can order, and onboard new dealers cleanly."
+  },
+  "Order Review & Fulfillment": {
+    tagline: "See, confirm, and track submitted dealer orders.",
+    what: "The order desk: review the orders dealers submit through the portal, confirm them, and track fulfillment status from submission to delivery.",
+    features: ["Submitted-order queue", "Confirm and track", "Status and history"],
+    data: "Orders placed through the ordering portal.",
+    actions: ["Review, confirm, and update order status"],
+    connects: ["Closes the loop from the ordering portal", "Order data feeds sales history"],
+    problems: "A clear handle on incoming orders and exactly where each one stands."
+  },
+
+  /* ---------------- WEBSITE ---------------- */
+  "Website Content": {
+    tagline: "Manufacturers, documents, pages, team, and settings for the public site.",
+    what: "The content manager for homecareproviderservices — manage manufacturer profiles, documents, pages, team bios, and site settings that render on the public marketing website.",
+    features: ["Manufacturer profiles", "Document library", "Page content", "Team bios", "Site settings"],
+    connects: ["Publishes the public site", "Manufacturer pages help recruit new dealers"],
+    problems: "Keep the public site current without a developer."
+  },
+  "Manufacturer Pages": {
+    tagline: "Partner logos, profiles, and catalog links.",
+    what: "Manage each manufacturer's public page — logo, profile, product highlights, and links — the pages that showcase your lines to prospective dealers.",
+    features: ["Logo and profile", "Product highlights", "Catalog and contact links"],
+    connects: ["Public marketing", "The same logos are used on the Dealer Handout"],
+    problems: "Showcase your manufacturer lineup to attract dealers."
+  },
+  "Landing Pages": {
+    tagline: "Campaign and program landing pages.",
+    what: "Build and edit landing pages for campaigns and programs — the destinations your marketing and Campaign Studio send dealers to.",
+    features: ["Campaign landing pages", "Program pages", "Editable content blocks"],
+    connects: ["Paired with Campaign Studio", "Measured by Website Traffic"],
+    problems: "Purpose-built pages that convert campaign clicks into leads."
+  },
+  "Site Images & Media": {
+    tagline: "Hero images, banners, and downloadable assets.",
+    what: "The public site's media library — hero images, banners, and downloadable documents that dealers and prospects access.",
+    features: ["Hero and banner images", "Downloadable documents", "Media library"],
+    connects: ["Renders across the public site and landing pages"],
+    problems: "A consistent, managed set of visual and document assets."
+  },
+  "Links & Navigation": {
+    tagline: "Menus, footer links, and redirects.",
+    what: "Control the public site's navigation — menus, footer links, and redirects — so visitors and campaign traffic reach the right pages.",
+    features: ["Menu management", "Footer links", "Redirects"],
+    connects: ["Structures the public site", "Supports campaign link routing"],
+    problems: "Keep site navigation clean and campaign links working."
+  },
+  "Website Traffic": {
+    tagline: "Live public-site analytics — visits, top pages, and sources.",
+    what: "Privacy-friendly web analytics for the public site: who's visiting, what they read, and where they came from — so you can tell whether the site and campaigns are drawing dealers.",
+    features: ["Visits and unique visitors", "Top pages", "Referral sources", "Bounce rate and trends"],
+    data: "Plausible analytics for the public website.",
+    actions: ["Monitor campaign-landing traffic", "See which manufacturer pages draw interest"],
+    reports: ["Visitors", "Page views", "Sources", "Bounce rate"],
+    connects: ["Pairs with Landing Pages and Campaign Studio to measure marketing", "Manufacturer-page interest is a sales signal"],
+    problems: "Know whether the website and campaigns are actually working."
+  }
+
+};

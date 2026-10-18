@@ -1,0 +1,994 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>HCPS Admin — Territory Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css">
+<style>
+ :root{--ink:#16202e;--blue:#3B599A;--blue-dk:#2B4071;--orange:#F5821F;--bg:#eef2f7;--line:#e3e8ef;--muted:#64707e;--ok:#1f9d55;--warn:#e0850f;--danger:#d64545}
+ *{box-sizing:border-box;margin:0;padding:0}
+ html,body{height:100%}
+ body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column}
+ a{color:inherit;text-decoration:none}
+ .adminnav{background:var(--ink);display:flex;align-items:center;gap:4px;padding:10px 22px;flex-wrap:wrap;box-shadow:0 2px 12px rgba(0,0,0,.14);flex:none}
+ .adminnav .bd{color:#fff;font-weight:800;font-size:15px;margin-right:16px}.adminnav .bd span{color:var(--orange)}
+ .adminnav a{color:#aeb9c6;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-radius:7px}
+ .adminnav a:hover{color:#fff;background:rgba(255,255,255,.07)}.adminnav a.on{color:#fff;background:var(--blue)}
+ .adminnav .navright{margin-left:auto;display:flex;gap:10px;align-items:center}
+ .lock{background:transparent;border:1px solid rgba(255,255,255,.22);color:#cdd6e2;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer}
+ .lock:hover{background:rgba(255,255,255,.08);color:#fff}
+ .toolbar{flex:none;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 18px;background:#fff;border-bottom:1px solid var(--line)}
+ .toolbar h1{font-size:15px;font-weight:800;margin-right:6px}
+ .toolbar select{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px;background:#fff}
+ .toolbar .sp{flex:1}
+ .btn{border:1px solid var(--blue-dk);background:var(--blue);color:#fff;border-radius:8px;padding:8px 13px;font-weight:700;font-size:13px;cursor:pointer}
+ .btn:hover{background:var(--blue-dk)} .btn:disabled{opacity:.55;cursor:not-allowed}
+ .btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+ .count{font-size:12.5px;color:var(--muted)}
+ .legend{display:flex;gap:12px;align-items:center;font-size:12px;color:var(--muted)}
+ .legend i{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);margin-right:4px;vertical-align:-1px}
+ .wrap{flex:1;min-height:0;position:relative}
+ #map{position:absolute;inset:0}
+ .pin span{display:block;width:15px;height:15px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
+ .pin.inroute span{width:19px;height:19px;border-color:#2B4071;box-shadow:0 0 0 2px #2B4071}
+ .pin.approx span{border-style:dashed;border-color:#e6a23c;opacity:.75}
+ .unmap{position:absolute;right:14px;top:14px;z-index:650;width:312px;max-height:74%;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(16,24,40,.22);overflow:hidden}
+ /* the panels set display:flex, which overrides the browser's [hidden]{display:none};
+    this more-specific rule makes the hidden attribute (Close button) actually hide them */
+ .unmap[hidden],.routep[hidden]{display:none!important}
+ .unmap .uhead{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid var(--line);font-size:14px}
+ .unmap .uhead .m{color:var(--muted);font-size:11.5px;font-weight:600}
+ .unmap .uhead .rx{margin-left:auto;background:none;border:0;color:var(--blue);font-weight:700;font-size:12px;cursor:pointer}
+ .unmap #ulist{overflow:auto;padding:4px 6px 8px}
+ .unmap .ustate{padding:8px 9px 3px;font-weight:800;color:var(--muted);font-size:11px;letter-spacing:.3px}
+ .unmap .uitem{padding:8px 9px;border-radius:8px;border-bottom:1px solid #f0f2f5}
+ .unmap .uitem:hover{background:#f7f9fb}
+ .unmap .uitem .un{font-weight:700;font-size:12.5px}
+ .unmap .uitem .ua{color:var(--muted);font-size:11.5px;margin:1px 0 3px}
+ .unmap .uitem a{color:var(--blue);font-weight:700;text-decoration:none;font-size:11.5px}
+ .homepin span{display:flex;align-items:center;justify-content:center;width:27px;height:27px;background:#16202e;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.4);font-size:14px}
+ .pop b{font-size:13.5px} .pop .st{display:inline-block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:1px 7px;border-radius:20px;margin-left:4px}
+ .pop .row{font-size:12px;color:#333;margin-top:3px}.pop a{color:var(--blue);font-weight:700;font-size:12px}
+ .pop .addbtn{margin-top:7px;border:1px solid var(--blue-dk);background:var(--blue);color:#fff;border-radius:7px;padding:5px 10px;font-weight:700;font-size:12px;cursor:pointer}
+ .banner{margin:0;padding:10px 18px;background:#fff7ed;border-bottom:1px solid #fed7aa;color:#9a3412;font-size:13px}
+ /* route panel */
+ .routep{position:absolute;left:14px;bottom:14px;z-index:600;width:296px;max-height:66%;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(16,24,40,.22);overflow:hidden}
+ .rdraft{font-size:11.5px;color:#8a5d12;background:#fdf4e6;border:1px solid #f0dca8;border-radius:7px;padding:5px 8px;margin:0 0 6px}
+ .routep .rhead{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid var(--line);font-size:14px}
+ .routep .rhead .m{color:var(--muted);font-size:11.5px;font-weight:600}
+ .routep .rx{margin-left:auto;background:none;border:0;color:var(--danger);font-weight:700;font-size:12px;cursor:pointer}
+ .rtrow{padding:8px 13px;border-bottom:1px solid var(--line);font-size:12.5px;background:#f8fafc}
+ .rtrow label{display:flex;gap:7px;align-items:center;cursor:pointer}
+ .routep ol{list-style:none;margin:0;padding:6px;overflow:auto;flex:1}
+ .routep li{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;font-size:12.5px}
+ .routep li:hover{background:#f5f7fa} .routep li.homeli{color:var(--muted)}
+ .routep li .n{width:20px;height:20px;flex:none;border-radius:50%;background:var(--blue);color:#fff;font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center}
+ .routep li .nm{flex:1;line-height:1.25}.routep li .nm small{color:var(--muted)}
+ .routep li .del{background:none;border:0;color:#b0b8c2;cursor:pointer;font-size:14px;font-weight:800}
+ .routep li .del:hover{color:var(--danger)}
+ .routep .ractions{display:flex;gap:7px;padding:11px;border-top:1px solid var(--line);flex-wrap:wrap}
+ .routep .ractions .btn{flex:1;justify-content:center;text-align:center;padding:9px 8px;font-size:12.5px}
+ /* home editor overlay. Grid centring degrades safely at the top, so nothing is lost above —
+    but the overlay had no overflow and the card no height cap, so on a short window everything
+    past the fold was unreachable off the BOTTOM. One call site below already worked around this
+    with an inline max-height; the cap belongs here instead, on every card. */
+ .homeov{position:fixed;inset:0;z-index:1100;background:rgba(16,24,40,.45);display:grid;place-items:center;padding:20px;overflow:auto}
+ .homecard{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:430px;box-shadow:0 24px 70px rgba(0,0,0,.3);max-height:100%;overflow:auto}
+ .homecard b{font-size:15px}.homecard p{color:var(--muted);font-size:12.5px;margin:4px 0 12px}
+ .homecard input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font:inherit}
+ .homecard input:focus{outline:2px solid rgba(59,89,154,.35);border-color:var(--blue)}
+ .homecard .ha{display:flex;gap:8px;margin-top:12px}.homecard .er{color:var(--danger);font-size:12.5px;margin-top:8px;min-height:15px}
+ /* gate */
+ .gate{position:fixed;inset:0;z-index:1000;background:linear-gradient(135deg,#16202e,#2B4071);display:grid;place-items:center;padding:20px;overflow:auto}
+ .gate-card{background:#fff;border-radius:16px;padding:30px;width:100%;max-width:370px;box-shadow:0 24px 70px rgba(0,0,0,.35);max-height:100%;overflow:auto}
+ .gate-card .brand{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--orange);font-weight:800}
+ .gate-card h2{margin:6px 0 3px;font-size:22px}.gate-card p{color:var(--muted);font-size:13px;margin:0 0 16px}
+ .gate-card input{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:9px;font-size:15px;font-family:inherit}
+ .gate-card input:focus{outline:2px solid rgba(59,89,154,.35);border-color:var(--blue)}
+ .gate-card button{width:100%;margin-top:12px;padding:12px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-weight:800;font-size:14px;cursor:pointer}
+ .gate-card .er{color:var(--danger);font-size:12.5px;margin-top:10px;min-height:16px}
+</style><link rel="stylesheet" href="/admin/admin-shell.css">
+<style>/* map is full-bleed: keep its flex-fill container, undo the shell's centered-page .wrap */
+.wrap{max-width:none;margin:0;padding:0}</style></head><body>
+
+<header id="ac-head"></header>
+
+<div id="banner"></div>
+
+<div class="toolbar">
+  <h1>Territory Map</h1>
+  <select id="fState" onchange="draw()"><option value="">All states</option></select>
+  <select id="fStatus" onchange="draw()">
+    <option value="">All accounts</option>
+    <option value="active">Active customers</option>
+    <option value="lapsed">Lapsed (3 mo+)</option>
+    <option value="prospect">Prospects</option>
+  </select>
+  <span class="legend"><span><i style="background:#1f9d55"></i>Active</span><span><i style="background:#E8971E"></i>Lapsed 3mo+</span><span><i style="background:#2f73b8"></i>Prospect</span></span>
+  <label style="font-size:12px;display:inline-flex;align-items:center;gap:4px;color:#5b6672"><input type="checkbox" id="fDue" onchange="draw()"> Due for visit (90d+)</label>
+  <span class="sp"></span>
+  <span class="count" id="count"></span>
+  <button class="btn ghost" id="homeBtn" onclick="editHome()">🏠 Set home base</button>
+  <button class="btn" id="geoBtn" onclick="geocodeAll()">Geocode addresses</button>
+  <button class="btn ghost" id="clusterBtn" onclick="togglePins()">Show all pins</button>
+  <button class="btn ghost" id="unmapBtn" onclick="toggleUnmapped()">Not on map</button>
+  <button class="btn ghost" id="savedBtn" onclick="toggleSaved()">Saved routes</button>
+  <button class="btn ghost" id="scoreBtn" onclick="toggleScore()">Scorecard</button>
+  <button class="btn ghost" id="weekBtn" onclick="toggleWeek()">This week</button>
+</div>
+
+<div class="wrap">
+  <div id="map"></div>
+  <div class="routep" id="routep" hidden>
+    <div class="rhead"><b>Route plan</b> <span class="m" id="rmeta"></span><button class="rx" onclick="clearRoute()">Clear</button></div>
+    <div class="rdraft" id="rdraft" hidden></div>
+    <div class="rtrow" id="rtRow" style="display:none"><label><input type="checkbox" id="rtChk" checked onchange="toggleRT(this.checked)"> Round trip — start &amp; end at home base</label></div>
+    <div class="rtrow"><label style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">Start <input type="date" id="startDate" style="width:auto" onchange="renderRoute()"> at <input type="time" id="startTime" value="08:00" style="width:auto" onchange="renderRoute()"> · default visit <input type="number" id="visitMin" value="30" min="0" step="5" style="width:52px" onchange="renderRoute()"> min</label></div>
+    <ol id="rlist"></ol>
+    <div class="ractions">
+      <button class="btn" onclick="optimize()">Optimize order</button>
+      <button class="btn" onclick="saveRouteDialog()">Save route</button>
+      <button class="btn ghost" onclick="printRoute()">Print sheet</button>
+      <button class="btn ghost" onclick="printPacket()">Visit package</button>
+      <button class="btn ghost" onclick="openGmaps()">Google Maps →</button>
+    </div>
+  </div>
+  <div class="unmap" id="savedPanel" hidden></div>
+  <div class="unmap" id="scorePanel" hidden></div>
+  <div class="unmap" id="weekPanel" hidden></div>
+  <div class="unmap" id="unmapPanel" hidden>
+    <div class="uhead"><b>Not on map</b> <span class="m" id="umeta"></span><button class="rx" onclick="toggleUnmapped()">Close</button></div>
+    <div id="ulist"></div>
+  </div>
+</div>
+
+<div id="gate"></div>
+<div id="homeEdit"></div>
+
+<div class="verbadge" style="position:fixed;bottom:6px;right:9px;z-index:1200;font:600 11px/1 system-ui,sans-serif;color:#8a949c;background:rgba(255,255,255,.85);border:1px solid #dde3e8;border-radius:6px;padding:3px 7px;pointer-events:none">VER 2.0</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script src="/admin/dealer-handout.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token();
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let MAP=null, CLUSTER=null, PLAIN=null, LAYER=null, POINTS=[], UNMAPPED=[], BOOTED=false, ROUTE=[], ROUTELINE=null;
+let HOMEMARKER=null, ROUNDTRIP=true;
+let ROUTEGEO=null, CURRENT_ROUTE_ID=null, _routeT=null;
+let LASTROUTE={distance_m:0,duration_s:0,geometry:null};
+const jesc=s=>String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+const fmtUsd=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
+// Dealer leave-behind: edit these to change what the customer-facing handout announces.
+const ORDERING_URL=DealerHandout.ORDERING_URL;
+const HANDOUT_UPDATES=DealerHandout.UPDATES.slice();
+// Live handout config (loaded from app_settings; President can edit without a code push).
+let HANDOUT={ordering_url:ORDERING_URL, updates:HANDOUT_UPDATES.slice()};
+const MFRNAMES={access4u:"Access4U","airavant-bongorx":"AIRAVANT / BongoRx",corsicana:"Corsicana Healthcare","climbing-steps":"Climbing Steps",bemis:"BEMIS Assurance",pedifix:"PediFix",gce:"Ohio Medical / GCE","strongback-mobility":"Strongback Mobility","ovation-medical":"Ovation Medical"};
+const mfrLabelSlug=s=>MFRNAMES[s]||String(s||"").split("-").map(w=>w?w[0].toUpperCase()+w.slice(1):w).join(" ");
+function isDue(p){ if(!p||!p.last_visit) return true; return (Date.now()-new Date(p.last_visit).getTime())>90*864e5; }
+async function markVisited(id,i){
+  try{ const r=await api2({action:"log_visit",dealer_id:id}); if(r&&r.ok){ if(POINTS[i])POINTS[i].last_visit=r.visited_at; banner("Visit logged ✓"); MAP&&MAP.closePopup(); draw(); } }catch(e){ banner("Couldn't log visit."); }
+}
+async function loadSettings(){
+  try{ const r=await api2({action:"get_settings",key:"handout"}); if(r&&r.ok&&r.value){ HANDOUT={ordering_url:r.value.ordering_url||ORDERING_URL, updates:Array.isArray(r.value.updates)&&r.value.updates.length?r.value.updates:HANDOUT_UPDATES.slice()}; } }catch(e){}
+}
+/* ---------- territory scorecard ---------- */
+function toggleScore(){ const p=$("#scorePanel"); if(!p.hidden){p.hidden=true;return;} p.hidden=false; p.innerHTML=scorecardHtml(); }
+function scorecardHtml(){
+  const P=POINTS||[];
+  const cust=P.filter(p=>p.klass==="active").length, opp=P.filter(p=>p.klass==="lapsed").length, pros=P.filter(p=>p.klass==="prospect").length;
+  const sales=P.reduce((a,p)=>a+(Number(p.sales)||0),0);
+  const oppLines=P.reduce((a,p)=>a+(Number(p.opps_count)||0),0);
+  const dueN=P.filter(isDue).length, neverN=P.filter(p=>!p.last_visit).length;
+  const lc={}; P.forEach(p=>(p.opps||[]).forEach(s=>{lc[s]=(lc[s]||0)+1;}));
+  const top=Object.entries(lc).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([slug,c])=>`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #eef1f4"><span>${esc(mfrLabelSlug(slug))}</span><b>${c} account${c===1?"":"s"}</b></div>`).join("");
+  const box=(l,v,c)=>`<div style="background:#f4f7fb;border:1px solid #e2e8f1;border-radius:8px;padding:8px 10px"><div style="font-size:18px;font-weight:800;color:${c||"#1b2733"}">${v}</div><div style="font-size:11px;color:#6b7683">${l}</div></div>`;
+  const pres=(ME&&ME.role==="president");
+  return `<div class="uhead"><b>Territory scorecard</b><button class="rx" onclick="toggleScore()">Close</button></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0">
+      ${box("Accounts",P.length)}${box("Territory sales",fmtUsd(sales),"#1f9d55")}
+      ${box("Active customers",cust,"#1f9d55")}${box("Lapsed 3mo+",opp,"#E8971E")}
+      ${box("Prospects",pros,"#2f73b8")}${box("Open opp. lines",oppLines,"#2f73b8")}
+      ${box("Due for visit",dueN,"#b26b00")}${box("Never visited",neverN,"#b26b00")}
+    </div>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;margin:6px 0 4px">Most common un-pitched lines</div>
+    <div>${top||'<div class="dim">No open opportunities.</div>'}</div>
+    ${pres?`<button class="btn ghost" style="margin-top:12px;width:100%" onclick="editHandout()">Edit dealer-handout “What's new” →</button>`:""}`;
+}
+function editHandout(){
+  if(!(ME&&ME.role==="president")) return;
+  $("#homeEdit").innerHTML=`<div class="homeov"><div class="homecard">
+    <b>Edit “What's new” (dealer handout)</b>
+    <p>One item per line. This is the customer-facing news on the handout you print for dealers.</p>
+    <textarea id="hupd" style="width:100%;height:120px;font:13px Arial">${esc((HANDOUT.updates||[]).join("\n"))}</textarea>
+    <input id="hurl" style="width:100%;margin-top:8px" value="${esc(HANDOUT.ordering_url||ORDERING_URL)}" placeholder="Ordering URL">
+    <div class="ha"><button class="btn" onclick="saveHandout()">Save</button><button class="btn ghost" onclick="closeHome()">Cancel</button></div>
+    <div class="er" id="herr"></div></div></div>`;
+  setTimeout(()=>{const t=$("#hupd"); if(t)t.focus();},40);
+}
+async function saveHandout(){
+  const updates=(($("#hupd")||{}).value||"").split("\n").map(s=>s.trim()).filter(Boolean);
+  const url=(($("#hurl")||{}).value||"").trim()||ORDERING_URL;
+  const e=$("#herr"); if(e)e.textContent="Saving…";
+  try{ const r=await api2({action:"set_settings",key:"handout",value:{ordering_url:url,updates}}); if(r&&r.ok){ HANDOUT={ordering_url:url,updates}; closeHome(); banner("Handout news updated ✓"); } else { if(e)e.textContent=(r&&r.error)||"Couldn't save."; } }catch(err){ if(e)e.textContent="Couldn't save."; }
+}
+/* ---------- weekly schedule ---------- */
+function ymd(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function mondayOf(d){ const x=new Date(d); const wd=(x.getDay()+6)%7; x.setDate(x.getDate()-wd); x.setHours(0,0,0,0); return x; }
+let WEEKSTART=mondayOf(new Date());
+function toggleWeek(){ const p=$("#weekPanel"); if(!p.hidden){p.hidden=true;return;} p.hidden=false; refreshWeek(); }
+function shiftWeek(n){ WEEKSTART=new Date(WEEKSTART.getTime()+n*7*864e5); refreshWeek(); }
+async function refreshWeek(){
+  const p=$("#weekPanel");
+  p.innerHTML=`<div class="uhead"><b>Weekly schedule</b><button class="rx" onclick="toggleWeek()">Close</button></div><div id="weekBody">Loading…</div>`;
+  let routes=[]; try{ const r=await api2({action:"list_routes"}); routes=(r&&r.routes)||[]; }catch(e){}
+  const byDate={}, unscheduled=[];
+  routes.forEach(rt=>{ if(rt.scheduled_date){ (byDate[rt.scheduled_date]||(byDate[rt.scheduled_date]=[])).push(rt); } else unscheduled.push(rt); });
+  const dayName=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+  const todayS=ymd(new Date()); let totStops=0,totSec=0;
+  const days=[]; for(let i=0;i<7;i++) days.push(new Date(WEEKSTART.getTime()+i*864e5));
+  const wkLabel=`${WEEKSTART.toLocaleDateString(undefined,{month:"short",day:"numeric"})} – ${days[6].toLocaleDateString(undefined,{month:"short",day:"numeric"})}`;
+  const rtRow=rt=>`<div style="display:flex;align-items:center;gap:6px;padding:3px 0"><div style="flex:1;min-width:0"><b>${esc(rt.name)}</b><br><small style="color:#6b7683">${rt.stops_count} stop${rt.stops_count===1?"":"s"}${rt.duration_s?" · "+fmtDur(rt.duration_s):""}</small></div><button class="btn" style="padding:3px 8px;font-size:11px" onclick="loadSaved('${rt.id}')">Open</button><button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="printSaved('${rt.id}')">Sheet</button></div>`;
+  const dayHtml=days.map((d,i)=>{
+    const ds=ymd(d); const list=byDate[ds]||[]; list.forEach(rt=>{ totStops+=rt.stops_count||0; totSec+=rt.duration_s||0; });
+    const today=ds===todayS;
+    const inner=list.length?list.map(rtRow).join(""):`<div style="color:#9aa4ae;font-size:11px;padding:3px 0">—</div>`;
+    return `<div style="border:1px solid ${today?"#2B4071":"#eef1f4"};background:${today?"#f4f7fb":"#fff"};border-radius:8px;padding:6px 9px;margin:5px 0">
+      <div style="font-weight:700;font-size:12px;color:#2B4071;margin-bottom:2px">${dayName[i]} <span style="color:#9aa4ae;font-weight:400">${d.toLocaleDateString(undefined,{month:"short",day:"numeric"})}</span></div>${inner}</div>`;
+  }).join("");
+  const uns=unscheduled.length?`<div style="margin-top:10px"><div style="font-weight:700;font-size:12px;color:#6b7683">Unscheduled</div>${unscheduled.map(rtRow).join("")}</div>`:"";
+  $("#weekBody").innerHTML=`
+    <div style="display:flex;align-items:center;gap:8px;margin:6px 0">
+      <button class="btn ghost" style="padding:4px 10px" onclick="shiftWeek(-1)">‹</button>
+      <b style="flex:1;text-align:center">${wkLabel}</b>
+      <button class="btn ghost" style="padding:4px 10px" onclick="shiftWeek(1)">›</button>
+    </div>${dayHtml}
+    <div style="color:#6b7683;margin-top:8px;font-size:12px">Week total: ${totStops} stop${totStops===1?"":"s"}${totSec?" · "+fmtDur(totSec)+" drive":""}</div>
+    ${uns}
+    <div style="color:#9aa4ae;margin-top:8px;font-size:11px">Set a route's date when you Save it. To reschedule, open a route and Save again with a new date.</div>`;
+}
+// routes-api = OpenRouteService proxy + saved routes (separate from geocode-api).
+async function api2(body){
+  const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/routes-api",{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(r.status===401){ HCPS.signOut(); TOKEN=null; ME=null; showGate("Your session ended — please sign in again."); throw new Error("unauthorized"); }
+  return r.json();
+}
+const DEFAULT_HOME="1003 Wilkinson Pl, Cottontown, TN 37048";
+let HOME=null; try{ HOME=JSON.parse(localStorage.getItem("hcps_home_base")||"null"); }catch(e){ HOME=null; }
+
+const API="/.netlify/functions/geocode-api";
+async function api(method,body){
+  const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch(API,{method,headers:h,body:body?JSON.stringify(body):undefined});
+  if(r.status===401){ HCPS.signOut(); TOKEN=null; ME=null; showGate("Your session ended — please sign in again."); throw new Error("unauthorized"); }
+  return r.json();
+}
+function showGate(msg){
+  $("#gate").innerHTML=`<div class="gate"><div class="gate-card">
+    <div class="brand">HomeCare Provider Services</div><h2>Staff sign-in</h2>
+    <p>Sign in with your work email and password.</p>
+    <input id="lemail" type="email" placeholder="Email" autocomplete="username" style="margin-bottom:8px">
+    <input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()">
+    <button onclick="submitTok()">Sign in</button><div class="er" id="lerr">${msg||""}</div></div></div>`;
+  setTimeout(()=>{const t=$("#lemail"); if(t)t.focus();},50);
+}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in\u2026";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ showGate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; $("#gate").innerHTML=""; boot();
+  }catch(err){ showGate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); location.reload(); }
+
+// Pin classes: customer (buys everything it's eligible for), opportunity (buys some,
+// room to grow), prospect (no sales yet). Computed by geocode-api from sales + rules.
+const KLASS={active:"#1f9d55",lapsed:"#E8971E",prospect:"#2f73b8"};
+const KLABEL={active:"Active · ordered ≤3 mo",lapsed:"Lapsed · 3 mo+ — reach out",prospect:"Prospect"};
+const colorOf=p=>KLASS[(p&&p.klass)||""]||"#3B599A";
+function icon(color,inroute,approx){ return L.divIcon({className:"pin"+(inroute?" inroute":"")+(approx?" approx":""),html:`<span style="background:${color}"></span>`,iconSize:[16,16],iconAnchor:[8,8]}); }
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function initMap(){
+  MAP=L.map("map",{zoomControl:true}).setView([39.5,-98.35],4);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(MAP);
+  CLUSTER=L.markerClusterGroup({maxClusterRadius:45});
+  PLAIN=L.layerGroup();          // every pin dropped individually (no grouping)
+  LAYER=CLUSTER; MAP.addLayer(LAYER);
+  // Always-available close: Escape closes any open dealer popup no matter where it is.
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape" && MAP) MAP.closePopup(); });
+}
+// Toggle between grouped circles and all-pins-individually.
+function togglePins(){
+  if(!MAP)return;
+  MAP.removeLayer(LAYER);
+  LAYER = (LAYER===CLUSTER) ? PLAIN : CLUSTER;
+  MAP.addLayer(LAYER);
+  const b=$("#clusterBtn"); if(b) b.textContent = (LAYER===CLUSTER) ? "Show all pins" : "Group pins";
+  draw();
+}
+function fillStateFilter(){
+  const sel=$("#fState"); const cur=sel.value; const states=[...new Set(POINTS.map(p=>p.state).filter(Boolean))].sort();
+  sel.innerHTML=`<option value="">All states</option>`+states.map(s=>`<option value="${esc(s)}"${s===cur?" selected":""}>${esc(s)}</option>`).join("");
+}
+function inRoute(p){ return ROUTE.some(s=>s._i===p._i); }
+function draw(){
+  if(!LAYER)return; if(MAP)MAP.closePopup(); LAYER.clearLayers();   // avoid a stale popup with a dead close button after a redraw
+  const fs=$("#fState").value, ft=$("#fStatus").value, due=$("#fDue")&&$("#fDue").checked;
+  const shown=POINTS.filter(p=>(!fs||p.state===fs)&&(!ft||(p.klass||"")===ft)&&(!due||isDue(p)));
+  const markers=shown.map(p=>{
+    const m=L.marker([p.lat,p.lng],{icon:icon(colorOf(p),inRoute(p),p.approx)});
+    const c=colorOf(p);
+    const kl=KLABEL[p.klass||""]||"";
+    const lastOrderRow=p.last_order?`<div class="row" style="font-size:11px;color:#5b6672">Last order: ${esc(String(p.last_order).slice(0,7))}</div>`:(p.klass==="prospect"?"":`<div class="row" style="font-size:11px;color:#b26b00">No orders on file</div>`);
+    const oppRow=(p.opps&&p.opps.length)?`<div class="row" style="color:#2f73b8;font-size:11px">${p.opps.length} line${p.opps.length===1?"":"s"} available to grow</div>`:"";
+    m.bindPopup(`<div class="pop"><b>${esc(p.name)}</b>${kl?`<span class="st" style="background:${c}22;color:${c}">${esc(kl)}</span>`:""}${lastOrderRow}${oppRow}
+      ${p.label?`<div class="row">${esc(p.label)}</div>`:""}
+      <div class="row">${esc([p.city,p.state].filter(Boolean).join(", "))}</div>
+      ${p.approx?`<div class="row" style="color:#b26b00;font-size:11px">≈ approximate location (address couldn't be matched exactly — town/ZIP level)</div>`:""}
+      ${p.email?`<div class="row">${esc(p.email)}</div>`:""}
+      ${p.last_visit?`<div class="row" style="font-size:11px;color:#5b6672">Last visit: ${new Date(p.last_visit).toLocaleDateString()}</div>`:`<div class="row" style="font-size:11px;color:#b26b00">No visit logged yet</div>`}
+      <button class="addbtn" onclick="addStop(${p._i})">${inRoute(p)?"✓ In route":"＋ Add to route"}</button>
+      ${p.dealer_id?`<button class="addbtn" style="background:#1f9d55;margin-top:5px" onclick="markVisited('${p.dealer_id}',${p._i})">✓ Mark visited today</button>`:""}
+      ${p.dealer_id?`<button class="addbtn" style="background:#F5821F;margin-top:5px" onclick="printDealerHandout('${p.dealer_id}')">🖨 Dealer handout</button>`:""}
+      <div class="row" style="margin-top:5px"><a href="/admin/dealer.html${p.dealer_id?`?id=${encodeURIComponent(p.dealer_id)}`:""}">Open in Dealer 360 →</a></div></div>`,
+      {keepInView:true, autoPan:true, autoPanPadding:[50,60], maxHeight:340});
+    return m;
+  });
+  if(LAYER.addLayers) LAYER.addLayers(markers); else markers.forEach(m=>LAYER.addLayer(m));
+  $("#count").textContent=`${shown.length.toLocaleString()} of ${POINTS.length.toLocaleString()} locations`;
+  if(shown.length && !ROUTE.length){ try{ MAP.fitBounds(L.latLngBounds(shown.map(p=>[p.lat,p.lng])).pad(0.15)); }catch(e){} }
+}
+
+/* ---------- home base ---------- */
+function homeIcon(){ return L.divIcon({className:"homepin",html:`<span>🏠</span>`,iconSize:[27,27],iconAnchor:[13,13]}); }
+function refreshHomeBtn(){ const b=$("#homeBtn"); if(!b)return; b.textContent = HOME ? ("🏠 "+(HOME.short||"Home base")) : "🏠 Set home base"; }
+function drawHome(){
+  if(HOMEMARKER){ MAP.removeLayer(HOMEMARKER); HOMEMARKER=null; }
+  if(HOME && HOME.lat!=null && MAP){
+    HOMEMARKER=L.marker([HOME.lat,HOME.lng],{icon:homeIcon(),zIndexOffset:1000})
+      .bindPopup(`<div class="pop"><b>🏠 Home base</b><div class="row">${esc(HOME.q||"")}</div><div class="row" style="color:#777">Start &amp; end of your routes</div></div>`,{keepInView:true,autoPanPadding:[50,60]}).addTo(MAP);
+  }
+  refreshHomeBtn();
+}
+function editHome(){
+  const cur = HOME ? (HOME.q||"") : DEFAULT_HOME;
+  $("#homeEdit").innerHTML=`<div class="homeov"><div class="homecard">
+    <b>Route home base</b>
+    <p>Every route can start and end here. Enter a full street address (city &amp; state required).</p>
+    <input id="homeq" value="${esc(cur)}" placeholder="123 Main St, City, ST 00000">
+    <div class="ha"><button class="btn" onclick="saveHome()">Save home base</button>
+      ${HOME?'<button class="btn ghost" onclick="clearHome()">Remove</button>':''}
+      <button class="btn ghost" onclick="closeHome()">Cancel</button></div>
+    <div class="er" id="homeErr"></div></div></div>`;
+  setTimeout(()=>{const i=$("#homeq"); if(i){i.focus();i.select();}},40);
+}
+function closeHome(){ $("#homeEdit").innerHTML=""; }
+async function saveHome(){
+  const q=($("#homeq").value||"").trim(); if(!q){ $("#homeErr").textContent="Enter an address."; return; }
+  $("#homeErr").textContent="Locating…";
+  try{
+    const r=await api("POST",{action:"geocode_one",q});
+    if(!r||!r.ok){ $("#homeErr").textContent="Couldn't find that address — include the city and state (e.g. …, Cottontown, TN 37048)."; return; }
+    const short=q.split(",").slice(-2).join(",").trim()||q;
+    const state=String(r.state||stateFromAddr(q)||"").toUpperCase();
+    HOME={q,lat:r.lat,lng:r.lng,short,state};
+    localStorage.setItem("hcps_home_base",JSON.stringify(HOME));
+    closeHome(); drawHome(); renderRoute();
+    if(MAP) MAP.setView([HOME.lat,HOME.lng], Math.max(MAP.getZoom(),6));
+  }catch(e){ $("#homeErr").textContent="Something went wrong — try again."; }
+}
+function clearHome(){ HOME=null; localStorage.removeItem("hcps_home_base"); closeHome(); drawHome(); renderRoute(); }
+function toggleRT(v){ ROUNDTRIP=v; renderRoute(); }
+
+/* ---------- route planning ---------- */
+function hav(a,b){ const R=3958.8,tr=x=>x*Math.PI/180; const dLat=tr(b.lat-a.lat),dLng=tr(b.lng-a.lng);
+  const s=Math.sin(dLat/2)**2+Math.cos(tr(a.lat))*Math.cos(tr(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(s)); }
+function effectiveRoute(){
+  if(HOME && ROUNDTRIP && ROUTE.length){ const h={name:"Home base",state:(HOME.state||stateFromAddr(HOME.q)),lat:HOME.lat,lng:HOME.lng,_home:true}; return [h,...ROUTE,h]; }
+  return ROUTE.slice();
+}
+function routeMiles(){ const R=effectiveRoute(); let m=0; for(let i=1;i<R.length;i++) m+=hav(R[i-1],R[i]); return m; }
+function addStop(i){ const p=POINTS[i]; if(!p)return; if(inRoute(p)){ ROUTE=ROUTE.filter(s=>s._i!==p._i); } else { if(ROUTE.length>=25){ alert("That's a lot of stops — keep a route under 25 for a workable day."); return; } ROUTE.push(p); } renderRoute(); draw(); if(MAP)MAP.closePopup(); }
+function removeStop(i){ ROUTE.splice(i,1); renderRoute(); draw(); }
+function clearRoute(){ ROUTE=[]; CURRENT_ROUTE_ID=null; clearDraft(); renderRoute(); draw(); }
+async function optimize(){
+  if(ROUTE.length<2){ renderRoute(); return; }
+  const home=(HOME&&ROUNDTRIP)?{lat:HOME.lat,lng:HOME.lng}:null;
+  try{
+    const r=await api2({action:"optimize",home,stops:ROUTE.map(s=>({lat:s.lat,lng:s.lng})),round_trip:!!(HOME&&ROUNDTRIP)});
+    if(r&&r.ok&&Array.isArray(r.order)&&r.order.length===ROUTE.length){ ROUTE=r.order.map(i=>ROUTE[i]); renderRoute(); draw(); return; }
+    if(r&&r.need_key){ banner(r.message); }
+  }catch(e){}
+  optimizeLocal();   // fallback: nearest-neighbour by straight-line distance
+}
+function optimizeLocal(){
+  if(ROUTE.length<2){ renderRoute(); return; }
+  const pool=ROUTE.slice(); const ordered=[];
+  let cur;
+  if(HOME && ROUNDTRIP){ cur={lat:HOME.lat,lng:HOME.lng}; }          // nearest-neighbour from home
+  else { ordered.push(pool.shift()); cur=ordered[0]; }               // keep first stop fixed
+  while(pool.length){ let bi=0,bd=Infinity; for(let i=0;i<pool.length;i++){const d=hav(cur,pool[i]); if(d<bd){bd=d;bi=i;}} cur=pool.splice(bi,1)[0]; ordered.push(cur); }
+  ROUTE=ordered; renderRoute();
+}
+/* ---------- time-zone-aware itinerary (Phase 1) ----------
+   Each stop's IANA zone comes from its US state, with a longitude split for the
+   states that straddle Central/Eastern (TN, KY, IN). Offsets come from Intl, so
+   they're DST-correct. Everything is computed on one absolute timeline, then each
+   stop is displayed in its own local time — so crossing CST↔EST is handled. */
+const TZ_E="America/New_York", TZ_C="America/Chicago";
+const TZ_STATE={OH:TZ_E,GA:TZ_E,NC:TZ_E,SC:TZ_E,WV:TZ_E,PA:TZ_E,VA:TZ_E,FL:TZ_E,MD:TZ_E,DE:TZ_E,NJ:TZ_E,NY:TZ_E,MI:TZ_E,
+  AL:TZ_C,IL:TZ_C,MS:TZ_C,MO:TZ_C,WI:TZ_C,IA:TZ_C,MN:TZ_C,AR:TZ_C,LA:TZ_C,TX:TZ_C,KS:TZ_C,OK:TZ_C,NE:TZ_C};
+function tzForStop(state,lng){
+  const st=String(state||"").toUpperCase().trim();
+  if(st==="TN") return (lng!=null&&lng<-85.4)?TZ_C:TZ_E;   // ~Chattanooga/Knoxville east = Eastern
+  if(st==="KY") return (lng!=null&&lng<-85.9)?TZ_C:TZ_E;
+  if(st==="IN") return (lng!=null&&lng<-87.3)?TZ_C:TZ_E;   // Evansville corner = Central
+  if(TZ_STATE[st]) return TZ_STATE[st];
+  // Unknown/blank state (e.g. a home base saved before we captured its state):
+  // infer from longitude so it isn't silently defaulted to Eastern. The Central/
+  // Eastern line through the region we cover sits near -85.7°.
+  if(lng!=null&&isFinite(lng)) return lng<-85.7?TZ_C:TZ_E;
+  return TZ_E;
+}
+// Pull a 2-letter US state code from a free-form address ("…, Cottontown, TN 37048").
+function stateFromAddr(q){ const m=String(q||"").toUpperCase().match(/,\s*([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?\s*$/); return m?m[1]:""; }
+function tzOffMin(tz,d){ // minutes east of UTC for tz at instant d (negative in the US)
+  try{ const p=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour12:false,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}).formatToParts(d).reduce((a,x)=>{a[x.type]=x.value;return a;},{});
+    let hh=parseInt(p.hour,10); if(hh===24)hh=0;
+    return Math.round((Date.UTC(+p.year,+p.month-1,+p.day,hh,+p.minute)-d.getTime())/60000);
+  }catch(e){ return -300; }
+}
+function tzShort(tz,d){ try{ const s=new Intl.DateTimeFormat("en-US",{timeZone:tz,timeZoneName:"short"}).formatToParts(d||new Date()).find(x=>x.type==="timeZoneName"); return (s&&s.value)||""; }catch(e){ return ""; } }
+function localToAbs(y,mo,dd,minutes,tz){ const guess=new Date(Date.UTC(y,mo,dd,12,0,0)); const off=tzOffMin(tz,guess); return Date.UTC(y,mo,dd,0,0,0)+minutes*60000-off*60000; }
+function fmtAbs(ms,tz){ const d=new Date(ms); const t=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour:"numeric",minute:"2-digit"}).format(d); const z=tzShort(tz,d); return t+(z?" "+z:""); }
+function fmtAbsDay(ms,tz){ return new Intl.DateTimeFormat("en-US",{timeZone:tz,weekday:"short",month:"short",day:"numeric"}).format(new Date(ms)); }
+function minToTimeVal(min){ min=Math.max(0,Math.min(1439,Math.round(min||0))); return String(Math.floor(min/60)).padStart(2,"0")+":"+String(min%60).padStart(2,"0"); }
+function defaultVisit(){ return Math.max(0,parseInt((($("#visitMin")||{}).value),10)||0); }
+function stopVisit(node){ return (node&&node.visit_min!=null)?(Math.max(0,Number(node.visit_min)||0)):defaultVisit(); }
+function routeStartParts(){
+  const dv=(($("#startDate")||{}).value||"").trim();
+  const minutes=parseTimeMin((($("#startTime")||{}).value));
+  let y,mo,dd;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(dv)){ const p=dv.split("-").map(Number); y=p[0];mo=p[1]-1;dd=p[2]; }
+  else { const n=new Date(); y=n.getFullYear();mo=n.getMonth();dd=n.getDate(); }
+  return {y,mo,dd,minutes};
+}
+// Full itinerary over effectiveRoute(): arrival/departure on one absolute timeline,
+// each shown in its own zone; overnight ends the day and resumes next morning.
+function computeItinerary(){
+  const R=effectiveRoute(); const legs=(LASTROUTE.legs||[]);
+  const hasLegs = R.length>=2 && legs.length>=R.length-1;
+  const {y,mo,dd,minutes}=routeStartParts();
+  const firstTz=tzForStop(R[0]&&R[0].state,R[0]&&R[0].lng);
+  let absMs=localToAbs(y,mo,dd,minutes,firstTz), dayIndex=0; const items=[];
+  for(let i=0;i<R.length;i++){
+    const node=R[i], tz=tzForStop(node.state,node.lng);
+    if(i>0 && hasLegs){ absMs += (legs[i-1].duration_s||0)*1000; }
+    const arriveAbs=absMs, isStop=!node._home, visit=isStop?stopVisit(node):0, departAbs=arriveAbs+visit*60000;
+    const overnight=!!(isStop&&node.overnight);
+    items.push({node,isStop,tz,arriveAbs,departAbs,visit,legIn:(i>0&&hasLegs)?legs[i-1]:null,dayIndex,overnight});
+    absMs=departAbs;
+    if(overnight){ dayIndex++;
+      const base=new Date(Date.UTC(y,mo,dd,12)); base.setUTCDate(base.getUTCDate()+dayIndex);
+      const nextMin=(node.next_start_min!=null)?Number(node.next_start_min):480;
+      absMs=localToAbs(base.getUTCFullYear(),base.getUTCMonth(),base.getUTCDate(),nextMin,tz);
+    }
+  }
+  return items;
+}
+function updateVisit(i,v){ if(ROUTE[i]){ ROUTE[i].visit_min=Math.max(0,parseInt(v,10)||0); renderRoute(); } }
+function toggleOvernight(i,c){ if(ROUTE[i]){ ROUTE[i].overnight=!!c; renderRoute(); } }
+function updateNextStart(i,v){ if(ROUTE[i]){ ROUTE[i].next_start_min=parseTimeMin(v); renderRoute(); } }
+async function notifyDealer(id,name){
+  if(!id){ banner("This stop has no linked dealer to notify."); return; }
+  const date=(($("#startDate")||{}).value||"");
+  if(!confirm(`Send an "upcoming visit" email to ${name||"this dealer"}${date?" for "+date:""}?`)) return;
+  try{ const r=await api2({action:"notify_visit",dealer_id:id,date});
+    if(r&&r.ok&&r.sent) banner("Visit notice sent ✓");
+    else if(r&&r.ok&&r.held) banner(r.message||"Prepared — held until go-live.");
+    else banner((r&&r.message)||"Couldn't send the notice.");
+  }catch(e){ banner("Couldn't send the notice."); }
+}
+/* ---------- visit notes & follow-up (Phase 4) ---------- */
+function openVisitNotes(id,name){
+  if(!id){ banner("This stop has no linked dealer."); return; }
+  window._vnDealer=id;
+  $("#homeEdit").innerHTML=`<div class="homeov"><div class="homecard vnbox" style="max-width:560px;max-height:90vh;overflow:auto">
+    <style>.vnbox textarea,.vnbox input{width:100%;box-sizing:border-box;font-family:inherit;font-size:12.5px;padding:5px 7px;border:1px solid #dde3e8;border-radius:6px;margin:0}.vnbox input[type=date]{width:auto}.vnl{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:#5b6672;margin:8px 0 2px;font-weight:700}.vngrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}</style>
+    <b>Visit notes — ${esc(name||"")}</b>
+    <p style="margin:4px 0 8px;color:#6b7683;font-size:12.5px">Saving creates follow-up tasks (and opportunities) on the dealer. You can then generate a follow-up email to review and send.</p>
+    <label class="vnl">What happened / summary</label><textarea id="vn_summary" rows="2"></textarea>
+    <div class="vngrid">
+      <div><label class="vnl">Products discussed</label><textarea id="vn_products" rows="2"></textarea></div>
+      <div><label class="vnl">Pricing discussed</label><textarea id="vn_pricing" rows="2"></textarea></div>
+      <div><label class="vnl">Samples requested</label><textarea id="vn_samples" rows="2"></textarea></div>
+      <div><label class="vnl">Manufacturer opportunities <span style="color:#9aa4ae">(1/line → opportunity)</span></label><textarea id="vn_opps" rows="2"></textarea></div>
+    </div>
+    <label class="vnl">Follow-up items <span style="color:#9aa4ae">(one per line → each becomes a task)</span></label><textarea id="vn_followups" rows="3"></textarea>
+    <div class="vngrid">
+      <div><label class="vnl">Order expected</label><textarea id="vn_orders" rows="2"></textarea></div>
+      <div><label class="vnl">Concerns</label><textarea id="vn_concerns" rows="2"></textarea></div>
+    </div>
+    <label class="vnl">Next visit</label><input type="date" id="vn_next">
+    <div class="ha" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn" onclick="saveVisit()">Save visit &amp; create tasks</button>
+      <button class="btn ghost" onclick="genFollowup()">Generate follow-up email</button>
+      <button class="btn ghost" onclick="closeHome()">Close</button></div>
+    <div id="vn_msg" style="color:#2B4071;margin-top:6px;font-size:12.5px"></div>
+    <div id="fu_wrap" style="display:none;margin-top:12px;border-top:1px dashed #cfd6de;padding-top:10px">
+      <label class="vnl">Follow-up subject</label><input id="fu_subject">
+      <label class="vnl" style="margin-top:6px">Follow-up email — review &amp; edit</label><textarea id="fu_body" rows="10"></textarea>
+      <div class="ha" style="margin-top:8px;display:flex;gap:6px"><button class="btn" onclick="sendFollowup()">Send follow-up</button>
+        <button class="btn ghost" onclick="copyFollowup()">Copy</button></div>
+      <div id="fu_msg" style="color:#2B4071;margin-top:6px;font-size:12.5px"></div>
+    </div>
+  </div></div>`;
+  setTimeout(()=>{const t=$("#vn_summary"); if(t)t.focus();},40);
+}
+function vnVal(id){ const e=document.getElementById(id); return e?String(e.value||"").trim():""; }
+function collectVisitDetails(){ return {summary:vnVal("vn_summary"),products:vnVal("vn_products"),pricing:vnVal("vn_pricing"),samples:vnVal("vn_samples"),opportunities:vnVal("vn_opps"),follow_ups:vnVal("vn_followups"),orders_expected:vnVal("vn_orders"),concerns:vnVal("vn_concerns"),next_visit:vnVal("vn_next")}; }
+async function saveVisit(){
+  const id=window._vnDealer; if(!id) return; const details=collectVisitDetails(); const m=$("#vn_msg"); if(m)m.textContent="Saving…";
+  try{ const r=await api2({action:"save_visit",dealer_id:id,summary:details.summary,details});
+    if(r&&r.ok){ if(m)m.textContent=`Saved ✓ — ${r.tasks||0} task(s)${r.opportunities?`, ${r.opportunities} opportunity(ies)`:""} created.`; }
+    else if(m) m.textContent=(r&&r.message)||"Couldn't save.";
+  }catch(e){ if(m)m.textContent="Couldn't save — try again."; }
+}
+async function genFollowup(){
+  const id=window._vnDealer; if(!id) return; const details=collectVisitDetails(); const m=$("#vn_msg"); if(m)m.textContent="Generating…";
+  try{ const r=await api2({action:"generate_followup",dealer_id:id,details});
+    if(r&&r.ok){ const s=$("#fu_subject"); if(s)s.value=r.subject||""; const bd=$("#fu_body"); if(bd)bd.value=r.body||""; const w=$("#fu_wrap"); if(w)w.style.display="block"; if(m)m.textContent="Draft ready below — review, edit, then send."; }
+    else if(m) m.textContent=(r&&r.message)||"Couldn't generate.";
+  }catch(e){ if(m)m.textContent="Couldn't generate."; }
+}
+async function sendFollowup(){
+  const id=window._vnDealer; if(!id) return;
+  const subject=($("#fu_subject")||{}).value||""; const body=($("#fu_body")||{}).value||""; const m=$("#fu_msg"); if(m)m.textContent="Sending…";
+  try{ const r=await api2({action:"send_followup",dealer_id:id,subject,body});
+    if(r&&r.ok&&r.sent){ if(m)m.textContent="Follow-up sent ✓"; }
+    else if(r&&r.ok&&r.held){ if(m)m.textContent=r.message||"Prepared — held until go-live."; }
+    else if(m) m.textContent=(r&&r.message)||"Couldn't send.";
+  }catch(e){ if(m)m.textContent="Couldn't send."; }
+}
+function copyFollowup(){ const t=($("#fu_body")||{}).value||""; try{ navigator.clipboard.writeText(t); banner("Copied ✓"); }catch(e){ banner("Select the text to copy."); } }
+function itineraryListHtml(){
+  const items=computeItinerary(); const hasTimes=(LASTROUTE.legs||[]).length>0;
+  const mut="color:#6b7683;font-size:11px"; let html="",stopNo=0,routeIdx=-1,lastDay=0;
+  for(let k=0;k<items.length;k++){
+    const it=items[k],node=it.node;
+    if(it.dayIndex>lastDay){ lastDay=it.dayIndex; html+=`<li style="list-style:none;margin:7px 0 2px"><span style="display:inline-block;background:#eef2f6;color:#2B4071;font-weight:700;font-size:11px;border-radius:6px;padding:2px 8px">Day ${it.dayIndex+1}${hasTimes?" · "+esc(fmtAbsDay(it.arriveAbs,it.tz)):""}</span></li>`; }
+    if(it.legIn){ const mi=Math.round((it.legIn.distance_m||0)/1609.34),mn=Math.round((it.legIn.duration_s||0)/60); html+=`<li style="list-style:none;margin:0 0 0 34px;${mut}">↓ ${mn} min · ${mi} mi</li>`; }
+    if(!it.isStop){
+      const isStart=(k===0), t=hasTimes?(isStart?" · leave "+fmtAbs(it.arriveAbs,it.tz):" · arrive "+fmtAbs(it.arriveAbs,it.tz)):"";
+      html+=`<li class="homeli"><span class="n" style="background:#16202e">🏠</span><span class="nm"><b>${isStart?"Start — Home base":"Return — Home base"}</b><br><small>${esc(HOME?(HOME.short||HOME.q||""):"")}${t}</small></span></li>`;
+    } else {
+      stopNo++; routeIdx++; const ri=routeIdx, vv=(node.visit_min!=null?node.visit_min:defaultVisit());
+      const arr=hasTimes?`<b style="color:#2B4071">${esc(fmtAbs(it.arriveAbs,it.tz))}</b>`:"";
+      const dep=hasTimes?`<span style="${mut}"> · departs ${esc(fmtAbs(it.departAbs,it.tz))}</span>`:"";
+      html+=`<li><span class="n">${stopNo}</span><span class="nm"><b>${esc(node.name)}</b> ${arr}<br><small>${esc([node.city,node.state].filter(Boolean).join(", "))}</small>`
+        +`<div style="margin-top:3px;font-size:12px">Visit <input type="number" min="0" step="5" value="${vv}" style="width:52px" onchange="updateVisit(${ri},this.value)"> min${dep}`
+        +` &nbsp;<label style="${mut}"><input type="checkbox" ${node.overnight?"checked":""} onchange="toggleOvernight(${ri},this.checked)"> 🌙 overnight</label>`
+        +(node.dealer_id?` &nbsp;<a href="#" onclick="notifyDealer('${jesc(node.dealer_id)}','${jesc(node.name||"")}');return false" style="${mut};text-decoration:none" title="Email this dealer that you'll be in their area">✉ notify</a>`:"")
+        +(node.dealer_id?` &nbsp;<a href="#" onclick="openVisitNotes('${jesc(node.dealer_id)}','${jesc(node.name||"")}');return false" style="${mut};text-decoration:none" title="Log the visit &amp; generate a follow-up">📝 log visit</a>`:"")
+        +(node.dealer_id?` &nbsp;<a href="#" onclick="printDealerHandout('${jesc(node.dealer_id)}');return false" style="${mut};text-decoration:none" title="Print this dealer's leave-behind handout">🖨 handout</a>`:"")
+        +`</div>`
+        +`</span><button class="del" title="Remove" onclick="removeStop(${ri})">✕</button></li>`;
+      if(node.overnight){ html+=`<li style="list-style:none;margin:2px 0 5px 34px;font-size:11.5px;color:#8a5d12;background:#fdf4e6;border-radius:6px;padding:4px 8px">🌙 Overnight near ${esc(node.city||node.name)} — next day starts <input type="time" value="${minToTimeVal(node.next_start_min!=null?node.next_start_min:480)}" style="width:auto" onchange="updateNextStart(${ri},this.value)"></li>`; }
+    }
+  }
+  return html;
+}
+
+(function(){ try{ const sd=document.getElementById("startDate"); if(sd && !sd.value){ const n=new Date(); sd.value=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-${String(n.getDate()).padStart(2,"0")}`; } }catch(e){} })();
+
+/* ---- Route drafts ------------------------------------------------------------------
+   The plan lived only in memory, so stepping over to Dealer 360 and back lost it. It is
+   now mirrored into this browser after every change and restored on the way back in.
+   Saving to the server is still what makes a route real, assignable and shareable — this
+   only stops a half-built plan evaporating because you looked something up.
+
+   Keyed per staff email so two people on one machine never inherit each other's plan. */
+const DRAFT_KEY=()=>"hcps_route_draft_"+String((ME&&ME.email)||"anon").toLowerCase();
+const DRAFT_MAX_AGE=14*864e5;          // a fortnight-old plan is clutter, not context
+let DRAFT_RESTORED_AT=null;
+
+function stopRecord(s){
+  return {dealer_id:s.dealer_id||"", name:s.name||"", address:s.address||"", city:s.city||"",
+          state:s.state||"", zip:s.zip||"", lat:s.lat, lng:s.lng,
+          visit_min:(s.visit_min!=null?s.visit_min:null), overnight:!!s.overnight,
+          next_start_min:(s.next_start_min!=null?s.next_start_min:null)};
+}
+function saveDraft(){
+  try{
+    if(!ROUTE.length){ localStorage.removeItem(DRAFT_KEY()); return; }
+    localStorage.setItem(DRAFT_KEY(), JSON.stringify({
+      v:1, at:Date.now(), stops:ROUTE.map(stopRecord), round_trip:!!ROUNDTRIP,
+      route_id:CURRENT_ROUTE_ID||null,
+      start_date:(($("#startDate")||{}).value||""),
+      start_time:(($("#startTime")||{}).value||""),
+      visit_min:(($("#visitMin")||{}).value||"")
+    }));
+  }catch(e){}                           // private mode / full quota — never break the map
+}
+function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY()); }catch(e){} DRAFT_RESTORED_AT=null; }
+function readDraft(){
+  try{
+    const d=JSON.parse(localStorage.getItem(DRAFT_KEY())||"null");
+    if(!d||!Array.isArray(d.stops)||!d.stops.length) return null;
+    if(d.at && (Date.now()-d.at)>DRAFT_MAX_AGE){ clearDraft(); return null; }
+    return d;
+  }catch(e){ return null; }
+}
+/* A stop's _i is a position in POINTS, which is rebuilt on every load — so a stored stop is
+   matched back to its live point by dealer_id (coordinates for older drafts) to get a fresh
+   _i and light its marker up again. Per-stop edits belong to the PLAN, not to the map point,
+   so they are re-applied on top; the old re-map dropped them on every refresh. */
+function hydrateStop(s, idx){
+  let p=null;
+  if(s.dealer_id) p=POINTS.find(x=>x.dealer_id===s.dealer_id)||null;
+  if(!p) p=POINTS.find(x=>x.name===s.name&&x.lat===s.lat&&x.lng===s.lng)||null;
+  const base = p ? Object.assign({},p) : Object.assign({_i:"dr"+idx}, s);
+  if(s.visit_min!=null) base.visit_min=s.visit_min;
+  base.overnight=!!s.overnight;
+  if(s.next_start_min!=null) base.next_start_min=s.next_start_min;
+  return base;
+}
+function restoreDraft(){
+  const d=readDraft(); if(!d) return false;
+  ROUTE=d.stops.map(hydrateStop);
+  ROUNDTRIP=d.round_trip!==false;
+  CURRENT_ROUTE_ID=d.route_id||null;
+  const sd=$("#startDate"); if(sd&&d.start_date) sd.value=d.start_date;
+  const st=$("#startTime"); if(st&&d.start_time) st.value=d.start_time;
+  const vm=$("#visitMin"); if(vm&&d.visit_min) vm.value=d.visit_min;
+  DRAFT_RESTORED_AT=d.at||null;
+  return true;
+}
+function draftAge(ms){
+  const m=Math.round((Date.now()-ms)/60000);
+  if(m<2) return "a moment ago";
+  if(m<60) return m+" minutes ago";
+  const h=Math.round(m/60); if(h<24) return h+(h===1?" hour ago":" hours ago");
+  const d=Math.round(h/24); return d+(d===1?" day ago":" days ago");
+}
+function renderDraftNote(){
+  const el=$("#rdraft"); if(!el) return;
+  if(!ROUTE.length){ el.textContent=""; el.hidden=true; return; }
+  el.hidden=false;
+  if(DRAFT_RESTORED_AT) el.textContent="Picked up where you left off — unsaved plan from "+draftAge(DRAFT_RESTORED_AT)+". Save it to assign or share it.";
+  else if(!CURRENT_ROUTE_ID) el.textContent="Not saved yet — kept in this browser while you move around the portal.";
+  else el.textContent="";
+  el.hidden = !el.textContent;
+}
+
+function renderRoute(){
+  const panel=$("#routep"); panel.hidden = ROUTE.length===0;
+  $("#rtRow").style.display = HOME ? "block" : "none";
+  const cb=$("#rtChk"); if(cb) cb.checked=ROUNDTRIP;
+  const list=$("#rlist");
+  if(!ROUTE.length){ list.innerHTML=""; if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;} LASTROUTE={distance_m:0,duration_s:0,geometry:null}; CURRENT_ROUTE_ID=null; saveDraft(); renderDraftNote(); return; }
+  saveDraft(); renderDraftNote();
+  list.innerHTML=itineraryListHtml();
+  updateRouteMeta();
+  if(ROUTELINE){ MAP.removeLayer(ROUTELINE); ROUTELINE=null; }
+  const R=effectiveRoute();
+  if(R.length>=2){ ROUTELINE=L.polyline(R.map(s=>[s.lat,s.lng]),{color:"#93a2bb",weight:3,opacity:.55,dashArray:"6,8"}).addTo(MAP); }  // instant straight-line preview
+  scheduleRoute();   // then replace with the real road route from OpenRouteService (debounced)
+}
+function fmtDur(s){ s=Math.round(s||0); const h=Math.floor(s/3600),m=Math.round((s%3600)/60); return h?`${h}h ${m}m`:`${m}m`; }
+function fmtMi(m){ return Math.round((m||0)/1609.34); }
+function updateRouteMeta(){
+  const useHome=HOME&&ROUNDTRIP;
+  const drive = LASTROUTE.duration_s ? ` · ${fmtMi(LASTROUTE.distance_m)} mi · ${fmtDur(LASTROUTE.duration_s)} drive` : ` · ~${Math.round(routeMiles())} mi (as the crow flies)`;
+  const el=$("#rmeta"); if(el) el.textContent=`${ROUTE.length} stops${drive}${useHome?" · round trip":""}`;
+}
+function scheduleRoute(){ if(_routeT) clearTimeout(_routeT); _routeT=setTimeout(routeIt,600); }
+async function routeIt(){
+  const R=effectiveRoute();
+  if(R.length<2){ if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;} LASTROUTE={distance_m:0,duration_s:0,geometry:null}; updateRouteMeta(); return; }
+  const coords=R.map(s=>[s.lng,s.lat]);
+  try{
+    const r=await api2({action:"directions",coords});
+    if(r&&r.ok&&r.geometry&&r.geometry.length){
+      if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;}
+      if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;}
+      ROUTEGEO=L.polyline(r.geometry.map(c=>[c[1],c[0]]),{color:"#2B4071",weight:5,opacity:.85}).addTo(MAP);
+      LASTROUTE={distance_m:r.distance_m,duration_s:r.duration_s,geometry:r.geometry,legs:r.legs||[]};
+      updateRouteMeta();
+      { const _l=$("#rlist"); if(_l) _l.innerHTML=itineraryListHtml(); }   // fill in real arrival times
+    } else if(r&&r.need_key){ banner(r.message||"Add your OpenRouteService key (ORS_API_KEY) in Netlify to enable live routing."); }
+    else if(r&&r.message){ banner("Routing: "+r.message); }
+  }catch(e){}
+}
+function openGmaps(){
+  const R=effectiveRoute(); if(!R.length)return;
+  let stops=R;
+  if(stops.length>10){ alert("Google Maps links support about 10 points (home counts as 2). Opening the first 10 — split longer trips into two days."); stops=stops.slice(0,10); }
+  const url="https://www.google.com/maps/dir/"+stops.map(s=>`${s.lat},${s.lng}`).join("/");
+  window.open(url,"_blank");
+}
+
+/* ---------- saved routes ---------- */
+function saveRouteDialog(){
+  if(!ROUTE.length) return;
+  $("#homeEdit").innerHTML=`<div class="homeov"><div class="homecard">
+    <b>Save route</b>
+    <p>Name this trip so you can reload, print, and reuse it.</p>
+    <input id="rname" placeholder="e.g. Kentucky loop — week of Jun 9">
+    <input id="rdate" type="date" style="margin-top:8px">
+    <div class="ha"><button class="btn" onclick="saveRouteGo()">Save</button>
+      <button class="btn ghost" onclick="closeHome()">Cancel</button></div>
+    <div class="er" id="rerr"></div></div></div>`;
+  setTimeout(()=>{const i=$("#rname"); if(i)i.focus();},40);
+}
+async function saveRouteGo(){
+  const name=(($("#rname")||{}).value||"").trim(); if(!name){ $("#rerr").textContent="Enter a name."; return; }
+  const date=(($("#rdate")||{}).value||"").trim()||(($("#startDate")||{}).value||"").trim();
+  const stops=ROUTE.map(s=>({dealer_id:s.dealer_id||"",name:s.name||"",address:s.address||"",city:s.city||"",state:s.state||"",zip:s.zip||"",lat:s.lat,lng:s.lng,visit_min:(s.visit_min!=null?s.visit_min:null),overnight:!!s.overnight,next_start_min:(s.next_start_min!=null?s.next_start_min:null)}));
+  $("#rerr").textContent="Saving…";
+  try{
+    const r=await api2({action:"save_route",id:CURRENT_ROUTE_ID||undefined,name,scheduled_date:date||null,
+      home_base:(HOME&&ROUNDTRIP)?{label:HOME.short||"",address:HOME.q||"",lat:HOME.lat,lng:HOME.lng,depart_time:(($("#startTime")||{}).value||"08:00")}:null,
+      round_trip:!!(HOME&&ROUNDTRIP),stops,distance_m:LASTROUTE.distance_m,duration_s:LASTROUTE.duration_s,geometry:LASTROUTE.geometry});
+    if(r&&r.ok){ CURRENT_ROUTE_ID=r.id; closeHome(); banner("Route saved ✓"); }
+    else { $("#rerr").textContent=(r&&r.message)||"Couldn't save."; }
+  }catch(e){ $("#rerr").textContent="Couldn't save — try again."; }
+}
+function toggleSaved(){ const p=$("#savedPanel"); if(!p.hidden){ p.hidden=true; return; } p.hidden=false; refreshSaved(); }
+async function refreshSaved(){
+  const p=$("#savedPanel");
+  p.innerHTML=`<div class="uhead"><b>Saved routes</b><button class="rx" onclick="toggleSaved()">Close</button></div><div id="savedList">Loading…</div>`;
+  const bsm='padding:4px 9px;font-size:12px';
+  try{
+    const r=await api2({action:"list_routes"}); const rs=(r&&r.routes)||[];
+    $("#savedList").innerHTML = rs.length ? rs.map(x=>`<div style="display:flex;align-items:center;gap:6px;padding:7px 4px;border-bottom:1px solid #eef1f4">
+      <div style="flex:1;min-width:0"><b>${esc(x.name)}</b><br><small style="color:#6b7683">${x.scheduled_date?esc(x.scheduled_date)+" · ":""}${x.stops_count} stop${x.stops_count===1?"":"s"}${x.duration_s?" · "+fmtDur(x.duration_s):""}</small></div>
+      <button class="btn" style="${bsm}" onclick="loadSaved('${x.id}')">Open</button>
+      <button class="btn ghost" style="${bsm}" onclick="printSaved('${x.id}')">Print</button>
+      <button class="btn ghost" style="${bsm}" onclick="delSaved('${x.id}','${jesc(x.name)}')">✕</button></div>`).join("")
+      : `<div style="padding:10px;color:#6b7683">No saved routes yet. Build a route, then click “Save route”.</div>`;
+  }catch(e){ $("#savedList").innerHTML=`<div style="padding:10px;color:#b42323">Couldn't load saved routes.</div>`; }
+}
+async function loadSaved(id){
+  try{
+    const r=await api2({action:"get_route",id}); const rt=r&&r.route; if(!rt) return;
+    ROUTE=(rt.stops||[]).map((s,idx)=>({_i:"sv"+idx,dealer_id:s.dealer_id||"",name:s.name||"",address:s.address||"",city:s.city||"",state:s.state||"",zip:s.zip||"",lat:s.lat,lng:s.lng,visit_min:(s.visit_min!=null?s.visit_min:undefined),overnight:!!s.overnight,next_start_min:(s.next_start_min!=null?s.next_start_min:undefined)}));
+    CURRENT_ROUTE_ID=rt.id;
+    { const _sd=$("#startDate"); if(_sd) _sd.value=rt.scheduled_date||_sd.value||""; const _st=$("#startTime"); if(_st && rt.home_base && rt.home_base.depart_time) _st.value=rt.home_base.depart_time; }
+    if(rt.home_base&&rt.home_base.lat!=null){ HOME={q:rt.home_base.address||"",lat:rt.home_base.lat,lng:rt.home_base.lng,short:rt.home_base.label||""}; ROUNDTRIP=rt.round_trip!==false; localStorage.setItem("hcps_home_base",JSON.stringify(HOME)); drawHome(); }
+    LASTROUTE={distance_m:rt.distance_m||0,duration_s:rt.duration_s||0,geometry:rt.geometry||null};
+    renderRoute(); draw();
+    if(rt.geometry&&rt.geometry.length){ if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);} if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} ROUTEGEO=L.polyline(rt.geometry.map(c=>[c[1],c[0]]),{color:"#2B4071",weight:5,opacity:.85}).addTo(MAP); try{MAP.fitBounds(ROUTEGEO.getBounds().pad(0.15));}catch(e){} }
+    scheduleRoute();   // refresh per-leg drive times for the saved route
+    const sp=$("#savedPanel"); if(sp) sp.hidden=true;
+  }catch(e){}
+}
+async function delSaved(id,name){ if(!confirm('Delete route "'+name+'"?')) return; try{ await api2({action:"delete_route",id}); refreshSaved(); }catch(e){} }
+/* ---------- print route sheet (business-case packet comes next phase) ---------- */
+function parseTimeMin(v){ const m=/^(\d{1,2}):(\d{2})$/.exec(String(v||"").trim()); if(!m)return 8*60; return (+m[1])*60+(+m[2]); }
+function fmtClock(min){ min=Math.round(((min%1440)+1440)%1440); let h=Math.floor(min/60),m=min%60; const ap=h<12?"AM":"PM"; let hh=h%12; if(hh===0)hh=12; return `${hh}:${String(m).padStart(2,"0")} ${ap}`; }
+function nowStamp(){ const d=new Date(); return d.toLocaleDateString(undefined,{weekday:"short",year:"numeric",month:"short",day:"numeric"})+" · "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}); }
+function routeSheetHtml(title){
+  const items=computeItinerary();
+  const hasTimes=(LASTROUTE.legs||[]).length>0;
+  const {minutes:startMin}=routeStartParts();
+  const rows=[]; let stopNo=0,lastDay=0,endItem=null;
+  for(let k=0;k<items.length;k++){
+    const it=items[k],node=it.node; endItem=it;
+    if(it.dayIndex>lastDay){ lastDay=it.dayIndex; rows.push(`<tr class="home"><td class="n">📅</td><td colspan="3"><b>Day ${it.dayIndex+1}</b>${hasTimes?` — ${esc(fmtAbsDay(it.arriveAbs,it.tz))}`:""}</td></tr>`); }
+    const legNext=(items[k+1]&&items[k+1].legIn)?items[k+1].legIn:null;
+    const nextMi=legNext?Math.round((legNext.distance_m||0)/1609.34):null;
+    const nextMin=legNext?Math.round((legNext.duration_s||0)/60):null;
+    if(!it.isStop){
+      rows.push(`<tr class="home"><td class="n">🏠</td><td><b>${k===0?"Depart — Home base":"Return — Home base"}</b><div class="a">${esc(HOME?(HOME.q||HOME.short||""):"")}</div></td><td class="tm">${hasTimes?esc(fmtAbs(it.arriveAbs,it.tz)):""}</td><td class="leg">${legNext?`${nextMi} mi<br>${nextMin} min`:""}</td></tr>`);
+    } else {
+      stopNo++;
+      const addr=esc([node.address,[node.city,node.state].filter(Boolean).join(", "),node.zip].filter(Boolean).join(" "))||esc([node.city,node.state].filter(Boolean).join(", "));
+      rows.push(`<tr><td class="n">${stopNo}</td><td><b>${esc(node.name)}</b><div class="a">${addr}</div><div class="appt">Visit ${it.visit} min · departs ${hasTimes?esc(fmtAbs(it.departAbs,it.tz)):"____"} &nbsp; ▢ met &nbsp; notes ____________________________</div>${node.overnight?`<div class="a" style="color:#8a5d12">🌙 Overnight near ${esc(node.city||node.name)}</div>`:""}</td><td class="tm">${hasTimes?esc(fmtAbs(it.arriveAbs,it.tz)):""}</td><td class="leg">${legNext?`${nextMi} mi<br>${nextMin} min`:"—"}</td></tr>`);
+    }
+  }
+  const totMi=LASTROUTE.distance_m?fmtMi(LASTROUTE.distance_m):Math.round(routeMiles());
+  const totTime=LASTROUTE.duration_s?fmtDur(LASTROUTE.duration_s):"";
+  const endTime=(hasTimes&&endItem)?fmtAbs(endItem.arriveAbs,endItem.tz):"";
+  const meta=`${ROUTE.length} stops · ${totMi} mi${totTime?" · "+totTime+" drive":""} · depart ${fmtClock(startMin)}${endTime?` · ends ~${endTime}`:""}`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
+    <style>body{font:13px Arial,sans-serif;color:#1b2733;margin:24px}h1{font-size:20px;margin:0 0 2px}.m{color:#5b6672;margin:0 0 4px}.stamp{color:#9aa4ae;font-size:11px;margin:0 0 14px}
+    table{width:100%;border-collapse:collapse}th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;border-bottom:2px solid #dde3e8;padding:4px 6px}
+    td{border-bottom:1px solid #dde3e8;padding:9px 6px;vertical-align:top}td.n{width:24px;font-weight:800;color:#2B4071}td.tm{width:74px;font-weight:700;color:#2B4071;white-space:nowrap}td.leg{width:60px;color:#6b7683;font-size:11px;white-space:nowrap;line-height:1.35}
+    tr.home td{background:#f4f7fb}.a{color:#333c47;font-size:12px;margin-top:2px}.appt{color:#9aa4ae;font-size:11px;margin-top:6px}
+    @media print{body{margin:12mm}}</style></head><body>
+    <h1>${esc(title)}</h1><p class="m">${esc(meta)}</p><p class="stamp">Printed ${esc(nowStamp())}</p>
+    <table><thead><tr><th>#</th><th>Stop</th><th>ETA</th><th>To next</th></tr></thead><tbody>${rows.join("")}</tbody></table>
+    <p class="stamp" style="margin-top:16px">HomeCare Provider Services — territory route</p>
+    <scr`+`ipt>window.onload=function(){window.print();}</scr`+`ipt></body></html>`;
+}
+function printRoute(){
+  if(!ROUTE.length) return;
+  const w=window.open("","_blank"); if(!w){ banner("Allow pop-ups to print the route."); return; }
+  w.document.write(routeSheetHtml("Route sheet")); w.document.close();
+}
+async function printSaved(id){ await loadSaved(id); printRoute(); }
+
+/* ---------- business-case trip packet ---------- */
+async function printPacket(){
+  if(!ROUTE.length) return;
+  const w=window.open("","_blank"); if(!w){ banner("Allow pop-ups to print the visit package."); return; }
+  w.document.write('<!doctype html><meta charset="utf-8"><title>Visit package</title><body style="font:15px Arial;margin:28px;color:#5b6672">Preparing your visit package…</body>');
+  w.document.close();
+  const ids=[...new Set(ROUTE.map(s=>s.dealer_id).filter(Boolean))];
+  let cases={};
+  try{ const r=await api2({action:"business_case",dealer_ids:ids}); cases=(r&&r.cases)||{}; }catch(e){}
+  try{ w.document.open(); w.document.write(packetHtml(cases)); w.document.close(); }catch(e){}
+}
+// Cover page for the visit package: the time-zone itinerary + territory promotions.
+function packetCover(){
+  const items=computeItinerary(); const hasTimes=(LASTROUTE.legs||[]).length>0;
+  let rows="",stopNo=0,lastDay=0;
+  for(let k=0;k<items.length;k++){ const it=items[k],node=it.node;
+    if(it.dayIndex>lastDay){ lastDay=it.dayIndex; rows+=`<tr class="dy"><td colspan="4">Day ${it.dayIndex+1}${hasTimes?" — "+esc(fmtAbsDay(it.arriveAbs,it.tz)):""}</td></tr>`; }
+    if(!it.isStop){ rows+=`<tr class="hm"><td class="c">🏠</td><td>${k===0?"Depart — Home base":"Return — Home base"}</td><td class="c">${hasTimes?esc(fmtAbs(it.arriveAbs,it.tz)):""}</td><td></td></tr>`; }
+    else { stopNo++; rows+=`<tr><td class="c">${stopNo}</td><td><b>${esc(node.name)}</b><div class="sub">${esc([node.city,node.state].filter(Boolean).join(", "))}</div></td><td class="c">${hasTimes?esc(fmtAbs(it.arriveAbs,it.tz)):"—"}</td><td class="c">${it.visit} min${node.overnight?" · 🌙":""}</td></tr>`; }
+  }
+  const promos=(HANDOUT&&HANDOUT.updates&&HANDOUT.updates.length)?`<div class="promo"><h3>Promotions &amp; What's New</h3><ul>${HANDOUT.updates.map(u=>`<li>${esc(u)}</li>`).join("")}</ul></div>`:"";
+  const dv=(($("#startDate")||{}).value||""), tv=(($("#startTime")||{}).value||"");
+  const when = dv?`${esc(dv)}${tv?" · depart "+esc(fmtClock(parseTimeMin(tv))):""}`:"";
+  const totMi=LASTROUTE.distance_m?fmtMi(LASTROUTE.distance_m):Math.round(routeMiles());
+  return `<section class="cover">
+    <h1>Visit Package</h1>
+    <p class="m">${ROUTE.length} stops · ${totMi} mi${LASTROUTE.duration_s?" · "+fmtDur(LASTROUTE.duration_s)+" drive":""}${when?" · "+when:""}${(HOME&&ROUNDTRIP)?" · round trip":""}</p>
+    <h3>Itinerary</h3>
+    <table class="itin"><thead><tr><th>#</th><th>Stop</th><th>Arrive</th><th>Visit</th></tr></thead><tbody>${rows}</tbody></table>
+    ${promos}</section>`;
+}
+function packetHtml(cases){
+  const useHome=HOME&&ROUNDTRIP;
+  const meta=`${ROUTE.length} stops${LASTROUTE.duration_s?" · "+fmtMi(LASTROUTE.distance_m)+" mi · "+fmtDur(LASTROUTE.duration_s)+" drive":""}`;
+  const stops=ROUTE.map((s,i)=>{
+    const c=cases[s.dealer_id]||{};
+    const addr=esc([s.address,[s.city,s.state].filter(Boolean).join(", "),s.zip].filter(Boolean).join(" "))||esc([s.city,s.state].filter(Boolean).join(", "));
+    const lines=(c.lines&&c.lines.length)?`<table class="t"><thead><tr><th>Line</th><th class="r">Sales</th><th class="r">Orders</th><th>Last</th></tr></thead><tbody>${c.lines.map(l=>`<tr><td>${esc(l.name)}</td><td class="r">${fmtUsd(l.amount)}</td><td class="r">${l.orders}</td><td>${esc(l.last||"")}</td></tr>`).join("")}</tbody></table>`:`<div class="dim">No purchase history on file.</div>`;
+    const accts=(c.accounts&&c.accounts.length)?`<div class="acct">${c.accounts.map(a=>`<span class="ai">${esc(a.name)}${a.account?` #${esc(a.account)}`:""}</span>`).join("")}</div>`:`<div class="dim">No manufacturer accounts on file.</div>`;
+    const nba=(c.opps&&c.opps.length)?`Introduce ${esc(c.opps[0].name)}${c.opps.length>1?` (+${c.opps.length-1} more)`:""}`:((c.total>0)?"Reorder &amp; confirm satisfaction":"Open the account — secure a first order");
+    const showSet=[]; const seen=new Set();
+    (c.carried||[]).concat(c.opps||[]).forEach(x=>{ if(x&&x.name&&!seen.has(x.name)){ seen.add(x.name); showSet.push(x.name); } });
+    const shownBoxes=showSet.length?showSet.map(n=>`<span class="cb">▢ ${esc(n)}</span>`).join(""):`<span class="dim">—</span>`;
+    const prods=(c.products&&c.products.length)?`<div class="prod"><h3>Products ordered <span class="dim" style="text-transform:none;font-weight:400">— reorder these &amp; spot adjacent products to add</span></h3><table class="t"><thead><tr><th>Product</th><th>Line</th><th class="r">Qty</th><th class="r">Sales</th><th>Last</th></tr></thead><tbody>${c.products.slice(0,20).map(pr=>`<tr><td>${esc(pr.name)}${pr.code?` <span class="dim">${esc(pr.code)}</span>`:""}</td><td>${esc(pr.line)}</td><td class="r">${pr.qty}</td><td class="r">${fmtUsd(pr.amount)}</td><td>${esc(pr.last||"")}</td></tr>`).join("")}</tbody></table>${((c.products.length>20)||c.products_more)?`<div class="dim">+${Math.max(0,c.products.length-20)+(c.products_more||0)} more products on file</div>`:""}</div>`:"";
+    const opps=(c.opps&&c.opps.length)?`<div class="opps"><b>Opportunities to pitch:</b> ${c.opps.map(o=>`<span class="chip">${esc(o.name)}</span>`).join(" ")}</div>`:`<div class="dim" style="margin-top:6px">No open opportunities — already buys every eligible line.</div>`;
+    const contacts=(c.contacts&&c.contacts.length)?c.contacts.slice(0,6).map(ct=>`<div class="ct">${esc(ct.name||"—")}${ct.title?" · "+esc(ct.title):""}${ct.email?" · "+esc(ct.email):""}${ct.phone?" · ☎ "+esc(ct.phone):""}${ct.cell?" · 📱 "+esc(ct.cell):""}</div>`).join(""):`<div class="dim">No contacts on file.</div>`;
+    const gold=(c.golden&&c.golden!=="None")?` · Golden: ${esc(c.golden)}`:"";
+    return `<section class="stop">
+      <div class="sh"><span class="num">${i+1}</span><div><h2>${esc(c.name||s.name||"")}</h2><div class="a">${addr}${c.account?" · Acct "+esc(c.account):""}${gold}</div></div><div class="tot">${fmtUsd(c.total)}<small>lifetime</small></div></div>
+      <div class="grid">
+        <div><h3>Buying history</h3>${lines}<h3 style="margin-top:10px">Accounts on file</h3>${accts}</div>
+        <div><h3>Contacts</h3>${contacts}${opps}<div class="nba"><b>Next best action:</b> ${nba}</div></div>
+      </div>
+      ${prods}
+      <div class="field">
+        <div class="fl"><b>Purpose of visit:</b> <span class="ln"></span></div>
+        <div class="fl"><b>Lines shown:</b> ${shownBoxes}</div>
+        <div class="fl" style="margin-bottom:3px"><b>Notes for CRM:</b></div><div class="nbox"></div>
+      </div>
+    </section>`;
+  }).join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Business case — route</title><style>
+    body{font:13px Arial,sans-serif;color:#1b2733;margin:24px}h1{font-size:20px;margin:0 0 2px}.m{color:#5b6672;margin:0 0 14px}
+    .stop{border:1px solid #dde3e8;border-radius:10px;padding:12px 14px;margin:0 0 12px;page-break-inside:avoid}
+    .sh{display:flex;align-items:center;gap:10px}.sh h2{font-size:16px;margin:0}.num{background:#2B4071;color:#fff;font-weight:800;min-width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+    .a{color:#6b7683;font-size:12px}.tot{margin-left:auto;font-weight:800;color:#1f9d55;text-align:right}.tot small{display:block;color:#9aa4ae;font-weight:400;font-size:10px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px}h3{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;margin:0 0 6px}
+    table.t{width:100%;border-collapse:collapse}table.t th,table.t td{border-bottom:1px solid #eef1f4;padding:4px 6px;text-align:left;font-size:12px}.r{text-align:right}
+    .ct{font-size:12px;padding:2px 0;border-bottom:1px dotted #eef1f4}.opps{margin-top:8px}.chip{display:inline-block;background:#eaf0f8;color:#2f73b8;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;margin:2px}
+    .dim{color:#9aa4ae;font-size:12px}
+    .acct .ai{display:inline-block;background:#f4f7fb;border:1px solid #e2e8f1;border-radius:6px;padding:2px 7px;font-size:11px;margin:2px 3px 0 0}
+    .nba{margin-top:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:7px;padding:7px 9px;font-size:12px;color:#9a3412}
+    .prod{margin-top:12px}.prod h3{margin-bottom:6px}
+    .field{margin-top:12px;border-top:1px dashed #cfd6de;padding-top:10px}.fl{font-size:12px;margin:6px 0;color:#333c47}
+    .ln{display:inline-block;border-bottom:1px solid #b9c2cc;min-width:60%;height:14px}
+    .cb{display:inline-block;font-size:12px;margin:2px 10px 2px 0;color:#333c47}
+    .nbox{height:60px;border:1px solid #dde3e8;border-radius:7px;margin-top:3px}
+    .cover{border:1px solid #dde3e8;border-radius:10px;padding:14px 16px;margin:0 0 14px;page-break-after:always}
+    .cover h1{font-size:22px;margin:0 0 2px}.cover h3{margin:12px 0 6px}
+    .itin{width:100%;border-collapse:collapse}.itin th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;text-align:left;border-bottom:2px solid #dde3e8;padding:4px 7px}
+    .itin td{border-bottom:1px solid #eef1f4;padding:5px 7px;font-size:12px;text-align:left}.itin td.c{text-align:center;white-space:nowrap}.itin .sub{color:#9aa4ae;font-size:11px}
+    .itin tr.dy td{background:#eef2f6;font-weight:700;color:#2B4071}.itin tr.hm td{background:#f7f9fb;color:#5b6672}
+    .promo{margin-top:12px;background:#f0f7ff;border:1px solid #d6e6f5;border-radius:8px;padding:8px 12px}.promo h3{margin:0}.promo ul{margin:6px 0 0;padding-left:18px}.promo li{margin:3px 0;font-size:12.5px}
+    .secttl{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#5b6672;margin:0 0 10px}
+    @media print{body{margin:12mm}.stop{border-color:#ccc}}
+    </style></head><body>
+    ${packetCover()}
+    <h2 class="secttl">Dealer handouts — in stop order</h2>
+    ${stops}
+    <p class="m">HomeCare Provider Services — confidential territory planning</p>
+    <scr`+`ipt>window.onload=function(){window.print();}</scr`+`ipt></body></html>`;
+}
+
+/* ---------- dealer leave-behind (customer-facing one-pager) ---------- */
+async function printDealerHandout(id){
+  if(!id) return;
+  const w=window.open("","_blank"); if(!w){ banner("Allow pop-ups to print the handout."); return; }
+  w.document.write('<!doctype html><meta charset="utf-8"><body style="font:15px Arial;margin:28px;color:#5b6672">Preparing dealer handout…</body>'); w.document.close();
+  let c={};
+  try{ const r=await api2({action:"business_case",dealer_ids:[id]}); c=(r&&r.cases&&r.cases[id])||{}; }catch(e){}
+  try{ w.document.open(); w.document.write(handoutHtml(c)); w.document.close(); }catch(e){}
+  MAP&&MAP.closePopup();
+}
+function handoutHtml(c){ return DealerHandout.html(c, {HANDOUT:HANDOUT, ME:ME}); }
+
+async function refreshGeoBtn(){
+  try{
+    const s=await api("POST",{action:"status"});
+    const btn=$("#geoBtn");
+    if(s&&s.ok){ btn.textContent = s.remaining>0 ? `Geocode addresses (${s.remaining} left)` : `All ${s.total} geocoded ✓`; btn.disabled=s.remaining===0; }
+    else if(s&&s.error==="tables_missing"){ banner(s.message); btn.disabled=true; }
+  }catch(e){}
+}
+async function geocodeAll(){
+  const btn=$("#geoBtn"); btn.disabled=true;
+  try{
+    for(let guard=0; guard<200; guard++){
+      const r=await api("POST",{action:"run",limit:25});
+      if(!r||!r.ok){ if(r&&r.message)banner(r.message); break; }
+      btn.textContent=`Geocoding… ${r.remaining} left`;
+      if(r.remaining<=0) break;
+    }
+    await loadPoints(); await refreshGeoBtn();
+  }catch(e){ btn.disabled=false; }
+}
+function banner(msg){ $("#banner").innerHTML = msg?`<div class="banner">${esc(msg)}</div>`:""; }
+async function loadPoints(){
+  const j=await api("GET");
+  if(j&&j.error==="tables_missing"){ banner(j.message); POINTS=[]; UNMAPPED=[]; }
+  else { banner(""); POINTS=(j&&j.points)||[]; UNMAPPED=(j&&j.unmapped)||[]; }
+  POINTS.forEach((p,i)=>p._i=i);
+  // Re-point the plan at the freshly loaded map points, keeping the rep's per-stop edits;
+  // with nothing in memory, pick the draft back up instead.
+  if(ROUTE.length) ROUTE=ROUTE.map((s,i)=>hydrateStop(stopRecord(s),i));
+  else restoreDraft();
+  fillStateFilter(); draw(); renderRoute(); renderUnmapped();
+}
+function renderUnmapped(){
+  const b=$("#unmapBtn"); if(b) b.textContent = UNMAPPED.length ? `⚠ Not on map (${UNMAPPED.length})` : "All on map ✓";
+  const meta=$("#umeta"); if(meta) meta.textContent = `${UNMAPPED.length} location${UNMAPPED.length===1?"":"s"}`;
+  const list=$("#ulist"); if(!list) return;
+  if(!UNMAPPED.length){ list.innerHTML=`<div class="uitem"><div class="ua">Every location is geocoded. 🎉</div></div>`; return; }
+  const byState={}; UNMAPPED.forEach(u=>{ (byState[u.state||"—"]=byState[u.state||"—"]||[]).push(u); });
+  list.innerHTML=Object.keys(byState).sort().map(st=>{
+    const items=byState[st].slice().sort((a,b)=>String(a.name).localeCompare(b.name)).map(u=>`
+      <div class="uitem">
+        <div class="un">${esc(u.name)}</div>
+        <div class="ua">${esc([u.address,[u.city,u.state].filter(Boolean).join(", "),u.zip].filter(Boolean).join(" · "))}</div>
+        <div><a href="/admin/dealer.html?id=${encodeURIComponent(u.dealer_id)}" target="_blank" rel="noopener">Open dealer →</a></div>
+      </div>`).join("");
+    return `<div class="ustate">${esc(st)}</div>${items}`;
+  }).join("");
+}
+function toggleUnmapped(){ const p=$("#unmapPanel"); if(p) p.hidden=!p.hidden; }
+async function boot(){
+  TOKEN=await HCPS.ensureFresh();   // renew an expired access token before the first call
+  if(!TOKEN){ showGate(); return; }
+  if(TOKEN && !ME){ try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+TOKEN},body:JSON.stringify({action:"me"})}); const j=await r.json().catch(()=>({})); if(j&&j.ok){ME=j.profile; HCPS.setSession({profile:ME});} else { HCPS.signOut(); TOKEN=null; showGate(); return; } }catch(e){} }
+  const canMap = !ME || ME.role==="president" || ME.can_travel;
+  if(!canMap){ const tb=document.querySelector(".toolbar"); if(tb)tb.style.display="none"; const mp=$("#map"); if(mp)mp.style.display="none"; banner("The Map & route planner are set up for travelling reps. Ask the President to enable travel access if you need them."); return; }
+  try{
+    if(!BOOTED){ initMap(); BOOTED=true; }
+    drawHome();
+    loadSettings();
+    await loadPoints();
+    const pres = !ME || ME.role==="president";
+    const g=$("#geoBtn"); if(g) g.style.display = pres ? "" : "none";
+    if(pres) await refreshGeoBtn();
+    if(!POINTS.length){ banner(pres ? "No mapped locations yet — click Geocode addresses to plot your dealers. (If it says a table is missing, run geocode.sql in Supabase first.)" : "No mapped locations in your book yet."); }
+  }catch(e){}
+}
+refreshHomeBtn();
+if(TOKEN) boot(); else showGate();
+</script>
+</body></html>

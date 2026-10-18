@@ -1,0 +1,2069 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Dealer 360</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .d360{display:grid;grid-template-columns:1fr 340px;gap:15px;align-items:start}
+ @media(max-width:900px){.d360{grid-template-columns:1fr}}
+ /* Grid columns may shrink below their widest child — without this a single wide row pushed the
+    whole page to ~540px on a 390px phone (sideways scroll, browser zoomed out). */
+ .d360>div{min-width:0}
+ .d360 input,.d360 select,.d360 textarea{min-width:0;max-width:100%}
+ .idrow{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:#41576b;margin:6px 0 0}
+ .idrow b{color:var(--navy)}
+ .spark{width:100%;height:70px;display:block}
+ .stat{display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 0}
+ .stat .s{background:#f5f8fb;border:1px solid var(--line);border-radius:10px;padding:8px 13px;min-width:96px}
+ .stat .s .l{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:600}
+ .stat .s .v{font-size:19px;font-weight:800;font-family:'Barlow Condensed';color:var(--navy)}
+ .sig{display:flex;flex-direction:column;gap:8px}
+ .sig .row{display:flex;align-items:center;gap:8px;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff}
+ .sig .row.hot{background:#e7f6ec;border-color:#bfe3ca}
+ .sig .row.warn{background:#fdeee0;border-color:#f6d5ad}
+ .sig .row.cool{background:#f3eef9;border-color:#e0d5f5}
+ .pill2{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:6px;padding:2px 7px}
+ .pill2.ok{background:#e7f6ec;color:#1f7a44}.pill2.due{background:#fdeee0;color:#b45309}.pill2.dorm{background:#f3eef9;color:#5b3fa0}
+ .note-ph{border:1px dashed var(--line);border-radius:10px;padding:14px;color:var(--gray);font-size:13px;text-align:center;background:#fafbfc}
+ .itile{border:1px solid var(--line);border-radius:9px;padding:7px 9px;background:#fff}
+ .itile .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .itile .v{font-size:16px;font-weight:800;color:var(--navy);line-height:1.1;margin-top:1px}
+ .ihd{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin:8px 0 4px}
+ .schips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 12px}
+ .schip{font-size:12px;font-weight:700;color:var(--navy);background:#f5f8fb;border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer;font-family:inherit}
+ .schip:hover{background:#eef3f8}
+ .schip.on{background:#1681c2;border-color:#1681c2;color:#fff}
+ .schip .scnt{font-weight:600;opacity:.65;margin-left:5px;font-size:11px}
+ /* Relationship Timeline (Phase 2D) */
+ .tlhd{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin:0 0 6px}
+ .tlday{font-size:11px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;margin:12px 0 4px}
+ .tle{display:flex;gap:9px;padding:7px 0;border-bottom:1px solid #eef2f6}
+ .tle .ic{flex:none;width:26px;height:26px;border-radius:8px;background:#f2f6fa;display:flex;align-items:center;justify-content:center;font-size:14px}
+ .tle.k-milestone .ic{background:#fff4e5}
+ .tle .bd{flex:1;min-width:0}
+ .tle .tt{font-size:13px;font-weight:700;color:var(--ink);overflow-wrap:anywhere}
+ .tle .mt{font-size:12px;color:#41576b;margin-top:1px;overflow-wrap:anywhere}
+ .tle .dt{font-size:12.5px;color:var(--ink);margin-top:3px;white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+ .tle .dt.open{display:block}
+ .tle .wh{font-size:11.5px;color:var(--gray);margin-top:2px}
+ .schip.on .scnt{opacity:.9}
+ .chwrap{position:relative;margin:2px 0 0}
+ .chart{width:100%;height:auto;display:block;overflow:visible}
+ .chttl{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin:4px 0 2px}
+ .cyt{font-size:10px;fill:var(--gray);font-variant-numeric:tabular-nums}
+ .cxt{font-size:10px;fill:var(--gray)}
+ .cend{font-size:11px;fill:var(--navy);font-weight:800}
+ .chtip{position:absolute;pointer-events:none;background:#0f1b2b;color:#fff;border-radius:7px;padding:5px 8px;font-size:12px;box-shadow:0 6px 18px rgba(0,0,0,.18);z-index:5}
+ .chtip .chtv{font-weight:800;font-size:13px}
+ .chtip .chtl{font-size:10.5px;color:#aebccd;margin-top:1px}
+ .stbl{overflow-x:auto;margin-top:2px}
+ .stbl table{width:100%}
+ td.lbl a.link{cursor:pointer}
+ .prow2{display:block;padding:9px 10px;border-bottom:1px solid #eef2f6;text-decoration:none;color:var(--navy)}
+ .prow2:hover{background:#f6fafd}.prow2 b{font-weight:700}
+ .tasks{display:flex;flex-direction:column;gap:6px}
+ .tk{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:#fff}
+ .tk.hi{border-left:3px solid var(--orange)}
+ .tkchk{background:none;border:0;font-size:17px;line-height:1;cursor:pointer;color:var(--blue);padding:0;margin-top:1px}
+ .tkb{flex:1;min-width:0}.tkt{font-size:13px;font-weight:600;color:var(--navy)}.tkt.dn{text-decoration:line-through;color:var(--gray)}
+ .tkadd{display:flex;gap:6px;margin-top:4px}.tkadd input#ntitle{flex:1;min-width:0}
+ .nt{padding:7px 0;border-bottom:1px solid #eef2f6}.nt .ntb{font-size:13px;white-space:pre-wrap;color:var(--ink)}
+ /* ---- Notes ---------------------------------------------------------------
+    A rep opens this card to read a dealer's history in the minute before a call,
+    an email or a visit — so it is sized for reading, not for storing text. Each
+    note leads with the three things you scan for (what kind of touch, who, how
+    long ago) and only then the words. The activity timeline keeps .nt above; the
+    two lists are read for different reasons and no longer share a type scale. */
+ .ncompose{border:1px solid var(--line);border-radius:12px;background:#fafbfc;padding:10px}
+ .ncompose textarea#nbody{width:100%;font-size:14.5px;line-height:1.55;resize:vertical}
+ .ncbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px}
+ .ncbar select{width:auto}
+ .ncmsg{font-size:12.5px;font-weight:600;margin-left:2px}
+ .nhd{display:flex;align-items:center;gap:8px;margin:16px 0 9px;font-size:11px;
+      text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800}
+ .nhd .ncount{letter-spacing:0;color:var(--navy);background:#eef3f8;border-radius:999px;padding:2px 9px;font-size:11px}
+ .nhd .nrule{flex:1;height:1px;background:var(--line)}
+ .nlist{display:flex;flex-direction:column;gap:10px}
+ .ncard{border:1px solid var(--line);border-left:3px solid #b9c5d2;border-radius:11px;
+        background:#fff;padding:11px 15px 13px}
+ .ncard:hover{background:#fcfdfe}
+ .nmeta{display:flex;flex-wrap:wrap;align-items:center;gap:5px 10px;margin-bottom:7px}
+ .nkind{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;
+        border-radius:6px;padding:2px 8px;white-space:nowrap;background:#eef2f6;color:#41576b}
+ .nwho{font-size:13px;font-weight:700;color:var(--navy)}
+ .nwhen{font-size:12.5px;font-weight:600;color:#41576b;font-variant-numeric:tabular-nums}
+ .nago{font-size:12px;font-weight:600;color:var(--gray);margin-left:auto;white-space:nowrap}
+ /* On a phone the meta row wraps, and a flush-right age ends up orphaned on its own
+    line — let it sit next to the date instead. */
+ @media(max-width:620px){ .nago{margin-left:0} }
+ /* 15px/1.65 is the readable part; the 74ch cap is what makes it *scannable* — the
+    left column runs ~855px wide, and a 120-character line loses your eye on the wrap. */
+ .nbody{font-size:15px;font-weight:500;line-height:1.65;color:var(--ink);
+        white-space:pre-wrap;overflow-wrap:anywhere;max-width:74ch}
+ .nbody.clamp{display:-webkit-box;-webkit-line-clamp:9;-webkit-box-orient:vertical;overflow:hidden}
+ .nmore{background:none;border:0;padding:5px 0 0;font:inherit;font-size:12.5px;font-weight:700;color:var(--blue);cursor:pointer}
+ .nmore:hover{text-decoration:underline}
+ .ncard.nk-call{border-left-color:var(--blue)}   .ncard.nk-call  .nkind{background:#e8f1fb;color:#1a5fa8}
+ .ncard.nk-visit{border-left-color:var(--orange)}.ncard.nk-visit .nkind{background:#fdeee0;color:#b45309}
+ .ncard.nk-email{border-left-color:#8b6ede}      .ncard.nk-email .nkind{background:#f3eef9;color:#5b3fa0}
+ .ncard.nk-quote{border-left-color:var(--green)} .ncard.nk-quote .nkind{background:#e7f6ec;color:#1f7a44}
+ .ncard.nk-issue{border-left-color:#d64545}      .ncard.nk-issue .nkind{background:#fdecec;color:#b42323}
+ /* Contacts: the email is the action, so it has to look like one. */
+ .cmail{color:var(--blue);font-weight:700;text-decoration:none}
+ .cmail:hover{text-decoration:underline}
+ /* ---- Voice notes (Web Speech API dictation) ---- */
+ .vn{margin-top:8px;border:1px solid var(--line);border-radius:11px;background:#fafbfc;padding:9px}
+ .vn-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+ .vn-mic{display:inline-flex;align-items:center;gap:7px}
+ .vn .btn.sm{min-height:38px}
+ /* The cross-sell opportunity dialog brings its own field styles — this page has no
+    shared form classes, and borrowing the email viewer's would couple two unrelated things. */
+ #xsBody .fl{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin:0 0 4px}
+ #xsBody .in{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:13.5px;background:#fff;color:var(--navy)}
+ #xsBody textarea.in{resize:vertical;min-height:64px}
+ #xsFoot .btn.pri{background:var(--navy);color:#fff;border-color:var(--navy)}
+ @media(max-width:640px){.vn .btn.sm{min-height:44px}}
+ .vn-rec-dot{width:9px;height:9px;border-radius:50%;background:#d9342b;display:inline-block;box-shadow:0 0 0 0 rgba(217,52,43,.5);animation:vnpulse 1.3s infinite}
+ @keyframes vnpulse{0%{box-shadow:0 0 0 0 rgba(217,52,43,.5)}70%{box-shadow:0 0 0 8px rgba(217,52,43,0)}100%{box-shadow:0 0 0 0 rgba(217,52,43,0)}}
+ .vn-status{font-size:12px;color:var(--gray);display:inline-flex;align-items:center;gap:6px;margin-left:2px}
+ .vn-status.err{color:#b4321f}
+ .vn-preview{width:100%;margin-top:8px;border:1px solid var(--line);border-radius:9px;background:#fff;padding:9px 10px;font:inherit;font-size:14px;color:var(--ink);min-height:56px;resize:vertical;line-height:1.45}
+ .vn-preview[readonly]{background:#f4f8fb}
+ .vn-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+ .vn-hint{font-size:11.5px;color:var(--gray);margin-top:6px}
+ .vn-unsupported{font-size:12.5px;color:var(--gray);margin-top:8px;background:#fafbfc;border:1px dashed var(--line);border-radius:9px;padding:9px 11px}
+ @media(prefers-reduced-motion:reduce){.vn-rec-dot{animation:none}}
+ /* Visits & Meetings (Phase 1) — one dealer-scoped read: what's coming, what's live, what happened. */
+ .vm-sec{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin:10px 0 5px}
+ .vm-sec:first-child{margin-top:0}
+ .vm{border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:#fff;margin:0 0 8px}
+ .vm.live{border-color:#f6c79a;background:#fffaf4}
+ .vm-hd{display:flex;gap:6px 10px;align-items:baseline;flex-wrap:wrap;font-size:13px;color:#41576b}
+ .vm-hd b{color:var(--navy)}
+ .vm-sum{font-size:13px;color:#33475b;margin:4px 0 0;white-space:pre-wrap}
+ .vm-tags{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 0}
+ .vm-tag{font-size:11px;background:#f5f8fb;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:#41576b}
+ .vm-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+ .vm-acts a.btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+ .vm-more{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px;font-size:13px}
+ .vm-more .vl{padding:3px 0}
+ .vm-more .vl b{color:var(--navy)}
+ .vm-row{display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid #f1f3f6}
+ .vm-row:last-child{border-bottom:0}
+ .pill2.none{background:#eef2f6;color:#5b6672}
+ @media(max-width:640px){.vm-acts .btn{flex:1 1 auto;min-height:44px}}
+ /* Reps reach Dealer 360 from the field app on a phone, where the pinned rep menu (~380px tall)
+    would cover half the screen. On a phone it scrolls away with the page instead. */
+ @media(max-width:760px){ header#ac-head{position:static} }
+.family-nav{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#f7f9fc}
+.family-nav-title{font-size:13px;font-weight:800;color:var(--navy);margin-bottom:9px}
+.family-nav-count{font-size:12px;font-weight:500;color:var(--gray)}
+.family-nav-items{display:flex;gap:8px;flex-wrap:wrap}
+.family-location{display:flex;flex-direction:column;gap:3px;padding:9px 12px;min-width:160px;max-width:300px;border-radius:8px;border:1px solid #d7e0eb;background:#fff;color:var(--navy);text-decoration:none;font-size:12px}
+a.family-location:hover,a.family-location:focus-visible{border-color:var(--blue);background:#eaf2ff;outline-offset:2px}
+.family-selected{background:#e9eff9;border-color:#8ca6d0}
+.family-location-name{font-size:12.5px;font-weight:750;overflow-wrap:anywhere}
+.family-location-meta{color:#5f6c7d;font-size:11px;overflow-wrap:anywhere}
+.family-inactive,.family-current{font-size:10px;font-weight:700;color:#895014;background:#fff1d9;padding:2px 5px;border-radius:5px}
+.family-current{color:#245278;background:#dcecff}
+@media(max-width:600px){.family-location{width:100%;max-width:none}}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="backbar"><a class="btn ghost sm" href="/admin/dealer.html" onclick="return backToPicker(event)">← All dealers</a>
+    <span class="hint" style="margin:0"><a class="link" href="/admin/call-list.html">Who to Call</a> · <a class="link" href="/admin/command-center.html">Command Center</a></span></div>
+  <div id="body"><div class="msg">Loading dealer…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script src="/admin/dealer-handout.js"></script>
+<script src="/admin/dealer-family.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money=n=>"$"+Math.round(Number(n||0)).toLocaleString("en-US");
+const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
+window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), CUR=null, ALLD=[];
+// Dealer settings (company info, account numbers) are management-only; the server enforces it.
+const isMgmt=()=>!!(ME&&({president:1,admin:1,owner:1})[String(ME.role||"").toLowerCase()]);
+// Account class (management only; the server enforces it). Mirrors netlify/functions/_account_class.js.
+const ACLASS={dealer:"Dealer",prospect:"Prospect",manufacturer:"Manufacturer",vendor:"Vendor / supplier",service_provider:"Service provider",internal:"Internal",other:"Other",not_relevant:"Not relevant"};
+const ACLASS_OFF=new Set(["manufacturer","vendor","service_provider","internal","not_relevant"]);
+const Q=new URLSearchParams(location.search); const QID=Q.get("id"); const QNAME=Q.get("name");
+let SORTKEY="sales_desc";   // Dealer 360 picker sort — default: highest sales first
+// slug -> manufacturer display name, from the list payload. The search needs it so a person
+// can type "ABM" and match abm-respiratory-care, which no dealer record spells out anywhere.
+let MFRNAME={};
+let HEALTH=null;            // dealer_id -> {score, churn, status} from health-api (loaded lazily for the picker)
+const MONTH=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const pmOf=p=>{const s=String(p||"").slice(0,7);const[y,m]=s.split("-").map(Number);return y*12+(m-1);};
+const pmLabel=pm=>MONTH[((pm%12)+12)%12]+" "+Math.floor(pm/12);
+const median=a=>{if(!a.length)return null;const b=[...a].sort((x,y)=>x-y);const m=Math.floor(b.length/2);return b.length%2?b[m]:(b[m-1]+b[m])/2;};
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  const e=$("#lerr"); if(e)e.textContent="Signing in…";
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; load();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  try{
+    const h={authorization:"Bearer "+TOKEN};
+    const [dRes,aRes]=await Promise.all([
+      fetch("/.netlify/functions/dealers-api",{headers:h}),
+      fetch("/.netlify/functions/analytics",{headers:h}).catch(()=>null)
+    ]);
+    if(dRes.status===401){ gate("Your session ended — sign in again."); return; }
+    if(dRes.status===403){ $("#body").innerHTML=`<div class="msg err"><b>President only.</b> <button class="go" onclick="lock()">Sign in as a different user</button></div>`; return; }
+    const D=await dRes.json(); if(D.error){ $("#body").innerHTML=`<div class="msg err">${esc(D.error)}</div>`; return; }
+    let A={}; try{ A=aRes?await aRes.json():{}; }catch(e){ A={}; }
+    render(D,A);
+  }catch(e){ $("#body").innerHTML=`<div class="msg err">Couldn't load: ${esc(String(e.message||e))}<br><br><button class="go" onclick="load()">Retry</button></div>`; }
+}
+
+function render(D,A){
+  const dealers=D.dealers||[];
+  ALLD=dealers;   // keep the full list so "← All dealers" can show the 360 picker instantly
+  MFRNAME=(D&&D.mfrName&&typeof D.mfrName==="object")?D.mfrName:{};
+  let d = QID ? dealers.find(x=>x.id===QID) : null;
+  if(!d && QNAME) d = dealers.find(x=>x.name===QNAME);
+  if(!d){
+    if(!QID && !QNAME) return renderPicker(dealers);   // opened with no dealer → show the 360 picker
+    // My Sales Workspace lists only the President's own book; a dealer outside it opens from the Admin view.
+    if(D.workspace){ $("#body").innerHTML=`<div class="msg">This dealer isn't in your own dealer book, so My Sales Workspace doesn't list it. <a class="link" href="/admin/dealer.html">Choose one of your dealers</a> · <a class="link" href="${esc((()=>{ const u=new URL(location.href); u.searchParams.set("workspace","off"); return u.pathname+u.search; })())}" onclick="HCPS.setWorkspace(false)">Open it in the Admin view</a></div>`; return; }
+    $("#body").innerHTML=`<div class="msg">Dealer not found. <a class="link" href="/admin/dealer.html">Choose a dealer</a></div>`; return;
+  }
+
+  // per-line order history from the analytics cube (facts for this dealer)
+  const facts=(A.facts||[]).filter(f=>f.dealer===d.name);
+  let latest=0; for(const f of (A.facts||[])){ const pm=pmOf(f.period); if(pm>latest) latest=pm; }
+  const byLine=new Map(); const byMonth={};
+  for(const f of facts){ const pm=pmOf(f.period);
+    let o=byLine.get(f.line); if(!o){ o={pms:new Set(),sales:0,comm:0}; byLine.set(f.line,o); }
+    o.pms.add(pm); o.sales+=f.sales||0; o.comm+=f.comm||0;
+    byMonth[pm]=(byMonth[pm]||0)+(f.sales||0);
+  }
+  const lines=[...byLine.entries()].map(([line,o])=>{
+    const pms=[...o.pms].sort((a,b)=>a-b);
+    const gaps=[]; for(let i=1;i<pms.length;i++)gaps.push(pms[i]-pms[i-1]);
+    const cycle=median(gaps);
+    const last=pms[pms.length-1], since=latest-last;
+    let status="ok";
+    if(pms.length>=2 && cycle!=null && cycle>0 && since>=cycle+Math.max(1,Math.round(cycle*0.5))) status="due";
+    else if(since>=3) status="dorm";
+    return {line,orders:pms.length,first:pms[0],last,cycle,since,sales:o.sales,status};
+  }).sort((a,b)=>b.sales-a.sales);
+
+  // activity signals
+  const sess=(D.recentSessions||[]).filter(s=>s.dealer_id===d.id).sort((a,b)=>new Date(b.last_seen_at)-new Date(a.last_seen_at))[0];
+  const cart=(D.openCarts||[]).filter(c=>c.dealer_id===d.id).sort((a,b)=>b.value-a.value)[0];
+
+  const info=(A.dealerInfo&&A.dealerInfo[d.name])||{};
+  const website=info.website||d.website||"";
+  const totalSales=d.sales||0, totalComm=d.comm||0;
+  const lastPm = lines.length?Math.max(...lines.map(l=>l.last)):null;
+  const monthsSince = lastPm!=null?(latest-lastPm):null;
+
+  DOBJ=d;
+  // ---- left column ----
+  const status = d.status==="review"?`<span class="chip rev">review</span>`:(d.status?`<span class="chip">${esc(d.status)}</span>`:"");
+  const rel = d.master?`Branch of <a class="link" href="/admin/dealer.html?name=${encodeURIComponent(d.master)}">${esc(d.master)}</a>`
+            : (d.branches&&d.branches.length?`HQ · ${d.branches.length} branch${d.branches.length===1?"":"es"}`:"Standalone");
+  const header=`<div class="card" id="hdrCard">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div><h1 style="margin:0;font-size:25px">${esc(d.name)} ${status}</h1>
+        <div class="hint" style="margin:3px 0 0">${rel}</div>
+        <div class="idrow">
+          ${d.rep?`<span>Rep: <b>${esc(d.rep)}</b></span>`:""}
+          ${d.hcps_account?`<span>HCPS #: <b>${esc(d.hcps_account)}</b></span>`:""}
+          ${isMgmt()&&d.account_class?`<span title="Account class — set by management; decides Morning Brief signals only">Class: <b>${esc(ACLASS[d.account_class]||d.account_class)}</b>${ACLASS_OFF.has(d.account_class)?' <span class="hint">(no brief signals)</span>':""}</span>`:""}
+          ${d.phone?`<span>☎ ${esc(d.phone)}</span>`:""}
+          ${d.email?`<span>✉ <a class="link" href="mailto:${esc(d.email)}">${esc(d.email)}</a></span>`:""}
+          ${website?`<span>🌐 <a class="link" href="${esc(/^https?:/i.test(website)?website:'https://'+website)}" target="_blank">${esc(website.replace(/^https?:\/\//,''))}</a></span>`:""}
+        </div>
+        <div class="idrow">${[d.address,d.city,[d.state,d.zip].filter(Boolean).join(" ")].filter(Boolean).map(esc).join(", ")}</div>
+         ${HCPSDealerFamily.render(d,dealers)}
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${!isMgmt()?"":`<button class="btn ghost sm" onclick="editCompany()">✎ Edit company info</button>`}<button class="btn ghost sm" onclick="openDealerPortal(this)" title="Preview this dealer's HCPS Partner 360 ordering experience — pricing, manufacturers, products, account & order history — read-only, no login required">🔎 View Dealer Partner 360 Portal →</button>${(d.golden_url||d.golden_status==='Account'||d.golden_status==='Prospect')?`<button class="btn ghost sm" onclick="openGolden(this)" title="Open this dealer's Golden ordering portal (signed one-click sign-in)">🟡 Open Golden portal →</button>`:""}<a class="btn ghost sm" href="/admin/dealers.html?dealer=${encodeURIComponent(d.id)}">Dealer Manager →</a></div>
+    </div>
+    <div class="stat">
+      <div class="s"><div class="l">Total sales</div><div class="v">${money(totalSales)}</div></div>
+      <div class="s"><div class="l">Commission</div><div class="v">${money(totalComm)}</div></div>
+      <div class="s"><div class="l">Last order</div><div class="v">${lastPm!=null?pmLabel(lastPm):"—"}</div></div>
+      <div class="s"><div class="l">Lines bought</div><div class="v">${lines.length}</div></div>
+      <div class="s"><div class="l">Contacts</div><div class="v">${(d.contacts||[]).length}</div></div>
+    </div>
+  </div>`;
+
+  // per-line history table
+  const lrows=lines.map(l=>{
+    const badge=l.status==="due"?`<span class="pill2 due">Overdue</span>`:l.status==="dorm"?`<span class="pill2 dorm">Dormant</span>`:`<span class="pill2 ok">On track</span>`;
+    return `<tr><td class="lbl"><a class="link" href="javascript:void(0)" data-mfr="${esc(l.line)}" onclick="salesSelectByName(this.getAttribute('data-mfr'))">${esc(l.line)}</a></td><td class="num">${l.orders}</td>
+      <td>${pmLabel(l.first)} → ${pmLabel(l.last)}</td>
+      <td class="num">${l.cycle!=null?"~"+Math.round(l.cycle)+"mo":"—"}</td>
+      <td class="num">${l.since}mo</td>
+      <td class="num">${money(l.sales)}</td><td>${badge}</td></tr>`;
+  }).join("");
+  const history=`<div class="card"><h2>Order history by line</h2>
+    ${lines.length?`<table><thead><tr><th>Manufacturer</th><th class="num">Orders</th><th>Span</th><th class="num">Cycle</th><th class="num">Since</th><th class="num">Sales</th><th>Status</th></tr></thead><tbody>${lrows}</tbody></table>`:`<div class="hint">No commission history on file for this dealer yet.</div>`}
+    <div style="margin-top:12px">${sparkline(byMonth,latest)}</div>
+  </div>`;
+
+  // contacts + account numbers — managed live via crm-api (loadContacts)
+  const contactsCard=`<div class="card"><h2>Contacts</h2><div id="contacts"><div class="hint">Loading…</div></div></div>`;
+
+  // ---- right column ----
+  const sig=[];
+  if(cart&&cart.itemCount>0) sig.push(`<div class="row hot">🛒 <div><b>Open cart ${money(cart.value)}</b> · ${cart.itemCount} item${cart.itemCount===1?"":"s"}<div class="hint" style="margin:0">${cart.updated_at?"updated "+new Date(cart.updated_at).toLocaleDateString():""}</div></div></div>`);
+  if(sess) sig.push(`<div class="row ${sess.live?'hot':''}">${sess.live?"🟢":"👤"} <div><b>${sess.live?"Online now":"Last login"}</b><div class="hint" style="margin:0">${sess.last_seen_at?new Date(sess.last_seen_at).toLocaleString():""}</div></div></div>`);
+  const due=lines.filter(l=>l.status==="due");
+  if(due.length) sig.push(`<div class="row warn">⏰ <div><b>${due.length} line${due.length===1?"":"s"} overdue to reorder</b><div class="hint" style="margin:0">${esc(due.slice(0,3).map(l=>l.line).join(", "))}</div></div></div>`);
+  if(monthsSince!=null && monthsSince>=3) sig.push(`<div class="row cool">💤 <div><b>Dormant ${monthsSince} months</b><div class="hint" style="margin:0">no orders since ${pmLabel(lastPm)}</div></div></div>`);
+  if(!sig.length) sig.push(`<div class="row">✅ <div>No follow-up flags right now.</div></div>`);
+  const signals=`<div class="card"><h2>Signals</h2><div class="sig">${sig.join("")}</div>
+    <button class="btn sm orange" style="margin-top:10px;width:100%" onclick="sendReengage()">✉ Send re-engagement email</button>
+    <div id="reMsg" class="hint" style="margin:6px 0 0"></div></div>`;
+
+  // addresses
+  const addrs=(info.addresses||d.addresses||[]);
+  const addrCard=addrs.length?`<div class="card"><h2>Addresses <span style="float:right;font-size:11px;color:var(--gray);font-weight:600">${addrs.length}</span></h2>
+    ${addrs.map(a=>`<div style="font-size:13px;padding:6px 0;border-bottom:1px solid #eef2f6">${a.pri>=3?"⭐ ":""}${esc([a.address,a.city,[a.state,a.zip].filter(Boolean).join(" ")].filter(Boolean).join(", "))}${a.label?` <span class="chip">${esc(a.label)}</span>`:""}</div>`).join("")}</div>`:"";
+
+  // Notes & tasks (right column) and a standalone Notes card (left, under order history).
+  const tasksCard=`<div class="card"><h2>Tasks &amp; timeline</h2><div id="crm"><div class="hint">Loading…</div></div></div>`;
+  const notesCard=`<div class="card"><h2>Notes</h2><div id="notes"><div class="hint">Loading…</div></div></div>`;
+  const acctCard=`<div class="card"><h2>Manufacturer account numbers</h2><div id="acctcard"><div class="hint">Loading…</div></div></div>`;
+  const intelCard=`<div class="card"><h2>Digital activity &amp; interest</h2><div id="intel"><div class="hint">Loading activity…</div></div></div>`;
+  const mfrIntelCard=`<div class="card" id="mfrIntelCard" style="display:none"><h2>Manufacturer-reported intelligence</h2><div id="mfrintel"></div></div>`;
+  const salesCard=`<div class="card" id="salesCard"><h2>Monthly sales &amp; product detail</h2><div id="sales"><div class="hint">Loading sales…</div></div></div>`;
+  const commCard=`<div class="card"><h2>Commission — paid vs. outstanding</h2><div id="commled"><div class="hint">Loading…</div></div></div>`;
+  const emailCard=`<div class="card" id="emailCard"><h2>Outlook email <span id="emailCount" style="float:right;font-size:11px;color:var(--gray);font-weight:600"></span></h2>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin:2px 0 6px">✨ AI compose</div>
+    <div id="compose"><div class="hint">Loading compose…</div></div>
+    <div style="height:1px;background:var(--line);margin:12px 0"></div>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin:0 0 4px">Recent messages</div>
+    <div id="emails"><div class="hint">Loading email…</div></div></div>`;
+  const callCard=`<div class="card"><h2>Make a call</h2><div id="callbox"><div class="hint">Loading…</div></div></div>`;
+  const touchCard=`<div class="card"><h2>Log a touch</h2><div id="touch"><div class="hint">Loading…</div></div></div>`;
+  const visitsCard=`<div class="card" id="visitsCard"><h2>Visits &amp; meetings</h2><div id="visits"><div class="hint">Loading visits…</div></div></div>`;
+  const handoutCard=`<div class="card" id="handoutCard"><h2>Dealer handout</h2><div id="handout"><div class="hint">Loading…</div></div></div>`;
+
+  // Next best action — synthesized from what we already know (upgraded once intent loads).
+  const nba=nextBestAction(d,lines,monthsSince,cart,sess);
+  const terr=[d.state,d.city].filter(Boolean).join(" · ");
+  const nextBanner=`<div class="card" style="border-left:3px solid #F5821F;background:#fff8ef">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#b45309;font-weight:800">Next best action</div>
+        <div id="nbaText" style="font-size:14px;color:var(--navy);margin-top:2px">${nba.ic} ${esc(nba.t)}</div>
+        <div class="hint" style="margin:3px 0 0">${d.rep?`Rep ${esc(d.rep)}`:"Unassigned"}${terr?` · Territory ${esc(terr)}`:""}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn sm" onclick="printDealerHandout(CUR)">🖨 Dealer handout</button>
+        <button class="btn sm orange" onclick="var e=document.getElementById('la_sum');if(e){e.scrollIntoView({behavior:'smooth',block:'center'});e.focus();}">✎ Log a touch</button>
+        <a class="btn sm" href="/admin/map.html">🗺 Territory map</a>
+      </div>
+    </div></div>`;
+
+  // Rep workstation order (left column, top→bottom): Notes → Contacts → Outlook Email → Make a
+  // Call → Log a Touch → Signals & Analytics. Notes and Contacts sit together at the top because
+  // they answer the two questions a rep has before a call: what happened last, and who do I ask.
+  // Reference sidebar (right): tasks/timeline, addresses, manufacturer account numbers.
+  $("#body").innerHTML=`${header}${nextBanner}
+    <div class="d360">
+      <div>${notesCard}${contactsCard}${emailCard}${callCard}${touchCard}${visitsCard}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
+      <div>${tasksCard}${signals}${addrCard}${acctCard}${mfrIntelCard}</div>
+    </div>`;
+  if(CUR!==d.id) TOUCH_LAST_STATUS=""; // Do not carry a previous dealer\'s save notice to a different account.
+  CUR=d.id; DPHONE=d.phone||""; VLIM=25; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadVisits(); loadHandout(); loadMfrIntel();
+}
+function nextBestAction(d,lines,monthsSince,cart,sess){
+  const due=(lines||[]).filter(l=>l.status==="due");
+  if(cart&&cart.itemCount>0) return {ic:"🛒",t:`Follow up on an open cart (${cart.itemCount} item${cart.itemCount===1?"":"s"}) — they're mid-order.`};
+  if(due.length) return {ic:"⏰",t:`Reorder due on ${due.slice(0,2).map(l=>l.line).join(", ")} — send a reorder or call.`};
+  if(monthsSince!=null && monthsSince>=3) return {ic:"💤",t:`Dormant ${monthsSince} months — time to reactivate this account.`};
+  if(sess) return {ic:"👤",t:`Recently active on the portal — a good moment to check in.`};
+  return {ic:"✅",t:`Relationship looks healthy — a routine check-in keeps it warm.`};
+}
+async function editCompany(){
+  const d=DOBJ||{}; const card=$("#hdrCard"); if(!card) return;
+  const F=(id,ph,v)=>`<input id="${id}" placeholder="${ph}" value="${esc(v||"")}" style="width:100%">`;
+  card.innerHTML=`<h2 style="margin:0 0 10px">Edit company info</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label class="hint">Dealer name${F("e_name","Name",d.name)}</label>
+      <label class="hint">Owner rep${F("e_rep","Rep",d.rep)}</label>
+      <label class="hint">Phone${F("e_phone","Phone",d.phone)}</label>
+      <label class="hint">Primary email${F("e_email","name@dealer.com",d.email)}</label>
+      <label class="hint" style="grid-column:1/3">Website${F("e_website","https://…",d.website||"")}</label>
+      <label class="hint" style="grid-column:1/3">Address${F("e_address","Street address",d.address)}</label>
+      <label class="hint">City${F("e_city","City",d.city)}</label>
+      <label class="hint">State${F("e_state","ST",d.state)}</label>
+      <label class="hint">ZIP${F("e_zip","ZIP",d.zip)}</label>
+      ${d.account_class===null||d.account_class===undefined?"":`<label class="hint" style="grid-column:1/3">Account class
+        <select id="e_class" style="width:100%"><option value="">— not set (gets Morning Brief signals) —</option>${Object.entries(ACLASS).map(([k,l])=>`<option value="${k}" ${d.account_class===k?"selected":""}>${esc(l)}${ACLASS_OFF.has(k)?" — no Morning Brief signals":""}</option>`).join("")}</select>
+        <span style="display:block;margin-top:3px">Only decides whether this account raises Morning Brief relationship signals. It doesn't change the owner, who can open it, or anything else about the account.</span></label>`}
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px"><button class="btn orange sm" onclick="saveCompany()">Save company info</button><button class="btn ghost sm" onclick="load()">Cancel</button><span id="e_msg" class="hint"></span></div>`;
+  const f=$("#e_name"); if(f)f.focus();
+}
+async function dapi(payload){ const r=await fetch("/.netlify/functions/dealers-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({})); }
+async function saveCompany(){
+  const d=DOBJ||{}; const g=id=>(($("#"+id)||{}).value||"").trim(); const m=$("#e_msg"); if(m)m.textContent="Saving…";
+  const name=g("e_name")||d.name;
+  const info={business_name:name,email:g("e_email"),phone:g("e_phone"),website:g("e_website"),address:g("e_address"),city:g("e_city"),state:g("e_state"),zip:g("e_zip")};
+  const was={business_name:d.name,email:d.email,phone:d.phone,website:d.website,address:d.address,city:d.city,state:d.state,zip:d.zip};
+  // Only a real company-info change is written (so saving just the account class touches nothing else).
+  if(Object.keys(info).some(k=>String(info[k]||"")!==String(was[k]||""))) await dapi(Object.assign({action:"edit",dealer_id:d.id},info));
+  const rep=g("e_rep"); if(rep!==String(d.rep||"")) await dapi({action:"rep",dealer_id:d.id,dealer_name:name,rep_name:rep});
+  const cls=$("#e_class"); if(cls && cls.value!==String(d.account_class||"")){
+    const r=await dapi({action:"set_account_class",dealer_id:d.id,account_class:cls.value});
+    if(!r||!r.ok){ if(m) m.textContent=(r&&(r.message||r.error))||"Couldn't save the account class."; return; } }
+  load();
+}
+// ---- Contacts & account-number management ----
+let CDATA=null, CEDIT=null, DOBJ=null, PICKER=[];
+// "← All dealers" inside Dealer 360 returns to the 360 picker (not the Dealer Manager). Renders
+// instantly from the already-loaded list; falls back to a normal navigation if it isn't ready yet.
+function backToPicker(e){
+  if(!ALLD||!ALLD.length) return true;   // let the href load /admin/dealer.html
+  if(e&&e.preventDefault) e.preventDefault();
+  CUR=null;
+  try{ history.replaceState({}, "", "/admin/dealer.html"); }catch(_){}
+  renderPicker(ALLD);
+  try{ window.scrollTo(0,0); }catch(_){}
+  return false;
+}
+// Dealer 360 opened without a specific dealer → a searchable list that jumps into each profile.
+/* WHAT A DEALER'S MANUFACTURER RELATIONSHIPS ARE, IN ONE PLACE.
+   The payload describes the same relationship three ways and none of them was searchable:
+   `access` is the Ordering Access grid as ticked, `buysLines` is lines with real commission
+   history, and `mfrAccounts` is the account number the dealer holds at that manufacturer.
+   A line can appear in any combination of the three — a dealer can buy a line that was never
+   ticked, or hold an account on a row since switched off — so they are merged into one row
+   per manufacturer that keeps all three facts rather than collapsing them into a boolean.
+   The display name is resolved here too: the dealer record only ever stores the slug, so
+   "ABM" would never match abm-respiratory-care without it. */
+function dealerLines(d){
+  const by={};
+  const row=s=>{ const k=String(s||""); if(!k) return null;
+    if(!by[k]) by[k]={slug:k.toLowerCase(), name:String(MFRNAME[k]||k), granted:false, buys:false, ref:"", refActive:true};
+    return by[k]; };
+  for(const s of (d.access||[]))    { const r=row(s); if(r) r.granted=true; }
+  for(const s of (d.buysLines||[])) { const r=row(s); if(r) r.buys=true; }
+  for(const a of (d.mfrAccounts||[])){ const r=row(a&&a.slug); if(r){ r.ref=String(a.ref||""); r.refActive=a.active!==false; } }
+  const out=Object.keys(by).map(k=>{ const r=by[k]; r.nameLc=r.name.toLowerCase(); return r; });
+  out.sort((a,b)=>a.name.localeCompare(b.name,"en",{sensitivity:"base"}));
+  return out;
+}
+/* How a manufacturer match is explained on the row. The qualifier matters: "acct 4471" and
+   "buying" and "access" are three different answers to "why is this dealer in my results?",
+   and an account number sitting on a switched-off row is worth saying out loud rather than
+   quietly presenting as a live relationship. */
+function lineWhy(L){
+  const bits=[];
+  if(L.ref) bits.push("acct "+L.ref);
+  else if(L.buys) bits.push("buying");
+  else if(L.granted) bits.push("access");
+  /* "access off" is read off the account row's OWN active flag, not off the absence of the
+     slug from `access`. The two are consistent in the payload — `access` is exactly the active
+     rows — but a label that depends on two fields agreeing is a label that will one day lie
+     about a live account. This one is answered by the row that carries the number. */
+  if(L.ref && !L.refActive) bits.push("access off");
+  return L.name + (bits.length?" · "+bits.join(" · "):"");
+}
+/* Build one dealer's search index. Kept out of renderPicker so it can be run — and tested —
+   without a DOM: everything the search box depends on is decided here.
+   We index everything a person might type: business name, aliases, every contact's name &
+   email, the primary email, the account number, city, state, rep and phone — so the box finds
+   a dealer by ANY of them, from the first letter. Manufacturer relationships are indexed by
+   slug AND display name AND account number, which is what makes "ABM" return every dealer
+   carrying ABM Respiratory Care. */
+function indexDealer(d){
+  const contacts=d.contacts||[];
+  const cnames=contacts.map(c=>String(c.name||"")).filter(Boolean);
+  const cemails=contacts.map(c=>String(c.email||"")).filter(Boolean);
+  d._name=String(d.name||"").toLowerCase();
+  d._acct=String(d.hcps_account||"").toLowerCase();
+  d._cnames=cnames; d._cemails=cemails;
+  d._lines=dealerLines(d);
+  /* Every spelling of every line goes in the haystack. pickerScore requires each word of the
+     query to appear here, so this is also what makes "abm louisville" work. */
+  const lineHay=d._lines.map(L=>[L.slug,L.name,L.ref].filter(Boolean).join(" "));
+  d._hay=[d.name,d.contact_name].concat(d.aliases||[]).concat(cnames).concat(cemails)
+    .concat([d.email,d.hcps_account,d.city,d.state,d.rep,d.phone])
+    .concat(lineHay).concat(d.accounts||[]).filter(Boolean).join("  ").toLowerCase();
+  return d;
+}
+function renderPicker(dealers){
+  // Index every dealer ONCE so every keystroke is instant.
+  PICKER=[...(dealers||[])].filter(d=>d.active!==false).map(indexDealer)
+    .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"en",{sensitivity:"base"}));
+  $("#body").innerHTML=`<div class="card">
+    <h1 style="margin:0 0 4px;font-size:24px">Dealer 360 &amp; CRM</h1>
+    <div class="hint" style="margin:0 0 10px">Open a dealer for their full command center — activity, interest, contacts, tasks &amp; next best action.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px">
+      <input id="dq" placeholder="Search by business, manufacturer, contact, account #, email, city, state or rep — type any part…" style="flex:1;min-width:280px;max-width:520px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-size:15px" oninput="filterPicker()" autofocus>
+      <label class="hint" style="display:flex;align-items:center;gap:6px;margin:0;white-space:nowrap">Sort by
+        <select id="dsort" onchange="SORTKEY=this.value;filterPicker()" style="padding:9px 10px;border:1px solid var(--line);border-radius:9px;font-size:14px;background:#fff">
+          <option value="sales_desc">Sales — high to low</option>
+          <option value="sales_asc">Sales — low to high</option>
+          <option value="health_risk">Dealer health — needs attention first</option>
+          <option value="last_recent">Last order — most recent</option>
+          <option value="last_overdue">Last order — longest ago</option>
+          <option value="name_asc">Name — A to Z</option>
+        </select>
+      </label>
+    </div>
+    <div id="pmeta" class="hint" style="margin:0 0 10px"></div>
+    <div id="plist"></div></div>`;
+  ensureHealth();   // pull dealer health/priority in the background so those sorts are ready
+  filterPicker();
+}
+// Load dealer_engagement (health score, churn/urgency, status) once, scoped to the caller, then re-render.
+async function ensureHealth(){
+  if(HEALTH) return;
+  try{
+    const r=await fetch("/.netlify/functions/health-api",{headers:{authorization:"Bearer "+TOKEN}});
+    const j=await r.json().catch(()=>({}));
+    HEALTH={};
+    if(j&&j.rows){ for(const x of j.rows){ if(x.dealer_id!=null) HEALTH[x.dealer_id]={score:Number(x.score)||0,churn:Number(x.churn_score)||0,status:x.status||""}; } }
+  }catch(e){ HEALTH={}; }
+  if($("#plist")) filterPicker();   // health-based sort/labels fill in once loaded
+}
+// Compare two picker dealers by the active sort. Falls back to sales, then name, for stable ordering.
+function pickerCmp(a,b){
+  const H=HEALTH||{};
+  const ha=H[a.id]||{}, hb=H[b.id]||{};
+  const lp=d=>d.lastPeriod?String(d.lastPeriod).slice(0,10):"";
+  const byName=()=>String(a.name||"").localeCompare(String(b.name||""),"en",{sensitivity:"base"});
+  const bySalesDesc=()=>(b.sales||0)-(a.sales||0);
+  switch(SORTKEY){
+    case "sales_asc":   return (a.sales||0)-(b.sales||0) || byName();
+    case "name_asc":    return byName();
+    case "health_risk": return (hb.churn||0)-(ha.churn||0) || (ha.score||0)-(hb.score||0) || bySalesDesc();
+    case "last_recent": { const A=lp(a),B=lp(b); if(A!==B) return A<B?1:-1; return bySalesDesc(); }        // newest first; blanks last
+    case "last_overdue":{ const A=lp(a)||"",B=lp(b)||""; if(A!==B) return A<B?-1:1; return bySalesDesc(); }               // never-ordered first, then oldest→newest
+    case "sales_desc":
+    default:            return bySalesDesc() || byName();
+  }
+}
+// Score one dealer against the query. Prefix matches on the business name rank highest, then account #
+// and contact-name prefixes, then "contains" matches — so typing "m" surfaces businesses starting with
+// M first, and a contact name or account number finds its dealer. Returns null if nothing matches.
+function pickerScore(d,q){
+  const toks=q.split(/\s+/).filter(Boolean);
+  for(const t of toks){ if(d._hay.indexOf(t)===-1) return null; }   // every word must appear somewhere
+  const n=d._name;
+  const lines=d._lines||[];
+  if(n.indexOf(q)===0) return {score:100,why:""};                    // business name starts with query
+  for(const w of n.split(/\s+/)){ if(w.indexOf(q)===0) return {score:86,why:""}; }  // a name word starts with it
+  if(d._acct && d._acct.indexOf(q)===0) return {score:80,why:"acct #"+d.hcps_account};
+  /* A manufacturer account number is as precise an identifier as an HCPS one, so a prefix
+     match on it ranks with them — above a contact name, which is a far commoner accident. */
+  for(const L of lines){ if(L.ref && L.ref.toLowerCase().indexOf(q)===0) return {score:78,why:lineWhy(L),mfr:L.name}; }
+  /* THE ONE ANGELO ASKED FOR. "ABM" has to bring back every dealer carrying ABM, so a
+     manufacturer prefix outranks a contact-name prefix — typing a line name is nearly always
+     a deliberate "show me this line", where hitting a contact called Abbott is a coincidence.
+     A dealer whose own BUSINESS name starts with the query still wins, at 100 and 86 above. */
+  /* A line the dealer actually BUYS ranks a point above one they are merely ticked for.
+     On live data the access grid is deliberately broad — "pedifix" matches 330 of the 444
+     dealers — so without this the handful with real purchase history are buried in an
+     alphabetical wall of dealers who have simply never been blocked from the line. */
+  for(const buying of [true,false]){
+    for(const L of lines){
+      if(!!L.buys !== buying) continue;
+      const s = buying ? 77 : 76;
+      /* The whole name is tested as a prefix as well as each of its words, because a
+         multi-word query ("ohio medical") starts no single word and matches no slug — the
+         hyphen in ohio-medical is not the space the person typed. Without it that query
+         fell to the mid-word band and could sort below an unrelated contact match. */
+      if(L.slug.indexOf(q)===0 || L.nameLc.indexOf(q)===0) return {score:s,why:lineWhy(L),mfr:L.name};
+      for(const w of L.nameLc.split(/\s+/)){ if(w.indexOf(q)===0) return {score:s,why:lineWhy(L),mfr:L.name}; }
+    }
+  }
+  for(const c of d._cnames){ if(c.toLowerCase().indexOf(q)===0) return {score:72,why:"contact: "+c}; }
+  if(n.indexOf(q)!==-1) return {score:60,why:""};                    // business name contains query
+  for(const c of d._cnames){ if(c.toLowerCase().indexOf(q)!==-1) return {score:52,why:"contact: "+c}; }
+  if(d._acct && d._acct.indexOf(q)!==-1) return {score:50,why:"acct #"+d.hcps_account};
+  /* A mid-word manufacturer match sits below the name and contact "contains" rules: it is the
+     weakest kind of line match and should not push a genuine name match down the list. */
+  for(const L of lines){
+    if(L.nameLc.indexOf(q)!==-1 || L.slug.indexOf(q)!==-1 || (L.ref && L.ref.toLowerCase().indexOf(q)!==-1))
+      return {score:48,why:lineWhy(L),mfr:L.name};
+  }
+  for(const e of d._cemails){ if(e.toLowerCase().indexOf(q)!==-1) return {score:46,why:e}; }
+  if(String(d.email||"").toLowerCase().indexOf(q)!==-1) return {score:45,why:d.email};
+  for(const a of (d.aliases||[])){ if(String(a).toLowerCase().indexOf(q)!==-1) return {score:40,why:"aka "+a}; }
+  if(String(d.rep||"").toLowerCase().indexOf(q)!==-1) return {score:30,why:"rep: "+d.rep};
+  /* The manufacturer's own customer number off their commission report — a different number
+     from the account ref above, and the last thing worth matching before giving up. */
+  for(const a of (d.accounts||[])){ if(String(a).toLowerCase().indexOf(q)!==-1) return {score:25,why:"report ref "+String(a).split(":").slice(1).join(":")}; }
+  return {score:20,why:""};   // matched on city/state/phone, or across several words
+}
+function sortLabel(){ return {sales_desc:"highest sales",sales_asc:"lowest sales",health_risk:"needs attention",last_recent:"most recent order",last_overdue:"longest since last order",name_asc:"name (A–Z)"}[SORTKEY]||"highest sales"; }
+function lastOrderLabel(d){ const p=d.lastPeriod; if(!p) return "no orders yet"; const s=String(p).slice(0,7); const [y,m]=s.split("-"); const mi=(+m)-1; if(mi<0||mi>11) return ""; return "last order "+MONTH[mi]+" '"+String(y).slice(2); }
+function healthChip(status){ const map={active:["#e6f6ec","#1c7a44","Active"],slipping:["#fff4e0","#a65b00","Slipping"],overdue:["#fdeaea","#b42323","Overdue"],dormant:["#eef0f3","#5b6672","Dormant"],inactive:["#eef0f3","#5b6672","Inactive"],new:["#e8f0fe","#2c5cc5","New"]}; const m=map[String(status||"").toLowerCase()]; if(!m) return ""; return ` <span style="font-size:11px;color:${m[1]};background:${m[0]};border:1px solid ${m[1]}33;border-radius:6px;padding:1px 6px;margin-left:4px;white-space:nowrap">${m[2]}</span>`; }
+function pickerRow(d,why){
+  const loc=[d.city,d.state].filter(Boolean).join(", ");
+  const sub=[loc, d.rep, d.sales?money(d.sales):"", lastOrderLabel(d)].filter(Boolean).join(" · ");
+  const h=(HEALTH||{})[d.id];
+  const chip=h&&h.status?healthChip(h.status):"";
+  const whyHtml=why?` <span style="font-size:11px;color:#b45309;background:#fdeee0;border:1px solid #f6d5ad;border-radius:6px;padding:1px 6px;margin-left:4px;white-space:nowrap">${esc(why)}</span>`:"";
+  return `<a class="prow2" href="/admin/dealer.html?id=${encodeURIComponent(d.id)}"><b>${esc(d.name)}</b> <span class="hint" style="margin:0">${esc(sub)}</span>${chip}${whyHtml}</a>`;
+}
+function filterPicker(){
+  const el=$("#plist"); if(!el) return;
+  const q=(($("#dq")||{}).value||"").toLowerCase().trim();
+  const meta=$("#pmeta");
+  if(!q){
+    const list=[...(PICKER||[])].sort(pickerCmp);
+    el.innerHTML=list.slice(0,300).map(d=>pickerRow(d,"")).join("");
+    if(meta) meta.textContent=`${(PICKER||[]).length} dealers · sorted by ${sortLabel()} — start typing to find one by business, manufacturer, contact, account # or email.`;
+    return;
+  }
+  const scored=[];
+  for(const d of (PICKER||[])){ const r=pickerScore(d,q); if(r) scored.push({d,score:r.score,why:r.why,mfr:r.mfr||""}); }
+  scored.sort((a,b)=>b.score-a.score || String(a.d.name||"").localeCompare(String(b.d.name||""),"en",{sensitivity:"base"}));
+  const shown=scored.slice(0,300);
+  el.innerHTML=shown.map(x=>pickerRow(x.d,x.why)).join("")
+    || `<div class="hint">No match for “${esc(q)}”. Try a business name, a manufacturer, a contact name, an account #, or an email.</div>`;
+  /* When the query was a manufacturer, say so and count it. "ABM" answering with a bare
+     "24 matches" leaves the person to work out whether it found the line or something else
+     that happens to contain those letters. */
+  let line="";
+  if(scored.length){
+    const byMfr={}; for(const s of scored){ if(s.mfr) byMfr[s.mfr]=(byMfr[s.mfr]||0)+1; }
+    const top=Object.keys(byMfr).sort((a,b)=>byMfr[b]-byMfr[a])[0];
+    line=`${scored.length} match${scored.length===1?"":"es"}${scored.length>300?" — showing top 300":""}`;
+    if(top) line+=` · ${byMfr[top]} through ${top}`;
+  }
+  if(meta) meta.textContent=line;
+}
+async function loadContacts(){ const el=$("#contacts"); if(!el||!CUR) return;
+  const j=await crm({action:"contacts",dealer_id:CUR}); CDATA=(j&&j.ok)?j:{contacts:[],primary_email:"",accounts:[]}; renderContacts(); renderCompose(); renderCall(); }
+
+/* ===== AI email composer — suggest-and-approve ===== */
+var DPHONE="";
+var COMPOSE={to:"",name:"",sig:""};
+const TPLS=[["follow_up","Follow-up"],["reorder_reminder","Reorder reminder"],["dormant_account","Dormant account"],["product_opportunity","Product opportunity"],["cross_sell","Cross-sell"],["new_product","New product"],["portal_activation","Portal activation"]];
+function renderCompose(){
+  const el=$("#compose"); if(!el) return;
+  const cs=(CDATA&&CDATA.contacts)||[]; const prim=(CDATA&&CDATA.primary_email)||""; const primName=(CDATA&&CDATA.primary_name)||"";
+  const emails=cs.filter(c=>c.email);
+  const primInContacts = prim && emails.some(c=>String(c.email).toLowerCase()===prim);
+  // The account's PRIMARY email (dealers.email — what Dealer Manager edits and the header shows) is always
+  // selectable here, even when it isn't one of the named contacts, so an updated primary is usable right away.
+  const validPrim = prim && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(prim);
+  const primOpt = (validPrim && !primInContacts)
+    ? `<option value="${esc(prim)}" data-name="${esc(primName)}" selected>${primName?esc(primName)+" — ":""}${esc(prim)} (primary)</option>` : "";
+  const opts=primOpt+emails.map(c=>`<option value="${esc(c.email)}" data-name="${esc(c.name||"")}"${(c.email===prim&&!primOpt)?" selected":""}>${esc(c.name||c.email)}${c.name?` — ${esc(c.email)}`:""}</option>`).join("");
+  el.innerHTML=`
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <label class="hint" style="margin:0;min-width:64px">To</label>
+      <select id="cx_to" style="flex:1;min-width:180px">${opts||`<option value="">No contacts on file — add one under Contacts</option>`}</select>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <label class="hint" style="margin:0;min-width:64px">Situation</label>
+      <select id="cx_tpl" style="flex:1;min-width:150px" onchange="cxSituation()">${TPLS.map(t=>`<option value="${t[0]}">${t[1]}</option>`).join("")}</select>
+      <button class="btn sm orange" id="cx_gen" onclick="genEmail()">✨ Generate draft</button>
+    </div>
+    <div id="cx_prodpick"></div>
+    <div id="cx_status" class="hint" style="margin:0 0 4px"></div>
+    <div id="cx_draft" style="display:none">
+      <input id="cx_subj" placeholder="Subject" style="width:100%;margin-bottom:6px;font-weight:600">
+      <textarea id="cx_body" rows="10" placeholder="The AI draft appears here — review and edit before sending." style="width:100%"></textarea>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <button class="btn sm orange" id="cx_send" onclick="sendEmail()">✅ Approve &amp; send</button>
+        <button class="btn sm" onclick="genEmail()">↻ Regenerate</button>
+        <button class="btn sm" onclick="openInOutlook()">↗ Open in Outlook</button>
+        <span id="cx_msg" class="hint" style="margin:0"></span>
+      </div>
+      <div class="hint" style="margin-top:4px">Review &amp; edit above, then Approve &amp; send — it goes from your Outlook and logs to the timeline.</div>
+    </div>`;
+}
+/* ── Situation-driven product picker ─────────────────────────────────────────
+   "Cross-sell" and "New product" are not writing prompts, they are questions about a
+   specific product. Choosing one opens the pickers so the draft can be grounded in the
+   approved content the enrichment tool already built — description, features, specs,
+   sizing — instead of asking the model to write about a product from its name. */
+var CXPROD={};
+const PRODUCT_SITUATIONS=new Set(["cross_sell","new_product","product_opportunity"]);
+
+async function cxSituation(){
+  const tpl=($("#cx_tpl")||{}).value||"";
+  const wrap=$("#cx_prodpick"); if(!wrap) return;
+  CXPROD={};
+  if(!PRODUCT_SITUATIONS.has(tpl)){ wrap.innerHTML=""; return; }
+  wrap.innerHTML=`<div class="hint" style="margin:0 0 6px">Loading this dealer's lines…</div>`;
+  const opts=await xsellOptions();
+  /* Cross-sell leads with the lines they DON'T buy yet — that is what cross-selling is.
+     New product leads with everything, because a new item can land on a line they already
+     carry. Both lists are always available; only the order changes. */
+  const cross=(tpl==="cross_sell");
+  const groupA=cross?{label:"Lines they don't buy yet",items:opts.potential}:{label:"Lines they buy today",items:opts.current};
+  const groupB=cross?{label:"Lines they buy today",items:opts.current}:{label:"Lines they don't buy yet",items:opts.potential};
+  const plan=(XPLAN||[]).filter(x=>x.status!=="dismissed"&&(x.manufacturer||x.mfr_name));
+  wrap.innerHTML=`
+    ${plan.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <label class="hint" style="margin:0;min-width:64px">From plan</label>
+      <select id="cx_plan" style="flex:1;min-width:180px" onchange="cxFromPlan()">
+        <option value="">— or pick manually below —</option>
+        ${plan.map((x,i)=>`<option value="${i}">${esc(x.mfr_name||x.manufacturer)}${x.product_name?` · ${esc(x.product_name)}`:(x.family?` · ${esc(x.family)}`:"")} (${esc(OPP_LABEL[x.opp_type]||x.opp_type||"")})</option>`).join("")}
+      </select></div>`:""}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <label class="hint" style="margin:0;min-width:64px">Line</label>
+      <select id="cx_mfr" style="flex:1;min-width:180px" onchange="cxMfrChanged()">
+        <option value="">— pick a manufacturer —</option>
+        <optgroup label="${esc(groupA.label)}">${groupA.items.map(m=>`<option value="${esc(m.slug)}" data-name="${esc(m.name)}">${esc(m.name)}${m.spend?` — $${m.spend.toLocaleString()}`:""}</option>`).join("")}</optgroup>
+        <optgroup label="${esc(groupB.label)}">${groupB.items.map(m=>`<option value="${esc(m.slug)}" data-name="${esc(m.name)}">${esc(m.name)}${m.spend?` — $${m.spend.toLocaleString()}`:""}</option>`).join("")}</optgroup>
+      </select>
+    </div>
+    <div id="cx_prodrow"></div>
+    <div id="cx_content"></div>`;
+}
+
+async function cxFromPlan(){
+  const i=($("#cx_plan")||{}).value; if(i==="") return;
+  const x=((XPLAN||[]).filter(y=>y.status!=="dismissed"&&(y.manufacturer||y.mfr_name)))[Number(i)];
+  if(!x) return;
+  const mfr=$("#cx_mfr"); if(mfr&&x.manufacturer){ mfr.value=x.manufacturer; await cxMfrChanged(); }
+  if(x.product_code){ const ps=$("#cx_prod"); if(ps){ ps.value=x.product_code; await cxProdChanged(); } }
+  else { const cs=$("#cx_cat"); if(cs&&x.category) cs.value=x.category;
+         const fs=$("#cx_fam"); if(fs&&x.family) fs.value=x.family; }
+}
+
+async function cxMfrChanged(){
+  const sel=$("#cx_mfr"); const row=$("#cx_prodrow"); const cont=$("#cx_content");
+  if(!sel||!row) return;
+  if(cont) cont.innerHTML="";
+  const slug=sel.value;
+  const opt=sel.selectedOptions&&sel.selectedOptions[0];
+  CXPROD={manufacturer:slug,mfr_name:(opt&&opt.getAttribute("data-name"))||""};
+  if(!slug){ row.innerHTML=""; return; }
+  row.innerHTML=`<div class="hint" style="margin:0 0 6px">Loading the catalog…</div>`;
+  const cat=await xsellProducts(slug);
+  row.innerHTML=`
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <label class="hint" style="margin:0;min-width:64px">Narrow</label>
+      <select id="cx_cat" style="flex:1;min-width:120px" onchange="cxFilter()"><option value="">Any category</option>${(cat.categories||[]).map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("")}</select>
+      <select id="cx_fam" style="flex:1;min-width:120px" onchange="cxFilter()"><option value="">Any family</option>${(cat.families||[]).map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("")}</select>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <label class="hint" style="margin:0;min-width:64px">Product</label>
+      <select id="cx_prod" style="flex:1;min-width:200px" onchange="cxProdChanged()"></select>
+    </div>`;
+  cxFilter();
+}
+
+function cxFilter(){
+  const slug=(($("#cx_mfr")||{}).value)||""; const cat=XPROD[slug]; if(!cat) return;
+  const c=(($("#cx_cat")||{}).value)||"", f=(($("#cx_fam")||{}).value)||"";
+  const list=(cat.products||[]).filter(p=>(!c||p.category===c)&&(!f||p.family===f));
+  const sel=$("#cx_prod"); if(!sel) return;
+  sel.innerHTML=`<option value="">Promote the whole line (no single product)</option>`
+    +list.slice(0,800).map(p=>`<option value="${esc(p.code)}" data-name="${esc(p.name)}">${esc(p.name)} · ${esc(p.code)}</option>`).join("");
+  cxProdChanged();
+}
+
+/* Pull the approved content the moment a product is chosen, so the rep sees exactly what
+   the AI will be working from — and can pick which approved photo leads the email. */
+async function cxProdChanged(){
+  const sel=$("#cx_prod"); const cont=$("#cx_content"); if(!cont) return;
+  const code=(sel&&sel.value)||"";
+  const opt=sel&&sel.selectedOptions&&sel.selectedOptions[0];
+  CXPROD.code=code; CXPROD.product_name=(opt&&opt.getAttribute("data-name"))||""; CXPROD.image_url="";
+  if(!code){ cont.innerHTML=`<div class="hint" style="margin:0 0 6px">Promoting the whole line — the draft will use the account context only.</div>`; return; }
+  cont.innerHTML=`<div class="hint" style="margin:0 0 6px">Pulling approved product content…</div>`;
+  let j=null;
+  try{ j=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},
+    body:JSON.stringify({action:"product_content",manufacturer:CXPROD.manufacturer,product_code:code})}).then(r=>r.json()); }catch(e){}
+  if(!j||!j.ok){
+    cont.innerHTML=`<div class="hint" style="margin:0 0 6px;color:#b45309">${esc((j&&j.message)||"No approved content found for this product — the draft will still write from the account context.")}</div>`;
+    return;
+  }
+  const p=j.product||{};
+  CXPROD.image_url=((p.images||[])[0]||{}).url||"";
+  const imgs=(p.images||[]).map((im,i)=>`<label style="display:inline-block;margin:0 6px 6px 0;cursor:pointer">
+      <input type="radio" name="cx_img" value="${esc(im.url)}" ${i===0?"checked":""} onchange="CXPROD.image_url=this.value" style="display:none">
+      <img src="${esc(im.url)}" alt="" style="width:66px;height:66px;object-fit:contain;background:#fff;border:2px solid ${i===0?"var(--orange,#F5821F)":"var(--line)"};border-radius:8px;padding:3px"
+        onclick="this.closest('#cx_content').querySelectorAll('img').forEach(x=>x.style.borderColor='var(--line)');this.style.borderColor='var(--orange,#F5821F)';">
+    </label>`).join("");
+  const facts=[
+    p.features&&p.features.length?`${p.features.length} feature(s)`:"",
+    p.specs&&Object.keys(p.specs).length?`${Object.keys(p.specs).length} spec(s)`:"",
+    p.sizing_rows?`${p.sizing_rows} size option(s)`:"",
+    p.clinical&&p.clinical.length?`${p.clinical.length} clinical application(s)`:"",
+  ].filter(Boolean).join(" · ");
+  cont.innerHTML=`<div style="border:1px solid var(--line);border-radius:9px;background:#fafbfc;padding:9px 11px;margin:0 0 7px">
+      <div style="font-size:12.5px;font-weight:800;color:var(--navy)">${esc(p.name||code)}${p.tagline?` <span class="hint" style="margin:0;font-weight:400">— ${esc(p.tagline)}</span>`:""}</div>
+      <div class="hint" style="margin:2px 0 0">${esc(facts||"Approved content found")}${j.warning?"":""} · the draft will be written from this</div>
+      ${j.warning?`<div class="hint" style="margin:4px 0 0;color:#b45309">${esc(j.warning)}</div>`:""}
+      ${imgs?`<div style="margin-top:7px"><div class="hint" style="margin:0 0 3px">Image for the email — click to choose</div>${imgs}</div>`:`<div class="hint" style="margin:5px 0 0">No approved image on this record yet.</div>`}
+      ${j.product_url?`<div class="hint" style="margin:6px 0 0">The email will include a <b>View this product on Partner 360</b> button. A dealer who isn't registered is walked through signing up, then lands on the product.</div>`:""}
+    </div>`;
+}
+
+async function genEmail(){
+  const sel=$("#cx_to"); const to=(sel&&sel.value)||"";
+  const name=(sel&&sel.selectedOptions&&sel.selectedOptions[0]&&sel.selectedOptions[0].getAttribute("data-name"))||"";
+  const tpl=($("#cx_tpl")||{}).value||"follow_up";
+  const st=$("#cx_status"); const gen=$("#cx_gen");
+  if(st){ st.style.color=""; st.textContent="Drafting with AI…"; } if(gen) gen.disabled=true;
+  let j; try{ j=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"draft",dealer_id:CUR,template:tpl,contact_email:to,contact_name:name,
+    product: CXPROD.manufacturer?{manufacturer:CXPROD.manufacturer,mfr_name:CXPROD.mfr_name,code:CXPROD.code,image_url:CXPROD.image_url}:null})}).then(r=>r.json()); }catch(e){ j=null; }
+  if(gen) gen.disabled=false;
+  if(!j||!j.ok){ if(st){ st.style.color="#b45309"; st.textContent=(j&&j.message)||"Couldn't generate a draft — try again."; } return; }
+  if(st) st.textContent="";
+  COMPOSE.to=to; COMPOSE.name=name; COMPOSE.sig=j.signature||"";
+  COMPOSE.html=j.html||""; COMPOSE.product_url=j.product_url||"";
+  if(j.product_warning&&st){ st.style.color="#b45309"; st.textContent=j.product_warning; }
+  const subj=$("#cx_subj"); if(subj) subj.value=j.subject||"";
+  const body=$("#cx_body"); if(body) body.value=(j.body||"")+(j.signature?("\n\n"+j.signature):"");
+  const dr=$("#cx_draft"); if(dr) dr.style.display="";
+}
+async function sendEmail(){
+  const to=($("#cx_to")||{}).value||COMPOSE.to;
+  const subject=($("#cx_subj")||{}).value||"";
+  const body=($("#cx_body")||{}).value||"";
+  const msg=$("#cx_msg");
+  if(!to){ if(msg){ msg.style.color="#b42323"; msg.textContent="Pick a contact to send to."; } return; }
+  if(!confirm("Send this email to "+to+" from your Outlook?")) return;
+  if(msg){ msg.style.color=""; msg.textContent="Sending from your Outlook…"; }
+  const btn=$("#cx_send"); if(btn) btn.disabled=true;
+  let j; try{ j=await esapi({action:"send",dealer_id:CUR,to,subject,body_text:body}); }catch(e){ j=null; }
+  if(btn) btn.disabled=false;
+  if(j&&j.ok){ if(msg){ msg.style.color="#1f7a44"; msg.textContent="✓ Sent to "+j.to+" — logged to the timeline."; } const dr=$("#cx_draft"); if(dr) dr.style.display="none"; loadCRM(); loadEmails(); return; }
+  if(j&&j.fallback){ if(msg){ msg.style.color="#b45309"; msg.textContent=(j.message||"Couldn't send from Outlook.")+" Use ‘Open in Outlook’ to send it manually."; } return; }
+  if(msg){ msg.style.color="#b42323"; msg.textContent=(j&&j.message)||"Couldn't send."; }
+}
+function openInOutlook(){
+  const to=($("#cx_to")||{}).value||"";
+  const subject=($("#cx_subj")||{}).value||"";
+  const body=($("#cx_body")||{}).value||"";
+  window.location.href="mailto:"+encodeURIComponent(to)+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
+  // Still capture it on the timeline, since the send happens in Outlook.
+  if(CUR&&to) crm({action:"log_activity",dealer_id:CUR,kind:"email",summary:subject||"Email",detail:"Composed in Dealer 360, sent via Outlook to "+to});
+  const msg=$("#cx_msg"); if(msg){ msg.style.color="#1f7a44"; msg.textContent="Opened in Outlook — logged to the timeline."; }
+  setTimeout(loadCRM,1200);
+}
+
+/* ===== Make a call — click-to-call + auto-log ===== */
+function telLink(num,label){ const c=String(num).replace(/[^0-9+]/g,""); if(!c) return ""; return `<a class="btn sm" href="tel:${c}" data-lbl="${esc(label)} — ${esc(num)}" onclick="prefillCall(this)" style="justify-content:flex-start">📞 ${esc(label)}: ${esc(num)}</a>`; }
+function renderCall(){
+  const el=$("#callbox"); if(!el) return;
+  const rows=[]; if(DPHONE) rows.push(telLink(DPHONE,"Main line"));
+  ((CDATA&&CDATA.contacts)||[]).forEach(c=>{ if(c.phone) rows.push(telLink(c.phone,c.name||"Contact")); if(c.cell) rows.push(telLink(c.cell,(c.name||"Contact")+" cell")); });
+  el.innerHTML = rows.length
+    ? `<div style="display:flex;flex-direction:column;gap:6px">${rows.join("")}</div>
+       <div class="hint" style="margin-top:8px">Click a number to dial on your phone — or via Phone Link / Teams on your desktop. A call log opens so you capture notes &amp; a follow-up when you hang up.</div>`
+    : `<div class="hint">No phone numbers on file yet — add one under Contacts and it'll appear here.</div>`;
+}
+function prefillCall(a){
+  const label=(a&&a.getAttribute)?a.getAttribute("data-lbl"):String(a||"");
+  const k=$("#la_kind"); if(k) k.value="call";
+  const s=$("#la_sum"); if(s){ if(!s.value) s.value="Called "+label; setTimeout(function(){ s.scrollIntoView({behavior:"smooth",block:"center"}); s.focus(); },60); }
+}
+/* Clicking a contact's email hands the address straight to the default mail app
+   (Outlook on the reps' desktops) as a new message — the href is the stored address
+   verbatim, so nothing gets re-typed or re-encoded on the way. Like the phone links,
+   it also pre-fills "Log a touch" rather than logging anything on its own: opening a
+   compose window is an intention, not yet a touch. */
+function emailTouch(email,name){
+  const k=$("#la_kind"); if(k) k.value="email";
+  const s=$("#la_sum"); if(s && !s.value) s.value="Emailed "+(name||email);
+}
+function contactForm(c){ c=c||{}; const editing=!!c.id;
+  return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#fafbfc;margin-bottom:10px">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:800;margin-bottom:6px">${editing?"Edit contact":"Add contact"}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <input id="c_name" placeholder="Name" value="${esc(c.name||"")}">
+      <input id="c_email" placeholder="Email (optional)" value="${esc(c.email||"")}">
+      <input id="c_title" placeholder="Title" value="${esc(c.title||"")}">
+      <input id="c_role" placeholder="Role" value="${esc(c.role||"")}">
+      <input id="c_phone" placeholder="Office phone" value="${esc(c.phone||"")}">
+      <input id="c_cell" placeholder="Mobile" value="${esc(c.cell||"")}">
+    </div>
+    <input type="hidden" id="c_id" value="${esc(c.id||"")}">
+    <div class="hint" style="margin:6px 0 0">Email is optional — add the contact now and fill it in later. A contact needs an email before it can be emailed or made the primary.</div>
+    <div style="margin-top:6px;display:flex;gap:6px"><button class="btn sm orange" onclick="saveContact()">${editing?"Save changes":"Add contact"}</button>${editing?`<button class="btn sm" onclick="CEDIT=null;renderContacts()">Cancel</button>`:""}</div>
+  </div>`; }
+function renderContacts(){ const el=$("#contacts"); if(!el||!CDATA) return;
+  const prim=CDATA.primary_email||""; const cs=CDATA.contacts||[];
+  const rows=cs.map(c=>{ const isP=c.email&&c.email.toLowerCase()===prim; const jid=esc(String(c.id||"").replace(/'/g,"")); const je=esc(String(c.email||"").replace(/'/g,""));
+    return `<div style="padding:7px 0;border-bottom:1px solid #eef2f6"><div style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1;min-width:0"><b>${esc(c.name||"—")}</b>${isP?' <span style="font-size:10px;font-weight:800;color:#b45309;background:#fdeee0;border-radius:6px;padding:1px 6px">★ primary</span>':""}
+        <div class="hint" style="margin:0">${esc([c.title,c.role].filter(Boolean).join(" · "))}</div>
+        <div class="hint" style="margin:0">${c.email?`✉ <a class="cmail" href="mailto:${esc(c.email)}" title="Open a new message to ${esc(c.name||c.email)} in your mail app" onclick="emailTouch('${je}','${esc(String(c.name||"").replace(/'/g,""))}')">${esc(c.email)}</a>`:'<span style="color:var(--gray)">No email on file</span>'}${c.phone?" · ☎ "+esc(c.phone):""}${c.cell?" · 📱 "+esc(c.cell):""}</div></div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${(isP||!c.email)?"":`<button class="btn sm" title="Make primary" onclick="makePrimary('${je}','${esc(String(c.name||'').replace(/'/g,''))}','${esc(String(c.phone||'').replace(/'/g,''))}')">★</button>`}
+        <button class="btn sm" onclick="editContact('${jid}')">Edit</button>
+        <button class="btn sm" style="color:var(--red)" onclick="delContact('${jid}')">✕</button></div>
+    </div></div>`; }).join("")||'<div class="hint">No contacts yet — add one below.</div>';
+  const editing = CEDIT!=null ? cs.find(c=>c.id===CEDIT) : null;
+  el.innerHTML = `${rows}${editing?contactForm(editing):contactForm(null)}`;
+  // Manufacturer account numbers render in their own card (right column, under Notes & tasks).
+  const accts=CDATA.accounts||[];
+  const ael=$("#acctcard");
+  const acctHint='<div class="hint" style="margin-top:8px">Account numbers are organization-level — saving one here also fills every branch in this dealer group that doesn’t already have its own number for that manufacturer.</div>';
+  if(ael) ael.innerHTML = accts.length
+    ? accts.map(a=>`<div style="display:flex;align-items:center;gap:6px;margin:4px 0"><span style="flex:1;font-size:13px">${esc(a.name)}${a.active?"":' <span class="hint">(inactive)</span>'}</span>
+       ${isMgmt()?`<input id="acct_${esc(a.slug)}" value="${esc(a.account_ref||"")}" placeholder="account #" style="width:130px"><button class="btn sm" onclick="saveAcct('${esc(a.slug)}')">Save</button>`:`<span style="font-size:13px;font-weight:700;color:var(--navy)">${esc(a.account_ref||"—")}</span>`}</div>`).join("")+(isMgmt()?acctHint:'')
+    : '<div class="hint">No manufacturer accounts on file for this dealer yet.</div>';
+}
+async function saveContact(){
+  const email=(($("#c_email")||{}).value||"").trim();
+  const name=(($("#c_name")||{}).value||"").trim();
+  if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ alert("That email doesn't look right. Fix it, or clear the field to add the contact without an email."); return; }
+  if(!name && !email){ alert("Add at least a name (an email is optional)."); return; }
+  await crm({action:"save_contact",dealer_id:CUR,id:($("#c_id")||{}).value||"",email,name,title:($("#c_title")||{}).value||"",role:($("#c_role")||{}).value||"",phone:($("#c_phone")||{}).value||"",cell:($("#c_cell")||{}).value||""}); CEDIT=null; loadContacts(); }
+function editContact(id){ CEDIT=id; renderContacts(); const f=$("#c_name"); if(f)f.focus(); }
+async function delContact(id){ const c=((CDATA&&CDATA.contacts)||[]).find(x=>String(x.id)===String(id)); if(!confirm("Remove contact "+((c&&(c.name||c.email))||"this contact")+"?")) return; await crm({action:"delete_contact",dealer_id:CUR,id}); loadContacts(); }
+async function makePrimary(email,name,phone){ await crm({action:"set_primary_contact",dealer_id:CUR,email,name,phone}); loadContacts(); }
+async function saveAcct(slug){ const v=(($("#acct_"+slug)||{}).value||"").trim(); await crm({action:"save_account_ref",dealer_id:CUR,manufacturer:slug,account_ref:v}); }
+
+/* ===== Dealer 360 — monthly sales & product drill-down ===== */
+var SALES=null, SSEL=null, SCHART=null;
+async function loadSales(){
+  const el=$("#sales"); if(!el||!CUR) return;
+  let j; try{ j=await crm({action:"sales",dealer_id:CUR}); }catch(e){ el.innerHTML='<div class="hint">Couldn\'t load sales.</div>'; return; }
+  if(j&&j.error==="tables_missing"){ el.innerHTML='<div class="hint">Sales data isn\'t available yet.</div>'; return; }
+  if(!j||!j.ok||!j.sales){ el.innerHTML='<div class="hint">Couldn\'t load sales.</div>'; return; }
+  SALES=j.sales; SSEL=null;
+  if(!(SALES.combined&&SALES.combined.length) && !(SALES.manufacturers&&SALES.manufacturers.length)){
+    el.innerHTML='<div class="hint">No monthly sales on file for this dealer yet — this fills in once sales are imported.</div>'; return; }
+  renderSales();
+}
+async function esapi(payload){ const r=await fetch("/.netlify/functions/email-sync-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({})); }
+async function loadEmails(){
+  const el=$("#emails"); if(!el||!CUR) return;
+  if(!document.getElementById("emCSS")){ const s=document.createElement("style"); s.id="emCSS"; s.textContent=".emrow{transition:background .12s}.emrow:hover{background:#f4f8fc}.emchev{opacity:.5}.emrow:hover .emchev{opacity:1;color:#1f6fb2}"; document.head.appendChild(s); }
+  let j; try{ j=await esapi({action:"dealer",dealer_id:CUR}); }catch(e){ el.innerHTML='<div class="hint">Couldn\'t load email.</div>'; return; }
+  const cnt=$("#emailCount");
+  if(j&&j.error==="tables_missing"){ el.innerHTML='<div class="hint">Email capture isn\'t set up yet.</div>'; return; }
+  if(!j||!j.ok){ el.innerHTML='<div class="hint">No email yet.</div>'; return; }
+  if(cnt) cnt.textContent=j.count?`${j.count} · ${j.inbound}↓ ${j.outbound}↑`:"";
+  if(!j.messages||!j.messages.length){ el.innerHTML='<div class="hint">No captured email for this dealer yet — messages appear here after a sync once one matches this account.</div>'; return; }
+  el.innerHTML=j.messages.map(m=>{
+    const out=m.direction==="outbound"; const icon=out?"↑":"↓"; const col=out?"#1f6fb2":"#1f7a44";
+    const when=String(m.when||"").slice(0,16).replace("T"," ");
+    const who=out?("To "+esc(m.counter||"—")):("From "+esc(m.who||m.counter||"—"));
+    return `<div class="emrow" data-id="${esc(m.id)}" onclick="openEmail(this)" title="Click to read the full email" style="display:flex;gap:8px;padding:7px 6px;margin:0 -6px;border-bottom:1px solid #eef2f6;cursor:pointer;border-radius:8px">
+      <div style="font-weight:800;color:${col};width:14px;flex:none" title="${out?'sent':'received'}">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;color:var(--navy);font-weight:600">${esc(m.subject)||"<span class='hint' style='font-weight:400'>(no subject)</span>"}${m.attach?" 📎":""}</div>
+        <div class="hint" style="margin:1px 0 0">${who} · ${esc(when)}${(m.conf&&m.conf!=="high")?" · "+esc(m.conf)+" match":""}</div>
+        ${m.snippet?`<div class="hint" style="margin:2px 0 0">${esc(m.snippet)}</div>`:""}
+      </div><div class="emchev" style="flex:none;align-self:center;color:#c3ccd6;font-weight:800">▸</div></div>`;
+  }).join("");
+}
+function emClose(){ const o=$("#emModal"); if(o) o.style.display="none"; const b=$("#emBody"); if(b) b.innerHTML=""; }
+function emModalEnsure(){
+  if($("#emModal")) return;
+  const wrap=document.createElement("div");
+  wrap.id="emModal";
+  wrap.style.cssText="display:none;position:fixed;inset:0;z-index:9999;background:rgba(15,27,43,.55);padding:24px;overflow:auto";
+  wrap.innerHTML='<div style="max-width:820px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">'
+    +'<div style="display:flex;align-items:flex-start;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)">'
+    +'<div style="flex:1;min-width:0"><div id="emSubj" style="font-size:15px;font-weight:800;color:var(--navy);word-break:break-word"></div>'
+    +'<div id="emMeta" class="hint" style="margin:3px 0 0"></div></div>'
+    +'<button type="button" onclick="emClose()" title="Close (Esc)" style="flex:none;border:1px solid var(--line);background:#f6f8fa;border-radius:8px;width:30px;height:30px;font-size:15px;cursor:pointer;color:var(--gray)">✕</button></div>'
+    +'<div id="emBody"></div></div>';
+  wrap.addEventListener("click",function(e){ if(e.target===wrap) emClose(); });
+  document.body.appendChild(wrap);
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape") emClose(); });
+}
+/* A definite answer to "why are the bodies blank", read from the permissions Azure
+   actually granted — not inferred from the symptom. */
+async function graphHealth(){
+  let j=null;
+  try{ j=await esapi({action:"graph_health"}); }catch(e){}
+  emModalEnsure();
+  $("#emModal").style.display="block";
+  $("#emSubj").textContent="Outlook connection";
+  $("#emMeta").textContent="";
+  if(!j||!j.ok){ $("#emBody").innerHTML='<div class="hint" style="padding:20px 16px">Couldn\'t check the Outlook connection.</div>'; return; }
+  const good=j.can_read_bodies===true;
+  const steps=(j.fix||[]).map((x,i)=>`<li style="margin:0 0 5px">${esc(x)}</li>`).join("");
+  $("#emBody").innerHTML=`<div style="padding:16px">
+    <div style="padding:11px 13px;border-radius:9px;font-size:13px;line-height:1.55;${good
+      ? "background:#f2f8f4;border:1px solid #b6d8c1;color:#1a7f4b"
+      : "background:#fdf5f5;border:1px solid #f0c7c7;color:#8a2f2f"}">${esc(j.summary||"")}</div>
+    ${j.roles&&j.roles.length?`<div class="hint" style="margin:10px 0 0">Permissions granted to this app: <b>${esc(j.roles.join(", "))}</b></div>`:""}
+    ${steps?`<div style="margin-top:12px"><div style="font-size:12px;font-weight:800;color:var(--navy);margin-bottom:5px">How to fix it</div>
+      <ol style="margin:0;padding-left:18px;font-size:12.5px;color:#4a5563;line-height:1.55">${steps}</ol>
+      <div class="hint" style="margin:9px 0 0">This is an Azure setting, not missing data — every email already synced will show its body the moment the permission is granted.</div></div>`:""}
+  </div>`;
+}
+
+async function openEmail(el){
+  const id=(el&&el.getAttribute)?el.getAttribute("data-id"):el; if(!id) return;
+  emModalEnsure();
+  $("#emModal").style.display="block";
+  $("#emSubj").textContent="Loading…"; $("#emMeta").textContent="";
+  $("#emBody").innerHTML='<div class="hint" style="padding:22px 16px">Opening from Outlook…</div>';
+  let j; try{ j=await esapi({action:"message",id:id}); }catch(e){ j=null; }
+  if(!j||!j.ok){
+    const msg=(j&&j.message)||(j&&j.error==="graph_env_missing"?"Full-email reading isn't set up yet (Graph credentials).":"Couldn't open this message.");
+    $("#emSubj").textContent="Couldn't open email"; $("#emMeta").textContent="";
+    $("#emBody").innerHTML='<div class="hint" style="padding:22px 16px">'+esc(msg)+'</div>'; return;
+  }
+  $("#emSubj").textContent=j.subject||"(no subject)";
+  const when=String(j.when||"").slice(0,16).replace("T"," ");
+  const dir=j.direction==="outbound"?"Sent":"Received";
+  const meta=[];
+  if(j.from) meta.push("From "+esc(j.from_name?(j.from_name+" <"+j.from+">"):j.from));
+  if(j.to&&j.to.length) meta.push("To "+esc(j.to.join(", ")));
+  if(j.cc&&j.cc.length) meta.push("Cc "+esc(j.cc.join(", ")));
+  meta.push(esc(dir+" · "+when)); if(j.has_attachments) meta.push("📎 attachment");
+  $("#emMeta").innerHTML=meta.join(" &nbsp;·&nbsp; ");
+  const body=$("#emBody"); body.innerHTML="";
+  const atts=Array.isArray(j.attachments)?j.attachments:[];
+  if(j.body_html){
+    const f=document.createElement("iframe");
+    f.setAttribute("sandbox","");            // no scripts / forms / same-origin — neutralizes anything in the email HTML
+    f.style.cssText="width:100%;height:"+(atts.length?"46vh":"60vh")+";border:0;background:#fff";
+    body.appendChild(f);
+    f.srcdoc=j.body_html;
+  } else if(j.body_text&&j.body_text.trim()){
+    const d=document.createElement("div");
+    d.style.cssText="white-space:pre-wrap;word-break:break-word;padding:16px;font-size:13.5px;color:#20303f;line-height:1.55";
+    d.textContent=j.body_text;                // textContent = no HTML injection
+    body.appendChild(d);
+  } else {
+    /* No body. Say why, and show whatever Outlook DID give us. "(no message body)" told a
+       rep nothing and made a permission setting look like lost data. */
+    if(j.body_preview&&j.body_preview.trim()){
+      const p=document.createElement("div");
+      p.style.cssText="white-space:pre-wrap;word-break:break-word;padding:16px 16px 4px;font-size:13.5px;color:#20303f;line-height:1.55";
+      p.textContent=j.body_preview;
+      body.appendChild(p);
+    }
+    const note=document.createElement("div");
+    const perm=j.body_status==="permission";
+    note.style.cssText="margin:12px 16px 16px;padding:11px 13px;border-radius:9px;font-size:12.5px;line-height:1.55;"
+      +(perm?"background:#fdf5f5;border:1px solid #f0c7c7;color:#8a2f2f":"background:#f6f8fa;border:1px solid #e6ebf0;color:#5b6672");
+    note.textContent = j.body_note
+      || (atts.length ? "This email has no text body — its content is in the attachment"+(atts.length>1?"s":"")+" below."
+                      : "Outlook returned no body for this message.");
+    body.appendChild(note);
+    if(perm && ME && ME.role==="president"){
+      const b2=document.createElement("button");
+      b2.className="btn sm"; b2.style.cssText="margin:0 16px 16px";
+      b2.textContent="Check Outlook permissions";
+      b2.onclick=graphHealth;
+      body.appendChild(b2);
+    }
+  }
+  // Attachments — an order-confirmation email often carries its content as a PDF. Show a download
+  // link, and preview PDFs inline. (This admin page is served from the real site, so data: links work.)
+  if(atts.length){
+    const wrap=document.createElement("div");
+    wrap.style.cssText="padding:12px 16px;border-top:1px solid #eef2f6;display:flex;flex-direction:column;gap:8px";
+    const h=document.createElement("div");
+    h.style.cssText="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--gray)";
+    h.textContent="Attachment"+(atts.length>1?"s ("+atts.length+")":"");
+    wrap.appendChild(h);
+    atts.forEach(a=>{
+      const kb=a.size?Math.max(1,Math.round(a.size/1024)):0;
+      const isPdf=/pdf/i.test(a.content_type||"")|| /\.pdf$/i.test(a.name||"");
+      const rowEl=document.createElement(a.content_b64?"a":"div");
+      rowEl.style.cssText="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;text-decoration:none;color:var(--navy);background:#fff";
+      if(a.content_b64){ rowEl.href="data:"+(a.content_type||"application/octet-stream")+";base64,"+a.content_b64; rowEl.download=a.name||"attachment"; }
+      const info=document.createElement("div"); info.style.cssText="flex:1;min-width:0";
+      const t=document.createElement("div"); t.style.cssText="font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"; t.textContent=(isPdf?"📄 ":"📎 ")+(a.name||"attachment");
+      const s=document.createElement("div"); s.style.cssText="font-size:11px;color:var(--gray)"; s.textContent=(kb?kb+" KB":"")+(a.content_b64?" · click to download":(a.note?" · "+a.note:""));
+      info.appendChild(t); info.appendChild(s); rowEl.appendChild(info);
+      wrap.appendChild(rowEl);
+      if(a.content_b64 && isPdf){
+        const pf=document.createElement("iframe");   // PDFs are inert; browser renders in its own sandboxed viewer
+        pf.style.cssText="width:100%;height:52vh;border:1px solid var(--line);border-radius:10px;background:#fff";
+        pf.src="data:application/pdf;base64,"+a.content_b64;
+        wrap.appendChild(pf);
+      }
+    });
+    body.appendChild(wrap);
+  }
+}
+function salesSel(slug){ SSEL=slug; renderSales(); }
+function salesSelectByName(name){
+  if(!SALES){ return; }
+  const m=(SALES.manufacturers||[]).find(x=>String(x.name).toLowerCase()===String(name||"").toLowerCase());
+  SSEL=m?m.slug:null; renderSales();
+  const c=$("#salesCard"); if(c) c.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function stile(l,v){ return `<div class="s"><div class="l">${l}</div><div class="v">${v}</div></div>`; }
+function moneyShort(v){ v=Number(v)||0; const a=Math.abs(v);
+  if(a>=1e6) return "$"+(v/1e6).toFixed(a>=1e7?0:1).replace(/\.0$/,"")+"M";
+  if(a>=1e3) return "$"+(v/1e3).toFixed(a>=1e4?0:1).replace(/\.0$/,"")+"k";
+  return "$"+Math.round(v); }
+function niceMax(v){ if(!(v>0)) return 1; const p=Math.pow(10,Math.floor(Math.log10(v))); const n=v/p;
+  const m=n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10; return m*p; }
+function renderSales(){
+  const el=$("#sales"); if(!el||!SALES) return; const S=SALES;
+  let chips=`<button class="schip${SSEL==null?' on':''}" onclick="salesSel(null)">All manufacturers</button>`;
+  for(const m of (S.manufacturers||[])){
+    chips+=`<button class="schip${SSEL===m.slug?' on':''}" data-slug="${esc(m.slug)}" onclick="salesSel(this.getAttribute('data-slug'))">${esc(m.name)}<span class="scnt">${money(m.total)}</span></button>`;
+  }
+  const chipRow=`<div class="schips">${chips}</div>`;
+  let body;
+  if(SSEL==null){
+    const series=S.combined||[];
+    const tiles=`<div class="stat" style="margin:2px 0 10px">
+      ${stile("Total sales", money(S.total))}
+      ${stile("Manufacturers", String((S.manufacturers||[]).length))}
+      ${stile("Months", String(series.length))}
+      ${stile("Latest month", series.length?esc(series[series.length-1].label):"—")}</div>`;
+    body=`${tiles}<div class="chwrap">${chartHTML(series,"Combined monthly sales — all manufacturers")}</div>
+      <div class="hint" style="margin-top:8px">Click a manufacturer above (or in the order-history table) to see its monthly purchasing graph and the products this dealer is buying.</div>`;
+  } else {
+    const m=(S.manufacturers||[]).find(x=>x.slug===SSEL); if(!m){ SSEL=null; return renderSales(); }
+    const t=m.trend||{dir:"flat",pct:null};
+    const arrow=t.dir==="up"?"▲":t.dir==="down"?"▼":"▬", tcol=t.dir==="up"?"#1f7a44":t.dir==="down"?"#c2410c":"#8a96a3";
+    const trendTxt=(t.pct==null)?"n/a":((t.pct>0?"+":"")+t.pct+"%");
+    const tiles=`<div class="stat" style="margin:2px 0 10px">
+      ${stile("Total sales", money(m.total))}
+      ${stile("Orders", String(m.orders))}
+      ${stile("Avg order", money(m.aov))}
+      ${stile("Units", m.qty?Number(m.qty).toLocaleString():"—")}
+      ${stile("Cadence", m.cadence?("~"+m.cadence+" mo"):"—")}
+      ${stile("Recent trend", `<span style="color:${tcol}">${arrow} ${trendTxt}</span>`)}</div>`;
+    const prods=m.products||[];
+    const ptable=prods.length
+      ? `<div class="ihd" style="margin-top:12px">Products ordered <span class="hint" style="margin:0;text-transform:none;letter-spacing:0;font-weight:600">(${prods.length}) — by sales</span></div>
+         <div class="stbl"><table><thead><tr><th>Product</th><th class="num">Units</th><th class="num">Orders</th><th class="num">Sales</th><th>Last</th></tr></thead><tbody>
+         ${prods.slice(0,50).map(p=>`<tr><td>${esc(p.name)}${(p.sku&&String(p.sku).toLowerCase()!==String(p.name).toLowerCase())?` <span class="hint" style="margin:0">${esc(p.sku)}</span>`:""}</td><td class="num">${p.qty?Number(p.qty).toLocaleString():"—"}</td><td class="num">${p.orders||"—"}</td><td class="num">${money(p.amount)}</td><td>${esc(p.last||"—")}</td></tr>`).join("")}
+         </tbody></table></div>${prods.length>50?`<div class="hint">Showing the top 50 of ${prods.length} products by sales.</div>`:""}`
+      : `<div class="hint" style="margin-top:10px">No product-level detail on file for ${esc(m.name)} — that import carried monthly totals without itemized products.</div>`;
+    const trendBanner=(t.pct!=null)?`<div class="hint" style="margin:8px 0 0">Recent 3 months <b>${money(t.recent)}</b> vs prior 3 <b>${money(t.prior)}</b> — <span style="color:${tcol};font-weight:800">${arrow} ${trendTxt}</span></div>`:"";
+    body=`${tiles}<div class="chwrap">${chartHTML(m.months||[],esc(m.name)+" — monthly sales")}</div>${trendBanner}${ptable}`;
+  }
+  el.innerHTML=chipRow+body;
+  attachChartHover();
+}
+function chartHTML(series,title){
+  const W=560,H=210, ml=54,mr=16,mt=26,mb=26, iw=W-ml-mr, ih=H-mt-mb;
+  const pts=(series||[]).map(d=>({label:d.label,amount:Number(d.amount)||0}));
+  if(!pts.length) return `<div class="hint">No monthly data.</div>`;
+  const vmax=niceMax(Math.max(1,...pts.map(p=>p.amount))), n=pts.length;
+  const X=i=> n===1? ml+iw/2 : ml+(iw*i/(n-1));
+  const Y=v=> mt+ih-(ih*(v/vmax));
+  let grid="",ylab=""; [0,vmax/2,vmax].forEach(tv=>{ const gy=Y(tv);
+    grid+=`<line x1="${ml}" y1="${gy.toFixed(1)}" x2="${W-mr}" y2="${gy.toFixed(1)}" stroke="#e7edf3" stroke-width="1"/>`;
+    ylab+=`<text x="${ml-8}" y="${(gy+3).toFixed(1)}" text-anchor="end" class="cyt">${moneyShort(tv)}</text>`; });
+  const geo=[]; let line="";
+  pts.forEach((p,i)=>{ const x=X(i),y=Y(p.amount); geo.push({x,y,label:p.label,amount:p.amount}); line+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; });
+  const area=`M${X(0).toFixed(1)} ${Y(0).toFixed(1)} `+geo.map(g=>`L${g.x.toFixed(1)} ${g.y.toFixed(1)} `).join("")+`L${X(n-1).toFixed(1)} ${Y(0).toFixed(1)} Z`;
+  const step=Math.max(1,Math.ceil(n/6)); let xlab="";
+  for(let i=0;i<n;i+=step){ xlab+=`<text x="${X(i).toFixed(1)}" y="${H-8}" text-anchor="middle" class="cxt">${esc(pts[i].label)}</text>`; }
+  if((n-1)%step!==0){ xlab+=`<text x="${X(n-1).toFixed(1)}" y="${H-8}" text-anchor="middle" class="cxt">${esc(pts[n-1].label)}</text>`; }
+  const last=geo[geo.length-1];
+  const endDot=`<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="#1681c2" stroke="#fff" stroke-width="2"/>`;
+  const endLab=`<text x="${last.x.toFixed(1)}" y="${Math.max(mt-6,last.y-9).toFixed(1)}" text-anchor="${last.x>W-70?"end":"middle"}" class="cend">${money(last.amount)}</text>`;
+  SCHART={geo,W,H,ml,mr,mt,ih};
+  return `<div class="chttl">${esc(title)}</div>
+  <svg id="salesSvg" viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="${esc(title)}">
+    ${grid}${ylab}
+    <path d="${area}" fill="#1681c2" fill-opacity="0.10"/>
+    <path d="${line}" fill="none" stroke="#1681c2" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${endDot}${endLab}${xlab}
+    <line id="chCross" x1="0" y1="${mt}" x2="0" y2="${mt+ih}" stroke="#98a6b5" stroke-width="1" stroke-dasharray="3 3" style="display:none"/>
+    <circle id="chDot" r="4" fill="#1681c2" stroke="#fff" stroke-width="2" style="display:none"/>
+    <rect id="chOv" x="${ml}" y="${mt}" width="${iw}" height="${ih}" fill="transparent" style="cursor:crosshair"/>
+  </svg><div id="chTip" class="chtip" style="display:none"></div>`;
+}
+function attachChartHover(){
+  const svg=document.getElementById("salesSvg"); if(!svg||!SCHART) return;
+  const ov=document.getElementById("chOv"), cross=document.getElementById("chCross"), dot=document.getElementById("chDot"), tip=document.getElementById("chTip");
+  const wrap=svg.closest(".chwrap"), geo=SCHART.geo;
+  function move(e){
+    const r=svg.getBoundingClientRect(); const sx=(e.clientX-r.left)/r.width*SCHART.W;
+    let best=geo[0],bd=1e9; for(const g of geo){ const d=Math.abs(g.x-sx); if(d<bd){bd=d;best=g;} }
+    cross.setAttribute("x1",best.x); cross.setAttribute("x2",best.x); cross.style.display="";
+    dot.setAttribute("cx",best.x); dot.setAttribute("cy",best.y); dot.style.display="";
+    if(tip&&wrap){ const wr=wrap.getBoundingClientRect();
+      const px=(best.x/SCHART.W)*r.width+(r.left-wr.left), py=(best.y/SCHART.H)*r.height+(r.top-wr.top);
+      tip.innerHTML=""; const a=document.createElement("div"); a.className="chtv"; a.textContent=money(best.amount);
+      const bq=document.createElement("div"); bq.className="chtl"; bq.textContent=best.label; tip.appendChild(a); tip.appendChild(bq);
+      tip.style.display=""; tip.style.left=Math.max(2,Math.min(px+8,wr.width-96))+"px"; tip.style.top=Math.max(0,py-40)+"px"; }
+  }
+  function leave(){ cross.style.display="none"; dot.style.display="none"; if(tip)tip.style.display="none"; }
+  ov.addEventListener("pointermove",move); ov.addEventListener("pointerleave",leave);
+}
+function idate(s){ try{ return new Date(s).toLocaleDateString(); }catch(e){ return ""; } }
+async function loadIntel(){
+  const el=$("#intel"); if(!el||!CUR) return;
+  let j; try{ j=await crm({action:"intel",dealer_id:CUR}); }catch(e){ el.innerHTML='<div class="hint">Couldn\'t load activity.</div>'; return; }
+  const it=j&&j.intel; if(!it){ el.innerHTML='<div class="hint">No digital activity yet — it appears here once the dealer logs into the ordering portal or engages with email.</div>'; renderCommission(null); return; }
+  renderCommission(it.commission);
+  const em=it.email||{}, lg=it.logins||{}, iq=it.intent||{};
+  const sc=await fapi({action:"dealer_score",dealer_id:CUR}).catch(()=>null);
+  const scOk=sc&&sc.ok, scScore=scOk?sc.score:null, scTier=scOk?sc.tier:"";
+  const scColor={champion:"#2d7d46",active:"#1f7a44",warming:"#b45309",cold:"#8a94a1"}[scTier]||"#3B599A";
+  const tiles=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">
+    <div class="itile" title="Activation & Engagement — Golden logins + product interest + order cadence (0–100)"><div class="l">Activation</div><div class="v" style="color:${scColor}">${scScore!=null?scScore:"—"}</div><div class="hint" style="margin:0">${scOk?esc(scTier):"no data"}</div></div>
+    <div class="itile"><div class="l">Intent</div><div class="v">${iq.score||0}</div><div class="hint" style="margin:0">${esc(iq.tier||"normal")}</div></div>
+    <div class="itile"><div class="l">Logins 30d</div><div class="v">${lg.count_30d||0}</div><div class="hint" style="margin:0">${lg.last_login?"last "+idate(lg.last_login):"never"}</div></div>
+    <div class="itile"><div class="l">Email 30d</div><div class="v">${em.opens_30d||0}·${em.clicks_30d||0}</div><div class="hint" style="margin:0">opens · clicks</div></div>
+  </div>`;
+  const relBadge=r=>{ const map={active:["Customer","#2d7d46","#e7f6ec"],prospect:["Prospect","#6b4bb4","#efe9fb"],dormant:["Dormant","#8a5d12","#fdf4e6"],restricted:["⛔ Restricted","#b91c1c","#fde8e8"],none:["Not a customer","#b45309","#fdeee0"]}; const m=map[r]||map.none; return `<span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;background:${m[2]};color:${m[1]}">${m[0]}</span>`; };
+  const interest=(it.interest||[]).slice(0,10);
+  const emerging=interest.filter(m=>m.emerging).slice(0,3);
+  const banner=emerging.length?`<div style="border:1px solid #f6d5ad;border-left:3px solid #F5821F;background:#fff8ef;border-radius:10px;padding:9px 11px;margin-bottom:10px">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#b45309;font-weight:800">⚡ Emerging interest — not buying yet</div>
+    <div style="font-size:13px;color:var(--navy);margin-top:3px">Researching <b>${emerging.map(m=>esc(m.name)).join(", ")}</b> without an active account — a natural next conversation.</div></div>`:"";
+  const intRows=interest.length?interest.map(m=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eef2f6">
+      <div style="flex:1;min-width:0"><b style="color:var(--navy)">${esc(m.name)}</b> ${relBadge(m.relationship)}${m.emerging?' <span style="font-size:10px;font-weight:800;color:#c2410c">▲ researching</span>':''}
+        <div class="hint" style="margin:0">${[m.views?m.views+" product views":"",m.pricing?m.pricing+" pricing/cart":"",m.order_activity?m.order_activity+" order-page":"",m.intent?"intent "+m.intent:""].filter(Boolean).join(" · ")||"no recent browsing"}</div></div>
+      ${m.emerging?`<button class="btn sm" onclick="startOpp('${esc(m.name)}')">+ opp</button>`:""}
+    </div>`).join(""):'<div class="hint">No manufacturer browsing activity in the last 90 days.</div>';
+  const pv=(it.products_viewed||[]).slice(0,6);
+  const pvBlock=pv.length?`<div style="margin-top:10px"><div class="ihd">Products viewed</div>${pv.map(p=>`<div class="hint" style="margin:2px 0">${esc(p.manufacturer?p.manufacturer+" · ":"")}${esc(p.code)} <b>×${p.count}</b></div>`).join("")}</div>`:"";
+  const cb=(it.carts||[]).length?`<div style="margin-top:10px"><div class="ihd">Cart</div>${it.carts.map(c=>`<div class="hint" style="margin:2px 0">🛒 ${c.items} item${c.items===1?"":"s"}${c.value?" · $"+c.value.toLocaleString():""}${c.mfr?" · "+esc(c.mfr):""}${c.updated_at?" · "+idate(c.updated_at):""}</div>`).join("")}</div>`:"";
+  const ob=(it.orders||[]).length?`<div style="margin-top:10px"><div class="ihd">Recent portal orders</div>${it.orders.slice(0,6).map(o=>`<div class="hint" style="margin:2px 0">${o.submitted_at?idate(o.submitted_at):""} · ${esc(o.manufacturer||"")} · ${esc(o.status||"")}${o.subtotal?" · $"+Number(o.subtotal).toLocaleString():""}</div>`).join("")}</div>`:"";
+  el.innerHTML=`${tiles}${banner}<div class="ihd">Interest by manufacturer</div>${intRows}${pvBlock}${cb}${ob}`;
+  // Upgrade the "Next best action" banner with live intent, if stronger than the sync default.
+  const nbt=document.getElementById("nbaText");
+  if(nbt){ if(iq.tier==="opportunity") nbt.innerHTML="📞 "+esc("High buying intent"+(iq.score?` (score ${iq.score})`:"")+(iq.top_manufacturer?` on ${iq.top_manufacturer}`:"")+" — call now.");
+    else if(emerging.length) nbt.innerHTML="⚡ "+esc("Researching "+emerging.map(m=>m.name).join(", ")+" without an active account — introduce the line."); }
+}
+
+function renderCommission(c){
+  const el=$("#commled"); if(!el) return;
+  if(!c || (!c.paid && !c.open_invoices && !c.realized_sales)){ el.innerHTML='<div class="hint">No commission on file yet — it appears here once commission reports are imported.</div>'; return; }
+  const tiles=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+    <div class="itile"><div class="l">Commission paid</div><div class="v">${money(c.paid)}</div><div class="hint" style="margin:0">realized</div></div>
+    <div class="itile"><div class="l">Outstanding</div><div class="v">${money(c.outstanding_sales)}</div><div class="hint" style="margin:0">${c.open_invoices||0} invoice${c.open_invoices===1?"":"s"} awaiting pay</div></div>
+    <div class="itile"><div class="l">Est. pending comm.</div><div class="v">${money(c.est_pending)}</div><div class="hint" style="margin:0">@ ${((c.est_rate||0)*100).toFixed(1)}%</div></div>
+  </div>`;
+  const list=(c.open_list&&c.open_list.length) ? `<div class="ihd" style="margin-top:10px">Open invoices — awaiting payment</div>`+
+    c.open_list.map(o=>`<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #eef2f6;font-size:12.5px">
+      <span style="flex:1;min-width:0">${esc(o.memo||o.invoice_no||"")}${o.manufacturer?` <span class="hint" style="margin:0">· ${esc(o.manufacturer)}</span>`:""}</span>
+      <span class="hint" style="margin:0">${o.date?idate(o.date):""}</span><b>${money(o.billed)}</b></div>`).join("") : "";
+  el.innerHTML=tiles+list;
+}
+async function crm(payload){ const r=await fetch("/.netlify/functions/crm-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({})); }
+async function fapi(payload){ const r=await fetch("/.netlify/functions/federation-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return r.json().catch(()=>({})); }
+// One-click into the dealer's Golden portal. Opens the tab inside the click gesture (avoids pop-up
+// blocking), then points it at the short-lived signed SSO URL minted server-side.
+async function openGolden(btn){
+  if(!CUR) return;
+  const w=window.open("about:blank","_blank");
+  const old=btn?btn.textContent:"";
+  if(btn){ btn.disabled=true; btn.textContent="Opening…"; }
+  try{
+    const j=await fapi({action:"golden_sso_link",dealer_id:CUR});
+    if(j&&j.ok&&j.url){ if(w) w.location.href=j.url; else window.location.href=j.url; }
+    else { if(w) w.close(); if(btn){ btn.textContent=(j&&j.error==="no_golden_slug")?"No Golden portal on file":"Couldn't open"; setTimeout(()=>{ if(btn) btn.textContent=old; },2600); } }
+  }catch(e){ if(w) w.close(); if(btn){ btn.textContent="Couldn't open"; setTimeout(()=>{ if(btn) btn.textContent=old; },2600); } }
+  finally{ if(btn) btn.disabled=false; }
+}
+// Preview the dealer's HCPS Partner 360 ordering portal AS that dealer (read-only). Opens the tab
+// inside the click gesture (avoids pop-up blocking), then points it at a short-lived preview URL
+// minted server-side. No dealer login and no shared credentials — the portal shows a "Previewing
+// as <dealer>" banner and blocks ordering/account writes.
+async function openDealerPortal(btn){
+  if(!CUR) return;
+  const w=window.open("about:blank","_blank");
+  const old=btn?btn.textContent:"";
+  if(btn){ btn.disabled=true; btn.textContent="Opening preview…"; }
+  try{
+    const j=await dapi({action:"preview_link",dealer_id:CUR});
+    if(j&&j.ok&&j.url){ if(w) w.location.href=j.url; else window.location.href=j.url; }
+    else { if(w) w.close(); if(btn){ btn.textContent=(j&&j.error)?String(j.error).slice(0,40):"Couldn't open preview"; setTimeout(()=>{ if(btn) btn.textContent=old; },3200); } }
+  }catch(e){ if(w) w.close(); if(btn){ btn.textContent="Couldn't open preview"; setTimeout(()=>{ if(btn) btn.textContent=old; },3200); } }
+  finally{ if(btn) btn.disabled=false; }
+}
+/* ===== Notes — what a rep scans for before a call, an email or a visit =====
+   The type is optional in storage: dealer_notes.kind only exists once
+   supabase/dealer_note_kind.sql has been run, and every note written before that
+   reads as a plain "Note". Nothing here assumes the column is there. */
+const NKINDS=[["note","📝 Note"],["call","📞 Call"],["visit","🚗 Visit"],["email","✉ Email"],["quote","🏷 Pricing"],["issue","⚠ Issue"]];
+const NKLABEL={note:"Note",call:"Call",visit:"Visit",email:"Email",quote:"Pricing",issue:"Issue"};
+function noteKind(n){ const k=String((n&&n.kind)||"note").toLowerCase(); return NKLABEL[k]?k:"note"; }
+function noteAgo(d){
+  const ms=Date.now()-d.getTime(); if(ms<0) return "";
+  const days=Math.floor(ms/86400000);
+  if(days===0) return "today";
+  if(days===1) return "yesterday";
+  if(days<7)   return days+" days ago";
+  if(days<35){ const w=Math.round(days/7);  return w+(w===1?" week ago":" weeks ago"); }
+  if(days<365){const m=Math.round(days/30); return m+(m===1?" month ago":" months ago"); }
+  const y=Math.floor(days/365); return y+(y===1?" year ago":" years ago");
+}
+function noteStamp(iso){
+  const d=new Date(iso||"");
+  if(!iso||isNaN(d.getTime())) return {date:"",time:"",ago:"",full:""};
+  return { date:d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}),
+           time:d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}),
+           ago:noteAgo(d), full:d.toLocaleString() };
+}
+/* One dictated ramble shouldn't bury the four notes under it — fold anything past
+   nine lines behind Show more. Measured after paint, so a note that just fits is
+   left alone rather than given a button that reveals one extra line. */
+function clampNotes(){
+  document.querySelectorAll("#notes .nbody").forEach(function(el){
+    if(el.dataset.clamped) return; el.dataset.clamped="1";
+    const lh=parseFloat(getComputedStyle(el).lineHeight)||25;
+    if(el.scrollHeight <= lh*9 + lh*0.6) return;
+    el.classList.add("clamp");
+    const b=document.createElement("button");
+    b.type="button"; b.className="nmore"; b.textContent="Show more";
+    b.onclick=function(){ const folded=el.classList.toggle("clamp"); b.textContent=folded?"Show more":"Show less"; };
+    el.parentNode.appendChild(b);
+  });
+}
+function noteErr(r){
+  const m=String((r&&(r.detail||r.message||r.error))||"");
+  if(/tables_missing|PGRST205|Could not find the table/i.test(m)) return "Couldn't post — notes storage isn't set up yet (run supabase/crm.sql).";
+  if(/unauthor|expired|401/i.test(m)) return "Couldn't post — your sign-in expired. Reload the page and try again.";
+  return m ? "Couldn't post — "+m.slice(0,160)+"." : "Couldn't post the note — nothing was saved, and your text is still here.";
+}
+async function loadCRM(){
+  const el=$("#crm"); if(!el||!CUR) return;
+  let j; try{ j=await crm({action:"list",dealer_id:CUR}); }catch(e){ el.innerHTML=`<div class="hint">Couldn't load tasks.</div>`; const n0=$("#notes"); if(n0)n0.innerHTML=`<div class="hint">Couldn't load notes.</div>`; return; }
+  if(j&&j.error==="tables_missing"){ const msg=`<div class="note-ph">Run <b>supabase/crm.sql</b> in Supabase to turn on notes &amp; tasks.</div>`; el.innerHTML=msg; const n1=$("#notes"); if(n1)n1.innerHTML=msg; return; }
+  const tasks=(j&&j.tasks)||[], nts=(j&&j.notes)||[], acts=(j&&j.activity)||[], xs=(j&&j.crosssell)||[], hp=(j&&j.health)||null, ops=(j&&j.opportunities)||[];
+  XPLAN=(j&&j.crossplan)||[];
+  const open=tasks.filter(t=>t.status==="open"), done=tasks.filter(t=>t.status!=="open");
+  let hpBlock="";
+  if(hp){
+    const TL={healthy:["Healthy","#2d7d46"],watch:["Watch","#F5821F"],at_risk:["At-risk","#c2410c"],dormant:["Dormant","#8a96a3"],new:["New","#1681c2"]};
+    const tl=TL[hp.status]||["—","#8a96a3"]; const sc=Number(hp.score)||0;
+    const scColor=sc>=65?"#2d7d46":sc>=40?"#F5821F":"#c2410c";
+    const tr=hp.trend==="up"?'<span style="color:#2d7d46;font-weight:800">▲ rising</span>':hp.trend==="down"?'<span style="color:#c2410c;font-weight:800">▼ falling</span>':'<span style="color:#8a96a3;font-weight:800">▬ steady</span>';
+    hpBlock=`<div style="display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;background:#fff;padding:11px 13px;margin-bottom:12px">
+      <div style="width:44px;height:44px;border-radius:11px;background:${scColor};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex:none">${sc}</div>
+      <div style="flex:1"><div style="font-size:13px;font-weight:800;color:var(--navy)">Health <span style="font-size:10px;text-transform:uppercase;letter-spacing:.4px;background:${tl[1]}22;color:${tl[1]};border-radius:6px;padding:2px 7px;margin-left:4px">${tl[0]}</span></div>
+        <div class="hint" style="margin:2px 0 0">${tr} · ${hp.months_since!=null?hp.months_since+"mo since last order":""}${hp.status!=="dormant"&&hp.churn_score?` · <b style="color:#c2410c">urgency ${hp.churn_score}</b>`:""}</div></div>
+    </div>`;
+  }
+  const xsBlock = crossSellBlock(xs);
+  const opBlock = ops.length ? `<div style="border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:10px;background:#f6fafd;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--blue);font-weight:800;margin-bottom:4px">🔮 Open opportunities</div>
+      ${ops.map(o=>`<div style="font-size:13px;color:var(--navy);margin:3px 0"><b>${esc(o.title)}</b> <span class="hint" style="margin:0">— ${esc(o.stage)}${o.value?` · $${Number(o.value).toLocaleString()}`:""}</span></div>`).join("")}
+      <div style="margin-top:4px"><a class="link" href="/admin/pipeline.html">Manage in Pipeline →</a></div>
+    </div>` : "";
+  const tRow=t=>`<div class="tk ${t.priority==='high'?'hi':''}">
+    <button class="tkchk" title="${t.status==='open'?'Mark done':'Reopen'}" onclick="taskAction('${t.id}','${t.status==='open'?'complete_task':'reopen_task'}')">${t.status==='open'?'○':'●'}</button>
+    <div class="tkb"><div class="tkt ${t.status!=='open'?'dn':''}">${esc(t.title)}${t.source==='auto'?' <span class="pill2 due">auto</span>':''}</div>
+      ${t.due_date?`<div class="hint" style="margin:0">due ${esc(t.due_date)}</div>`:''}${t.detail?`<div class="hint" style="margin:0">${esc(t.detail)}</div>`:''}</div></div>`;
+  const nRow=n=>{ const k=noteKind(n), s=noteStamp(n.created_at);
+    return `<div class="ncard nk-${k}">
+      <div class="nmeta"><span class="nkind">${esc(NKLABEL[k])}</span>
+        <span class="nwho">${esc(n.author_name||n.author_email||"—")}</span>
+        ${s.date?`<span class="nwhen" title="${esc(s.full)}">${esc(s.date)} · ${esc(s.time)}</span>`:""}
+        ${s.ago?`<span class="nago">${esc(s.ago)}</span>`:""}</div>
+      <div class="nbody">${esc(n.body)}</div></div>`; };
+  const aRow=a=>{ const ic=a.kind==="campaign"?"📣":a.kind==="call"?"📞":a.kind==="visit"?"🚗":a.kind==="meeting"?"👥":a.kind==="note"?"📝":a.kind==="system"?"•":"📧"; return `<div class="nt"><div class="ntb">${ic} ${esc(a.subject||a.kind)}</div>${a.detail?`<div class="hint" style="margin:2px 0 0">${esc(a.detail)}</div>`:""}<div class="hint" style="margin:2px 0 0">${esc(a.actor||a.contact_email||"")}${a.created_at?" · "+new Date(a.created_at).toLocaleString():""}</div></div>`; };
+  el.innerHTML=`${hpBlock}${opBlock}${xsBlock}<div class="tasks">
+      ${open.length?open.map(tRow).join(""):'<div class="hint">No open tasks.</div>'}
+      <div class="tkadd"><input id="ntitle" placeholder="Add a task…" onkeydown="if(event.key==='Enter')addTask()"><input id="ndue" type="date" title="Due date" style="width:auto"><button class="btn sm" onclick="addTask()">Add</button></div>
+      ${done.length?`<div class="hint" style="margin:8px 0 2px">Done (${done.length})</div>`+done.slice(0,6).map(tRow).join(""):''}
+    </div>
+    ${j&&j.timeline?`<div style="height:1px;background:var(--line);margin:12px 0"></div>
+    <div class="tlhd">Relationship timeline</div>
+    <div class="schips" id="tlchips"></div><div id="tl"><div class="hint">Loading the timeline…</div></div><div id="tlmore"></div>`
+    :acts.length?`<div style="height:1px;background:var(--line);margin:12px 0"></div>
+    <div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);font-weight:800;margin-bottom:6px">Activity timeline</div>
+    <div>${acts.map(aRow).join("")}</div>`:''}`;
+  if(j&&j.timeline) loadTimeline(true);
+  // Log a touch lives in its own card (left column, above Signals & Analytics).
+  const tel=$("#touch");
+  if(tel) tel.innerHTML=`<div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#fafbfc">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <select id="la_kind" style="width:auto"><option value="call">📞 Call</option><option value="visit">🚗 Visit</option><option value="email">✉ Email</option><option value="meeting">👥 Meeting</option><option value="note">📝 Note</option></select>
+        <input id="la_sum" placeholder="What happened? (e.g. Called about Strongback pricing)" style="flex:1;min-width:200px">
+      </div>
+      <textarea id="la_det" rows="2" placeholder="Outcome / details (optional)" style="width:100%;margin-top:6px"></textarea>
+      <label class="hint" style="display:flex;align-items:center;gap:6px;margin:4px 0"><input type="checkbox" id="la_fu" style="width:auto" onchange="var b=document.getElementById('la_fubox');if(b)b.style.display=this.checked?'flex':'none'"> Add a follow-up task</label>
+      <div id="la_fubox" style="display:none;gap:6px;flex-wrap:wrap"><input id="la_futitle" placeholder="Follow-up task…" style="flex:1;min-width:180px"><input id="la_fudue" type="date" style="width:auto"></div>
+      <button type="button" class="btn sm orange" id="la_submit" style="margin-top:6px" onclick="logActivity()">Log activity</button>
+      <div id="la_msg" class="hint" role="status" aria-live="polite" style="margin:6px 0 0;min-height:18px">${esc(TOUCH_LAST_STATUS)}</div>
+    </div>`;
+  // Notes live in their own card (left column, top).
+  const nel=$("#notes");
+  if(nel){ nel.innerHTML=`<div class="ncompose">
+    <textarea id="nbody" rows="2" placeholder="Add a note about this dealer…"></textarea>
+    <div class="ncbar">
+      <select id="nkind" title="What kind of note is this?">${NKINDS.map(([v,l])=>`<option value="${v}">${l}</option>`).join("")}</select>
+      <button type="button" class="btn sm ghost" id="vnOpen" onclick="vnOpenPanel()" hidden>🎤 Dictate</button>
+      <button class="btn sm orange" onclick="addNote()">Post note</button>
+      <span class="ncmsg" id="ncmsg"></span>
+    </div>
+    <div class="vn" id="vn" hidden>
+      <div class="vn-bar">
+        <button type="button" class="btn sm orange" id="vnStart" onclick="vnStart()">🎤 Start recording</button>
+        <button type="button" class="btn sm" id="vnStop" onclick="vnStop()" hidden>■ Stop</button>
+        <button type="button" class="btn sm ghost" id="vnRe" onclick="vnRerecord()">↻ Re-record</button>
+        <button type="button" class="btn sm ghost" id="vnClear" onclick="vnClearPreview()">✕ Clear</button>
+        <span class="vn-status" id="vnStatus"></span>
+      </div>
+      <textarea class="vn-preview" id="vnPreview" rows="2" readonly placeholder="Your spoken note appears here — review and edit, then Insert into note."></textarea>
+      <div class="vn-actions">
+        <button type="button" class="btn sm" id="vnInsert" onclick="vnInsert()">＋ Insert into note</button>
+      </div>
+      <div class="vn-hint">Tip: speak naturally, then Stop. Review and fix the text, Insert it into your note, edit further if needed, then Post note. Nothing posts until you tap Post note.</div>
+    </div>
+    <div class="vn-unsupported" id="vnNoSupport" hidden>🎤 Voice input isn't available in this browser — you can still type your note normally. For dictation, open Dealer 360 in Chrome (Android/desktop) or Safari (iPhone/iPad).</div>
+    </div>
+    <div class="nhd">History${nts.length?` <span class="ncount">${nts.length}</span>`:""}<span class="nrule"></span></div>
+    ${nts.length?`<div class="nlist">${nts.map(nRow).join("")}</div>`:'<div class="hint">No notes yet — the first one you post shows up here.</div>'}`;
+    initVoiceNotes();
+    clampNotes();
+  }
+}
+
+/* ===================== Relationship Timeline (Phase 2D) =====================
+   One chronological history for this dealer (crm-api `timeline`): visits, calls, notes, emails, tasks,
+   deals, orders, appointments and portal activity — each once — newest first, 50 at a time, with
+   filters and Load older. Read-only. Behind the `timeline` switch; off, the old activity list shows. */
+const TLCATS=[["all","All"],["visits","Visits"],["calls","Calls"],["emails","Emails"],["tasks","Tasks"],["deals","Deals"],["orders","Orders"],["portal","Portal"],["notes","Notes"]];
+const TLICON={visit:"🚗",appt:"👥",meeting:"👥",call:"📞",note:"📝",email_out:"📤",email_in:"📥",email:"✉️",send:"📣",campaign:"📣",engage:"👁",task_new:"➕",task_done:"✅",task_dismissed:"✖",deal:"🔮",order:"🛒",gorder:"🟡",sales:"💲",golden:"🟡",portal:"💻",milestone:"⭐",system:"•"};
+let TL={cat:"all",events:[],ids:new Set(),next:null,busy:false,dealer:null,err:"",seq:0};
+async function loadTimeline(reset){
+  if(!CUR) return; const who=CUR;
+  if(reset||TL.dealer!==CUR){ TL.events=[]; TL.ids=new Set(); TL.next=null; TL.err=""; TL.dealer=CUR; reset=true; }
+  else if(TL.busy||!TL.next) return;                        // Load older: one page at a time
+  const seq=++TL.seq; TL.busy=true; paintTimeline();
+  let j=null; try{ j=await crm({action:"timeline",dealer_id:CUR,filter:TL.cat,before:reset?undefined:TL.next,tz:new Date().getTimezoneOffset()}); }catch(e){ j=null; }
+  if(seq!==TL.seq||CUR!==who) return;                       // a newer load (filter, reload) took over
+  TL.busy=false;
+  if(!j||!j.ok){ TL.err=(j&&j.error)||"Couldn't load the timeline."; paintTimeline(); return; }
+  for(const e of (j.events||[])) if(!TL.ids.has(e.id)){ TL.ids.add(e.id); TL.events.push(e); }
+  TL.next=j.next_before||null; paintTimeline();
+}
+function tlFilter(c){ if(TL.cat===c) return; TL.cat=c; loadTimeline(true); }
+function tlDay(iso){ const d=new Date(iso), t=new Date(); const k=x=>x.toDateString();
+  if(k(d)===k(t)) return "Today"; const y=new Date(t); y.setDate(t.getDate()-1); if(k(d)===k(y)) return "Yesterday";
+  return d.toLocaleDateString([], {weekday:"short",month:"short",day:"numeric",year:d.getFullYear()===t.getFullYear()?undefined:"numeric"}); }
+function tlOpenVisit(id){
+  const row=document.querySelector(`#visits .vm[data-id="${CSS.escape(String(id))}"]`);
+  if(row){ row.scrollIntoView({behavior:"smooth",block:"center"}); const b=[...row.querySelectorAll("button")].find(x=>/'sum'/.test(x.getAttribute("onclick")||"")); const box=row.querySelector(".vm-more"); if(b&&box&&box.hidden) b.click(); return; }
+  const v=$("#visitsCard"); if(v) v.scrollIntoView({behavior:"smooth",block:"start"});
+}
+function paintTimeline(){
+  const ch=$("#tlchips"), el=$("#tl"), mo=$("#tlmore"); if(!el) return;
+  if(ch) ch.innerHTML=TLCATS.map(([k,l])=>`<button class="schip ${TL.cat===k?"on":""}" onclick="tlFilter('${k}')">${esc(l)}</button>`).join("");
+  if(TL.err && !TL.events.length){ el.innerHTML=`<div class="hint">${esc(TL.err)}</div>`; if(mo) mo.innerHTML=""; return; }
+  if(!TL.events.length){ el.innerHTML=TL.busy?`<div class="hint">Loading the timeline…</div>`:`<div class="hint">${TL.cat==="all"?"Nothing on this dealer's timeline yet.":"Nothing of this kind in this dealer's history."}</div>`; if(mo) mo.innerHTML=""; return; }
+  let h="", last="";
+  for(const e of TL.events){ const day=tlDay(e.at); if(day!==last){ h+=`<div class="tlday">${esc(day)}</div>`; last=day; }
+    const when=new Date(e.at).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
+    h+=`<div class="tle k-${esc(e.kind)}" data-id="${esc(e.id)}"><div class="ic">${TLICON[e.kind]||"•"}</div><div class="bd">
+      <div class="tt">${esc(e.title)}</div>${e.meta?`<div class="mt">${esc(e.meta)}</div>`:""}
+      ${e.detail?`<div class="dt" onclick="this.classList.toggle('open')" title="Tap to show all">${esc(e.detail)}</div>`:""}
+      <div class="wh">${e.who?esc(e.who)+" · ":""}${esc(when)}${e.ref&&e.ref.type==="visit_report"?` · <a class="link" href="#visitsCard" onclick="tlOpenVisit('${esc(e.ref.id)}');return false">Open visit</a>`:""}</div></div></div>`; }
+  el.innerHTML=h;
+  if(mo) mo.innerHTML=TL.next?`<button class="btn sm ghost" style="margin-top:8px" ${TL.busy?"disabled":""} onclick="loadTimeline(false)">${TL.busy?"Loading…":"Load older"}</button>`:(TL.err?`<div class="hint">${esc(TL.err)}</div>`:`<div class="hint" style="margin-top:8px">That's the whole history.</div>`);
+}
+
+/* ===================== Voice-to-text notes (Web Speech API) =====================
+   Free, browser-native dictation. No backend, no API key, no ongoing cost.
+   Works in Chrome/Edge (Android + desktop) and Safari (iOS 14.5+/macOS).
+   Nothing is ever posted automatically — text lands in the note field for review. */
+var VN_REC=null, VN_ON=false, VN_FINAL="", VN_SUPPORTED=null;
+function vnSR(){ return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
+function vnEl(id){ return document.getElementById(id); }
+function vnStatus(msg, isErr){ var s=vnEl("vnStatus"); if(!s)return; s.innerHTML=(VN_ON?'<span class="vn-rec-dot"></span>':'')+(msg?('<span>'+esc(msg)+'</span>'):''); s.className="vn-status"+(isErr?" err":""); }
+function initVoiceNotes(){
+  VN_ON=false; VN_FINAL="";
+  var SR=vnSR(); VN_SUPPORTED=!!SR;
+  var vn=vnEl("vn"), no=vnEl("vnNoSupport"), op=vnEl("vnOpen");
+  if(!VN_SUPPORTED){ if(vn)vn.hidden=true; if(op)op.hidden=true; if(no)no.hidden=false; return; }
+  // The dictation panel is ~200px of controls, and it used to sit between the rep and
+  // the history they opened this card to read. It now folds behind "🎤 Dictate", which
+  // opens it AND starts recording — the same single click as the old Start button.
+  if(vn)vn.hidden=true; if(no)no.hidden=true; if(op)op.hidden=false;
+  vnToggleButtons(false);
+  vnStatus("Tap to dictate your note.");
+}
+function vnOpenPanel(){
+  var vn=vnEl("vn"), op=vnEl("vnOpen");
+  if(vn)vn.hidden=false; if(op)op.hidden=true;
+  vnStart();
+}
+function vnToggleButtons(recording){
+  var st=vnEl("vnStart"), sp=vnEl("vnStop"), pv=vnEl("vnPreview");
+  if(st)st.hidden=recording; if(sp)sp.hidden=!recording;
+  if(pv)pv.readOnly=recording; // editable only when not actively recording
+}
+function vnBuildRec(){
+  var SR=vnSR(); if(!SR)return null;
+  var rec=new SR();
+  rec.lang="en-US"; rec.interimResults=true; rec.continuous=true;
+  rec.onresult=function(e){
+    var interim="";
+    for(var i=e.resultIndex;i<e.results.length;i++){
+      var t=e.results[i][0].transcript;
+      if(e.results[i].isFinal){ VN_FINAL += (VN_FINAL && !/\s$/.test(VN_FINAL)?" ":"")+t.trim(); }
+      else interim += t;
+    }
+    var pv=vnEl("vnPreview"); if(pv){ pv.value=(VN_FINAL+(interim?(" "+interim):"")).replace(/\s{2,}/g," ").replace(/^\s+/,""); pv.scrollTop=pv.scrollHeight; }
+  };
+  rec.onerror=function(e){
+    var msg;
+    switch(e.error){
+      case "not-allowed": case "service-not-allowed": msg="Microphone blocked — allow mic access for this site, then try again."; VN_ON=false; vnToggleButtons(false); break;
+      case "audio-capture": msg="No microphone found."; VN_ON=false; vnToggleButtons(false); break;
+      case "no-speech": msg="Didn't catch that — keep talking or tap Stop."; break;
+      case "network": msg="Network needed for transcription — check your connection."; break;
+      case "aborted": return; // user-initiated stop
+      default: msg="Voice error ("+e.error+").";
+    }
+    vnStatus(msg, true);
+  };
+  rec.onend=function(){
+    // Some browsers (esp. iOS) end after a pause. If the user is still recording, resume.
+    if(VN_ON){ try{ rec.start(); }catch(_){ } }
+    else { vnToggleButtons(false); }
+  };
+  return rec;
+}
+function vnStart(){
+  if(!vnSR()){ initVoiceNotes(); return; }
+  if(VN_ON) return;
+  if(!VN_REC) VN_REC=vnBuildRec();
+  // continue from whatever is already in the preview (manual edits included)
+  var pv=vnEl("vnPreview"); VN_FINAL = pv && pv.value.trim() ? pv.value.trim() : "";
+  VN_ON=true; vnToggleButtons(true); vnStatus("Listening…");
+  try{ VN_REC.start(); }catch(_){ /* start() throws if already started */ }
+}
+function vnStop(){
+  VN_ON=false;
+  if(VN_REC){ try{ VN_REC.stop(); }catch(_){ } }
+  vnToggleButtons(false);
+  var pv=vnEl("vnPreview");
+  vnStatus(pv && pv.value.trim() ? "Stopped — review & edit, then Insert into note." : "Stopped. Nothing captured — try again.");
+}
+function vnClearPreview(){
+  VN_FINAL=""; var pv=vnEl("vnPreview"); if(pv)pv.value="";
+  vnStatus(VN_ON?"Listening…":"Cleared. Tap Start to dictate.");
+}
+function vnRerecord(){
+  if(VN_ON){ VN_ON=false; if(VN_REC){ try{VN_REC.stop();}catch(_){}} }
+  vnClearPreview();
+  setTimeout(vnStart, 180); // let the previous session tear down first
+}
+function vnInsert(){
+  var pv=vnEl("vnPreview"); var nb=vnEl("nbody");
+  var t=pv?pv.value.trim():""; if(!t){ vnStatus("Nothing to insert — dictate a note first.", true); return; }
+  if(nb){ nb.value=(nb.value.trim()? nb.value.replace(/\s+$/,"")+"\n":"")+t; nb.focus(); nb.scrollTop=nb.scrollHeight; }
+  vnClearPreview();
+  vnStatus("Inserted into your note — review it, then tap Post note.");
+}
+
+async function addTask(){ const t=(($("#ntitle")||{}).value||"").trim(); if(!t)return; const due=($("#ndue")||{}).value||""; await crm({action:"add_task",dealer_id:CUR,title:t,due_date:due}); loadCRM(); }
+async function addNote(){
+  const b=(($("#nbody")||{}).value||"").trim(); if(!b)return;
+  const kind=(($("#nkind")||{}).value||"note");
+  const msg=$("#ncmsg"); if(msg){ msg.style.color="var(--gray)"; msg.textContent="Posting…"; }
+  let r; try{ r=await crm({action:"add_note",dealer_id:CUR,body:b,kind}); }catch(e){ r={error:String((e&&e.message)||e)}; }
+  // Only re-render on success: loadCRM() rebuilds the card, which would throw away a
+  // note the rep just dictated if the save had actually failed.
+  if(!r||r.error||!r.ok){ if(msg){ msg.style.color="#b42323"; msg.textContent=noteErr(r); } return; }
+  loadCRM();
+}
+// Keep feedback visible even when the CRM cards re-render after a successful save.
+let TOUCH_SAVING=false, TOUCH_LAST_STATUS="", TOUCH_TOAST_TIMER=null;
+function touchNotify(message,kind){
+  let el=document.getElementById("touch-toast");
+  if(!el){
+    el=document.createElement("div");
+    el.id="touch-toast"; el.className="toast";
+    document.body.appendChild(el);
+  }
+  if(TOUCH_TOAST_TIMER) clearTimeout(TOUCH_TOAST_TIMER);
+  el.textContent=message;
+  el.style.background=kind==="error"?"#b42323":kind==="success"?"#1f7a44":"#0b1f33";
+  el.setAttribute("role",kind==="error"?"alert":"status");
+  el.setAttribute("aria-live",kind==="error"?"assertive":"polite");
+  el.classList.add("show");
+  if(kind!=="saving") TOUCH_TOAST_TIMER=setTimeout(()=>el.classList.remove("show"),kind==="error"?6500:4500);
+}
+function touchStatus(message,kind){
+  TOUCH_LAST_STATUS=message;
+  const el=$("#la_msg");
+  if(el){el.textContent=message;el.style.color=kind==="error"?"#b42323":kind==="success"?"#1f7a44":"var(--gray)";}
+  touchNotify(message,kind);
+}
+async function logActivity(){
+  // Prevent double-clicks (or a second submit during a slow network request).
+  if(TOUCH_SAVING) return;
+  const kind=($("#la_kind")||{}).value||"note";
+  const summary=(($("#la_sum")||{}).value||"").trim();
+  if(!summary){touchStatus("Enter what happened before logging activity.","error");const input=$("#la_sum");if(input)input.focus();return;}
+  if(!CUR){touchStatus("Choose a dealer before logging activity.","error");return;}
+  const detail=(($("#la_det")||{}).value||"").trim();
+  const dealerId=CUR;
+  const body={action:"log_activity",dealer_id:dealerId,kind,summary,detail};
+  if($("#la_fu")&&$("#la_fu").checked){const ft=(($("#la_futitle")||{}).value||"").trim();if(ft){body.followup_title=ft;body.followup_due=($("#la_fudue")||{}).value||"";}}
+  const btn=$("#la_submit"), label=btn?btn.textContent:"Log activity";
+  TOUCH_SAVING=true;
+  if(btn){btn.disabled=true;btn.textContent="Saving…";}
+  touchStatus("Saving activity…","saving");
+  try{
+    const result=await crm(body);
+    if(!result||result.ok!==true) throw new Error("Activity save was not confirmed");
+    const kindLabel={call:"Call",visit:"Visit",email:"Email",meeting:"Meeting",note:"Note"}[kind]||"Activity";
+    const suffix=body.followup_title&&result.task?" and follow-up task created":"";
+    touchStatus("✓ "+kindLabel+" logged successfully"+suffix+".","success");
+    if(CUR===dealerId){
+      try{ await loadCRM(); }
+      catch(_){ touchStatus("✓ "+kindLabel+" logged successfully. Refresh the timeline to see it.","success"); }
+    }
+  }catch(err){
+    // A failed or interrupted request might still have reached the server.
+    // Keep the entered text; do not create a duplicate by automatically retrying.
+    touchStatus("Couldn't confirm activity was saved. Check the timeline before retrying.","error");
+  }finally{
+    TOUCH_SAVING=false;
+    if(btn&&btn.isConnected){btn.disabled=false;btn.textContent=label;}
+  }
+}
+/* ── Cross-sell: the rep's plan, and the platform's suggestions ──────────────
+   Two different things, deliberately shown as two different things. The plan is what
+   a person decided about this account and is fully editable; the suggestions come from
+   the nightly engine and can be adopted into the plan with one click. Editing one never
+   touches the other — the engine rebuilds its own table every night. */
+var XPLAN=[], XOPTS=null, XPROD={};
+/* A small self-contained dialog. The page's existing modal is bound to the Outlook
+   email viewer, so this one stands on its own rather than bending that to a second job. */
+function xsModalEnsure(){
+  if($("#xsModal")) return;
+  const w=document.createElement("div"); w.id="xsModal";
+  w.style.cssText="display:none;position:fixed;inset:0;z-index:9998;background:rgba(15,27,43,.55);padding:22px;overflow:auto";
+  w.innerHTML='<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">'
+    +'<div style="display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)">'
+    +'<div id="xsTitle" style="flex:1;font-size:15px;font-weight:800;color:var(--navy)"></div>'
+    +'<button type="button" onclick="closeModal()" title="Close (Esc)" style="flex:none;border:1px solid var(--line);background:#f6f8fa;border-radius:8px;width:30px;height:30px;font-size:15px;cursor:pointer;color:var(--gray)">✕</button></div>'
+    +'<div id="xsBody" style="padding:15px 16px"></div>'
+    +'<div id="xsFoot" style="display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);background:#fafbfc"></div></div>';
+  w.addEventListener("click",e=>{ if(e.target===w) closeModal(); });
+  document.body.appendChild(w);
+  document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
+}
+function modal(title,body,foot){
+  xsModalEnsure();
+  $("#xsTitle").textContent=title; $("#xsBody").innerHTML=body; $("#xsFoot").innerHTML=foot||"";
+  $("#xsModal").style.display="block";
+}
+function closeModal(){ const m=$("#xsModal"); if(m) m.style.display="none"; }
+const OPP_LABEL={cross_sell:"Cross-sell",new_product:"New product",upgrade:"Upgrade",
+  reorder:"Reorder",competitive_takeaway:"Competitive takeaway",demo:"Demo / trial",whitespace:"Whitespace"};
+const PRI_COLOR={high:"#c2410c",medium:"#b8791b",low:"#6b7280"};
+
+function crossSellBlock(xs){
+  const plan=(XPLAN||[]).filter(x=>x.status!=="dismissed");
+  const rows=plan.map(x=>{
+    const what=[x.product_name||x.product_code,x.family,x.category].filter(Boolean)[0]||"the whole line";
+    const pc=PRI_COLOR[x.priority]||"#6b7280";
+    return `<div style="display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-top:1px solid #ece9f4">
+      <span title="${esc(x.priority||"medium")} priority" style="flex:none;margin-top:4px;width:8px;height:8px;border-radius:50%;background:${pc}"></span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;color:var(--navy)"><b>${esc(x.mfr_name||x.manufacturer||"")}</b>
+          <span class="hint" style="margin:0"> — ${esc(what)}</span></div>
+        <div class="hint" style="margin:1px 0 0">${esc(OPP_LABEL[x.opp_type]||x.opp_type||"")} · ${esc(x.priority||"medium")} priority${
+          x.status&&x.status!=="open"?` · <b>${esc(x.status)}</b>`:""}${x.source==="system"?" · suggested by the platform":""}</div>
+        ${x.notes?`<div class="hint" style="margin:3px 0 0;color:#4a5563">${esc(x.notes)}</div>`:""}
+      </div>
+      <div style="flex:none;display:flex;gap:4px">
+        <button class="btn sm" onclick="editXsell('${esc(x.id)}')">Edit</button>
+        <button class="btn sm" onclick="delXsell('${esc(x.id)}')" style="color:#b42323">Remove</button>
+      </div></div>`; }).join("");
+
+  const sug=(xs||[]).map(x=>`<div style="font-size:12.5px;color:#4a5563;margin:3px 0;display:flex;align-items:center;gap:8px">
+      <span style="flex:1">Similar dealers who buy <b>${esc(x.basis_name||"")}</b> also stock <b>${esc(x.rec_name)}</b></span>
+      <button class="btn sm" onclick="adoptXsell('${esc(x.rec_name)}','${esc(x.basis_name||"")}')">+ Add to plan</button>
+    </div>`).join("");
+
+  return `<div style="border:1px solid var(--line);border-left:3px solid var(--purple);border-radius:10px;background:#faf9fd;padding:10px 12px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--purple);font-weight:800">✨ Cross-sell opportunities</div>
+      <button class="btn sm" style="margin-left:auto" onclick="editXsell('')">+ Add opportunity</button>
+    </div>
+    ${plan.length?rows:`<div class="hint" style="margin:4px 0">Nothing planned for this account yet. Add what you're working toward — the platform's suggestions are below.</div>`}
+    ${sug?`<div style="margin-top:9px;padding-top:7px;border-top:1px dashed #d9d2ea">
+      <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#8a7fb0;font-weight:800;margin-bottom:3px">Suggested by the platform</div>${sug}</div>`:""}
+  </div>`;
+}
+
+async function xsellOptions(){
+  if(XOPTS) return XOPTS;
+  try{ const j=await crm({action:"cross_sell_options",dealer_id:CUR}); if(j&&j.ok) XOPTS=j; }catch(e){}
+  return XOPTS||{current:[],potential:[],types:["cross_sell"],priorities:["high","medium","low"]};
+}
+/* The catalog for one manufacturer, fetched only when a rep actually picks it — a
+   dealer's whole product universe is far too much to load up front. */
+async function xsellProducts(slug){
+  if(!slug) return {products:[],categories:[],families:[]};
+  if(XPROD[slug]) return XPROD[slug];
+  try{ const j=await crm({action:"mfr_products",manufacturer:slug}); if(j&&j.ok){ XPROD[slug]=j; return j; } }catch(e){}
+  return {products:[],categories:[],families:[]};
+}
+
+async function editXsell(id){
+  const o=(XPLAN||[]).find(x=>String(x.id)===String(id))||{};
+  const opts=await xsellOptions();
+  const mfrOpt=(sel)=>`<option value="">— pick a manufacturer —</option>`
+    +`<optgroup label="Lines they buy today">${opts.current.map(m=>`<option value="${esc(m.slug)}" data-name="${esc(m.name)}"${sel===m.slug?" selected":""}>${esc(m.name)}${m.spend?` — $${m.spend.toLocaleString()}`:""}</option>`).join("")}</optgroup>`
+    +`<optgroup label="Lines they don't buy yet">${opts.potential.map(m=>`<option value="${esc(m.slug)}" data-name="${esc(m.name)}"${sel===m.slug?" selected":""}>${esc(m.name)}</option>`).join("")}</optgroup>`;
+  modal(`${id?"Edit":"Add"} cross-sell opportunity`,`
+    <div style="display:grid;gap:10px">
+      <div><label class="fl">Manufacturer</label>
+        <select class="in" id="xs_mfr" onchange="xsMfrChanged()">${mfrOpt(o.manufacturer||"")}</select>
+        <div class="hint" style="margin:3px 0 0">Lines they already buy, and the whitespace they don't.</div></div>
+      <div id="xs_prodwrap"><label class="fl">Product, family or category <span class="hint" style="margin:0">— optional</span></label>
+        <div class="hint" id="xs_prodhint" style="margin:0">Pick a manufacturer first.</div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="fl">Opportunity type</label><select class="in" id="xs_type">
+          ${(opts.types||[]).map(t=>`<option value="${esc(t)}"${(o.opp_type||"cross_sell")===t?" selected":""}>${esc(OPP_LABEL[t]||t)}</option>`).join("")}</select></div>
+        <div><label class="fl">Priority</label><select class="in" id="xs_pri">
+          ${["high","medium","low"].map(pv=>`<option value="${pv}"${(o.priority||"medium")===pv?" selected":""}>${pv[0].toUpperCase()+pv.slice(1)}</option>`).join("")}</select></div>
+      </div>
+      ${id?`<div><label class="fl">Status</label><select class="in" id="xs_status">
+        ${["open","won","lost","dismissed"].map(sv=>`<option value="${sv}"${(o.status||"open")===sv?" selected":""}>${sv[0].toUpperCase()+sv.slice(1)}</option>`).join("")}</select></div>`:""}
+      <div><label class="fl">Notes / reason</label>
+        <textarea class="in" id="xs_notes" rows="3" placeholder="Why this account, why now — what you learned that makes this the right play.">${esc(o.notes||"")}</textarea></div>
+      <div id="xs_msg" class="hint" style="margin:0"></div>
+    </div>`,
+    `<button class="btn" onclick="closeModal()">Cancel</button>
+     <button class="btn pri" onclick="saveXsell('${esc(id||"")}')">${id?"Save":"Add opportunity"}</button>`);
+  if(o.manufacturer) await xsMfrChanged(o);
+}
+
+async function xsMfrChanged(pre){
+  const sel=$("#xs_mfr"); const wrap=$("#xs_prodwrap"); if(!sel||!wrap) return;
+  const slug=sel.value;
+  if(!slug){ wrap.innerHTML=`<label class="fl">Product, family or category <span class="hint" style="margin:0">— optional</span></label><div class="hint" style="margin:0">Pick a manufacturer first.</div>`; return; }
+  wrap.innerHTML=`<label class="fl">Product, family or category</label><div class="hint" style="margin:0">Loading the catalog…</div>`;
+  const cat=await xsellProducts(slug);
+  const o=pre||{};
+  wrap.innerHTML=`<label class="fl">Product, family or category <span class="hint" style="margin:0">— optional, leave blank to promote the whole line</span></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <select class="in" id="xs_cat"><option value="">Any category</option>${(cat.categories||[]).map(c=>`<option value="${esc(c)}"${o.category===c?" selected":""}>${esc(c)}</option>`).join("")}</select>
+      <select class="in" id="xs_fam"><option value="">Any family</option>${(cat.families||[]).map(f=>`<option value="${esc(f)}"${o.family===f?" selected":""}>${esc(f)}</option>`).join("")}</select>
+    </div>
+    <select class="in" id="xs_prod" style="margin-top:8px"><option value="">No specific product</option>${
+      (cat.products||[]).slice(0,1200).map(p=>`<option value="${esc(p.code)}" data-name="${esc(p.name)}" data-cat="${esc(p.category)}" data-fam="${esc(p.family)}"${o.product_code===p.code?" selected":""}>${esc(p.name)} · ${esc(p.code)}</option>`).join("")}</select>
+    <div class="hint" style="margin:3px 0 0">${(cat.count||0).toLocaleString()} orderable product(s) on this line. Retired, do-not-list and merged records aren't offered.</div>`;
+}
+
+async function saveXsell(id){
+  const g=k=>{ const el=$("#"+k); return el?el.value:""; };
+  const mfrSel=$("#xs_mfr"); const opt=mfrSel&&mfrSel.selectedOptions&&mfrSel.selectedOptions[0];
+  const prodSel=$("#xs_prod"); const popt=prodSel&&prodSel.selectedOptions&&prodSel.selectedOptions[0];
+  const msg=$("#xs_msg");
+  const body={ id:id||undefined,
+    manufacturer:g("xs_mfr"), mfr_name:(opt&&opt.getAttribute("data-name"))||"",
+    product_code:g("xs_prod"), product_name:(popt&&popt.getAttribute("data-name"))||"",
+    family:g("xs_fam"), category:g("xs_cat"),
+    opp_type:g("xs_type")||"cross_sell", priority:g("xs_pri")||"medium",
+    notes:g("xs_notes") };
+  if(id) body.status=g("xs_status")||"open";
+  if(!body.manufacturer&&!body.mfr_name){ if(msg){msg.style.color="#b42323";msg.textContent="Pick a manufacturer first.";} return; }
+  if(msg){ msg.style.color=""; msg.textContent="Saving…"; }
+  let j=null; try{ j=await crm({action:"save_cross_sell",dealer_id:CUR,opportunity:body}); }catch(e){}
+  if(j&&j.ok){ closeModal(); loadCRM(); }
+  else if(msg){ msg.style.color="#b42323"; msg.textContent=(j&&j.error)||"Couldn't save that."; }
+}
+async function delXsell(id){
+  const o=(XPLAN||[]).find(x=>String(x.id)===String(id))||{};
+  if(!confirm(`Remove the ${o.mfr_name||"this"} opportunity from this account's plan?\n\nIt only removes it from the plan — nothing about the dealer or the catalog changes.`)) return;
+  try{ await crm({action:"delete_cross_sell",dealer_id:CUR,id}); }catch(e){}
+  loadCRM();
+}
+async function adoptXsell(name,basis){
+  try{ await crm({action:"adopt_cross_sell",dealer_id:CUR,rec_name:name,basis_name:basis}); }catch(e){}
+  loadCRM();
+}
+
+async function startOpp(line){
+  const t=(prompt("New opportunity for this dealer:", line?(line+" adoption"):"")||"").trim(); if(!t) return;
+  const val=prompt("Estimated annual value ($)? (optional)","");
+  await fetch("/.netlify/functions/pipeline-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"add",dealer_id:CUR,title:t,line:line||"",value:Number(val)||0,source:"crosssell"})});
+  loadCRM();
+}
+async function taskAction(id,act){ const j=await crm({action:act,id}); loadCRM(); if(j&&j.followup) loadVisits(); }
+
+/* ── Visits & Meetings ───────────────────────────────────────────────────────────────────
+   Everything here comes from ONE dealer-scoped call (crm-api "visits"): the visits on this
+   dealer, the route stops and booked meetings still ahead, and for each past visit its approved
+   summary, who attended (the name as recorded, even if that contact is later removed), the
+   follow-up status, and the tasks and deals it created. */
+let VISITS=null, VLIM=25;
+const VM_FU={pending:"Follow-up pending",complete:"Follow-up complete",none:"No follow-up required"};
+const VM_LISTS=[["products_discussed","Products discussed"],["dealer_interests","Dealer interests"],["dealer_concerns","Dealer concerns"],["objections","Objections"],
+  ["competitors","Competitors mentioned"],["pricing_requests","Pricing requested"],["samples_requested","Samples requested"],["literature_requested","Literature requested"],["training_requested","Training requested"]];
+/* Manufacturer-reported intelligence (MI-1c): what a manufacturer's own dealer report says about THIS dealer — shown only
+   from a published report and only for a verified match (crm-api mfr_intel). The manufacturer's words and figures, as
+   printed; never HCPS sales or commission. The card stays hidden when there is nothing to show. */
+async function loadMfrIntel(){
+  const card=document.getElementById("mfrIntelCard"), box=document.getElementById("mfrintel"); if(!card||!box) return;
+  let j=null; try{ j=await crm({action:"mfr_intel",dealer_id:CUR}); }catch(e){ j=null; }
+  const reps=(j&&j.reports)||[]; if(!reps.length){ card.style.display="none"; return; }
+  const mname=s=>String(s||"").replace(/-/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+  const KIND={contact_person:"Contact",product_line:"Product line",told_us:"Told the manufacturer",contact_log:"Contact log"};
+  box.innerHTML=reps.map(r=>{
+    const per=String(r.report_period_end||"").slice(0,7);
+    const rows=[["Tier",r.tier],["Trend",r.trend],["Last 12 months",r.l12m_text],["Prior 12 months",r.prior12_text],["This month",r.month_text],["Last order",r.last_order_text],["ErgoSteel",r.ergosteel_text],["Chair on the floor",r.floor_text]].filter(x=>x[1]);
+    const obs=(r.observations||[]).slice(0,12).map(o=>`<li><b>${esc(KIND[o.kind]||o.kind)}:</b> ${esc(o.text)}${o.observed_on?` <span class="hint">(${esc(o.observed_on)})</span>`:""}</li>`).join("");
+    return `<div style="margin-bottom:10px">
+      <div style="font-weight:700;color:var(--navy)">${esc(mname(r.manufacturer))} · ${esc(per)}${r.group_heading?` · ${esc(r.group_heading)}`:""}</div>
+      <div class="hint" style="margin:2px 0 6px">Printed as “${esc(r.printed_name)}${r.printed_city?", "+esc(r.printed_city):""}” in ${esc((r.report&&r.report.title)||"the manufacturer's report")}. Manufacturer-reported, not HCPS sales or commission.</div>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">${rows.map(x=>`<tr><td style="color:var(--gray);padding:2px 6px 2px 0;white-space:nowrap">${esc(x[0])}</td><td style="padding:2px 0">${esc(x[1])}</td></tr>`).join("")}</table>
+      ${obs?`<ul style="margin:6px 0 0 16px;padding:0;font-size:12px">${obs}</ul>`:""}
+    </div>`;}).join("");
+  card.style.display="";
+}
+async function loadVisits(){
+  const el=$("#visits"); if(!el||!CUR) return;
+  let j=null; try{ j=await crm({action:"visits",dealer_id:CUR,limit:VLIM}); }catch(e){ j=null; }
+  if(!j||!j.ok){ el.innerHTML=`<div class="hint">${esc((j&&(j.message||j.error))||"Couldn't load visits.")}</div>`; return; }
+  VISITS=j; renderVisits();
+}
+function vmDate(ds){ if(!ds) return ""; const s=String(ds); const d=new Date(s.length===10?s+"T12:00:00":s); return isNaN(d)?s:d.toLocaleDateString([], {weekday:"short",month:"short",day:"numeric",year:"numeric"}); }
+function vmTime(ds){ if(!ds) return ""; const d=new Date(ds); return isNaN(d)?"":d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }
+function vmFu(f){ return f?`<span class="pill2 ${f==="pending"?"due":f==="complete"?"ok":"none"}">${esc(VM_FU[f]||f)}</span>`:""; }
+function vmClip(t,n){ t=String(t||""); return t.length>n?t.slice(0,n).replace(/\s+\S*$/,"")+"…":t; }
+function renderVisits(){
+  const el=$("#visits"); if(!el) return; const j=VISITS||{};
+  const up=j.upcoming||[], mt=j.meetings||[], ac=j.active||[], past=j.past||[];
+  let h="";
+  /* Phase 2A: Start Visit here, no route needed (behind the adhoc_visit switch). It opens the field
+     app's visit mode for this dealer; with an unfinished unplanned visit of your own here, the button
+     resumes that one instead — never a second visit at the same dealer. */
+  const visitUrl=`/admin/scheduled-routes.html?dealer=${encodeURIComponent(CUR)}`;
+  if(j.adhoc_visit) h+=`<div class="vm-acts" style="margin:0 0 10px">${j.my_open_visit
+      ?`<a class="btn sm orange" id="vm-start" href="${visitUrl}">⏱ Resume my visit</a>`
+      :`<a class="btn sm orange" id="vm-start" href="${visitUrl}">▶ Start visit</a>`}</div>`;
+  if(ac.length) h+=`<div class="vm-sec">In progress</div>`+ac.map(v=>`<div class="vm live"><div class="vm-hd"><b>${v.ended_at?"Ended — summary due":"On site now"}</b>
+      <span>${esc(v.rep_name||v.rep_email||"")}</span><span>started ${esc(vmTime(v.started_at))}${v.duration_min!=null?` · ${esc(String(v.duration_min))} min`:""}</span></div>
+      ${v.route_id?`<div class="vm-acts"><a class="btn sm" href="/admin/scheduled-routes.html?route=${encodeURIComponent(v.route_id)}">Open in the field app</a></div>`
+        :(v.mine&&j.adhoc_visit?`<div class="vm-acts"><a class="btn sm" href="${visitUrl}">Open in the field app</a></div>`:"")}</div>`).join("");
+  if(up.length||mt.length) h+=`<div class="vm-sec">Upcoming</div>`
+    +up.map(u=>`<div class="vm"><div class="vm-hd"><b>${esc(vmDate(u.date))}</b><span>Route stop · ${esc(u.route_name||"Route")}</span>${u.rep_name?`<span>${esc(u.rep_name)}</span>`:""}</div></div>`).join("")
+    +mt.map(m=>`<div class="vm"><div class="vm-hd"><b>${esc(vmDate(m.start_at))} ${esc(vmTime(m.start_at))}</b><span>${esc(m.meeting_type||m.service||"Appointment")}</span>${m.rep_name?`<span>${esc(m.rep_name)}</span>`:""}</div></div>`).join("");
+  h+=`<div class="vm-sec">Previous visits</div>`+(past.length?past.map(vmPastRow).join("")
+    :`<div class="hint">No visits logged yet. A visit started in the field app shows here with its summary, who attended and its follow-ups.</div>`);
+  if(j.more) h+=`<button class="btn sm ghost" onclick="VLIM=Math.min(100,VLIM+25);loadVisits()">Show older visits</button>`;
+  el.innerHTML=h;
+}
+function vmPastRow(v){
+  const s=v.summary||{}, text=s.meeting_summary||v.notes||"";
+  const prods=(s.products_discussed||[]).slice(0,6);
+  const att=(v.attendees||[]).filter(a=>a.attended!==false).map(a=>a.name).filter(Boolean);
+  const T=v.tasks||[], O=v.opportunities||[], tOpen=T.filter(t=>t.status==="open").length;
+  const mail=v.email&&v.email.sent_at?`<span class="pill2 ok">email sent</span>`:(v.email&&v.email.saved_at?`<span class="pill2 none">email drafted</span>`:"");
+  return `<div class="vm" data-id="${esc(v.id)}">
+    <div class="vm-hd"><b>${esc(vmDate(v.date))}</b><span>${esc(v.rep_name||v.rep_email||"")}</span>${v.duration_min!=null?`<span>${esc(String(v.duration_min))} min on site</span>`:""}${vmFu(v.followup_status)}${mail}</div>
+    ${att.length?`<div class="hint" style="margin:3px 0 0">With ${esc(att.join(", "))}</div>`:""}
+    ${text?`<div class="vm-sum">${esc(vmClip(text,240))}</div>`:""}
+    ${prods.length?`<div class="vm-tags">${prods.map(p=>`<span class="vm-tag">${esc(p)}</span>`).join("")}</div>`:""}
+    <div class="vm-acts">
+      <button class="btn sm" onclick="vmShow(this,'sum')">View full summary</button>
+      ${T.length?`<button class="btn sm" onclick="vmShow(this,'tasks')">View tasks · ${tOpen} open of ${T.length}</button>`:""}
+      ${O.length?`<button class="btn sm" onclick="vmShow(this,'opps')">View opportunit${O.length===1?"y":"ies"} · ${O.length}</button>`:""}
+    </div>
+    <div class="vm-more" hidden></div></div>`;
+}
+function vmShow(btn,what){
+  const card=btn.closest(".vm"), box=card&&card.querySelector(".vm-more"); if(!box) return;
+  const v=((VISITS&&VISITS.past)||[]).find(x=>String(x.id)===String(card.getAttribute("data-id"))); if(!v) return;
+  if(!box.hidden && box.getAttribute("data-what")===what){ box.hidden=true; return; }
+  box.setAttribute("data-what",what); box.hidden=false;
+  const s=v.summary||null, L=(a)=>(a||[]).map(x=>typeof x==="object"?(x.text||"")+(x.due_date?` (by ${x.due_date})`:""):x).filter(Boolean).join("; ");
+  if(what==="sum"){
+    let h="";
+    if(s){ if(s.meeting_summary) h+=`<div class="vm-sum" style="margin:0 0 6px">${esc(s.meeting_summary)}</div>`;
+      for(const [k,l] of VM_LISTS) if((s[k]||[]).length) h+=`<div class="vl"><b>${esc(l)}:</b> ${esc(L(s[k]))}</div>`;
+      if((s.rep_commitments||[]).length) h+=`<div class="vl"><b>Rep commitments:</b> ${esc(L(s.rep_commitments))}</div>`;
+      if((s.dealer_commitments||[]).length) h+=`<div class="vl"><b>Dealer commitments:</b> ${esc(L(s.dealer_commitments))}</div>`;
+      if(s.suggested_next_action&&s.suggested_next_action.text) h+=`<div class="vl"><b>Next action:</b> ${esc(s.suggested_next_action.text)}${s.suggested_next_action.due_date?` (by ${esc(s.suggested_next_action.due_date)})`:""}</div>`; }
+    else h+=`<div class="vm-sum">${esc(v.notes||"No summary was recorded for this visit.")}</div>`;
+    if((v.attendees||[]).length) h+=`<div class="vl"><b>Attended:</b> ${esc(v.attendees.map(a=>a.name+(a.title?` (${a.title})`:"")).join(", "))}</div>`;
+    if(v.followup_manual) h+=`<div class="hint" style="margin:4px 0 0">Follow-up status was set by hand.</div>`;
+    box.innerHTML=h; return;
+  }
+  if(what==="tasks"){
+    box.innerHTML=(v.tasks||[]).map(t=>`<div class="vm-row"><button class="tkchk" title="${t.status==='open'?'Mark done':'Reopen'}" onclick="taskAction('${esc(t.id)}','${t.status==='open'?'complete_task':'reopen_task'}')">${t.status==='open'?'○':'●'}</button>
+      <div style="flex:1"><div class="tkt ${t.status!=='open'?'dn':''}">${esc(t.title)}</div>
+      <div class="hint" style="margin:0">${t.status==="dismissed"?"dismissed · ":""}${t.due_date?`due ${esc(t.due_date)}`:"no due date"}${t.assigned_rep?` · ${esc(t.assigned_rep)}`:""}${t.priority==="high"?" · high":""}</div></div></div>`).join("")
+      +`<div class="hint" style="margin:6px 0 0">These are the same tasks as in Tasks &amp; timeline and My Tasks.</div>`;
+    return;
+  }
+  box.innerHTML=(v.opportunities||[]).map(o=>`<div class="vm-row"><div style="flex:1"><div><b style="color:var(--navy)">${esc(o.title)}</b></div>
+      <div class="hint" style="margin:0">${esc([o.line||o.manufacturer,o.product,o.quantity!=null?`qty ${o.quantity}`:""].filter(Boolean).join(" · "))}${o.value?` · $${esc(Math.round(o.value).toLocaleString())}`:""} · ${esc(o.status==="open"?o.stage:o.status)}</div></div></div>`).join("")
+    +`<div style="margin-top:6px"><a class="link" href="/admin/pipeline.html">Open in Pipeline →</a></div>`;
+}
+async function sendReengage(){
+  if(!CUR) return;
+  if(!confirm("Send the 'we've missed you — come back and reorder' email to this dealer's contact?")) return;
+  const el=$("#reMsg"); if(el) el.textContent="Sending…";
+  const j=await crm({action:"send_reengagement",dealer_id:CUR});
+  if(el) el.textContent = j.ok ? ("✓ Sent to "+j.to) : ("⚠ "+(j.message||j.error||"couldn't send"));
+  if(j.ok) loadCRM();
+}
+
+// tiny monthly sales sparkline (single series, this dealer)
+function sparkline(byMonth,latest){
+  const keys=Object.keys(byMonth).map(Number).sort((a,b)=>a-b);
+  if(keys.length<2) return "";
+  const min=keys[0], max=latest||keys[keys.length-1];
+  const span=Math.max(1,max-min);
+  const vmax=Math.max(1,...keys.map(k=>byMonth[k]));
+  const W=680,H=70,pad=4;
+  const x=pm=>pad+((pm-min)/span)*(W-2*pad);
+  const y=v=>H-pad-(v/vmax)*(H-2*pad);
+  let dd="",started=false,pts="";
+  for(let pm=min;pm<=max;pm++){ const v=byMonth[pm]; if(v==null){ started=false; continue; } const cx=x(pm),cy=y(v); dd+=(started?"L":"M")+cx.toFixed(1)+" "+cy.toFixed(1)+" "; started=true; pts+=`<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="2.5" fill="#1681c2"><title>${pmLabel(pm)}: ${money(v)}</title></circle>`; }
+  return `<div class="hint" style="margin:0 0 4px">Monthly sales</div><svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path d="${dd}" fill="none" stroke="#1681c2" stroke-width="2" stroke-linejoin="round"/>${pts}</svg>`;
+}
+
+/* ---------- Dealer leave-behind handout (ported from the Territory Map) ---------- */
+const ORDERING_URL=DealerHandout.ORDERING_URL;
+const HANDOUT_UPDATES=DealerHandout.UPDATES.slice();
+let HANDOUT={ordering_url:ORDERING_URL, updates:HANDOUT_UPDATES.slice()};
+const fmtUsd=n=>"$"+Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
+async function rapi(body){ const h={"content-type":"application/json"}; if(TOKEN)h["authorization"]="Bearer "+TOKEN;
+  const r=await fetch("/.netlify/functions/routes-api",{method:"POST",headers:h,body:JSON.stringify(body)}); return r.json().catch(()=>({})); }
+async function printDealerHandout(id){
+  id=id||CUR; if(!id) return;
+  const w=window.open("","_blank"); if(!w){ alert("Allow pop-ups to print the handout."); return; }
+  w.document.write('<!doctype html><meta charset="utf-8"><body style="font:15px Arial;margin:28px;color:#5b6672">Preparing dealer handout…</body>'); w.document.close();
+  try{ const s=await rapi({action:"get_settings",key:"handout"}); if(s&&s.ok&&s.value){ HANDOUT={ordering_url:s.value.ordering_url||ORDERING_URL, updates:Array.isArray(s.value.updates)&&s.value.updates.length?s.value.updates:HANDOUT_UPDATES.slice()}; } }catch(e){}
+  let c={};
+  try{ const r=await rapi({action:"business_case",dealer_ids:[id]}); c=(r&&r.cases&&r.cases[id])||{}; }catch(e){}
+  try{ w.document.open(); w.document.write(handoutHtml(c)); w.document.close(); }catch(e){}
+  /* THE PIN IS CONSUMED HERE, AFTER THE SHEET IS ON SCREEN — never before, or a failed
+     render would spend it for nothing. It is cleared only when it actually reached the
+     handout: a pin that could not be honoured stays put so the rep can see why and fix it.
+     Clearing is best-effort; a handout that printed correctly must not report an error
+     because the tidy-up afterwards failed. */
+  if(c.featured && c.featured_applied){
+    const cxn=(c.crossover&&c.crossover.name)||c.featured;
+    try{
+      await rapi({action:"set_handout_feature",dealer_id:id,manufacturer:""});
+      if(id===CUR){ HPINUSED={slug:c.featured,name:cxn}; await loadHandout(); }
+    }catch(e){}
+  }
+}
+function handoutHtml(c){ return DealerHandout.html(c, {HANDOUT:HANDOUT, ME:ME}); }
+
+/* ---------- Handout curation: featured-pick preview + per-manufacturer exclude toggles ---------- */
+let HBC=null;
+async function loadHandout(){
+  const el=$("#handout"); if(!el||!CUR) return;
+  el.innerHTML='<div class="hint">Loading…</div>';
+  let c={}; try{ const r=await rapi({action:"business_case",dealer_ids:[CUR]}); c=(r&&r.cases&&r.cases[CUR])||{}; }catch(e){}
+  HBC=c; renderHandout();
+}
+/* The line just consumed by a print, remembered only until the card is left. It exists so the
+   card can say "pin used" and offer to set it again with one click, rather than silently
+   reverting to the automatic pick and looking like the pin was ignored. */
+let HPINUSED=null;
+function renderHandout(){
+  const el=$("#handout"); if(!el) return;
+  const c=HBC||{}; const cx=c.crossover;
+  const basisLabel={engagement:"Portal engagement",regional:"Regional demand",fit:"Product fit",reorder:"Re-stock"};
+  const pinnedSlug=c.featured||null;
+  const q=s=>esc(String(s==null?"":s).replace(/'/g,"\\'"));
+  const feat = cx
+    ? `<div style="border:1px solid #fed7aa;background:#fff8f0;border-radius:10px;padding:10px 12px;margin-bottom:10px">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#b45309;font-weight:800">Featured on the handout · ${cx.pinned?"Pinned for this visit":esc(basisLabel[cx.basis]||cx.basis||"Automatic")}</div>
+        <div style="font-weight:800;color:var(--navy);margin-top:2px">${esc(cx.name||"")}</div>
+        <div class="hint" style="margin-top:2px">${esc(cx.reason||"")}</div>
+        ${cx.pinned?`<button class="btn sm" style="margin-top:8px" onclick="setFeature('')">Clear pin — go back to automatic</button>`:""}
+      </div>`
+    : `<div class="hint" style="margin-bottom:10px">No featured opportunity right now — every approved line is either already stocked or excluded.</div>`;
+  /* A pin stored but not applied means the line has since been excluded or dropped off the
+     dealer's ordering access. Saying so beats leaving the rep to wonder why their click did
+     nothing on the sheet. */
+  const stale = (pinnedSlug && !c.featured_applied)
+    ? `<div class="hint" style="color:#b42323;margin:-4px 0 10px">Pinned line is no longer available to this dealer, so the handout picked automatically. <a href="#" class="link" onclick="setFeature('');return false;">Clear the pin</a></div>` : "";
+  const used = (HPINUSED && !pinnedSlug)
+    ? `<div class="hint" style="margin:-4px 0 10px">Pin used on the last handout — ${esc(HPINUSED.name)} is back to the automatic rotation. <a href="#" class="link" onclick="setFeature('${q(HPINUSED.slug)}');return false;">Pin it again</a></div>` : "";
+  const opps=(c.opps||[]), excluded=(c.excluded||[]), carried=(c.lines||[]), featSlug=cx&&cx.slug;
+  const isPinned=m=>pinnedSlug && String(pinnedSlug).toLowerCase()===String(m.slug).toLowerCase();
+  const star=m=>isPinned(m)
+    ? `<button class="btn sm" onclick="setFeature('')" title="Stop featuring this line" style="border-color:#f6d5ad;background:#fff8f0;color:#b45309;font-weight:800">★ Featured</button>`
+    : `<button class="btn sm" onclick="setFeature('${q(m.slug)}')" title="Lead this visit with ${esc(m.name||m.slug)}">☆ Feature</button>`;
+  const row=(m,isEx)=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+      <input type="checkbox" ${isEx?"checked":""} title="Exclude from this dealer's handout" onchange="toggleExclude('${q(m.slug)}',this.checked,this)">
+      <span style="flex:1">${esc(m.name||m.slug)}${(!isEx&&m.slug===featSlug)?` <span style="font-size:10px;color:#b45309;font-weight:800">★ featured</span>`:""}</span>
+      ${isEx?"":star(m)}
+      <span class="hint" style="min-width:56px;text-align:right">${isEx?"excluded":"eligible"}</span>
+    </div>`;
+  /* Lines they already carry can be pinned too — that is the re-stock conversation, and the
+     handout has always had a "reorder" shape for it. They get no exclude tickbox: excluding is
+     about which OPPORTUNITIES get suggested, and a line they already buy is not one. */
+  const crow=m=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+      <span style="flex:1;padding-left:22px">${esc(m.name||m.slug)}${(m.slug===featSlug)?` <span style="font-size:10px;color:#b45309;font-weight:800">★ featured</span>`:""}</span>
+      ${star(m)}
+      <span class="hint" style="min-width:56px;text-align:right">carried</span>
+    </div>`;
+  const list = (opps.length||excluded.length)
+    ? `<div style="font-size:12px;color:var(--gray);margin:2px 0 4px">Press <b>☆ Feature</b> to lead this visit with a line — it overrides the automatic pick and clears itself once you print. Tick a manufacturer to exclude it instead: poor fits won't be featured or suggested. Both affect the handout only; the account's lines and CRM are unchanged.</div>${opps.map(m=>row(m,false)).join("")}${excluded.map(m=>row(m,true)).join("")}`
+    : `<div class="hint">No opportunity lines to curate for this dealer yet.</div>`;
+  const clist = carried.length
+    ? `<div style="font-size:12px;color:var(--gray);margin:10px 0 4px">Lines they already carry — feature one to lead with a re-stock.</div>${carried.map(crow).join("")}`
+    : "";
+  el.innerHTML=`${feat}${stale}${used}${list}${clist}
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+      <button class="btn sm" onclick="printDealerHandout(CUR)">🖨 Print handout</button>
+      <span id="hox_msg" class="hint"></span>
+    </div>`;
+}
+/* WHAT WENT WRONG, IN WORDS, EVERY TIME.
+   Both buttons below used to print "Couldn't save." for any failure at all, so a missing
+   database table, an expired sign-in and a permission refusal looked identical on screen — and
+   the one that actually happened was the one those three words hid: the pin table had never
+   been created, and the API had been saying so in every single response.
+
+   The rule now: a detail the API wrote for a person is shown as-is, a reason we recognise is
+   translated, and a reason we do not recognise is shown verbatim rather than thrown away. A
+   message nobody can act on is the same as no message.
+
+   Pure — takes a failed response (or a thrown error) and returns the sentence. */
+function saveErr(r, verb){
+  const detail = (r && typeof r.detail === "string") ? r.detail.trim() : "";
+  if(detail) return detail;
+  const m = String((r && r.error) || r || "").trim();
+  if(/not your account/i.test(m)) return "You can only " + verb + " on your own accounts.";
+  if(/storage_missing|PGRST205|Could not find the table/i.test(m))
+    return "This needs a one-time database setup that hasn't been run yet.";
+  if(/unauthor|expired|\b401\b/i.test(m)) return "Your sign-in expired — reload the page and sign in again.";
+  return "Couldn't save — " + (m ? m.slice(0, 160) : "the server gave no reason") + ".";
+}
+/* Pin a line for this visit, or clear it with an empty slug. */
+async function setFeature(slug){
+  const msg=$("#hox_msg"); if(msg)msg.textContent="Saving…";
+  try{
+    const r=await rapi({action:"set_handout_feature",dealer_id:CUR,manufacturer:slug||""});
+    if(!(r&&r.ok)){ if(msg) msg.textContent=saveErr(r,"feature a line"); return; }
+    if(slug) HPINUSED=null;          // a fresh pin supersedes the "pin used" note
+    await loadHandout();
+    if(msg) msg.textContent="";
+  }catch(e){
+    if(msg) msg.textContent=saveErr(e,"feature a line");
+  }
+}
+async function toggleExclude(slug,on,elm){
+  const msg=$("#hox_msg"); if(msg)msg.textContent="Saving…";
+  if(elm) elm.disabled=true;
+  const failed=r=>{ if(elm){ elm.checked=!on; elm.disabled=false; } if(msg) msg.textContent=saveErr(r,"exclude a line"); };
+  try{
+    const r=await rapi({action:"set_handout_exclusion",dealer_id:CUR,manufacturer:slug,excluded:on});
+    if(!(r&&r.ok)){ failed(r); return; }
+    await loadHandout();   // refresh so the featured pick re-computes live
+  }catch(e){ failed(e); }
+}
+
+load();
+</script>
+</body></html>

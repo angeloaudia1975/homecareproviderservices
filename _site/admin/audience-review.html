@@ -1,0 +1,150 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Connect 360 — Audience Review</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin:14px 0}
+ .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
+ .kpi.g{border-left:4px solid #2d7d46}.kpi.w{border-left:4px solid #d8a529}.kpi.r{border-left:4px solid #b42323}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .kpi .v{font-size:23px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ .toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:6px 0 12px}
+ .toolbar label{font-size:12.5px;color:var(--navy);font-weight:600;display:flex;align-items:center;gap:6px}
+ .tblwrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:var(--shadow)}
+ table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:1050px}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:8px 9px;border-bottom:2px solid var(--line);position:sticky;top:0;background:#fff;z-index:1;white-space:nowrap}
+ td{padding:7px 9px;border-bottom:1px solid #eef2f6;vertical-align:middle}
+ td.acct{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700;color:var(--navy);white-space:nowrap}
+ .co{font-weight:700;color:var(--navy)}
+ .when{color:#8496a8;white-space:nowrap;font-size:11.5px}
+ select.emailsel{max-width:260px;padding:5px 7px;border:1px solid var(--line);border-radius:7px;font-size:12px;background:#fff}
+ input.emailin{max-width:220px;padding:5px 7px;border:1px solid var(--line);border-radius:7px;font-size:12px;margin-top:4px}
+ .badge{display:inline-block;border-radius:20px;padding:1px 9px;font-size:10.5px;font-weight:700;white-space:nowrap}
+ .b-ok{background:#eaf7ee;color:#245a37;border:1px solid #b9e2c6}
+ .b-warn{background:#fdf4dc;color:#8a6400;border:1px solid #e6d493}
+ .b-bad{background:#fdeaea;color:#8a2020;border:1px solid #eac0c0}
+ .saved{color:#2d7d46;font-weight:700;font-size:11px;margin-left:6px}
+ .src{font-size:10px;color:#8496a8;text-transform:uppercase;letter-spacing:.3px}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Audience Review</h1>
+    <div class="sub">Review and correct the campaign email for every dealer before launching. Each dealer is anchored on its account number; pick the right address, and (by default) the fix is written back to Dealer&nbsp;360 so you don't correct the same account twice.</div></div>
+    <div style="display:flex;gap:8px"><a class="btn ghost" id="cslink" href="/admin/campaigns.html">← Campaign Studio</a><button class="btn ghost" onclick="load()">↻ Refresh</button></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const num=n=>Number(n||0).toLocaleString();
+const when=s=>{ if(!s) return "—"; try{ return new Date(s).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }catch(e){ return String(s).slice(0,10); } };
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token();
+let AUD_ID=new URLSearchParams(location.search).get("audience")||new URLSearchParams(location.search).get("id")||"";
+let ROWS=[], AUD=null;
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; } HCPS.setSession(j); TOKEN=j.token; load();
+  }catch(err){ gate("Could not reach the server."); } }
+
+async function api(action, extra){ const r=await fetch("/.netlify/functions/audiences-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action,...(extra||{})})}); if(r.status===401){ throw {gate:true}; } return r.json(); }
+
+function elig(e){ return e==="eligible"?`<span class="badge b-ok">Eligible</span>`:e==="opted_out"?`<span class="badge b-warn">Opted out</span>`:`<span class="badge b-bad">No email</span>`; }
+function incl(v){ return v?`<span class="badge b-ok">Included</span>`:`<span class="badge b-bad">Excluded</span>`; }
+
+function optionsFor(r){
+  const opts=r.available_emails.map((e,i)=>`<option value="${esc(e.email)}"${e.selected?" selected":""}>${esc(e.email)}${e.opted_out?" — opted out":""}${e.source==="dealer"?" (account)":e.name?(" ("+esc(e.name)+")"):""}</option>`).join("");
+  const hasSel=r.available_emails.some(e=>e.selected);
+  const none=!r.available_emails.length?`<option value="" selected>— no email on file —</option>`:(hasSel?"":`<option value="" selected>— select —</option>`);
+  return `${none}${opts}<option value="__other__">＋ Type another email…</option>`;
+}
+
+function rowHtml(r,idx){
+  return `<tr id="row_${idx}">
+    <td class="co">${esc(r.company||"—")}</td>
+    <td class="acct">${esc(r.account_no||"—")}</td>
+    <td>${esc(r.branch||"—")}</td>
+    <td>${esc(r.primary_contact||"—")}</td>
+    <td>
+      <select class="emailsel" onchange="onSel(${idx},this)">${optionsFor(r)}</select>
+      <div id="other_${idx}" style="display:none"><input class="emailin" id="otherin_${idx}" type="email" placeholder="name@dealer.com" onkeydown="if(event.key==='Enter')saveOther(${idx})"> <button class="btn ghost sm" onclick="saveOther(${idx})">Save</button></div>
+      <span id="saved_${idx}" class="saved" style="display:none">saved ✓</span>
+      <div class="src">${r.available_emails.length} address${r.available_emails.length===1?"":"es"} on file</div>
+    </td>
+    <td id="elig_${idx}">${elig(r.eligibility)}</td>
+    <td class="when">${when(r.last_login)}</td>
+    <td class="when">${when(r.last_activity)}</td>
+    <td id="incl_${idx}">${incl(r.included)}</td>
+  </tr>`;
+}
+
+async function onSel(idx, sel){
+  const v=sel.value;
+  const otherBox=$("#other_"+idx);
+  if(v==="__other__"){ otherBox.style.display="block"; const inp=$("#otherin_"+idx); if(inp) inp.focus(); return; }
+  otherBox.style.display="none";
+  if(!v) return;
+  const r=ROWS[idx]; const opt=r.available_emails.find(e=>e.email.toLowerCase()===v.toLowerCase())||{};
+  await save(idx, v, opt.name||"");
+}
+async function saveOther(idx){
+  const inp=$("#otherin_"+idx); const v=(inp&&inp.value||"").trim();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)){ if(inp) inp.style.borderColor="#b42323"; return; }
+  await save(idx, v, "");
+}
+async function save(idx, email, name){
+  const r=ROWS[idx]; const writeBack=$("#wb")?$("#wb").checked:true;
+  try{
+    const j=await api("set_contact",{id:AUD_ID,dealer_id:r.dealer_id,email,name,write_back:writeBack});
+    if(!j||!j.ok){ alert((j&&j.error)||"Could not save."); return; }
+    // reflect locally
+    const wasThere=r.available_emails.find(e=>e.email.toLowerCase()===email.toLowerCase());
+    r.available_emails.forEach(e=>e.selected=(e.email.toLowerCase()===email.toLowerCase()));
+    if(!wasThere) r.available_emails.push({name:name||"",email,source:"contact",opted_out:false,selected:true});
+    r.selected_email=email; r.primary_contact=name||r.primary_contact;
+    const optedOut=(wasThere&&wasThere.opted_out)||false;
+    r.eligibility=optedOut?"opted_out":"eligible"; r.included=!optedOut;
+    $("#elig_"+idx).innerHTML=elig(r.eligibility); $("#incl_"+idx).innerHTML=incl(r.included);
+    const sv=$("#saved_"+idx); if(sv){ sv.textContent=writeBack?"saved ✓ (Dealer 360 updated)":"saved ✓"; sv.style.display="inline"; setTimeout(()=>{sv.style.display="none";},2600); }
+    $("#other_"+idx).style.display="none";
+    refreshKpis();
+  }catch(e){ if(e&&e.gate){ gate("Your session ended — sign in again."); return; } alert("Could not save."); }
+}
+
+function refreshKpis(){
+  const inc=ROWS.filter(r=>r.included).length, opt=ROWS.filter(r=>r.eligibility==="opted_out").length, no=ROWS.filter(r=>r.eligibility==="no_email").length;
+  const k=$("#kpis"); if(k) k.innerHTML=kpisHtml(ROWS.length,inc,opt,no);
+}
+function kpisHtml(d,inc,opt,no){
+  const kpi=(l,v,c)=>`<div class="kpi ${c||""}"><div class="l">${l}</div><div class="v">${num(v)}</div></div>`;
+  return kpi("Dealers",d)+kpi("Emailable / included",inc,"g")+kpi("Opted out",opt,"w")+kpi("No email on file",no,"r");
+}
+
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  if(!AUD_ID){ $("#body").innerHTML=`<div class="msg err">No audience specified. Open this page from Campaign Studio or the Golden Activity builder.</div>`; return; }
+  $("#cslink").href="/admin/campaigns.html?audience="+encodeURIComponent(AUD_ID);
+  $("#body").innerHTML=`<div class="msg">Loading audience…</div>`;
+  let j; try{ j=await api("review",{id:AUD_ID}); }catch(e){ if(e&&e.gate){ gate("Your session ended — sign in again."); return; } $("#body").innerHTML=`<div class="msg err">Couldn't load the audience.</div>`; return; }
+  if(!j||!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc((j&&j.error)||"Couldn't load.")}</div>`; return; }
+  ROWS=j.rows||[]; AUD=j.audience||{}; const s=j.summary||{};
+  const body=`
+    <div style="font-weight:700;color:var(--navy);font-size:15px;margin-bottom:2px">${esc(AUD.name||"Audience")}</div>
+    <div class="kpis" id="kpis">${kpisHtml(s.dealers||ROWS.length, s.included||0, s.opted_out||0, s.no_email||0)}</div>
+    <div class="toolbar">
+      <label><input type="checkbox" id="wb" checked> Write corrections back to Dealer 360 (updates the contact &amp; the dealer's primary email)</label>
+    </div>
+    <div class="tblwrap"><table>
+      <thead><tr><th>Dealer</th><th>Account #</th><th>Branch / location</th><th>Primary contact</th><th>Campaign email &amp; available addresses</th><th>Marketing eligibility</th><th>Last login</th><th>Last activity</th><th>Included</th></tr></thead>
+      <tbody>${ROWS.map((r,i)=>rowHtml(r,i)).join("")||`<tr><td colspan="9" class="hint">No dealers with a resolvable contact in this audience.</td></tr>`}</tbody>
+    </table></div>
+    <p class="hint" style="margin-top:8px">“Account” = the email pulled from the dealer's own account record. Changing the selection saves immediately${""}. Dealers with no email on file are surfaced in the build diagnostic and can be given an address with “Type another email…”.</p>`;
+  $("#body").innerHTML=body;
+}
+load();
+</script>
+</body></html>

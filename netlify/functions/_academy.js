@@ -14,7 +14,7 @@ const FL = require('./_flags.js');
 const SESSION = require('./_academy_session.js');
 
 const SWITCHES = ['academy_admin', 'academy_learner', 'academy_handoff', 'academy_invites', 'academy_external_uploads',
-                  'academy_certificates', 'academy_dealer360'];
+                  'academy_certificates', 'academy_dealer360', 'academy_exams'];
 const SITE_ORIGINS = ['https://homecareproviderservices.org', 'https://www.homecareproviderservices.org',
                       'https://homecareproviderservices.netlify.app'];
 const PARTNER360_ORIGINS = ['https://hcpsonlineordering.netlify.app'];
@@ -81,7 +81,7 @@ async function publishConsistency() { return rpc('academy_publish_consistency', 
 /* A2B / M5 learner access: sign-in codes, Partner 360 handoff, sessions, invitations, memberships, enrollment and
    progress. Same contract: one database call = the change and its audit row, or neither; not installed = 503. */
 async function accessOp(name, args) {
-  if (!/^(access|enroll|progress)_op_[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
+  if (!/^(access|enroll|progress|exam)_op_[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
   return rpc('academy_' + name, args);
 }
 async function op(name, args) {

@@ -1,0 +1,310 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Sales Report Import</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+ .setup{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end}
+ .setup label{font-size:11px;color:var(--gray);font-weight:600;display:block;margin-bottom:3px}
+ .setup select,.setup input{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit}
+ .map{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:6px}
+ .map .m label{font-size:10.5px;color:var(--gray);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+ .map .m select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;font-family:inherit}
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:4px 0}
+ .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+ .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700}
+ .kpi .v{font-size:22px;font-weight:800;color:var(--navy);font-family:'Barlow Condensed',sans-serif;margin-top:2px}
+ .kpi.g{border-left:4px solid #1f7a44}.kpi.w{border-left:4px solid #b45309}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid var(--line)}
+ td{padding:6px 8px;border-bottom:1px solid #eef2f6}
+ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+ .empty{border:1px dashed var(--line);border-radius:10px;padding:16px;color:var(--gray);font-size:13px;background:#fafbfc}
+ .step{margin-top:14px}.step h3{font-size:13px;margin:0 0 6px;color:var(--navy)}
+ .warn{color:#b45309}.ok{color:#1f7a44}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Sales Report Import</h1>
+    <div class="sub">Load a manufacturer's order/sales report into the platform — sales, products, quantities, and the specific dealer branch. Upload a spreadsheet (.xlsx/.csv) or an AirAvant / BongoRx commission PDF. Commission is computed at the rate you set (Strongback = 9%, AirAvant/Bongo = 15%). Re-importing the same report updates rows instead of duplicating.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money=n=>(n==null||n==="")?"—":"$"+Math.round(Number(n)||0).toLocaleString("en-US");
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
+let TOKEN=HCPS.token(), MFRS=[], HEADERS=[], ROWS=[], MAP={}, PREVIEW=null, FILENAME="", BUSY=false, DEALERS=[];
+const TARGETS=[
+ {k:"order_number",label:"Order #",req:true},{k:"date",label:"Order date",req:true},
+ {k:"company",label:"Dealer / company",req:true},{k:"account_ref",label:"Account username / ref"},
+ {k:"product_name",label:"Product name"},{k:"product_code",label:"SKU / code"},
+ {k:"qty",label:"Quantity"},{k:"unit_price",label:"Unit price"},{k:"line_amount",label:"Line total (if given)"},
+ {k:"ship_name",label:"Ship-to name"},{k:"ship_city",label:"Ship city"},{k:"ship_state",label:"Ship state"},{k:"ship_zip",label:"Ship ZIP"},
+ {k:"email",label:"Email"}];
+
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
+async function submitTok(){
+  const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; }
+    HCPS.setSession(j); TOKEN=j.token; ME=j.profile; boot();
+  }catch(err){ gate("Could not reach the server. Try again."); }
+}
+function lock(){ HCPS.signOut(); TOKEN=null; ME=null; location.reload(); }
+async function si(payload){ const r=await fetch("/.netlify/functions/sales-import-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(payload)}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+
+async function boot(){
+  if(!TOKEN){ gate(); return; }
+  try{ const r=await fetch("/.netlify/functions/dealers-api",{headers:{authorization:"Bearer "+TOKEN}}); if(r.status===401){gate();return;} const d=await r.json(); MFRS=(d.manufacturers||[]).slice().sort((a,b)=>String(a.name).localeCompare(b.name)); }catch(e){ MFRS=[]; }
+  render();
+}
+function render(){
+  const mopts=MFRS.map(m=>`<option value="${esc(m.slug)}"${/strongback/.test(m.slug)?" selected":""}>${esc(m.name)}</option>`).join("");
+  $("#body").innerHTML=`
+  <div class="card">
+    <div class="setup">
+      <div><label>Manufacturer</label><select id="mfr">${mopts||'<option value="strongback-mobility">Strongback Mobility</option>'}</select></div>
+      <div><label>Commission %</label><input id="rate" value="9" inputmode="decimal"></div>
+      <div><label>Report file (.xlsx / .csv / .pdf)</label><input type="file" id="file" accept=".xlsx,.xls,.csv,.pdf" onchange="onFile(this)"></div>
+    </div>
+    <div id="mapbox"></div>
+  </div>
+  <div id="out"></div>`;
+}
+function onFile(input){
+  const f=input.files&&input.files[0]; if(!f) return; FILENAME=f.name;
+  if(/\.pdf$/i.test(f.name)||f.type==="application/pdf"){ onPdf(f); return; }
+  const rd=new FileReader();
+  rd.onload=()=>{ try{
+      const wb=XLSX.read(rd.result,{type:"array"}); const ws=wb.Sheets[wb.SheetNames[0]];
+      const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
+      const nonEmpty=aoa.filter(r=>r.some(c=>String(c).trim()!==""));
+      if(nonEmpty.length<2){ $("#mapbox").innerHTML='<div class="hint warn">Couldn\'t read data rows from that file.</div>'; return; }
+      HEADERS=nonEmpty[0].map(h=>String(h||"").trim()); ROWS=nonEmpty.slice(1);
+      autoMap(); renderMap();
+    }catch(e){ $("#mapbox").innerHTML='<div class="hint warn">Couldn\'t parse the file: '+esc(String(e.message||e))+'</div>'; }
+  };
+  rd.readAsArrayBuffer(f);
+}
+
+// ---- AirAvant / BongoRx commission report (QuickBooks "Commissions - Cash Basis" PDF) ----
+// A flat table with grouping/subtotal lines. Columns: Type | Date | Num | Name | Ship To City |
+// Ship To State | Item | Qty | Sales Price | Original Amount | Paid Amount, with a "Commission at
+// N%:" subtotal per group. Company/city can be multi-word, so we anchor the fixed fields by
+// content (type, date, num, item, and the trailing numbers) and use the header column geometry
+// only to split the free-text Name / City / State middle. Cash-basis commission is on Paid Amount.
+async function onPdf(f){
+  $("#mapbox").innerHTML='<div class="hint">Reading PDF…</div>';
+  try{
+    if(!window.pdfjsLib){ $("#mapbox").innerHTML='<div class="hint warn">PDF reader didn\'t load — check your connection and retry.</div>'; return; }
+    pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    const buf=await f.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    let items=[];
+    for(let pn=1;pn<=pdf.numPages;pn++){ const pg=await pdf.getPage(pn); const tc=await pg.getTextContent();
+      for(const it of tc.content||tc.items||[]){ const s=(it.str||"").trim(); if(!s) continue;
+        const tr=it.transform||it.transformMatrix||[1,0,0,1,0,0]; items.push({str:s,x:tr[4],w:it.width||0,y:tr[5]+pn*100000}); } }
+    const {rows,rate}=parseAiravant(items);
+    if(!rows.length){ $("#mapbox").innerHTML='<div class="hint warn">No invoice lines found. This importer expects an AirAvant / BongoRx “Commissions – Cash Basis” report. For a spreadsheet report, upload the .xlsx/.csv instead.</div>'; return; }
+    // feed the existing preview/import flow via canonical headers + a direct column map
+    HEADERS=["Num","Date","Company","Ship City","Ship State","Item","Qty","Sales price","Paid amount"];
+    ROWS=rows.map(r=>[r.order_number,r.date,r.company,r.ship_city,r.ship_state,r.product_code,r.qty,r.unit_price,r.line_amount]);
+    MAP={order_number:0,date:1,company:2,ship_city:3,ship_state:4,product_code:5,product_name:5,qty:6,unit_price:7,line_amount:8};
+    // auto-select AirAvant/BongoRx + its 15% rate
+    const sel=$("#mfr"); if(sel){ const opt=[...sel.options].find(o=>/airavant|bongo/i.test(o.value)||/airavant|bongo/i.test(o.text)); if(opt) sel.value=opt.value; }
+    if(rate!=null){ const ri=$("#rate"); if(ri) ri.value=rate; }
+    renderMap();
+    const note=document.createElement("div"); note.className="hint"; note.style.marginTop="6px";
+    note.innerHTML=`Parsed <b>${rows.length}</b> invoice line${rows.length===1?"":"s"} from the AirAvant / BongoRx report${rate!=null?` · commission ${rate}%`:""}. Review the mapping, then Preview.`;
+    $("#mapbox").prepend(note);
+  }catch(e){ $("#mapbox").innerHTML='<div class="hint warn">Couldn\'t read that PDF: '+esc(String(e&&e.message||e))+'</div>'; }
+}
+// Works at TEXT-ITEM granularity so it's robust to how the PDF engine chunks a row: pdf.js
+// returns one run per column (and may merge "Date Num"); other extractors give one word per item.
+// Fixed fields are anchored by content; header geometry only splits the Name / City / State middle.
+function parseAiravant(items){
+  const byY=new Map();
+  for(const it of items){ const key=Math.round(it.y); (byY.get(key)||byY.set(key,[]).get(key)).push(it); }
+  const lines=[...byY.entries()].sort((a,b)=>b[0]-a[0]).map(e=>e[1].sort((p,q)=>p.x-q.x));
+  let splitX=325, rate=null;
+  for(const ln of lines){ const txt=ln.map(t=>t.str).join(" ");
+    if(/\bName\b/.test(txt)&&/\bShip\b/.test(txt)&&/\bItem\b/.test(txt)){
+      const ni=ln.findIndex(t=>/\bName\b/.test(t.str)); const si=ln.findIndex((t,i)=>i>ni&&/\bShip\b/.test(t.str));
+      if(ni>=0&&si>ni) splitX=((ln[ni].x+ln[ni].w)+ln[si].x)/2; }
+    const rm=txt.match(/Commission at\s*([\d.]+)\s*%/i); if(rm) rate=parseFloat(rm[1]); }
+  const DATE=/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/;
+  const TYPES=/^(Invoice|Credit Memo|Credit|Sales Receipt|Payment|Refund)\b/;
+  const isNumItem=s=>/^-?[\$(]?[\d,]+(\.\d+)?\)?$/.test(String(s).trim());
+  const money=s=>{ const n=Number(String(s).replace(/[^0-9.\-]/g,"")); return Number.isFinite(n)?n:null; };
+  const out=[];
+  for(const ln of lines){
+    const txt=ln.map(t=>t.str).join(" ");
+    if(!TYPES.test(txt.trim())) continue;
+    const di=ln.findIndex(t=>DATE.test(t.str)); if(di<0) continue;
+    const dm=ln[di].str.match(DATE); const date=dm[1];
+    const rest=ln[di].str.replace(DATE,"").trim();
+    let num, midStart;
+    if(rest){ num=rest.split(/\s+/)[0]; midStart=di+1; }
+    else { num=(ln[di+1]&&ln[di+1].str)||""; midStart=di+2; }
+    let j=ln.length-1; const nums=[]; while(j>=midStart&&isNumItem(ln[j].str)){ nums.unshift(ln[j].str.trim()); j--; }
+    const item=(j>=midStart&&ln[j])?ln[j].str.trim():""; const itemI=j;
+    const mid=ln.slice(midStart,itemI); let state="";
+    if(mid.length&&/^[A-Z]{2}$/.test(mid[mid.length-1].str.trim())){ state=mid[mid.length-1].str.trim(); mid.pop(); }
+    const name=mid.filter(t=>t.x<splitX).map(t=>t.str.trim()).join(" ").trim();
+    const city=mid.filter(t=>t.x>=splitX).map(t=>t.str.trim()).join(" ").trim();
+    const qty=nums.length>=4?money(nums[nums.length-4]):(nums.length?money(nums[0]):null);
+    const unit=nums.length>=3?money(nums[nums.length-3]):null;
+    const paid=nums.length?money(nums[nums.length-1]):null;
+    if(!name&&!num) continue;
+    out.push({order_number:num,date,company:name,product_code:item,product_name:item,
+      qty,unit_price:unit,line_amount:paid,ship_city:city,ship_state:state}); }
+  return {rows:out,rate};
+}
+function autoMap(){
+  MAP={}; const used=new Set();
+  const pat={ order_number:/order.*num|^number$|order.?#|^po$|invoice/i, date:/created date|order date|^date$|invoice date/i,
+    company:/company name|^company$|account name|dealer|^customer name$/i, account_ref:/customer username|username|account ?ref|customer id|account ?(number|no|num|#)|acct ?(number|no|num|#)|^account$/i,
+    product_name:/line item name|product name|item name|^description$|^product$/i, product_code:/line item sku|^sku$|item.?no|^model$|product code/i,
+    qty:/line item quantity|^quantity$|^qty$/i, unit_price:/wholesale pric|unit price|dealer price|^price$/i, line_amount:/line total|line amount|extended|ext price/i,
+    ship_name:/shipping name/i, ship_city:/shipping city|ship city/i, ship_state:/shipping state|ship state/i, ship_zip:/shipping zip|ship zip|shipping postal/i, email:/e-?mail/i };
+  for(const t of TARGETS){ const re=pat[t.k]; if(!re) continue;
+    for(let i=0;i<HEADERS.length;i++){ if(used.has(i)) continue; if(re.test(HEADERS[i])){ MAP[t.k]=i; used.add(i); break; } } }
+}
+function renderMap(){
+  const opt=(sel)=>`<option value="-1">— none —</option>`+HEADERS.map((h,i)=>`<option value="${i}"${sel===i?" selected":""}>${esc(h)||("Col "+(i+1))}</option>`).join("");
+  const cells=TARGETS.map(t=>`<div class="m"><label>${t.label}${t.req?' <span class="warn">*</span>':''}</label><select data-t="${t.k}" onchange="MAP['${t.k}']=parseInt(this.value,10)">${opt(MAP[t.k]==null?-1:MAP[t.k])}</select></div>`).join("");
+  $("#mapbox").innerHTML=`<div class="step"><h3>Map columns <span class="hint" style="font-weight:400;text-transform:none">— ${ROWS.length} rows from ${esc(FILENAME)}. Auto-mapped; adjust if needed.</span></h3>
+    <div class="map">${cells}</div>
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center"><button class="btn sm" onclick="doPreview()">Preview import</button><span id="pmsg" class="hint" style="margin:0"></span></div></div>`;
+}
+function buildRows(){
+  const g=(row,k)=>{ const i=MAP[k]; return (i==null||i<0)?"":row[i]; };
+  return ROWS.map(row=>({ order_number:g(row,"order_number"), date:g(row,"date"), company:g(row,"company"), account_ref:g(row,"account_ref"),
+    product_name:g(row,"product_name"), product_code:g(row,"product_code"), qty:g(row,"qty"), unit_price:g(row,"unit_price"), line_amount:g(row,"line_amount"),
+    ship_name:g(row,"ship_name"), ship_city:g(row,"ship_city"), ship_state:g(row,"ship_state"), ship_zip:g(row,"ship_zip"), email:g(row,"email") }))
+    .filter(r=>String(r.order_number).trim()||String(r.company).trim());
+}
+async function doPreview(){
+  if(BUSY)return; if(MAP.company==null||MAP.company<0||MAP.order_number==null||MAP.order_number<0){ $("#pmsg").innerHTML='<span class="warn">Map at least Order # and Dealer/company.</span>'; return; }
+  BUSY=true; $("#pmsg").textContent="Analyzing…";
+  const rows=buildRows(); const mfr=($("#mfr")||{}).value, rate=($("#rate")||{}).value;
+  const r=await si({action:"preview",manufacturer:mfr,commission_rate:rate,rows}); BUSY=false; $("#pmsg").textContent="";
+  if(r.body&&r.body.error==="tables_missing"){ $("#out").innerHTML=`<div class="card"><div class="msg">Run <b>supabase/sales_import.sql</b> in Supabase first, then reload.</div></div>`; return; }
+  if(!r.body||!r.body.ok){ $("#out").innerHTML=`<div class="card"><div class="hint warn">Preview failed: ${esc((r.body&&(r.body.message||r.body.error))||"error")}</div></div>`; return; }
+  PREVIEW=r.body.preview;
+  if(PREVIEW.unmatched&&PREVIEW.unmatched.length&&!DEALERS.length){ const d=await si({action:"dealers"}); if(d.body&&d.body.ok) DEALERS=d.body.dealers||[]; }
+  renderPreview();
+}
+// Assign an unmatched report company to a dealer and remember it (dealer_alias) for future imports.
+async function assignAlias(i){
+  const sel=$("#um_"+i), ok=$("#umok_"+i); const dealer_id=sel&&sel.value;
+  const company=(PREVIEW.unmatched||[])[i];
+  if(!dealer_id){ if(ok) ok.innerHTML='<span class="warn">pick a dealer first</span>'; return; }
+  if(!company) return; if(ok) ok.textContent="saving…";
+  let r=await si({action:"add_alias",company,dealer_id});
+  if(r.status===409&&r.body&&r.body.error==="alias_conflict"){
+    const cur=r.body.current||{}, req=r.body.requested||{};
+    const msg=`"${company}" already matches ${cur.business_name||"another dealer"}${cur.city?" ("+cur.city+", "+(cur.state||"")+")":""}.\n\nReplace it with ${req.business_name||"the dealer you picked"}? Every future import of this name — for every manufacturer — would follow the new dealer. Past sales are not moved.`;
+    if(!confirm(msg)){ if(ok) ok.innerHTML='<span class="warn">kept the existing match</span>'; return; }
+    r=await si({action:"add_alias",company,dealer_id,replace:true});
+  }
+  if(r.body&&r.body.ok){ if(ok) ok.innerHTML='<span class="ok">✓ remembered</span>'; }
+  else if(ok) ok.innerHTML='<span class="warn">failed</span>';
+}
+function renderPreview(){
+  const p=PREVIEW;
+  // Account-number maintenance from the report (dry-run on preview; applied on import).
+  const ac=p.accounts||{};
+  const acctKpi=(ac.updated||ac.confirmed||ac.conflicts||ac.active_marked)
+    ? `<div class="kpi ${ac.conflicts?'w':'g'}"><div class="l">Account #s</div><div class="v">${ac.updated||0}<span style="font-size:12px;font-weight:400"> new</span>${ac.conflicts?` · ${ac.conflicts} ⚑`:""}</div></div>` : "";
+  const acctPanel=(()=>{
+    const upd=(ac.updated_list||[]); const con=(ac.conflict_list||[]);
+    if(!upd.length && !con.length && !ac.confirmed && !ac.active_marked) return "";
+    const line=`<div class="hint" style="margin-bottom:6px">Account numbers are read from the report and kept current on each dealer. On preview nothing is written yet — this is what will change on import.</div>`;
+    const updT=upd.length?`<h3 style="margin-top:6px">Account numbers to set (${upd.length})</h3>
+      <table><thead><tr><th>Dealer</th><th>New account #</th></tr></thead><tbody>${upd.map(u=>`<tr><td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(u.dealer_id)}">${esc(u.name)}</a></td><td>${esc(u.account_ref)}</td></tr>`).join("")}</tbody></table>`:"";
+    const conT=con.length?`<h3 class="warn" style="margin-top:10px">Conflicts to review (${con.length}) — NOT changed automatically</h3>
+      <div class="hint" style="margin-bottom:6px">The report's number differs from what's on file (or the report lists more than one for the same dealer). Left as-is so you can decide.</div>
+      <table><thead><tr><th>Dealer</th><th>On file</th><th>In report</th></tr></thead><tbody>${con.map(c=>`<tr><td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(c.dealer_id)}">${esc(c.name)}</a></td><td>${esc(c.existing||(c.values?"(multiple)":"—"))}</td><td>${esc(c.incoming||(c.values?c.values.join(", "):"—"))}</td></tr>`).join("")}</tbody></table>`:"";
+    const conf=(ac.confirmed||ac.active_marked)?`<div class="hint" style="margin-top:6px">${ac.confirmed||0} already correct · ${ac.active_marked||0} marked active from current sales.</div>`:"";
+    return `<div class="step">${line}${updT}${conT}${conf}</div>`;
+  })();
+  const kpis=`<div class="kpis">
+    <div class="kpi"><div class="l">Lines</div><div class="v">${p.rows}</div></div>
+    <div class="kpi g"><div class="l">Matched to a branch</div><div class="v">${p.matched_lines}</div></div>
+    <div class="kpi ${p.unmatched_lines?'w':''}"><div class="l">Unmatched lines</div><div class="v">${p.unmatched_lines}</div></div>
+    <div class="kpi"><div class="l">Total sales</div><div class="v">${money(p.total_sales)}</div></div>
+    <div class="kpi g"><div class="l">Commission @ ${Math.round(p.commission_rate*1000)/10}%</div><div class="v">${money(p.total_commission)}</div></div>
+    <div class="kpi"><div class="l">Dealers</div><div class="v">${p.dealers!=null?p.dealers:new Set((p.v2&&p.v2.rows||[]).map(r=>r.dealer_id).filter(Boolean)).size||"—"}</div></div>
+    ${acctKpi}
+  </div>`;
+  const pd=(p.per_dealer||[]).length?`<div class="step"><h3>By dealer branch</h3><div style="max-height:340px;overflow:auto"><table><thead><tr><th>Dealer / branch</th><th class="num">Orders</th><th class="num">Lines</th><th class="num">Sales</th><th class="num">Commission</th></tr></thead><tbody>
+    ${p.per_dealer.map(d=>`<tr><td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(d.dealer_id)}">${esc(d.name)}</a></td><td class="num">${d.orders}</td><td class="num">${d.lines}</td><td class="num">${money(d.sales)}</td><td class="num">${money(d.commission)}</td></tr>`).join("")}
+    </tbody></table></div></div>`:"";
+  const opts='<option value="">— choose dealer —</option>'+DEALERS.map(d=>`<option value="${esc(d.id)}">${esc(d.name)}${d.branch?" (branch)":""}</option>`).join("");
+  const un=(p.unmatched||[]).length?`<div class="step"><h3 class="warn">Unmatched companies (${p.unmatched.length})</h3>
+    <div class="hint" style="margin-bottom:6px">Pick the dealer each one belongs to — I'll remember the name so this report and every future import match it automatically. Then click <b>Re-check matches</b>.</div>
+    <table><tbody>${p.unmatched.map((nm,i)=>`<tr>
+      <td style="padding:5px 10px 5px 0;font-weight:600;color:var(--navy)">${esc(nm)}</td>
+      <td style="padding:5px 0"><select id="um_${i}" style="min-width:240px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:12.5px">${opts}</select></td>
+      <td style="padding:5px 0 5px 8px;white-space:nowrap"><button class="btn ghost sm" onclick="assignAlias(${i})">Assign</button> <span id="umok_${i}" class="hint"></span></td>
+    </tr>`).join("")}</tbody></table>
+    <div style="margin-top:8px"><button class="btn sm" onclick="doPreview()">Re-check matches</button> <span class="hint">— re-runs the match after your assignments</span></div>
+    ${DEALERS.length?"":'<div class="hint warn" style="margin-top:4px">Dealer list didn\'t load — reload and try again.</div>'}</div>`:"";
+  const v2=p.v2?v2Panel(p.v2):"";
+  // Ship-To check: lines whose branch rests on a fallback or a guess (the pick itself is unchanged — check it).
+  const SFB={hq_fallback:"No ship-to matched a branch — booked to the headquarters (fallback)",first_fallback:"No ship-to matched — booked to the first family member (fallback)",
+    zip_shared:"The ship-to ZIP belongs to more than one branch — the first was used",city:"Matched on city only",ship_name:"Matched on the ship-to name only"};
+  const sf=p.ship_to_flags&&p.ship_to_flags.lines?`<div class="step"><h3 class="warn">Check the branch (${p.ship_to_flags.lines} line${p.ship_to_flags.lines===1?"":"s"})</h3>
+    <div class="hint" style="margin-bottom:6px">These lines were placed on a branch without reliable ship-to evidence. The import still books them where shown (as it always has); confirm each before importing, or correct the report's ship-to first. Automatic imports will instead hold such orders for review.</div>
+    <div style="max-height:300px;overflow:auto"><table><thead><tr><th>Order</th><th>Company</th><th>Booked to</th><th>Why</th><th>Ship-to in report</th><th class="num">Lines</th></tr></thead><tbody>
+    ${p.ship_to_flags.groups.map(g=>`<tr><td>${esc(g.order||"—")}</td><td>${esc(g.company)}</td><td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(g.dealer_id||"")}">${esc(g.dealer||"—")}</a></td><td>${esc(SFB[g.basis]||g.basis)}</td><td>${esc([g.ship_city,g.ship_zip].filter(Boolean).join(" ")||"none")}</td><td class="num">${g.lines}</td></tr>`).join("")}
+    </tbody></table></div></div>`:"";
+  const blocked=p.v2&&(p.v2.semantic_collisions||[]).length>0;
+  $("#out").innerHTML=`<div class="card">${kpis}
+    ${sf}
+    ${v2}
+    <div style="display:flex;gap:8px;align-items:center;margin:4px 0 2px;flex-wrap:wrap"><button class="btn orange" onclick="doImport()" ${blocked?"disabled":""}>${p.v2?(blocked?"Resolve the order-number collisions first":"Apply this file (one transaction)"):`Load ${p.rows} lines into the platform`}</button><span id="imsg" class="hint" style="margin:0"></span></div>
+    ${acctPanel}${pd}${un}</div>`;
+}
+// MI-1a v2 preview: what the database will do with this file, order by order. Nothing is written yet.
+function v2Panel(v){
+  const o=v.orders||{}; const t=(l,n,w)=>`<div class="kpi ${w&&n?'w':''}"><div class="l">${l}</div><div class="v">${n||0}</div></div>`;
+  const rowsT=(list,cols)=>`<div style="max-height:260px;overflow:auto"><table><thead><tr>${cols.map(c=>`<th>${esc(c[0])}</th>`).join("")}</tr></thead><tbody>${list.map(x=>`<tr>${cols.map(c=>`<td>${esc(c[1](x)==null?"—":c[1](x))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  const ord=k=>String(k||"").replace(/^[^|]*\|/,"");
+  let h=`<div class="step"><h3>Order check — what applying this file will do</h3>
+    <div class="hint" style="margin-bottom:6px">Orders are matched to what HCPS already holds. Unchanged orders are not touched; a changed order is replaced as a whole and the old lines are kept in history. Nothing has been written.</div>
+    <div class="kpis">${t("New orders",o.new)}${t("Unchanged",o.unchanged)}${t("Changed",o.changed,1)}${t("To retire",o.retire,1)}</div>`;
+  if((v.semantic_collisions||[]).length) h+=`<h3 class="warn" style="margin-top:8px">Order numbers that look like two different orders (${v.semantic_collisions.length}) — import blocked</h3>`+rowsT(v.semantic_collisions,[["Order",x=>ord(x.order_key)],["Where",x=>x.where==="vs_hcps"?"vs HCPS":"within file"],["Account ref (file / HCPS)",x=>x.where==="vs_hcps"?`${x.file_customer_ref||"—"} / ${x.hcps_customer_ref||"—"}`:(x.customer_refs||[]).join(", ")],["Dates",x=>x.where==="vs_hcps"?`${x.file_date} / ${x.hcps_date}`:`${x.first_date} → ${x.last_date}`]]);
+  if((v.changed_detail||[]).length) h+=`<h3 style="margin-top:8px">Changed or retired orders</h3>`+rowsT(v.changed_detail,[["Order",x=>ord(x.order_key)],["Change",x=>x.kind],["HCPS lines · $",x=>x.old_lines==null?null:`${x.old_lines} · ${money(x.old_amount)}`],["File lines · $",x=>x.new_lines==null?null:`${x.new_lines} · ${money(x.new_amount)}`]]);
+  if((v.missing_from_file||[]).length) h+=`<h3 style="margin-top:8px">Orders HCPS holds in this date range that the file does not list (${v.missing_from_file.length})</h3><div class="hint">Kept as they are unless you tick them. A ticked order is removed and kept in history.</div>`+
+    `<div style="max-height:180px;overflow:auto">${v.missing_from_file.map(k=>`<label style="display:block;font-size:12.5px"><input type="checkbox" class="v2retire" value="${esc(ord(k))}"> ${esc(ord(k))}</label>`).join("")}</div>`;
+  if((v.nonfinancial_differences||[]).length) h+=`<h3 style="margin-top:8px">Differences that are not money (${v.nonfinancial_differences.length})</h3><div class="hint">Shown so wrong source details are not ignored. Confirmed dealer and rep attribution in HCPS is always kept.</div>`+
+    rowsT(v.nonfinancial_differences,[["Line",x=>ord(x.line_key)],["Field",x=>x.field],["HCPS",x=>x.hcps],["File",x=>x.file],["Kept",x=>x.kept==="hcps"?"HCPS":"file, if the order is corrected"]]);
+  const needPaid=v.needs_paid_approval, needX=(v.cross_lane_matches||0)>0;
+  if(needX) h+=`<div class="hint warn" style="margin-top:8px"><b>${v.cross_lane_matches}</b> line(s) match a commission-statement line for the same month, quantity and amount — the same sale may already be counted. <label><input type="checkbox" id="v2xlane"> These are different sales; import them</label></div>`;
+  if(needPaid) h+=`<div class="hint warn" style="margin-top:8px">This file changes months you have locked or that hold a commission statement: <b>${esc((v.locked_months_touched||[]).join(", "))}</b>. <label><input type="checkbox" id="v2paid"> I approve changing these months</label></div>`;
+  if(needPaid||needX) h+=`<div style="margin-top:6px"><label class="hint" style="display:block">Reason (stored with the import)</label><input id="v2reason" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:16px"></div>`;
+  return h+`</div>`;
+}
+async function doImport(){
+  if(BUSY)return; BUSY=true; $("#imsg").textContent="Importing…";
+  const rows=buildRows(); const mfr=($("#mfr")||{}).value, rate=($("#rate")||{}).value;
+  const extra={}; if(PREVIEW&&PREVIEW.v2){ extra.retire_orders=[...document.querySelectorAll(".v2retire:checked")].map(x=>x.value);
+    extra.approve_paid=!!(($("#v2paid")||{}).checked); extra.confirm_cross_lane=!!(($("#v2xlane")||{}).checked); extra.approve_reason=(($("#v2reason")||{}).value||"").trim(); }
+  const r=await si({action:"import",manufacturer:mfr,commission_rate:rate,source_file:FILENAME,rows,...extra}); BUSY=false;
+  if(r.body&&r.body.refused){ $("#imsg").innerHTML=`<span class="warn">Nothing was written: ${esc(r.body.message||r.body.error)}</span>`; return; }
+  if(r.body&&r.body.error==="import_paused"){ $("#imsg").innerHTML=`<span class="warn">${esc(r.body.message)}</span>`; return; }
+  if(r.body&&r.body.ok){ const s=r.body.summary||{}; const a=s.accounts||{};
+    const acctMsg = a.updated?` · ${a.updated} account # set`:""; const conMsg=a.conflicts?` · <b>${a.conflicts} conflict${a.conflicts===1?"":"s"} to review</b>`:"";
+    $("#imsg").innerHTML=`<span class="ok">✓ Loaded ${r.body.imported} lines — ${money(s.total_sales)} sales, ${money(s.total_commission)} commission, ${s.matched_lines} matched to a branch${acctMsg}.</span>${conMsg} Open a dealer's 360 to see it.`; }
+  else $("#imsg").innerHTML=`<span class="warn">Import failed: ${esc((r.body&&(r.body.error||r.body.message))||"error")}</span>`;
+}
+boot();
+</script>
+</body></html>

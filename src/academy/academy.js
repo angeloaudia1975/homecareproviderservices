@@ -6,7 +6,7 @@
   'use strict';
   var API = '/.netlify/functions/academy-api';
   var view = document.getElementById('view'), nav = document.getElementById('nav');
-  var ME = null, ROUTE = null;
+  var ME = null, ROUTE = null, EXAMS_OPEN = false;
 
   function el(tag, a, kids) {
     var e = document.createElement(tag);
@@ -67,6 +67,8 @@
     if (!ME) return;
     if (name === 'lesson' && params.get('e') && params.get('l')) { ROUTE = 'lesson'; drawNav(); return lesson(params.get('e'), params.get('l')); }
     if (name === 'team' && ME.training_manager) { ROUTE = 'team'; drawNav(); return team(); }
+    if (name === 'exam' && params.get('e')) { ROUTE = 'exam'; drawNav(); return exam(params.get('e')); }
+    if (name === 'take' && params.get('a')) { ROUTE = 'take'; drawNav(); return take(params.get('a'), params.get('e')); }
     ROUTE = 'courses'; drawNav(); courses();
   }
   window.addEventListener('hashchange', function () { if (ME) route(); });
@@ -123,6 +125,7 @@
       var head = [el('h1', { text: 'Hello, ' + (ME.learner.full_name || 'there') }), el('p', { cls: 'ac-muted', text: dealers.join(' · ') })];
       var list = r.body.courses || [];
       if (!list.length) { show(head.concat(el('div', { cls: 'ac-card' }, [el('h2', { text: 'No courses yet' }), el('p', { text: 'Your Training Manager or HCPS will enroll you in a course. It will appear here.' })]))); focusMain(); return; }
+      EXAMS_OPEN = !!r.body.exams_open;
       show(head.concat(el('div', { cls: 'ac-courses' }, list.map(courseCard)))); focusMain();
     });
   }
@@ -143,7 +146,7 @@
       el('p', { cls: 'ac-muted ac-small', text: 'Version ' + c.version + (c.due_on ? ' · due ' + c.due_on : '') + (c.version_status === 'retired' ? ' · an older version you started' : '') }),
       el('div', { cls: 'ac-progress', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': 'Lessons completed' }, el('span', { style: 'width:' + pct + '%' })),
       el('p', { cls: 'ac-small', text: c.lessons_completed + ' of ' + c.lessons_total + ' lessons complete' }),
-      el('div', { cls: 'ac-row' }, [cont, toggle]), outline]);
+      el('div', { cls: 'ac-row' }, [cont, toggle, EXAMS_OPEN ? el('button', { type: 'button', cls: 'ac-btn sec', text: 'Final exam', onclick: function () { go('exam', { e: c.enrollment_id }); } }) : null]), outline]);
   }
 
   /* ------------------------------------------------------------ a lesson */
@@ -187,6 +190,165 @@
     });
   }
 
+  /* ------------------------------------------------------------ the final exam (A2E) */
+  var when = function (iso) { try { return new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch (e) { return String(iso); } };
+  var topic = function (t) { return String(t).replace(/[-_.]+/g, ' ').replace(/^\w/, function (c) { return c.toUpperCase(); }); };
+  function exam(eid, note) {
+    show(el('p', { cls: 'ac-muted', text: 'Loading the exam…' }));
+    api({ action: 'exam_status', enrollment_id: eid }).then(function (r) {
+      var back = el('button', { type: 'button', cls: 'ac-btn sec', text: '← My courses', onclick: function () { go('courses'); } });
+      if (r.status !== 200) { show([msg(text(r, 'The exam could not be loaded.'), true), back]); return; }
+      var S = r.body, P = S.policy || {}, out = el('div', { 'aria-live': 'polite' }, note || null);
+      var rules = el('ul', { cls: 'ac-rules' }, [
+        el('li', { text: P.questions + (P.questions === 1 ? ' question' : ' questions') + ' · ' + P.pass_mark + '% to pass' }),
+        el('li', { text: (P.your_time_limit_minutes || P.time_limit_minutes) + ' minutes once you start' + (P.extra_minutes ? ' (includes ' + P.extra_minutes + ' minutes of extra time)' : '') + '; your answers are saved as you go, and the clock keeps running if you lose your connection' }),
+        el('li', { text: 'Finish every lesson in the course first' }),
+        el('li', { text: 'Wait ' + P.cooldown_minutes + ' minutes between attempts · at most ' + P.daily_limit + ' attempts a day' }),
+        el('li', { text: 'The results show your score and the topics to review — not which answers were right' })]);
+      var actions = el('div', { cls: 'ac-row' });
+      if (S.reason === 'open_attempt' && String(S.open_enrollment_id) === String(eid)) {
+        actions.appendChild(el('button', { type: 'button', cls: 'ac-btn pri', text: 'Continue the exam', onclick: function () { go('take', { a: S.open_attempt_id, e: eid }); } }));
+        out.appendChild(msg('You have an exam in progress. It must be finished by ' + when(S.next_at) + '.'));
+      } else if (S.can_start && P.version_published) {
+        var start = el('button', { type: 'button', cls: 'ac-btn pri', text: 'Start the exam' });
+        start.addEventListener('click', function () {
+          var yes = el('button', { type: 'button', cls: 'ac-btn pri', text: 'Start now (' + (P.your_time_limit_minutes || P.time_limit_minutes) + ' minutes)' });
+          var no = el('button', { type: 'button', cls: 'ac-btn sec', text: 'Not yet', onclick: function () { exam(eid); } });
+          yes.addEventListener('click', function () {
+            busy(yes, true, 'Starting…');
+            api({ action: 'exam_start', enrollment_id: eid }).then(function (x) {
+              if (x.status !== 200) { busy(yes, false, 'Start now'); out.replaceChildren(msg(text(x) + (x.body.next_at ? ' (' + when(x.body.next_at) + ')' : ''), true)); return; }
+              go('take', { a: x.body.attempt_id, e: eid });
+            });
+          });
+          actions.replaceChildren(el('p', { text: 'The clock starts as soon as you begin. Ready?' }), yes, no); yes.focus();
+        });
+        actions.appendChild(start);
+      } else if (S.reason === 'open_attempt') {
+        out.appendChild(msg('You have an exam in progress in another course. Finish it first — it ends by ' + when(S.next_at) + '.'));
+      } else if (S.reason === 'lessons_incomplete') {
+        out.appendChild(msg('Finish every lesson first: ' + (S.lessons_completed || 0) + ' of ' + (S.lessons_total || 0) + ' lessons completed. Then come back to start the exam.'));
+        actions.appendChild(el('button', { type: 'button', cls: 'ac-btn pri', text: 'Back to my courses', onclick: function () { go('courses'); } }));
+      } else if (S.reason === 'grading_pending') {
+        out.appendChild(msg('Your last attempt is still being graded. Your saved answers are kept. Please contact HCPS if this does not clear.', true));
+      } else if (!P.version_published) {
+        out.appendChild(msg('This course version is no longer offered, so its exam cannot be started.'));
+      } else {
+        out.appendChild(msg((S.reason === 'daily_limit' ? 'You have used today’s attempts. ' : 'Take a short break before your next attempt. ') + 'You can start again ' + when(S.next_at) + '.'));
+      }
+      var hist = (S.attempts || []).filter(function (a) { return !a.open; }).map(function (a) {
+        return el('li', null, [el('span', { text: when(a.started_at) }),
+          el('span', { cls: 'ac-pill' + (a.passed ? ' ok' : ''), text: a.overdue ? 'Being graded' : (a.passed ? 'Passed' : 'Not passed') }),
+          a.score != null ? el('span', { text: a.score + '%' }) : null, a.expired ? el('span', { cls: 'ac-muted ac-small', text: 'time ran out' }) : null]);
+      });
+      show([el('h1', { text: 'Final exam' }), el('section', { cls: 'ac-card ac-stack' }, [rules, actions, out]),
+        hist.length ? el('section', { cls: 'ac-card' }, [el('h2', { text: 'Your attempts' }), el('ol', { cls: 'ac-attempts' }, hist)]) : null, back].filter(Boolean));
+      focusMain();
+    });
+  }
+  function take(aid, eid) {
+    show(el('p', { cls: 'ac-muted', text: 'Opening your exam…' }));
+    api({ action: 'exam_view', attempt_id: aid }).then(function (r) {
+      if (r.status !== 200 || !r.body.open) { if (r.status === 200 && eid) return exam(eid); show([msg(text(r, 'This exam is not open.'), true), el('button', { type: 'button', cls: 'ac-btn sec', text: '← My courses', onclick: function () { go('courses'); } })]); return; }
+      var D = r.body, Q = D.questions || [], A = Object.assign({}, D.answers || {}), i = 0, ended = false;
+      eid = eid || D.enrollment_id;
+      var deadline = new Date(D.expires_at).getTime();   // the database enforces it; this clock only shows it
+      var clock = el('span', { cls: 'ac-clock', role: 'timer', 'aria-live': 'off' }), saved = el('span', { cls: 'ac-muted ac-small', 'aria-live': 'polite' });
+      var body = el('div', { cls: 'ac-card ac-stack ac-exam' }), timer = null, saveT = null, pending = {};
+      var flush = function () {
+        clearTimeout(saveT); var send = pending; pending = {};
+        if (!Object.keys(send).length) return Promise.resolve();
+        return api({ action: 'exam_save', attempt_id: aid, answers: send }).then(function (x) {
+          if (x.status === 200 && x.body.ok) { saved.textContent = 'Saved'; return; }
+          if (x.status === 200 && x.body.reason === 'expired') { finish(); return; }
+          pending = Object.assign(send, pending);
+          saved.textContent = x.status === 0 ? 'Connection lost — your answer is kept on this screen and will be saved when you are back online. The clock keeps running.' : 'Not saved yet — it will try again.';
+          clearTimeout(saveT); if (!ended) saveT = setTimeout(flush, 5000);
+        });
+      };
+      var online = function () { if (!ended && Object.keys(pending).length) { saved.textContent = 'Back online — saving…'; flush(); } };
+      var offline = function () { if (!ended) saved.textContent = 'You are offline. Keep going: your answers will be saved when the connection returns. The clock keeps running.'; };
+      window.addEventListener('online', online); window.addEventListener('offline', offline);
+      var answered = function () { return Q.filter(function (q) { var a = A[q.id]; return a != null && (!Array.isArray(a) || a.length); }).length; };
+      var setAnswer = function (q, v) { A[q.id] = v; pending[q.id] = v; saved.textContent = ''; clearTimeout(saveT); saveT = setTimeout(flush, 700); };
+      var tick = function () {
+        var left = Math.max(0, deadline - Date.now()), m = Math.floor(left / 60000), sec = Math.floor(left % 60000 / 1000);
+        clock.textContent = m + ':' + (sec < 10 ? '0' : '') + sec + ' left';
+        clock.className = 'ac-clock' + (left < 5 * 60000 ? ' low' : '');
+        if (left <= 0) finish();
+      };
+      var draw = function () {
+        var q = Q[i], multi = q.kind === 'multi', name = 'q' + i, cur = A[q.id];
+        var opts = q.choices.map(function (c) {
+          var on = multi ? Array.isArray(cur) && cur.indexOf(c.id) >= 0 : cur === c.id;
+          var inp = el('input', { type: multi ? 'checkbox' : 'radio', name: name, id: name + c.id, value: c.id });
+          inp.checked = on;
+          inp.addEventListener('change', function () {
+            if (!multi) { setAnswer(q, c.id); return; }
+            var list = [].slice.call(body.querySelectorAll('input[name="' + name + '"]:checked')).map(function (x) { return x.value; });
+            setAnswer(q, list.length ? list : null);
+          });
+          return el('label', { cls: 'ac-choice', for: inp.id }, [inp, el('span', { text: c.text })]);
+        });
+        var prev = el('button', { type: 'button', cls: 'ac-btn sec', text: 'Previous', disabled: i === 0, onclick: function () { i--; draw(); } });
+        var next = i < Q.length - 1 ? el('button', { type: 'button', cls: 'ac-btn pri', text: 'Next', onclick: function () { i++; draw(); } })
+                                    : el('button', { type: 'button', cls: 'ac-btn pri', text: 'Review and submit', onclick: review });
+        body.replaceChildren(
+          el('p', { cls: 'ac-muted ac-small', text: 'Question ' + (i + 1) + ' of ' + Q.length + (multi ? ' · choose every answer that applies' : '') }),
+          el('fieldset', { cls: 'ac-q' }, [el('legend', { text: q.prompt })].concat(opts)),
+          el('div', { cls: 'ac-lessonnav' }, [prev, next]));
+        var first = body.querySelector('input'); if (first) first.focus({ preventScroll: true });
+      };
+      var review = function () {
+        var n = answered(), missing = Q.length - n;
+        var yes = el('button', { type: 'button', cls: 'ac-btn pri', text: 'Submit my answers' });
+        yes.addEventListener('click', function () { busy(yes, true, 'Submitting…'); submit(); });
+        body.replaceChildren(el('h2', { text: 'Ready to submit?' }),
+          el('p', { text: 'You answered ' + n + ' of ' + Q.length + ' questions.' + (missing ? ' Unanswered questions count as wrong.' : '') }),
+          el('div', { cls: 'ac-jump' }, Q.map(function (q, k) {
+            var a = A[q.id], has = a != null && (!Array.isArray(a) || a.length);
+            return el('button', { type: 'button', cls: 'ac-btn sec' + (has ? '' : ' warn'), text: String(k + 1), 'aria-label': 'Question ' + (k + 1) + (has ? '' : ', not answered'), onclick: function () { i = k; draw(); } });
+          })),
+          el('div', { cls: 'ac-row' }, [yes, el('button', { type: 'button', cls: 'ac-btn sec', text: 'Back to the questions', onclick: function () { draw(); } })]));
+        yes.focus();
+      };
+      var detach = function () { window.removeEventListener('online', online); window.removeEventListener('offline', offline); clearTimeout(saveT); };
+      var result = function (R) {
+        clearInterval(timer); window.removeEventListener('beforeunload', guard); detach();
+        var topics = (R.study_topics || []).map(function (t) { return el('li', { text: topic(t) }); });
+        show([el('h1', { text: R.passed ? 'You passed' : 'Not passed this time' }),
+          el('section', { cls: 'ac-card ac-stack' }, [el('p', { cls: 'ac-score', text: (R.score != null ? R.score + '%' : '') }),
+            R.expired ? msg('Time ran out: the answers saved before the deadline were graded.') : null,
+            R.passed ? el('p', { text: 'Well done.' }) : el('p', { text: 'Review the topics below, then try again after the break.' }),
+            topics.length ? el('div', null, [el('h2', { text: 'Topics to review' }), el('ul', null, topics)]) : null].filter(Boolean)),
+          el('div', { cls: 'ac-row' }, [el('button', { type: 'button', cls: 'ac-btn pri', text: 'Back to the exam page', onclick: function () { go('exam', { e: eid }); } }),
+            el('button', { type: 'button', cls: 'ac-btn sec', text: 'My courses', onclick: function () { go('courses'); } })])]);
+        focusMain();
+      };
+      var ungraded = function (why) {   // past the deadline and not graded yet: no score is shown, the answers are kept
+        clearInterval(timer); window.removeEventListener('beforeunload', guard); detach();
+        show([el('h1', { text: 'Your exam is being graded' }), el('section', { cls: 'ac-card ac-stack' }, [msg(why, true)]),
+          el('div', { cls: 'ac-row' }, [el('button', { type: 'button', cls: 'ac-btn pri', text: 'Back to the exam page', onclick: function () { go('exam', { e: eid }); } }),
+            el('button', { type: 'button', cls: 'ac-btn sec', text: 'My courses', onclick: function () { go('courses'); } })])]);
+        focusMain();
+      };
+      var submit = function () {
+        ended = true; clearTimeout(saveT);
+        var send = Object.assign({}, pending); pending = {};
+        api({ action: 'exam_submit', attempt_id: aid, answers: send }).then(function (x) {
+          if (x.status === 409 && x.body && x.body.error === 'grading_pending') { ungraded(text(x)); return; }
+          if (x.status !== 200) { ended = false; pending = Object.assign(send, pending); body.prepend(msg(text(x, 'Your answers could not be submitted. Check your connection and try again.'), true)); return; }
+          result(x.body);
+        });
+      };
+      var finish = function () { if (ended) return; submit(); };
+      var guard = function (e) { if (!ended) { flush(); e.preventDefault(); e.returnValue = ''; } };
+      window.addEventListener('beforeunload', guard);
+      show([el('div', { cls: 'ac-examhead' }, [el('h1', { text: 'Final exam' }), clock]), saved, body]);
+      tick(); timer = setInterval(tick, 1000); draw(); focusMain();
+    });
+  }
+
   /* ------------------------------------------------------------ my team (Training Manager) */
   function team(note, noteBad) {
     show(el('p', { cls: 'ac-muted', text: 'Loading your team…' }));
@@ -224,7 +386,8 @@
       var person = function (p) {
         var holder = el('div');
         var courseLines = p.courses.map(function (c) {
-          return el('div', { cls: 'ac-row ac-small' }, [el('span', { text: c.course + ' v' + c.version + ' — ' + c.lessons_completed + '/' + c.lessons_total + ' lessons' + (c.status === 'withdrawn' ? ' (withdrawn)' : '') + (c.due_on ? ' · due ' + c.due_on : '') }),
+          var ex = c.exam && c.exam.attempts ? (c.exam.passed ? ' · exam passed' : ' · exam not passed yet (' + c.exam.attempts + (c.exam.attempts === 1 ? ' attempt)' : ' attempts)')) : '';
+        return el('div', { cls: 'ac-row ac-small' }, [el('span', { text: c.course + ' v' + c.version + ' — ' + c.lessons_completed + '/' + c.lessons_total + ' lessons' + ex + (c.status === 'withdrawn' ? ' (withdrawn)' : '') + (c.due_on ? ' · due ' + c.due_on : '') }),
             c.status !== 'withdrawn' && c.status !== 'completed' ? el('button', { type: 'button', cls: 'ac-btn sec', text: 'Withdraw', onclick: function () { askReason(holder, 'Why withdraw this course?', function (b, why) { call(b, { action: 'withdraw', enrollment_id: c.enrollment_id, reason: why }, 'Course withdrawn.'); }); } }) : null]);
         });
         var actions = [];
