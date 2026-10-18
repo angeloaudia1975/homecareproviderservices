@@ -150,17 +150,19 @@ try {
   });
   await t('S3 simultaneous: 15 requests from ONE network address for 15 different addresses at the same instant create exactly 10 codes (the network limit cannot be raced)', async () => {
     run(DB, `delete from academy_login_codes where ip_hash = '${H('ipRace')}'`);
-    const rs = await Promise.all(Array.from({ length: 15 }, (_, i) => bg(DB, `select academy_access_op_request_code('race${i}@example.com', '${H('race' + i)}', '${H('ipRace')}')`)));
+    const rs = await Promise.all(Array.from({ length: 15 }, (_, i) => bg(DB, `begin; select academy_access_op_request_code('race${i}@example.com', '${H('race' + i)}', '${H('ipRace')}'); select pg_sleep(0.2); commit;`)));
     assert.ok(rs.every(r => r.ok), rs.map(r => r.err).join('\n'));
     assert.strictEqual(count(DB, 'academy_login_codes', `ip_hash = '${H('ipRace')}'`), 10);
     assert.strictEqual(rs.filter(r => json(r.out).limited === 'network').length, 5);
-    // and 40 simultaneous WRONG guesses from one network address stop at the 25-try limit
+    // and 40 simultaneous WRONG guesses from one network address (40 different addresses, so no address lock serialises
+    // them) count exactly 25 tries; the other 15 are refused as limited
     run(DB, `delete from academy_login_codes where ip_hash = '${H('ipRace')}'`);
-    for (let i = 0; i < 9; i++) req(DB, `guess${i}@example.com`, '000000', 'ipRace');
-    const gs = await Promise.all(Array.from({ length: 40 }, (_, i) => bg(DB, `select academy_access_op_verify_code('guess${i % 9}@example.com', '${H('guess' + (i % 9) + '@example.com111111')}', '${H('ipRace')}')`)));
+    run(DB, `insert into academy_login_codes (email, code_hash, ip_hash, eligible, expires_at)
+             select 'guess' || g || '@example.com', md5('c' || g) || md5('d' || g), '${H('ipRace')}', false, now() + interval '9 minutes' from generate_series(0, 39) g`);
+    const gs = await Promise.all(Array.from({ length: 40 }, (_, i) => bg(DB, `begin; select academy_access_op_verify_code('guess${i}@example.com', '${H('wrong' + i)}', '${H('ipRace')}'); select pg_sleep(0.2); commit;`)));
     assert.ok(gs.every(r => r.ok), gs.map(r => r.err).join('\n'));
-    assert.ok(Number(run(DB, `select coalesce(sum(tries), 0) from academy_login_codes where ip_hash = '${H('ipRace')}'`)) <= 25, 'never more than 25 tries counted');
-    assert.ok(gs.filter(r => json(r.out).reason === 'limited').length >= 15);
+    assert.strictEqual(Number(run(DB, `select coalesce(sum(tries), 0) from academy_login_codes where ip_hash = '${H('ipRace')}'`)), 25, 'exactly 25 tries counted');
+    assert.strictEqual(gs.filter(r => json(r.out).reason === 'limited').length, 15);
     run(DB, `delete from academy_login_codes where ip_hash = '${H('ipRace')}'`);
   });
   await t('Undelivered codes: the mail worker burns a code it could not send (id AND hash must match), it stops counting toward the limits, and it never signs anyone in', () => {
