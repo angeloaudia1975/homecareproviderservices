@@ -167,6 +167,7 @@ async function passExam(cookie, enr, right) {
       const r = await verify(' ' + CERT.cert_number.toLowerCase() + ' '); assert.strictEqual(r.status, 200, JSON.stringify(r.body));
       assert.strictEqual(r.body.status, 'valid'); assert.strictEqual(r.body.learner_name, 'Pat Learner'); assert.match(r.body.disclosure, /not issued or endorsed by Golden/);
       assert.ok(!/@|score|attempt|reason|enrollment|learner_id/.test(JSON.stringify(r.body)), JSON.stringify(r.body));
+      assert.deepStrictEqual(Object.keys(r.body).sort(), ['cert_number', 'course_title', 'dealer_name', 'disclosure', 'enabled', 'expires_at', 'found', 'issued_at', 'issuer', 'learner_name', 'revoked_at', 'status'], 'exactly the public fields');
       assert.strictEqual((await verify('nope')).status, 400); assert.strictEqual((await verify('HCPS-ZZZZ-ZZZZ')).status, 404);
       assert.strictEqual((await call(VERIFY.handler, {}, { method: 'POST' })).status, 405);
       assert.strictEqual(r.raw.headers['cache-control'], 'no-store');
@@ -174,11 +175,11 @@ async function passExam(cookie, enr, right) {
     await t('Revoke: an administrator who is not the President is refused by the API (president_only); a too-short reason refused; nothing changes', async () => {
       assert.strictEqual((await admin('adm', { action: 'revoke_certificate', id: CERT.id, reason: 'Left the company' })).body.error, 'president_only');
       assert.strictEqual((await admin('own', { action: 'revoke_certificate', id: CERT.id, reason: 'Left the company' })).body.error, 'president_only');
-      assert.strictEqual((await admin('pres', { action: 'revoke_certificate', id: CERT.id, reason: 'no' })).status, 400);
+      const short = await admin('pres', { action: 'revoke_certificate', id: CERT.id, reason: 'no' }); assert.strictEqual(short.status, 400); assert.match(short.body.message, /at least 5 characters/, 'refused by the API before the database');
       assert.strictEqual(run(DB, `select status from academy_certificates where id = '${CERT.id}'`), 'valid');
     });
     await t('Revoke by the President: audited; verifies as revoked (no reason public); the learner sees revoked; the Command Center sees the reason', async () => {
-      const r = await admin('pres', { action: 'revoke_certificate', id: CERT.id, reason: 'Issued to the wrong person' }); assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+      const r = await admin('pres', { action: 'revoke_certificate', id: CERT.id, reason: 'Issued to the wrong person', p_actor: 'staff:admin2@test.example', actor: 'staff:admin2@test.example' }); assert.strictEqual(r.status, 200, JSON.stringify(r.body));
       assert.strictEqual(r.body.certificate.status, 'revoked');
       assert.strictEqual(run(DB, `select count(*) from academy_events where action = 'revoke_certificate' and actor = 'staff:admin@test.example'`), '1');
       const v = (await verify(CERT.cert_number)).body; assert.strictEqual(v.status, 'revoked'); assert.ok(v.revoked_at); assert.ok(!/wrong person/.test(JSON.stringify(v)));

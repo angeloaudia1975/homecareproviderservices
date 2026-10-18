@@ -30,7 +30,8 @@ const MUTANTS = [
   { f: LRN, from: "    } catch (e) { console.error('[academy] certificate not issued after a pass'", to: "    } catch (e) { throw e; console.error('[academy] certificate not issued after a pass'", why: 'a claim failure fails the graded exam' },
   { f: LRN, from: "  if (!(await A.switchOn('academy_certificates'))) A.refuse(403, 'flag_off', CERT_WAIT.switched_off);", to: "", why: 'claim_certificate works with the switch off' },
   { f: LRN, from: "    expiring_soon: st === 'valid' && left != null && left <= EXPIRING_DAYS,", to: "    expiring_soon: false,", why: 'nothing is flagged as expiring' },
-  { f: LRN, from: "  const certs = enr.length ? await certificatesFor(`enrollment_id=${idsIn(enr.map(e => e.id))}`) : [];", to: "  const certs = await certificatesFor('status=neq.zzz');", why: 'a Training Manager sees other dealerships’ certificates' },
+  // (not a mutant: widening the TM certificate read is equivalent — certOf() maps only the TM's own in-scope enrollment ids; the roster scope itself is covered by A2B)
+  { f: LRN, from: "  const enr = memIds.length ? await A.sbGet(`academy_enrollments?membership_id=${idsIn(memIds)}", to: "  const enr = memIds.length ? await A.sbGet(`academy_enrollments?membership_id=not.is.null&x=${idsIn(memIds)}", why: 'a Training Manager sees other dealerships’ courses and certificates' },
   { f: LRN, from: "const certStatus = (c, now) => c.status === 'revoked' ? 'revoked' :", to: "const certStatus = (c, now) => false ? 'revoked' :", why: 'a revoked certificate shows as valid to the learner' },
   { f: LRN, from: "it is not issued or endorsed by Golden Technologies.' };", to: "' };", why: 'no Golden disclosure' },
   { f: ADM, from: "WRITE.revoke_certificate = async (staff, b) => {\n  requirePresident(staff);", to: "WRITE.revoke_certificate = async (staff, b) => {", why: 'the API lets any administrator revoke' },

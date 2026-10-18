@@ -78,4 +78,4 @@ year; nothing expires before October 2027.
 | `test/academy-m7.pg.test.js` (PG16 + PG17.6) | 16 |
 | `test/academy-a2f.pg.test.js` (real handlers, real database rules) | 11 |
 | `test/academy-a2f.browser.js` (360 / 390 / 768 / 1280, print, axe, strict CSP) | 4 |
-| `test/academy-a2f.mutants.js` | see PR |
+| `test/academy-a2f.mutants.js` | 31/31 killed (clean control; one equivalent mutant documented) |
