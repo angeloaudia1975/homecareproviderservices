@@ -318,6 +318,31 @@ try {
     assert.match(tryRun(DB, `begin; select set_config('academy.op', 'exam_accommodation', true); set local role service_role; update academy_enrollments set exam_extra_minutes = 60 where id = '${E}'; commit;`).err, /permission denied|only through/);
     assert.strictEqual(q1(DB, `select exam_extra_minutes from academy_enrollments where id = '${E}'`).exam_extra_minutes, 0);
   });
+  await t('Accommodation is PRESIDENT ONLY in the database: an active admin or owner, an inactive President, a learner, a Training Manager and forged actors are refused; a President demoted a moment ago is refused at once', () => {
+    run(DB, `insert into staff_users (email, name, role, active) values ('admin2@test.example', 'Second Admin', 'admin', true),
+             ('owner@test.example', 'Owner', 'owner', true), ('oldpres@test.example', 'Former President', 'president', false) on conflict (email) do nothing`);
+    const TMID = learnerAt(DB, HQ, 'tm-acc@test.example', '212121');
+    run(DB, `select academy_op_set_training_manager(${PRES}, (select id from academy_memberships where learner_id = '${TMID}'), true, 'test')`);
+    const L = learnerAt(DB, HQ, 'acc3@test.example', '222222'); const E = enroll(DB, L, V.v);
+    const call = actor => tryRun(DB, `select academy_exam_op_accommodate(${actor}, '${E}', 15, 'Approved accommodation request')`);
+    assert.match(call(`'staff:admin2@test.example'`).err, /only the HCPS President/, 'an active admin');
+    assert.match(call(`'staff:owner@test.example'`).err, /only the HCPS President/, 'an active owner');
+    assert.match(call(`'staff:oldpres@test.example'`).err, /not an active HCPS administrator/, 'an inactive President');
+    assert.match(call(`'learner:${L}'`).err, /staff:<email>/, 'the learner');
+    assert.match(call(`'learner:${TMID}'`).err, /staff:<email>/, 'a Training Manager');
+    for (const forged of [`'president'`, `'staff:admin2@test.example role=president'`, `'staff:'`, `'staff:admin@test.example\nstaff:x@y.z'`, `null`, `''`])
+      assert.strictEqual(call(forged).ok, false, 'forged ' + forged);
+    assert.match(tryRun(DB, `set role anon; select academy_exam_op_accommodate(${PRES}, '${E}', 15, 'Approved accommodation request')`).err, /permission denied/);
+    assert.match(tryRun(DB, `set role authenticated; select academy_exam_op_accommodate(${PRES}, '${E}', 15, 'Approved accommodation request')`).err, /permission denied/);
+    // stale role: the President is demoted; the very next call is refused (the role is read at the moment of the change)
+    run(DB, `update staff_users set role = 'admin' where email = 'admin@test.example'`);
+    assert.match(call(PRES).err, /only the HCPS President/);
+    run(DB, `update staff_users set role = 'president' where email = 'admin@test.example'`);
+    assert.strictEqual(q1(DB, `select exam_extra_minutes from academy_enrollments where id = '${E}'`).exam_extra_minutes, 0, 'nothing written by any refused call');
+    assert.strictEqual(count(DB, 'academy_events', `entity_id = '${E}' and action = 'exam_accommodation'`), 0);
+    const ok = json(run(DB, `set role service_role; select academy_exam_op_accommodate(${PRES}, '${E}', 15, 'Approved accommodation request')`));
+    assert.strictEqual(ok.ok, true); assert.strictEqual(count(DB, 'academy_events', `entity_id = '${E}' and action = 'exam_accommodation' and actor = 'staff:admin@test.example'`), 1);
+  });
   await t('Accommodation: +15 applies to the NEXT attempt (60-minute deadline) and is audited with its reason; a running attempt keeps its deadline; 0 removes it', () => {
     const L = learnerAt(DB, HQ, 'acc2@test.example', '181818'); const E = enroll(DB, L, V.v); const AL = `'learner:${L}'`;
     const a = op(DB, 'start', `${AL}, '${E}'`); const before = q1(DB, `select expires_at from academy_attempts where id = '${a.attempt_id}'`).expires_at;

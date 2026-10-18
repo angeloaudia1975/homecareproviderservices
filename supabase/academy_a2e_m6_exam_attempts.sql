@@ -11,9 +11,10 @@
 --     saved for another enrollment or another version never counts; a version without lessons never opens an exam);
 --   * unlimited retakes otherwise.
 --   An open attempt has a time limit, exam_time_limit_minutes (45 for 25 questions — approved by Angelo, 18 Oct 2026),
---   plus the enrollment's exam_extra_minutes (0 by default): a reasonable-accommodation extension that only an HCPS
---   administrator sets, with a reason, through academy_exam_op_accommodate (audited). It applies to attempts started
---   after it is set; a running attempt's deadline never changes. An attempt still open at its deadline EXPIRES: it is graded with the answers saved before the
+--   plus the enrollment's exam_extra_minutes (0 by default): a reasonable-accommodation extension that only the HCPS
+--   President sets, with a reason, through academy_exam_op_accommodate (audited). It applies to attempts started
+--   after it is set; a running attempt's deadline never changes.
+--   An attempt still open at its deadline EXPIRES: it is graded with the answers saved before the
 --   deadline (unanswered = wrong), so an abandoned attempt can never block a learner, and answers sent after the
 --   deadline never count.
 -- A grading failure is never swallowed: it is recorded on the attempt (grading_failures, grading_failed_at,
@@ -380,14 +381,19 @@ begin
   return jsonb_build_object('ok', true, 'expired', false) || v_r;
 end $$;
 
--- Reasonable accommodation: an HCPS administrator (staff:<email> of an active president / admin / owner, from the
--- verified sign-in) sets extra exam time for ONE enrollment, with a reason. 0 removes it. It applies to attempts
+-- Reasonable accommodation: the HCPS PRESIDENT only (owner decision, PR #22 comment 6253802978) — staff:<email> of an
+-- ACTIVE staff user whose role is president, checked here against staff_users at the moment of the change (M1's
+-- academy_op_actor_staff for the shape and an active administrator, then the role; never a role supplied by the caller) — sets extra exam time for ONE enrollment, with a reason. 0 removes it. It applies to attempts
 -- started afterwards; a running attempt keeps its deadline. Atomic with its audit row; a learner can never set it.
 create function public.academy_exam_op_accommodate(p_actor text, p_enrollment_id uuid, p_extra_minutes int, p_reason text)
 returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
-declare v_e academy_enrollments; v_open boolean;
+declare v_e academy_enrollments; v_open boolean; v_email text;
 begin
-  perform academy_op_actor_staff(p_actor);
+  v_email := academy_op_actor_staff(p_actor);
+  if not exists (select 1 from staff_users s where lower(s.email) = v_email and coalesce(s.active, true)
+                   and lower(coalesce(s.role, '')) = 'president') then
+    raise exception 'academy: only the HCPS President may set exam-time accommodations' using errcode = '42501';
+  end if;
   if p_extra_minutes is null or p_extra_minutes not between 0 and 240 then
     raise exception 'academy: extra time is 0 to 240 minutes' using errcode = '22023';
   end if;

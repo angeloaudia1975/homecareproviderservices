@@ -13,7 +13,7 @@ Status: built on branch `academy/a2e-exams`, PR for review. **M6 is NOT run in p
 | A grade that cannot be written is never swallowed: recorded on the attempt (`grading_failures`, `grading_failed_at`, `grading_error` = SQLSTATE: message), an `expire_failed` / `submit_failed` audit row when the error is new or different, a database WARNING, and returned to the caller; graded again (same saved answers → same result) by the next exam call; meanwhile that enrollment cannot start (`grading_pending`) and a submit answers `ok:false` (`grading_pending` after the deadline, `grading_failed` before it, answers kept) → API 409, never a result | `academy_exam_grading_failed`, `academy_exam_expire`, `academy_exam_op_submit` |
 | Every lesson of the ENROLLED version completed by THIS enrollment before the exam starts (`completed` only — `viewed` never counts; another enrollment's or another version's progress never counts; a version with no lessons never opens an exam) | `academy_exam_limits` (`lessons_incomplete` with counts) inside `academy_exam_op_start` — the only way to start, the server cannot call M1 directly |
 | Time limit 45 minutes for 25 questions (approved by Angelo, 18 Oct 2026); an attempt open past its deadline is graded with the answers saved before it (answers sent later never count); resuming after a lost connection keeps the original deadline | `academy_exam_expire`, `exam_time_limit_minutes` on the version |
-| Reasonable accommodation: extra minutes for ONE enrollment, set only by an HCPS administrator with a reason (Command Center → Learners → Exam time: President only), audited; applies to attempts started afterwards; a running attempt keeps its deadline | `academy_exam_op_accommodate`, `academy_enrollments.exam_extra_minutes` (0–240), guard trigger `academy_exam_enrollment_guard` |
+| Reasonable accommodation: extra minutes for ONE enrollment, set only by the HCPS President (owner decision, PR #22 comment 6253802978 — database AND API; an active admin or owner, an inactive President, learners and Training Managers are refused; the role is read from staff_users at the moment of the change) with a reason (Command Center → Learners → Exam time), audited; applies to attempts started afterwards; a running attempt keeps its deadline | `academy_exam_op_accommodate`, `academy_enrollments.exam_extra_minutes` (0–240), guard trigger `academy_exam_enrollment_guard` |
 | Answer keys and explanations never leave the database | questions are read only through `academy_exam_op_view`; the result is M1's score, pass/fail and topics to study |
 | Grading, draw, verified facts, published version | unchanged M1/M3 code, CALLED by the M6 operations (M1/M3 byte-identical) |
 | No way around the limits | the server role loses EXECUTE on M1's `academy_op_start_attempt` / `academy_op_submit_attempt` and INSERT/UPDATE/DELETE on `academy_attempts` |
@@ -30,15 +30,15 @@ employee and course, **exam passed / not passed yet (N attempts)** — never a s
 
 | File | sha256 |
 |---|---|
-| `supabase/academy_a2e_m6_exam_attempts.sql` (as committed, LF) | `79c6fe9c4dcd0f72cc2e86e32a967618d464e5d344e7747589e188dbac028777` |
-| same, pasted with Windows line endings | `ab79e3e001ad7013e471c3c31a190453171993c9a54d5b7c3ca7cf9e59bacf8e` |
+| `supabase/academy_a2e_m6_exam_attempts.sql` (as committed, LF) | `b8601093f35191e0427f9bf86b7a0091ae0da68fec266496add749eed7f8494c` |
+| same, pasted with Windows line endings | `f1e41a6f50839440963c1d91f5ddcc0149471640242ec72700890fd01f9c86fb` |
 | `supabase/academy_a2e_m6_exam_attempts_rollback.sql` (refused while any attempt or accommodation exists) | `f1a63108262e9105b5e6872bb6c8323b325eed1195a5454dcb567d740f885e86` |
 | `supabase/academy_a2e_m6_preflight.sql` (read-only; `ready_for_m6`) | `6cadb2f1b8fef826b25519e2cfce76ef57ad9334e9907a10349a08f84af6c508` |
 | `supabase/academy_a2e_m6_postcheck.sql` (read-only) | `4c70e4488ec9808afff1681469cbdf6d910dd91a68ac43ec9b7fd9201cd45631` |
 | `scripts/academy_m6_public_probe_browser.js` (public key only; 11 functions + 4 table checks = 15) | `a4bd9b3743c0be213cddb1b9d6322930e5dbf0f07cd25bcc80ace5644762cc5a` |
 
-Installed-code fingerprint (`m6_code_fingerprint`): `8858cea853b42b617b7e61cc29d2ce6b` (Unix) /
-`15e87a5c5aa6af1b5984accd12428511` (Windows paste). Rehearsed locally on PG16: preflight `ready_for_m6` true → 8/8
+Installed-code fingerprint (`m6_code_fingerprint`): `bbcee77700aed2a5d9870d7ea17e787d` (Unix) /
+`372d3fbe777b89abaccf2ff996793afa` (Windows paste). Rehearsed locally on PG16: preflight `ready_for_m6` true → 8/8
 install checks → postcheck 13 functions / 6 for the server / 0 public, M1 start/submit not callable by the server, no
 attempt writes → preflight again: everything outside the Academy and the M1–M5 code fingerprints identical; only the
 Academy grants (server loses attempt writes) and columns (+12: 8 on attempts, 3 on versions, 1 on enrollments) change.
@@ -58,9 +58,9 @@ server role are expected to be refused — that is the point of M6. Use the M6 s
 
 ## Tests
 
-`test/academy-m6.pg.test.js` (31), `test/academy-a2e.pg.test.js` (11), `test/academy-learner.browser.js` (exam flow, the
+`test/academy-m6.pg.test.js` (32), `test/academy-a2e.pg.test.js` (12), `test/academy-learner.browser.js` (exam flow, the
 lesson gate, a lost connection mid-exam and the ungraded state at 390 and 1280, axe), `test/academy-c1.browser.js` (Exam
-time in the Command Center), `test/academy-a2e.mutants.js` (42 + control; one candidate dropped as equivalent under M5). Edges covered: 20 simultaneous starts → 1 attempt; cooldown 59:59 refused /
+time in the Command Center), `test/academy-a2e.mutants.js` (45 + control; one candidate dropped as equivalent under M5). Edges covered: 20 simultaneous starts → 1 attempt; cooldown 59:59 refused /
 60:00 allowed; 3rd attempt of the day allowed, 4th refused until local midnight, on the day daylight saving ends
 (25-hour day) and starts (23-hour day); expiry grades only answers saved in time; no key or explanation in any learner
 response; withdrawn enrollment and ended access refused; across two courses one open attempt blocks the other course while
@@ -69,8 +69,9 @@ recorded, audited once per distinct error, raised as a WARNING, blocks only that
 grading_pending / grading_failed (409) and is graded deterministically once the fault is gone; a failure to record the
 failure still returns the call's answer. Lesson gate: no lessons / one of two / viewed-only refused, all completed starts;
 another course's or an older version's progress never counts; a withdrawn enrollment refused; 20 simultaneous starts with
-a lesson unfinished create nothing, then exactly one. Accommodation: learner, unknown staff, no reason, out of range and
-anon refused; the owner cannot write it by hand; +15 gives the next attempt 60 minutes and leaves a running attempt alone;
+a lesson unfinished create nothing, then exactly one. Accommodation: learner, Training Manager, active admin, active owner, inactive President, forged actors, a President
+demoted a moment ago, unknown staff, no reason, out of range, anon and authenticated refused (API: no / junk token 401,
+admin and owner 403, learner / Training Manager sessions 401, spoofed actor or role ignored); the owner cannot write it by hand; +15 gives the next attempt 60 minutes and leaves a running attempt alone;
 audited with the President's name and reason; 0 removes it. Cross-dealership: a learner at another dealership gets 404 /
 403 on every exam action.
 
@@ -84,7 +85,6 @@ audited with the President's name and reason; 0 removes it. Cross-dealership: a 
 - 45-minute hard time limit for 25 randomized questions, 80% to pass — kept (the earlier "no time limit" comment
   6252939569 is superseded).
 - Every lesson of the enrolled version completed first, enforced in the database — built.
-- Reasonable accommodation as an audited, administrator-controlled per-enrollment extension set before an attempt — built
-  with these proposed details, each Angelo's to change: President-only in the Command Center (the database accepts any
-  active HCPS administrator); 0–240 extra minutes; reason required; future attempts only (never extends a running attempt);
-  no learner or Training Manager request flow.
+- Reasonable accommodation as an audited per-enrollment extension set before an attempt — **President only** in the
+  database and the API (comment 6253802978); 0–240 extra minutes; reason required; future attempts only (never extends a
+  running attempt); no learner or Training Manager request flow.

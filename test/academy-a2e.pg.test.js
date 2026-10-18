@@ -50,9 +50,9 @@ run(DB, `select academy_author_op_set_blocks(${PRES}, '${L1}', ${J([{ kind: 'tex
 run(DB, `select academy_content_op_move_version(${PRES}, '${V}', 'in_review')`); run(DB, `select academy_publish_op_publish_version(${PRES}, '${V}', null)`);
 
 const mails = [], jobs = [], pendingJobs = [], outcomes = []; let providerDelay = 0, providerFails = false, workerDown = false;
-const S = shim({ db: DB, psql: PSQL, tokens: { pres: 'admin@test.example', adm: 'admin2@test.example', buyer: { id: DUID, email: 'buyer@hqmed.example' } },
+const S = shim({ db: DB, psql: PSQL, tokens: { pres: 'admin@test.example', adm: 'admin2@test.example', own: 'owner@test.example', oldp: 'oldpres@test.example', buyer: { id: DUID, email: 'buyer@hqmed.example' } },
   passthrough: async (url, o) => { if (String(url) === 'https://api.resend.com/emails') { if (providerDelay) await new Promise(r => setTimeout(r, providerDelay)); if (providerFails) return new Response('{}', { status: 500 }); mails.push(JSON.parse(o.body)); return new Response('{"id":"x"}', { status: 200 }); } if (String(url).endsWith('/.netlify/functions/academy-mail-background')) { jobs.push(o.body); if (workerDown) return new Response('', { status: 503 }); pendingJobs.push(require('../netlify/functions/academy-mail-background.js')._run({ httpMethod: 'POST', body: o.body }).then(x => { outcomes.push(x); return x; })); return new Response(null, { status: 202 }); } return new Response('{}', { status: 599 }); } });
-run(DB, "insert into staff_users (email, name, role, active) values ('admin2@test.example', 'Second Admin', 'admin', true)");
+run(DB, "insert into staff_users (email, name, role, active) values ('admin2@test.example', 'Second Admin', 'admin', true), ('owner@test.example', 'Owner', 'owner', true), ('oldpres@test.example', 'Former President', 'president', false)");
 process.env.SUPABASE_URL = BASE; process.env.SUPABASE_SERVICE_ROLE = 'svc-test-key';
 process.env.ACADEMY_SESSION_SECRET = 'test-secret-0123456789-abcdefghijklmnopqrstuvwxyz-0123';
 process.env.RESEND_API_KEY = 're_test'; process.env.ACADEMY_SIGNIN_FLOOR_MS = process.env.ACADEMY_SIGNIN_FLOOR_MS || '40'; process.env.ACADEMY_MAIL_FROM = 'HCPS Academy <academy@test.example>';
@@ -189,6 +189,24 @@ async function signIn(addr, ip) {
       const st = await learner({ action: 'exam_status', enrollment_id: ENR }, LC);
       assert.strictEqual(st.body.policy.extra_minutes, 15); assert.strictEqual(st.body.policy.your_time_limit_minutes, 60);
       assert.strictEqual((await learner({ action: 'exam_accommodation', enrollment_id: ENR, extra_minutes: 30, reason: 'please' }, LC)).status, 404, 'no such learner action');
+    });
+    await t('Accommodation API is President-only on the server: no/junk token 401, admin/owner 403, inactive President refused, a learner or Training Manager session refused, spoofed actor/role ignored, unknown enrollment refused', async () => {
+      const body = { action: 'exam_accommodation', enrollment_id: ENR, extra_minutes: 30, reason: 'Approved accommodation request' };
+      const noTok = await call(ADMIN.handler, body, { headers: { 'x-academy-request': undefined } }); assert.strictEqual(noTok.status, 401);
+      assert.strictEqual((await admin('junk-token', body)).status, 401);
+      assert.strictEqual((await admin('adm', Object.assign({ role: 'president', p_actor: 'staff:admin@test.example', actor: 'staff:admin@test.example' }, body))).status, 403, 'an admin claiming the President role');
+      assert.strictEqual((await admin('own', body)).status, 403, 'an owner');
+      assert.notStrictEqual((await admin('oldp', body)).status, 200, 'an inactive President');
+      assert.strictEqual((await call(ADMIN.handler, body, { cookie: LC, headers: { 'x-academy-request': undefined } })).status, 401, 'a learner session is not a staff sign-in');
+      assert.strictEqual((await call(ADMIN.handler, body, { cookie: TMC, headers: { 'x-academy-request': undefined } })).status, 401, 'nor is a Training Manager session');
+      assert.notStrictEqual((await admin('pres', Object.assign({}, body, { enrollment_id: '00000000-0000-0000-0000-00000000beef' }))).status, 200, 'unknown enrollment');
+      assert.strictEqual(one(`select exam_extra_minutes from academy_enrollments where id = '${ENR}'`).exam_extra_minutes, 15, 'nothing changed by any refused call');
+      const ok = await admin('pres', Object.assign({ p_actor: 'staff:admin2@test.example', actor: 'staff:admin2@test.example', role: 'admin' }, body));
+      assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+      const ev = one(`select actor, after from academy_events where action = 'exam_accommodation' and entity_id = '${ENR}' order by id desc limit 1`);
+      assert.strictEqual(ev.actor, 'staff:admin@test.example', 'the actor comes from the sign-in, never the request'); assert.strictEqual(ev.after.extra_minutes, 30);
+      assert.strictEqual((await admin('pres', Object.assign({}, body, { extra_minutes: 0, reason: 'Accommodation ended' }))).status, 200, 'revoked');
+      assert.strictEqual(one(`select count(*)::int as n from academy_events where action = 'exam_accommodation' and entity_id = '${ENR}'`).n, 3);
     });
     await t('Cross-dealership isolation: a learner at another dealership cannot read, start or open this learner\'s exam', async () => {
       await admin('pres', { action: 'invite_learner', dealer_id: OTHER, email: 'kim@other.example', role: 'learner' });

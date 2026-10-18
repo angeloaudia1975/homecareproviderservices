@@ -3083,9 +3083,9 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     never count; no lessons = no exam); 60-minute cooldown, 3 starts per Chicago day per enrollment, one open attempt per
     learner, unlimited retakes; autosave + resume of the SAME attempt without resetting its deadline; grading at the
     deadline from answers saved in time. **Reasonable accommodation:** extra minutes per enrollment only through
-    `academy_exam_op_accommodate` (active HCPS administrator + reason, audited, 0–240, future attempts only; guard
-    `academy_exam_enrollment_guard` refuses any other write); the Command Center offers it to the President only.
-    Proposed details (who may grant, cap, no request flow) are Angelo's to change.
+    `academy_exam_op_accommodate` (**the active HCPS President only** — owner decision, PR #22 comment 6253802978 —
+    enforced in the database from staff_users at the moment of the change AND in the API; reason, audited, 0–240, future
+    attempts only; guard `academy_exam_enrollment_guard` refuses any other write); Command Center → Learners → Exam time.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
