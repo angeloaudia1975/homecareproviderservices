@@ -1,10 +1,10 @@
 -- =============================================================================================
 -- HCPS Academy — A2B M5 POST-MIGRATION CHECK (READ-ONLY)    supabase/academy_a2b_m5_postcheck.sql
 -- Changes nothing. Run before the migration (as a preflight: m5_functions 0) and right after it. Expected after:
---   m5_code_fingerprint  9f3f3e513d9193f7a900bf48259e7a7e when installed with the file's own (Unix) line endings, or
---                        be531f1040f384b011364ac483144b6d when pasted into the SQL editor from Windows (every line ending \r\n)
+--   m5_code_fingerprint  8ab570555eef51cd5220112e13655df3 when installed with the file's own (Unix) line endings, or
+--                        cec33a5ea861887b077d78b0f545b50c when pasted into the SQL editor from Windows (every line ending \r\n)
 --   m1 / m2 / m3 / m3_1 / m4 code fingerprints unchanged from the preflight
---   m5_functions 21 · m5_server_callable 14 · m5_public_callable 0 · new tables RLS on, 0 policies
+--   m5_functions 22 · m5_server_callable 15 · m5_public_callable 0 · new tables RLS on, 0 policies
 --   learner_rows all 0 · academy_switches exactly as in the preflight (only academy_admin on; the six learner switches off)
 -- Any other value = stop and investigate (never roll back on suspicion).
 -- =============================================================================================

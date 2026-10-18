@@ -277,6 +277,9 @@ async function signIn(addr, ip) {
       await learner({ action: 'request_code', email: 'tm@hqmed.example' }, null, { ip: '198.51.100.71' });
       const good = jobs[0]; assert.strictEqual(mails.length, 1); const code = lastCode('tm@hqmed.example');
       mails.length = 0;
+      const dup = await Promise.all(Array.from({ length: 5 }, () => W._run({ httpMethod: 'POST', body: good })));
+      assert.deepStrictEqual(dup, ['stale', 'stale', 'stale', 'stale', 'stale'], 'a duplicate / retried / parallel job never sends the code again');
+      assert.strictEqual(mails.length, 0);
       const flip = good.slice(0, 40) + (good[40] === 'A' ? 'B' : 'A') + good.slice(41);
       assert.strictEqual(await W._run({ httpMethod: 'POST', body: flip }), 'rejected');
       assert.strictEqual(await W._run({ httpMethod: 'GET', body: good }), 'method');

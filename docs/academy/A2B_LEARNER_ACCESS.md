@@ -29,16 +29,19 @@ Switches: `academy_learner` (whole learner API), `academy_invites` (invitations,
 - `supabase/academy_a2b_m5_learner_access.sql` — migration (preconditions: M1, M2, M4 installed; `dealer_users`,
   `dealers.is_test` present; M5 absent; no learner records). Ends with 8 install checks.
 - `supabase/academy_a2b_m5_learner_access_rollback.sql` — refused while any learner-side row exists.
-- `supabase/academy_a2b_m5_postcheck.sql` — read-only; run before (as preflight) and after.
+- `supabase/academy_a2b_m5_preflight.sql` — read-only; `ready_for_m5` must be true before; outside-the-Academy and M1–M4 fingerprints must be identical after (sha256 `3c3cd8f7cdda94ca086e2c1725483c20952fc4547ab79c723d420835959c1f19`).
+- `supabase/academy_a2b_m5_postcheck.sql` — read-only; M5 fingerprint, rights, new tables, learner rows 0, switches.
+- `scripts/academy_m5_public_probe_browser.js` — public key only; 22 functions + 8 direct table checks = 30, all BLOCKED.
+- `docs/academy/ip-verify/` — activation gate 1: proves on Netlify's real edge that a visitor cannot set `x-nf-client-connection-ip` (throwaway deploy preview, never merged).
 
 | File | sha256 |
 |---|---|
-| migration (as committed, LF) | `de1c95e85f7af43e1a284e1d536f2f9af514fe731acbd936a58c2520c53be55b` |
-| migration pasted with Windows line endings | `26855ee229cd7d7619480dddbe7263dcc2b10209d37de1418a9881334098e919` |
+| migration (as committed, LF) | `71ce248b91df443577f492a445ad8694b69d5533ab75357acb41e851ff5fa9ae` |
+| migration pasted with Windows line endings | `5a881d18e3bea70ef2c1f6b3cfbcb1563d7df7af3999397b7143c1029e8d1b67` |
 | rollback | `47e070c8e00d7fcf271c5ee5745441a13b4089d5cdf9eac78f4671a96afb28e1` |
 
-Installed-code fingerprint (postcheck `m5_code_fingerprint`): `9f3f3e513d9193f7a900bf48259e7a7e` (Unix) /
-`be531f1040f384b011364ac483144b6d` (Windows paste) — both reproduced on PG16; M1–M4 fingerprints unchanged by M5.
+Installed-code fingerprint (postcheck `m5_code_fingerprint`): `8ab570555eef51cd5220112e13655df3` (Unix) /
+`cec33a5ea861887b077d78b0f545b50c` (Windows paste) — both reproduced on PG16; M1–M4 fingerprints unchanged by M5.
 
 Restoring access (`reactivate`) brings back the learner's courses and progress at that same dealership; after a move to
 another dealership, enrolling again re-attaches the SAME enrollment (`re_attach`, audited) — never a second one. Moving
@@ -54,9 +57,10 @@ so no Training Manager can pull another dealership's training history into their
 | S3 quota race | request_code and verify_code take a network-address lock, then the address lock (fixed order) | m5.pg "S3 simultaneous" (15 at once → exactly 10 codes; 40 guesses → ≤ 25 tries) |
 | Delivery failure | The worker sends only a live code; if the email (or the hand-off to the worker) fails, `academy_access_op_code_undelivered` burns the code and it stops counting, so asking again works | a2b.pg "S1 delivery failure", m5.pg "Undelivered codes" |
 | Cross-dealership history | Re-attaching training from another dealership family = HCPS only | m5.pg "Cross-dealership training history" |
+| Duplicate email (re-review gate 2) | The worker atomically claims a code's single email (`academy_access_op_code_claim_mail`, row lock, `mailed_at`) before sending; only a live code for a known address can be claimed, once | m5.pg "Single delivery" (10 simultaneous claims → 1), a2b.pg worker test (5 parallel duplicates → 0 extra emails) |
 
 The worker accepts only an envelope sealed with the Academy secret and at most 2 minutes old, re-checks the code row
-(not used, burned, expired or undelivered, same address) before sending, and never throws (Netlify retries a failed
+(by claiming its single email atomically: not used, burned, expired, undelivered or already mailed) before sending, and never throws (Netlify retries a failed
 background run).
 
 ## Production procedure (NOT authorized yet)
@@ -64,9 +68,9 @@ background run).
 1. Read-only preflight (`academy_a2b_m5_postcheck.sql` before: `m5_functions` 0; record M1–M4 fingerprints, switches,
    rows).
 2. Angelo checks the sha256 in the editor and runs the migration himself; all 8 install checks `ok = true`.
-3. Postcheck: M5 fingerprint = the precomputed Unix or Windows-paste value; M1–M4 fingerprints unchanged; 21 / 14 / 0;
+3. Postcheck: M5 fingerprint = the precomputed Unix or Windows-paste value; M1–M4 fingerprints unchanged; 22 / 15 / 0;
    learner rows 0; switches unchanged.
-4. Public-key probe of the two new tables and the 21 functions — all BLOCKED.
+4. Public-key probe of the two new tables and the 22 functions — all 30 checks BLOCKED.
 5. Only then merge + deploy (deploying the code without M5 leaves the learner API off: it is switch-gated and the
    operations answer 503).
 6. Switches, the sender address and the pilot each need their own approval.

@@ -180,6 +180,21 @@ try {
     assert.strictEqual(tryRun(DB, `set role anon; select academy_access_op_code_undelivered('${ids[0]}', '${H('x')}')`).ok, false);
     run(DB, `delete from academy_login_codes where email = 'learner@test.example'`);
   });
+  await t('Single delivery: a code\'s one email is claimed atomically — 10 simultaneous claims give exactly one; a wrong hash, an unknown address\'s code, an expired or used code can never be claimed', async () => {
+    run(DB, `delete from academy_login_codes where email in ('learner@test.example', 'stranger@example.com')`);
+    const id = req(DB, 'learner@test.example', '515151', 'ipS').code_id, h = H('learner@test.example515151');
+    const rs = await Promise.all(Array.from({ length: 10 }, () => bg(DB, `begin; select academy_access_op_code_claim_mail('${id}', '${h}'); select pg_sleep(0.1); commit;`)));
+    assert.strictEqual(rs.filter(r => r.ok && json(r.out).ok).length, 1, rs.map(r => r.out || r.err).join('\n'));
+    assert.strictEqual(json(run(DB, `select academy_access_op_code_claim_mail('${id}', '${h}')`)).ok, false, 'and never again');
+    const id2 = req(DB, 'learner@test.example', '525252', 'ipS').code_id;
+    assert.strictEqual(json(run(DB, `select academy_access_op_code_claim_mail('${id2}', '${H('nope')}')`)).ok, false, 'wrong hash');
+    const sid = req(DB, 'stranger@example.com', '535353', 'ipS').code_id;
+    assert.strictEqual(json(run(DB, `select academy_access_op_code_claim_mail('${sid}', '${H('stranger@example.com535353')}')`)).ok, false, 'an unknown address is never mailed');
+    assert.strictEqual(ver(DB, 'learner@test.example', '525252', 'ipS').ok, true);
+    assert.strictEqual(json(run(DB, `select academy_access_op_code_claim_mail('${id2}', '${H('learner@test.example525252')}')`)).ok, false, 'a used code is never mailed');
+    assert.strictEqual(tryRun(DB, `set role anon; select academy_access_op_code_claim_mail('${id2}', '${H('x')}')`).ok, false);
+    run(DB, `delete from academy_login_codes where email in ('learner@test.example', 'stranger@example.com')`);
+  });
   await t('HCPS staff are never learners: no invite, no code, no handoff (D6)', () => {
     assert.strictEqual(tryRun(DB, `select academy_access_op_invite(${PRES}, '${HQ}', 'rep@test.example', 'Rep', 'learner')`).ok, false);
     assert.strictEqual(req(DB, 'admin@test.example', '121212').send, false);

@@ -70,6 +70,7 @@ create table public.academy_login_codes (
   used_at     timestamptz,
   burned_at   timestamptz,
   undelivered boolean not null default false,   -- the email could not be sent: the code is burned and not counted
+  mailed_at   timestamptz,                      -- the mail worker claimed this code's ONE email (never sent twice)
   check (not undelivered or burned_at is not null),
   check (expires_at > created_at and expires_at <= created_at + interval '10 minutes'),
   check (not (used_at is not null and burned_at is not null))
@@ -240,6 +241,23 @@ begin
     null, jsonb_build_object('email', v_c.email));
   perform academy_op_end();
   return jsonb_build_object('ok', true);
+end $$;
+
+-- The mail worker claims a code's single email before sending it. The claim is atomic (row lock): a duplicate, retried
+-- or replayed job for the same code gets nothing, so the same code is never emailed twice. Only a live code (not used,
+-- burned, expired or undelivered) can be claimed. Needs the code's id AND its hash; returns the address to send to.
+create function public.academy_access_op_code_claim_mail(p_code_id uuid, p_code_hash text)
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
+declare v_c academy_login_codes;
+begin
+  if p_code_hash !~ '^[0-9a-f]{64}$' then raise exception 'academy: malformed request' using errcode = '22023'; end if;
+  select * into v_c from academy_login_codes where id = p_code_id and code_hash = p_code_hash for update;
+  if not found or v_c.mailed_at is not null or v_c.used_at is not null or v_c.burned_at is not null or v_c.undelivered
+     or v_c.expires_at <= now() or not v_c.eligible then
+    return jsonb_build_object('ok', false);
+  end if;
+  update academy_login_codes set mailed_at = now() where id = p_code_id;
+  return jsonb_build_object('ok', true, 'email', v_c.email);
 end $$;
 
 -- Checks a code. A wrong code counts a try (the 5th wrong try burns it); the right code is used once, accepts the
@@ -704,15 +722,15 @@ end $$;
 -- ---------------------------------------------------------------------------------------------
 -- INSTALL CHECKS (each must read ok = true)
 -- ---------------------------------------------------------------------------------------------
-select 'M5 functions' as check, count(*) = 21 as ok from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+select 'M5 functions' as check, count(*) = 22 as ok from pg_proc p join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public' and (p.proname like 'academy_access_%' or p.proname like 'academy_enroll_op_%' or p.proname like 'academy_progress_op_%')
 union all
 select 'operations are security definer with a pinned path', bool_and(p.prosecdef and p.proconfig::text like '%search_path=pg_catalog, public, pg_temp%')
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public' and p.proname like '%\_op\_%' and (p.proname like 'academy_access_%' or p.proname like 'academy_enroll_%' or p.proname like 'academy_progress_%')
 union all
-select 'server calls the 14 operations and nothing else of M5',
-       count(*) filter (where has_function_privilege('service_role', p.oid, 'execute')) = 14
+select 'server calls the 15 operations and nothing else of M5',
+       count(*) filter (where has_function_privilege('service_role', p.oid, 'execute')) = 15
    and count(*) filter (where p.proname not like '%\_op\_%' and has_function_privilege('service_role', p.oid, 'execute')) = 0
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public' and (p.proname like 'academy_access_%' or p.proname like 'academy_enroll_%' or p.proname like 'academy_progress_%')
