@@ -71,6 +71,11 @@ begin
   select * into v_e from academy_enrollments where id = v_a.enrollment_id;
   perform academy_op_actor_learner(p_actor, v_e.learner_id);
   perform pg_advisory_xact_lock(hashtext('academy-cert:' || v_e.id::text));
+  -- access first (review of PR #23, 18 Oct 2026): a claim — even one that only returns an existing certificate — needs a
+  -- current enrollment and active access. A former employee's certificate stays on record and publicly verifiable.
+  if v_e.status = 'withdrawn' then raise exception 'academy: the enrollment was withdrawn' using errcode = '22023'; end if;
+  select * into v_m from academy_memberships where id = v_e.membership_id and status = 'active';
+  if not found then raise exception 'academy: your access for this course has ended' using errcode = '42501'; end if;
   select * into v_c from academy_certificates where enrollment_id = v_e.id;
   if found then return jsonb_build_object('ok', true, 'existing', true, 'certificate', academy_cert_view(v_c)); end if;
   if (select value->'academy_certificates' from app_settings where key = 'phase2_flags') is distinct from 'true'::jsonb then
@@ -79,9 +84,6 @@ begin
   if v_a.submitted_at is null or v_a.passed is not true then
     return jsonb_build_object('ok', false, 'reason', 'not_passed');
   end if;
-  if v_e.status = 'withdrawn' then raise exception 'academy: the enrollment was withdrawn' using errcode = '22023'; end if;
-  select * into v_m from academy_memberships where id = v_e.membership_id and status = 'active';
-  if not found then raise exception 'academy: your access for this course has ended' using errcode = '42501'; end if;
   select d.business_name into v_dealer from dealers d where d.id = v_m.dealer_id;
   v_new := academy_op_issue_certificate('system:grader', v_a.id, v_dealer);
   select * into v_c from academy_certificates where id = (v_new->>'id')::uuid;

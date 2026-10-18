@@ -9,7 +9,7 @@ production. Issuance stays OFF (`academy_certificates` false) until the owner au
 |---|---|
 | Issuer | Home Care Provider Services (HCPS). Every certificate, learner screen, Training Manager line, Command Center card and the public verification page says it is **not issued or endorsed by Golden Technologies**. |
 | Earning it | A passing final exam (M6: 25 questions, 45 min, 80%). The learner's own passed attempt is claimed through `academy_cert_op_claim`; when issuance is on, a pass claims it automatically in `exam_submit`. A failure to issue never fails the graded exam (the result carries `certificate_pending`; the learner or a retry claims it later). |
-| Who | Only `learner:<id>` of the attempt's own learner, active, non-staff, enrollment not withdrawn, membership still active. |
+| Who | Only `learner:<id>` of the attempt's own learner, active, non-staff, enrollment not withdrawn, membership still active — checked BEFORE an existing certificate is returned (review of PR #23): a former employee cannot use claim at all; their certificate stays on record and publicly verifiable. |
 | Dealership | Read in the database from the learner's membership (`dealers.business_name`), never from a caller. |
 | Validity | 12 months (M1: version `validity_months` → `academy.hcps_cert_validity_months` → 12). Shown as *expired* after `expires_at`; "expiring soon" = 60 days or fewer. |
 | One per enrollment | M1's unique `enrollment_id`. A repeat claim returns the same certificate (idempotent; advisory lock per enrollment). |
@@ -37,15 +37,15 @@ UPDATE / DELETE / TRUNCATE on `academy_certificates` (keeps SELECT). M1's code i
 
 | File | sha256 |
 |---|---|
-| `supabase/academy_a2f_m7_certificates.sql` (11,492 bytes, LF) | `1ac6883070aaace7ade250da2dfaf3919d6421fa719f1f75853b68d071872219` |
-| same file pasted from Windows (CRLF) | `e8519483448e3bb6ca132daa398735b03bd18ee2d39318506aee739cb944904a` |
+| `supabase/academy_a2f_m7_certificates.sql` (11,734 bytes, LF) | `65d2407f520650c231d4a41e670d8af9b6a4ef6308bfc38fb83dc81dffbe86f2` |
+| same file pasted from Windows (CRLF) | `1c92627b35a3645ce6eb5d693ef73c37d3ac7f0abfd3c0f204c087b137b2022c` |
 | `supabase/academy_a2f_m7_certificates_rollback.sql` | `0b814587e0779bf635e4687280780c4551915fb39fc896ff0cc461f5d22a148d` |
 | `supabase/academy_a2f_m7_preflight.sql` (read only) | `af5c14c9ff7b9d27163c874b6038ebf595e94dbc7738313f590683bf6793f2c2` |
 | `supabase/academy_a2f_m7_postcheck.sql` (read only) | `785d6815d2b7658f0b90b174ee3c67a214d91f877dd010365869c93d70e6cc1e` |
 | `scripts/academy_m7_public_probe_browser.js` (9 checks) | `d760b3a8145888bb5d014612a9668d1bc8e5e372c7b8a62b7d78f74b06771e36` |
 
-Installed-code fingerprint (`m7_code_fingerprint` in the postcheck): **`f216169489d9cf3f9c6b3980e15f7a47`** (Unix) /
-**`ccf86058023056f3ad429aad480b7c39`** (pasted from Windows), both reproduced locally on A1 + M1–M6.
+Installed-code fingerprint (`m7_code_fingerprint` in the postcheck): **`42dc5429ffec3596a9cc9eb41b10e34b`** (Unix) /
+**`876afa9f062d7eacde1bd8a4722b0d38`** (pasted from Windows), both reproduced locally on A1 + M1–M6.
 
 ## Production order (each step needs the owner; nothing here is authorized yet)
 
@@ -75,7 +75,7 @@ year; nothing expires before October 2027.
 
 | Suite | Count |
 |---|---|
-| `test/academy-m7.pg.test.js` (PG16 + PG17.6) | 16 |
+| `test/academy-m7.pg.test.js` (PG16 + PG17.6) | 18 |
 | `test/academy-a2f.pg.test.js` (real handlers, real database rules) | 11 |
 | `test/academy-a2f.browser.js` (360 / 390 / 768 / 1280, print, axe, strict CSP) | 4 |
-| `test/academy-a2f.mutants.js` | 31/31 killed (clean control; one equivalent mutant documented) |
+| `test/academy-a2f.mutants.js` | 32/32 killed (clean control; one equivalent mutant documented) |

@@ -208,6 +208,21 @@ try {
     assert.strictEqual(r.ok, false); assert.match(r.err, /access for this course has ended|not active/);
     assert.strictEqual(count(DB, 'academy_certificates', `learner_id = '${L5}'`), 0);
   });
+  await t('Ended access first: a former employee cannot claim, not even to re-read an existing certificate; it stays publicly verifiable', () => {
+    const L6 = learnerAt(DB, HQ, 'six@test.example', '666666'); const E6 = enroll(DB, L6, V.v); const a6 = passAttempt(DB, L6, E6, V);
+    const c6 = claim(DB, L6, a6).certificate;
+    const m = run(DB, `select id from academy_memberships where learner_id = '${L6}'`);
+    run(DB, `select academy_access_op_deactivate(${PRES}, '${m}', 'Left the dealership')`);
+    const r = tryRun(DB, `select academy_cert_op_claim('learner:${L6}', '${a6}')`);
+    assert.strictEqual(r.ok, false); assert.match(r.err, /access for this course has ended|not active/);
+    assert.strictEqual(verify(DB, c6.cert_number).status, 'valid', 'the record and its public verification are unchanged');
+  });
+  await t('Withdrawn enrollment first: an existing certificate is not returned through claim once the enrollment is withdrawn', () => {
+    const L7 = learnerAt(DB, HQ, 'seven@test.example', '777777'); const E7 = enroll(DB, L7, V.v); const a7 = passAttempt(DB, L7, E7, V);
+    claim(DB, L7, a7);
+    run(DB, `begin; set local session_replication_role = replica; update academy_enrollments set status = 'withdrawn', completed_at = null where id = '${E7}'; commit;`);
+    assert.match(tryRun(DB, `select academy_cert_op_claim('learner:${L7}', '${a7}')`).err, /withdrawn/);
+  });
   await t('Direct writes are still refused by M1\'s guard (owner without a marker)', () => {
     assert.match(tryRun(DB, `update academy_certificates set status = 'valid' where id = '${CERT.id}'`).err, /academy/i);
   });
