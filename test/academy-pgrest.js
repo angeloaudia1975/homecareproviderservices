@@ -49,6 +49,8 @@ function shim(opts) {
       if (k === 'offset') { offset = ' offset ' + Number(v); continue; }
       if (!IDENT.test(k)) return { status: 400, body: { code: 'PGRST100', message: 'bad filter' } };
       if (v.startsWith('eq.')) where.push(`${k}::text = ${lit(v.slice(3))}`);
+      else if (v.startsWith('neq.')) where.push(`${k}::text is distinct from ${lit(v.slice(4))}`);
+      else if (v.startsWith('ilike.')) where.push(`${k}::text ilike ${lit(v.slice(6).replace(/\*/g, '%'))}`);
       else if (v === 'is.null') where.push(`${k} is null`);
       else if (/^(gt|lt|gte|lte)\.-?\d+$/.test(v)) { const [op, n] = v.split('.'); where.push(`${k} ${{ gt: '>', lt: '<', gte: '>=', lte: '<=' }[op]} ${Number(n)}`); }
       else if (v.startsWith('in.(') && v.endsWith(')')) { const items = v.slice(4, -1).split(',').filter(x => x !== ''); where.push(items.length ? `${k}::text in (${items.map(lit).join(',')})` : 'false'); }
@@ -79,7 +81,8 @@ function shim(opts) {
     calls.push({ method, path: p });
     if (p.startsWith('/auth/v1/user')) {
       const tok = String(headers.authorization || '').replace(/^Bearer\s+/i, '');
-      const email = tokens[tok]; return email ? respond(200, { id: 'u-' + tok, email }) : respond(401, { msg: 'invalid token' });
+      const who = tokens[tok]; if (!who) return respond(401, { msg: 'invalid token' });
+      return typeof who === 'object' ? respond(200, { id: who.id, email: who.email }) : respond(200, { id: 'u-' + tok, email: who });
     }
     if (p.startsWith('/rest/v1/rpc/')) {
       const fn = p.slice('/rest/v1/rpc/'.length).split('?')[0];

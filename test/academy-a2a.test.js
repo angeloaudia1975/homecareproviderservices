@@ -12,6 +12,7 @@ const L_TM_HQ = '20000000-0000-4000-8000-000000000001', L_TM_BR = '20000000-0000
       L_CLOSED = '20000000-0000-4000-8000-000000000004', L_ENDED = '20000000-0000-4000-8000-000000000005', L_STAFF = '20000000-0000-4000-8000-000000000006',
       L_OTHER = '20000000-0000-4000-8000-000000000007';
 const U = n => '30000000-0000-4000-8000-00000000000' + n;
+const SID = n => '40000000-0000-4000-8000-00000000000' + n;
 const SECRET = 'test-secret-0123456789-abcdefghijklmnopqrstuvwxyz';
 const ORIGIN = 'https://homecareproviderservices.org';
 
@@ -52,6 +53,9 @@ function seed(extra) {
         { id: 'm7', learner_id: L_OTHER, dealer_id: OTHER, role: 'learner', access_type: 'training_only', status: 'active' },
       ],
       academy_events: [],
+      // A2B / M5: the cookie names a session row; every learner here has one open session
+      academy_sessions: [L_TM_HQ, L_TM_BR, L_PLAIN, L_CLOSED, L_ENDED, L_STAFF, L_OTHER].map((l, i) => (
+        { id: SID(i + 1), learner_id: l, via: 'code', expires_at: '2999-01-01T00:00:00Z', ended_at: null })),
     },
   };
   return Object.assign(s, extra || {});
@@ -66,11 +70,11 @@ const COOKIES = {};
 const cookieFor = (w, learnerId, authUid) => { const k = learnerId + '/' + authUid; return COOKIES[k] || (COOKIES[k] = S0.COOKIE + '=' + S0.issue(learnerId, authUid)); };
 const learnerOpts = (cookie, extra) => Object.assign({ headers: Object.assign({ cookie, origin: ORIGIN, 'x-academy-request': '1' }, (extra && extra.headers) || {}) },
                                                       extra && extra.method ? { method: extra.method } : {});
-const LUID = { [L_TM_HQ]: U(1), [L_TM_BR]: U(2), [L_PLAIN]: U(3), [L_CLOSED]: U(4), [L_ENDED]: U(5), [L_STAFF]: U(6), [L_OTHER]: U(7) };
+const LUID = { [L_TM_HQ]: SID(1), [L_TM_BR]: SID(2), [L_PLAIN]: SID(3), [L_CLOSED]: SID(4), [L_ENDED]: SID(5), [L_STAFF]: SID(6), [L_OTHER]: SID(7) };
 const w0 = null;
 const as = id => cookieFor(w0, id, LUID[id]);
 for (const id of Object.keys(LUID)) as(id);
-cookieFor(null, L_PLAIN, U(9));
+cookieFor(null, L_PLAIN, SID(1));   // a session row that belongs to someone else
 
 (async () => {
   // ---------- 1. sign-in refusals ----------
@@ -88,10 +92,10 @@ cookieFor(null, L_PLAIN, U(9));
   });
   await t('tampered, expired, wrong-secret and malformed session cookies are refused', async () => {
     const w = world(); const S = mod(w, '_academy_session.js'); const m = mod(w, 'academy-api.js');
-    const good = S.issue(L_PLAIN, U(3)); const [p, s] = good.split('.');
-    const tampered = Buffer.from(JSON.stringify({ v: 1, sub: L_TM_HQ, uid: U(1), iat: 1, exp: 9999999999 })).toString('base64url') + '.' + s;
-    const expired = S.issue(L_PLAIN, U(3), Date.now() - 9 * 3600 * 1000);
-    const otherSecret = mod(w, '_academy_session.js', { ACADEMY_SESSION_SECRET: 'another-secret-0123456789-abcdefghijklmnop' }).issue(L_PLAIN, U(3));
+    const good = S.issue(L_PLAIN, SID(3)); const [p, s] = good.split('.');
+    const tampered = Buffer.from(JSON.stringify({ v: 2, sub: L_TM_HQ, sid: SID(1), iat: 1, exp: 9999999999 })).toString('base64url') + '.' + s;
+    const expired = S.issue(L_PLAIN, SID(3), Date.now() - 9 * 3600 * 1000);
+    const otherSecret = mod(w, '_academy_session.js', { ACADEMY_SESSION_SECRET: 'another-secret-0123456789-abcdefghijklmnop' }).issue(L_PLAIN, SID(3));
     const m2 = mod(w, 'academy-api.js');
     for (const v of [tampered, expired, otherSecret, 'garbage', p + '.', '.' + s, good + '.x'])
       assert.strictEqual((await call(m2, { action: 'me' }, learnerOpts(S.COOKIE + '=' + v))).status, 401, v.slice(0, 20));
@@ -146,15 +150,18 @@ cookieFor(null, L_PLAIN, U(9));
     assert.strictEqual((await call(mod(w, 'academy-api.js'), { action: 'me' }, learnerOpts(as(L_CLOSED)))).status, 401);
     assert.strictEqual((await call(mod(w, 'academy-api.js'), { action: 'me' }, learnerOpts(as(L_STAFF)))).status, 401);
   });
-  await t('a session issued for one login cannot be used once the learner record points at another login', async () => {
-    const w = world(); const c = cookieFor(w, L_PLAIN, U(9));
+  await t('A2B: a cookie naming another learner\'s session row is refused; so is an ended or expired session row', async () => {
+    const w = world(); const c = cookieFor(w, L_PLAIN, SID(1));
     assert.strictEqual((await call(mod(w, 'academy-api.js'), { action: 'me' }, learnerOpts(c))).status, 401);
+    const w2 = world(); w2.db.academy_sessions.find(x => x.id === SID(3)).ended_at = '2026-01-01T00:00:00Z';
+    assert.strictEqual((await call(mod(w2, 'academy-api.js'), { action: 'me' }, learnerOpts(as(L_PLAIN)))).status, 401, 'ended');
+    const w3 = world(); w3.db.academy_sessions.find(x => x.id === SID(3)).expires_at = '2020-01-01T00:00:00Z';
+    assert.strictEqual((await call(mod(w3, 'academy-api.js'), { action: 'me' }, learnerOpts(as(L_PLAIN)))).status, 401, 'expired');
   });
-  await t('an ended membership gives no dealership: the learner sees no memberships and manages nobody', async () => {
+  await t('an ended membership gives no dealership (A2B: no active membership = no session at all)', async () => {
     const w = world(); const r = await call(mod(w, 'academy-api.js'), { action: 'me' }, learnerOpts(as(L_ENDED)));
-    assert.strictEqual(r.status, 200); assert.deepStrictEqual(r.body.memberships, []);
-    const A = mod(w, '_academy.js'); const actor = await A.learnerActor({ headers: { cookie: as(L_ENDED) } });
-    assert.strictEqual((await A.dealerScope(actor)).ids.size, 0);
+    assert.strictEqual(r.status, 401);
+    const A = mod(w, '_academy.js'); assert.strictEqual(await A.learnerActor({ headers: { cookie: as(L_ENDED) } }), null);
   });
 
   // ---------- 5. dealer and branch isolation ----------
@@ -279,9 +286,9 @@ cookieFor(null, L_PLAIN, U(9));
     const w = world(); const S = mod(w, '_academy_session.js'); const c = S.setCookie('v');
     assert.ok(c.startsWith('__Host-hcps_academy=v; Path=/;')); for (const f of ['HttpOnly', 'Secure', 'SameSite=Strict', 'Max-Age=28800']) assert.ok(c.includes(f), f);
     assert.ok(!/Domain=/i.test(c)); assert.ok(S.clearCookie().includes('Max-Age=0'));
-    const v = S.issue(L_PLAIN, U(3)); const claims = S.verify(v);
-    assert.strictEqual(claims.learner_id, L_PLAIN); assert.strictEqual(claims.exp - claims.iat, 28800);
-    assert.notStrictEqual(S.issue(L_PLAIN, U(3)), v, 'each session value is unique');
+    const v = S.issue(L_PLAIN, SID(3)); const claims = S.verify(v);
+    assert.strictEqual(claims.learner_id, L_PLAIN); assert.strictEqual(claims.session_id, SID(3)); assert.strictEqual(claims.exp - claims.iat, 28800);
+    assert.notStrictEqual(S.issue(L_PLAIN, SID(3)), v, 'each session value is unique');
   });
 
   // ---------- 10. audited operations ----------

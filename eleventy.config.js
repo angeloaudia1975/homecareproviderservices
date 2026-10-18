@@ -5,6 +5,9 @@ module.exports = function (eleventyConfig) {
   // processed as a Nunjucks template (its JS contains braces Eleventy would choke on).
   eleventyConfig.addPassthroughCopy({ "src/admin": "admin" });
   eleventyConfig.ignores.add("src/admin/**");
+  // HCPS Academy learner pages (A2B): static files under the strict /academy/* security headers (netlify.toml).
+  eleventyConfig.addPassthroughCopy({ "src/academy": "academy" });
+  eleventyConfig.ignores.add("src/academy/**");
 
   // Convert a normal YouTube / Vimeo / Google Drive share link into an embeddable URL.
   // Pass-through if it's already an embed URL or unrecognized.

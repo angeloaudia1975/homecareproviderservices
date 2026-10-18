@@ -435,6 +435,52 @@ WRITE.set_training_manager = async (staff, b) => {
   return { ok: true, audited: true, membership: m };
 };
 
+/* ---------- A2B / M5: HCPS manages learners' access (one audited M5 operation each; actor = the signed-in staff) ----------
+   HCPS invites anyone for any dealership and is the only one who invites a Training Manager (decision F). Suspending a
+   learner or ending their last membership ends their sessions at once. Invitation emails go out only once the
+   Academy sender is configured (ACADEMY_MAIL_FROM, Angelo's approval). Not installed (M5 not run) = 503. */
+const MAIL = require('./_academy_mail.js');
+const accessText = (v, n, w) => (v == null || v === '' ? null : A.text(v, n, w));
+READ.find_dealers = async (staff, b) => {
+  const q = String(b.q || '').trim();
+  if (q.length < 2 || q.length > 80) A.refuse(400, 'invalid', 'Type at least 2 letters of the dealership name.');
+  const term = q.replace(/[%_*(),."\\]/g, ' ').trim();
+  const rows = await A.sbGet(`dealers?business_name=ilike.*${enc(term)}*&select=id,business_name,city,state,parent_id,is_test&order=business_name.asc&limit=25`);
+  return { ok: true, dealers: rows };
+};
+READ.list_invites = async () => {
+  const rows = await all(`academy_invites?status=eq.pending&select=id,dealer_id,email,full_name,role,expires_at,created_at,invited_by_staff,invited_by_learner`, 'created_at.desc');
+  const d = await byIds('dealers', rows.map(r => r.dealer_id), 'id,business_name,is_test');
+  const dn = Object.fromEntries(d.map(x => [String(x.id), x]));
+  return { ok: true, invites: rows.map(r => Object.assign({}, r, { dealer: (dn[String(r.dealer_id)] || {}).business_name || null, test_dealer: !!(dn[String(r.dealer_id)] || {}).is_test })) };
+};
+WRITE.invite_learner = async (staff, b) => {
+  if (!(await A.switchOn('academy_invites'))) A.refuse(403, 'flag_off', 'Invitations are switched off (academy_invites).');
+  const role = A.oneOf(b.role || 'learner', ['learner', 'training_manager'], 'Role');
+  const inv = await A.accessOp('access_op_invite', { p_actor: A.actorLabel(staff), p_dealer_id: A.uuid(b.dealer_id, 'dealership'),
+    p_email: String(b.email || ''), p_full_name: accessText(b.full_name, 200, 'Name'), p_role: role });
+  const d = one(await A.sbGet(`dealers?id=eq.${enc(inv.dealer_id)}&select=business_name`)) || {};
+  const sent = await MAIL.send(inv.email, MAIL.inviteMessage({ dealerName: d.business_name || 'your dealership', inviterName: 'HCPS' }));
+  return { ok: true, audited: true, invite: inv, email_sent: sent.sent, email_note: sent.sent ? null : 'The invitation is recorded; no email was sent (the Academy sender is not configured yet).' };
+};
+WRITE.revoke_invite = async (staff, b) => ({ ok: true, audited: true,
+  result: await A.accessOp('access_op_revoke_invite', { p_actor: A.actorLabel(staff), p_invite_id: A.uuid(b.id, 'invitation'), p_reason: A.text(b.reason, 500, 'Reason') }) });
+WRITE.end_membership = async (staff, b) => ({ ok: true, audited: true,
+  result: await A.accessOp('access_op_deactivate', { p_actor: A.actorLabel(staff), p_membership_id: A.uuid(b.membership_id, 'membership'), p_reason: A.text(b.reason, 500, 'Reason') }) });
+WRITE.restore_membership = async (staff, b) => ({ ok: true, audited: true,
+  result: await A.accessOp('access_op_reactivate', { p_actor: A.actorLabel(staff), p_learner_id: A.uuid(b.learner_id, 'learner'), p_dealer_id: A.uuid(b.dealer_id, 'dealership') }) });
+WRITE.set_learner_status = async (staff, b) => ({ ok: true, audited: true,
+  result: await A.accessOp('access_op_set_learner_status', { p_actor: A.actorLabel(staff), p_learner_id: A.uuid(b.learner_id, 'learner'),
+    p_status: A.oneOf(b.status, ['active', 'suspended'], 'Status'), p_reason: A.text(b.reason, 500, 'Reason') }) });
+WRITE.enroll_learner = async (staff, b) => {
+  const due = b.due_on == null || b.due_on === '' ? null : String(b.due_on);
+  if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) A.refuse(400, 'invalid', 'The due date is not valid.');
+  return { ok: true, audited: true, enrollment: await A.accessOp('enroll_op_enroll', { p_actor: A.actorLabel(staff),
+    p_learner_id: A.uuid(b.learner_id, 'learner'), p_version_id: A.uuid(b.version_id, 'course version'), p_due_on: due }) };
+};
+WRITE.withdraw_enrollment = async (staff, b) => ({ ok: true, audited: true,
+  result: await A.accessOp('enroll_op_withdraw', { p_actor: A.actorLabel(staff), p_enrollment_id: A.uuid(b.enrollment_id, 'enrollment'), p_reason: A.text(b.reason, 500, 'Reason') }) });
+
 /* ---------- product facts and their sources ---------- */
 const FACT_COLS = 'id,manufacturer_slug,model_code,field,value,unit,field_class,status,source_url,source_label,verified_on,verified_by,note,valid_from,valid_to,replaced_by,content_page_key';
 READ.list_facts = async (staff, b) => {

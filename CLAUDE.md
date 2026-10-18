@@ -3020,6 +3020,42 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   check course_status "consistent" and clean; Golden v1 still draft (6 blocking / 3 advice); switches unchanged (only
   academy_admin). Public-key probe (storefront key, verified first): all 8 BLOCKED (401 / 42501) — the 6 M4 functions and
   M1's publish / retire. Never rerun or roll back M4. Publishing the Golden course still needs Angelo's approval.
+- **A2B — learner accounts and access (authorized by Angelo 17 Oct 2026 16:10 CT for development: M5 + code, local DB and
+  browser tests, a GitHub PR for review; NOT authorized: running M5 in production, merging, learner switches, inviting
+  dealers, the pilot).** Runbook `docs/academy/A2B_LEARNER_ACCESS.md`. Rules (binding once installed):
+  - Learner-side tables (learners, memberships, invites, handoff codes, enrollments, progress, login codes, sessions) are
+    written ONLY by the 15 M5 operations `academy_access_op_*` / `academy_enroll_op_*` / `academy_progress_op_*`
+    (SECURITY DEFINER, pinned path, service_role only; the server role loses INSERT/UPDATE/DELETE on those tables), each
+    atomic with its audit row through M1's op_begin / op_audit / op_end. Server calls go through `_academy.js accessOp()`.
+  - Sign-in: Academy-only 6-digit email codes (10 min, 5 tries; 3 per address per 15 min, 10 a day; 10 per network address
+    per 15 min, 25 tries) — stored only as HMAC keyed with ACADEMY_SESSION_SECRET; the answer never tells a known address
+    from an unknown one — by words OR timing: every request hands one sealed fixed-size envelope to the background
+    function `academy-mail-background` (never waits for the email provider) and the answer is held to a 900 ms floor;
+    the rate-limit network address is ONLY Netlify's `x-nf-client-connection-ip` (never X-Forwarded-For; missing = one
+    shared bucket); request/verify lock the network address then the email (fixed order) so limits cannot be raced; a
+    code that could not be sent is burned and stops counting; the mail worker claims each code's ONE email atomically
+    (`academy_access_op_code_claim_mail`) so duplicate/retried/replayed jobs never send twice. Before `academy_learner`
+    goes on, prove on Netlify's real edge that a visitor cannot set `x-nf-client-connection-ip` (`docs/academy/ip-verify/`). HCPS staff addresses never get a code; no active
+    membership = no session. Cookie v2 names a row
+    in `academy_sessions`; `learnerActor` needs that row open and unexpired, an active non-staff learner and an active
+    membership. Sign-out, ending access and suspension close sessions at once.
+  - Partner 360 handoff: minted only from a PARTNER360 origin with the dealer's own bearer token, approved dealer user,
+    32-byte code, 60 s, single use, carried in the URL FRAGMENT `/academy/#handoff=…`; one email never belongs to two
+    Partner 360 logins. Needs `academy_learner` AND `academy_handoff`.
+  - Training Managers invite, end / restore access and enroll ONLY within their dealer + its direct branches, never appoint
+    Training Managers and never end another Training Manager; only HCPS staff appoint them. Invitations need
+    `academy_invites`. Training earned at ANOTHER dealership family is moved (re-attached) only by HCPS.
+  - Enrollment only into a PUBLISHED version; a TEST course only at a TEST dealer; completion is never undone; only the
+    learner saves their own progress. Lesson payloads for learners never carry answer keys, explanations or staff warnings;
+    practice checks refuse exam questions.
+  - Emails are sent only when RESEND_API_KEY and ACADEMY_MAIL_FROM are set (sender + wording = Angelo's decision; unset).
+  - Order when approved: preflight (`academy_a2b_m5_preflight.sql`) → Angelo runs M5 → postcheck (fingerprints in the PR)
+    → public-key probe → merge + deploy → switches each separately.
+  - **M5 RUN and ACCEPTED in production (Angelo, 18 Oct 2026 08:54 CT):** migration sha256 71ce248b…a9ae (LF) /
+    5a881d18…1b67 (Windows paste); preflight 08:40 CT ready_for_m5 true (baseline in the runbook); postcheck PASS
+    (fingerprint 8ab57055… / cec33a5e…, 22 functions, 15 for the server); before/after fingerprints PASS; public-key
+    probe 30/30 BLOCKED; Golden v1 draft; six learner switches OFF. Never rerun or roll back M5. PR #20 merge needs his
+    separate authorization; after merge + deploy comes A2E (examinations).
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

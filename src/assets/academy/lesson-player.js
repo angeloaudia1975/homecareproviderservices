@@ -3,7 +3,8 @@
 
      HCPSLessonPlayer.mount(rootElement, payload, {
        check:      async (questionId, answer) => ({ correct, explanation }),   // grades ONE practice answer on the server
-       onProgress: ({ index, kind, status }) => {},                           // learner player: save progress (A2E); preview: omitted
+       onProgress: ({ index, kind, status }) => {},                           // learner player: save progress (A2B); preview: omitted
+       startAt: <screen index>,                                               // learner player: resume point (A2B); ignored in a preview
        view:       'slides' | 'scroll'                                         // one screen at a time (default) or the whole lesson
      })
 
@@ -552,6 +553,9 @@
     }
 
     setView(state.view); update();
+    // Learner resume (A2B): screens before the saved resume point were passed in an earlier visit.
+    var startAt = !preview && Number.isInteger(opts.startAt) ? Math.min(Math.max(opts.startAt, 0), Math.max(blocks.length - 1, 0)) : 0;
+    if (startAt > 0) { for (var r = 0; r < startAt; r++) state.passed[r] = true; update(); if (state.view === 'slides') go(startAt, false); }
     return {
       go: function (i) { go(i, true); },
       view: setView,

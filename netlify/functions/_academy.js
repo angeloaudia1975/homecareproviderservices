@@ -78,6 +78,12 @@ async function publishOp(name, args) {
   return rpc('academy_publish_op_' + name, args);
 }
 async function publishConsistency() { return rpc('academy_publish_consistency', {}); }
+/* A2B / M5 learner access: sign-in codes, Partner 360 handoff, sessions, invitations, memberships, enrollment and
+   progress. Same contract: one database call = the change and its audit row, or neither; not installed = 503. */
+async function accessOp(name, args) {
+  if (!/^(access|enroll|progress)_op_[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
+  return rpc('academy_' + name, args);
+}
 async function op(name, args) {
   if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
   return rpc('academy_op_' + name, args);
@@ -197,14 +203,20 @@ async function learnerActor(event) {
   const raw = SESSION.readCookie(event); if (!raw) return null;
   if (!SESSION.configured()) refuse(503, 'session_unavailable', 'Academy sign-in is not available just now.');
   const c = SESSION.verify(raw); if (!c) return null;
-  if (!UUID.test(c.learner_id) || !UUID.test(c.auth_user_id)) return null;
+  if (!UUID.test(c.learner_id) || !UUID.test(c.session_id)) return null;
+  // A2B / M5: the cookie names a session row; it must still be open (signing out, ending a membership or suspending
+  // the learner ends it at once), unexpired and the same learner's.
+  const ss = await sbGet(`academy_sessions?id=eq.${enc(c.session_id)}&select=id,learner_id,expires_at,ended_at`);
+  const s = ss[0];
+  if (!s || s.ended_at || String(s.learner_id) !== c.learner_id || !(Date.parse(s.expires_at) > Date.now())) return null;
   const ls = await sbGet(`academy_learners?id=eq.${enc(c.learner_id)}&select=id,auth_user_id,full_name,email,status`);
   const l = ls[0];
-  if (!l || l.status !== 'active' || String(l.auth_user_id) !== c.auth_user_id) return null;
+  if (!l || l.status !== 'active') return null;
   const staff = await sbGet(`staff_users?email=eq.${enc(String(l.email).toLowerCase())}&select=email,active`);
-  if (staff.some(s => s.active !== false)) return null;
+  if (staff.some(x => x.active !== false)) return null;
   const mem = await sbGet(`academy_memberships?learner_id=eq.${enc(l.id)}&status=eq.active&select=id,dealer_id,role,access_type`);
-  return { kind: 'learner', learner_id: l.id, auth_user_id: l.auth_user_id, email: l.email, full_name: l.full_name, memberships: mem };
+  if (!mem.length) return null;   // no active access for any dealership = no session
+  return { kind: 'learner', learner_id: l.id, session_id: s.id, auth_user_id: l.auth_user_id || null, email: l.email, full_name: l.full_name, memberships: mem };
 }
 
 /* ---------- what they may touch ---------- */
@@ -328,7 +340,7 @@ function handler(fn, opts) {
 
 module.exports = {
   SWITCHES, SITE_ORIGINS, PARTNER360_ORIGINS, MAX_BODY, AcademyError, refuse,
-  sbGet, sbSend, op, publishOp, publishConsistency, contentOp, authorOp, saveOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
+  sbGet, sbSend, op, publishOp, publishConsistency, accessOp, contentOp, authorOp, saveOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
   bearer, bearerUser, staffActor, learnerActor,
   isAdmin, isRelations, isRep, family, dealerScope, canSeeDealer, canSeeScores, requireDealer, requireAdmin, actorLabel,
   audit, redact, body, uuid, oneOf, text, respond, handler, SESSION,
