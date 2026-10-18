@@ -201,7 +201,8 @@
       var S = r.body, P = S.policy || {}, out = el('div', { 'aria-live': 'polite' }, note || null);
       var rules = el('ul', { cls: 'ac-rules' }, [
         el('li', { text: P.questions + (P.questions === 1 ? ' question' : ' questions') + ' · ' + P.pass_mark + '% to pass' }),
-        el('li', { text: P.time_limit_minutes + ' minutes once you start; your answers are saved as you go' }),
+        el('li', { text: (P.your_time_limit_minutes || P.time_limit_minutes) + ' minutes once you start' + (P.extra_minutes ? ' (includes ' + P.extra_minutes + ' minutes of extra time)' : '') + '; your answers are saved as you go, and the clock keeps running if you lose your connection' }),
+        el('li', { text: 'Finish every lesson in the course first' }),
         el('li', { text: 'Wait ' + P.cooldown_minutes + ' minutes between attempts · at most ' + P.daily_limit + ' attempts a day' }),
         el('li', { text: 'The results show your score and the topics to review — not which answers were right' })]);
       var actions = el('div', { cls: 'ac-row' });
@@ -211,7 +212,7 @@
       } else if (S.can_start && P.version_published) {
         var start = el('button', { type: 'button', cls: 'ac-btn pri', text: 'Start the exam' });
         start.addEventListener('click', function () {
-          var yes = el('button', { type: 'button', cls: 'ac-btn pri', text: 'Start now (' + P.time_limit_minutes + ' minutes)' });
+          var yes = el('button', { type: 'button', cls: 'ac-btn pri', text: 'Start now (' + (P.your_time_limit_minutes || P.time_limit_minutes) + ' minutes)' });
           var no = el('button', { type: 'button', cls: 'ac-btn sec', text: 'Not yet', onclick: function () { exam(eid); } });
           yes.addEventListener('click', function () {
             busy(yes, true, 'Starting…');
@@ -225,6 +226,9 @@
         actions.appendChild(start);
       } else if (S.reason === 'open_attempt') {
         out.appendChild(msg('You have an exam in progress in another course. Finish it first — it ends by ' + when(S.next_at) + '.'));
+      } else if (S.reason === 'lessons_incomplete') {
+        out.appendChild(msg('Finish every lesson first: ' + (S.lessons_completed || 0) + ' of ' + (S.lessons_total || 0) + ' lessons completed. Then come back to start the exam.'));
+        actions.appendChild(el('button', { type: 'button', cls: 'ac-btn pri', text: 'Back to my courses', onclick: function () { go('courses'); } }));
       } else if (S.reason === 'grading_pending') {
         out.appendChild(msg('Your last attempt is still being graded. Your saved answers are kept. Please contact HCPS if this does not clear.', true));
       } else if (!P.version_published) {
@@ -257,9 +261,14 @@
         return api({ action: 'exam_save', attempt_id: aid, answers: send }).then(function (x) {
           if (x.status === 200 && x.body.ok) { saved.textContent = 'Saved'; return; }
           if (x.status === 200 && x.body.reason === 'expired') { finish(); return; }
-          pending = Object.assign(send, pending); saved.textContent = 'Not saved yet — it will try again.';
+          pending = Object.assign(send, pending);
+          saved.textContent = x.status === 0 ? 'Connection lost — your answer is kept on this screen and will be saved when you are back online. The clock keeps running.' : 'Not saved yet — it will try again.';
+          clearTimeout(saveT); if (!ended) saveT = setTimeout(flush, 5000);
         });
       };
+      var online = function () { if (!ended && Object.keys(pending).length) { saved.textContent = 'Back online — saving…'; flush(); } };
+      var offline = function () { if (!ended) saved.textContent = 'You are offline. Keep going: your answers will be saved when the connection returns. The clock keeps running.'; };
+      window.addEventListener('online', online); window.addEventListener('offline', offline);
       var answered = function () { return Q.filter(function (q) { var a = A[q.id]; return a != null && (!Array.isArray(a) || a.length); }).length; };
       var setAnswer = function (q, v) { A[q.id] = v; pending[q.id] = v; saved.textContent = ''; clearTimeout(saveT); saveT = setTimeout(flush, 700); };
       var tick = function () {
@@ -303,8 +312,9 @@
           el('div', { cls: 'ac-row' }, [yes, el('button', { type: 'button', cls: 'ac-btn sec', text: 'Back to the questions', onclick: function () { draw(); } })]));
         yes.focus();
       };
+      var detach = function () { window.removeEventListener('online', online); window.removeEventListener('offline', offline); clearTimeout(saveT); };
       var result = function (R) {
-        clearInterval(timer); window.removeEventListener('beforeunload', guard);
+        clearInterval(timer); window.removeEventListener('beforeunload', guard); detach();
         var topics = (R.study_topics || []).map(function (t) { return el('li', { text: topic(t) }); });
         show([el('h1', { text: R.passed ? 'You passed' : 'Not passed this time' }),
           el('section', { cls: 'ac-card ac-stack' }, [el('p', { cls: 'ac-score', text: (R.score != null ? R.score + '%' : '') }),
@@ -316,7 +326,7 @@
         focusMain();
       };
       var ungraded = function (why) {   // past the deadline and not graded yet: no score is shown, the answers are kept
-        clearInterval(timer); window.removeEventListener('beforeunload', guard);
+        clearInterval(timer); window.removeEventListener('beforeunload', guard); detach();
         show([el('h1', { text: 'Your exam is being graded' }), el('section', { cls: 'ac-card ac-stack' }, [msg(why, true)]),
           el('div', { cls: 'ac-row' }, [el('button', { type: 'button', cls: 'ac-btn pri', text: 'Back to the exam page', onclick: function () { go('exam', { e: eid }); } }),
             el('button', { type: 'button', cls: 'ac-btn sec', text: 'My courses', onclick: function () { go('courses'); } })])]);

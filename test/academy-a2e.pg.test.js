@@ -101,11 +101,22 @@ async function signIn(addr, ip) {
       assert.strictEqual(run(DB, 'select count(*) from academy_attempts'), '0');
       flags({ academy_admin: true, academy_learner: true, academy_invites: true, academy_exams: true });
     });
-    await t('Status: the policy (questions, pass mark, time limit, cooldown, daily limit) and that the exam can start', async () => {
+    await t('Status: the policy (questions, pass mark, time limit, extra time, cooldown, daily limit); not startable until every lesson is complete', async () => {
       const r = await learner({ action: 'exam_status', enrollment_id: ENR }, LC);
-      assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.can_start, true);
-      assert.deepStrictEqual(r.body.policy, { questions: 1, pass_mark: 80, time_limit_minutes: 45, cooldown_minutes: 60, daily_limit: 3, version_published: true });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.can_start, false); assert.strictEqual(r.body.reason, 'lessons_incomplete');
+      assert.deepStrictEqual(r.body.policy, { questions: 1, pass_mark: 80, time_limit_minutes: 45, extra_minutes: 0, your_time_limit_minutes: 45, cooldown_minutes: 60, daily_limit: 3, version_published: true });
       assert.strictEqual((await learner({ action: 'my_courses' }, LC)).body.exams_open, true);
+    });
+    await t('Lesson gate: before every lesson is complete, start answers 409 lessons_incomplete (with counts) and status says so; nothing is written', async () => {
+      const r = await learner({ action: 'exam_start', enrollment_id: ENR }, LC);
+      assert.strictEqual(r.status, 409, JSON.stringify(r.body)); assert.strictEqual(r.body.error, 'lessons_incomplete');
+      assert.strictEqual(r.body.lessons_total, 1); assert.strictEqual(r.body.lessons_completed, 0); assert.match(r.body.message, /Finish every lesson/);
+      assert.strictEqual((await learner({ action: 'exam_status', enrollment_id: ENR }, LC)).body.reason, 'lessons_incomplete');
+      assert.strictEqual(run(DB, 'select count(*) from academy_attempts'), '0');
+      assert.strictEqual((await learner({ action: 'save_progress', enrollment_id: ENR, lesson_id: L1, status: 'viewed', resume_block: 1 }, LC)).status, 200);
+      assert.strictEqual((await learner({ action: 'exam_start', enrollment_id: ENR }, LC)).body.error, 'lessons_incomplete', 'viewed is not completed');
+      assert.strictEqual((await learner({ action: 'save_progress', enrollment_id: ENR, lesson_id: L1, status: 'completed', resume_block: 2 }, LC)).status, 200);
+      assert.strictEqual((await learner({ action: 'exam_status', enrollment_id: ENR }, LC)).body.can_start, true);
     });
     await t('Start + view: the question and its choices, never the answer key or explanation; GET and someone else\'s enrollment refused', async () => {
       assert.strictEqual((await call(API.handler, null, { method: 'GET', cookie: LC, query: { action: 'exam_start', enrollment_id: ENR } })).status, 405);
@@ -147,6 +158,7 @@ async function signIn(addr, ip) {
       const SC = await signIn('sam@north.example', '198.51.100.3');
       const sid = (await learner({ action: 'me' }, SC)).body.learner.id;
       const se = (await learner({ action: 'enroll', learner_id: sid, version_id: V }, TMC)).body.enrollment.id;
+      await learner({ action: 'save_progress', enrollment_id: se, lesson_id: L1, status: 'completed', resume_block: 0 }, SC);
       run(DB, `begin; select set_config('academy.op', 'test', true); insert into academy_attempts (enrollment_id, question_ids, started_at, draft_answers)
                values ('${se}', array['${QX}']::uuid[], now() - interval '50 minutes', ${J({ [QX]: 'b' })}); commit;`);
       const aid = one(`select id from academy_attempts where enrollment_id = '${se}'`).id;
@@ -162,6 +174,30 @@ async function signIn(addr, ip) {
       run(DB, 'drop trigger zz_refuse on academy_events; drop function public.zz_refuse()');
       const s2 = await learner({ action: 'exam_status', enrollment_id: se }, SC);
       assert.strictEqual(s2.body.attempts[0].score, 100); assert.strictEqual(s2.body.attempts[0].expired, true); assert.strictEqual(s2.body.reason, 'cooldown');
+    });
+    await t('Accommodation (Command Center): President only; another administrator 403; reason required; the learner sees 45 + 15 minutes and the next start gets the longer deadline', async () => {
+      const lid = one(`select learner_id from academy_enrollments where id = '${ENR}'`).learner_id;
+      const list = await admin('pres', { action: 'exam_accommodations', learner_id: lid });
+      assert.strictEqual(list.status, 200, JSON.stringify(list.body)); assert.strictEqual(list.body.enrollments[0].extra_minutes, 0); assert.strictEqual(list.body.enrollments[0].time_limit_minutes, 45);
+      assert.strictEqual((await admin('adm', { action: 'exam_accommodation', enrollment_id: ENR, extra_minutes: 15, reason: 'Approved accommodation' })).status, 403);
+      assert.strictEqual((await admin('pres', { action: 'exam_accommodation', enrollment_id: ENR, extra_minutes: 999, reason: 'Approved accommodation' })).status, 400);
+      assert.strictEqual((await admin('pres', { action: 'exam_accommodation', enrollment_id: ENR, extra_minutes: 15, reason: '' })).status, 400);
+      const ok = await admin('pres', { action: 'exam_accommodation', enrollment_id: ENR, extra_minutes: 15, reason: 'Approved accommodation request' });
+      assert.strictEqual(ok.status, 200, JSON.stringify(ok.body)); assert.strictEqual(ok.body.result.extra_minutes, 15);
+      const ev = one(`select actor from academy_events where action = 'exam_accommodation' and entity_id = '${ENR}'`);
+      assert.strictEqual(ev.actor, 'staff:admin@test.example', 'the actor is the signed-in President');
+      const st = await learner({ action: 'exam_status', enrollment_id: ENR }, LC);
+      assert.strictEqual(st.body.policy.extra_minutes, 15); assert.strictEqual(st.body.policy.your_time_limit_minutes, 60);
+      assert.strictEqual((await learner({ action: 'exam_accommodation', enrollment_id: ENR, extra_minutes: 30, reason: 'please' }, LC)).status, 404, 'no such learner action');
+    });
+    await t('Cross-dealership isolation: a learner at another dealership cannot read, start or open this learner\'s exam', async () => {
+      await admin('pres', { action: 'invite_learner', dealer_id: OTHER, email: 'kim@other.example', role: 'learner' });
+      const KC = await signIn('kim@other.example', '198.51.100.9');
+      assert.strictEqual((await learner({ action: 'exam_status', enrollment_id: ENR }, KC)).status, 404);
+      assert.strictEqual((await learner({ action: 'exam_start', enrollment_id: ENR }, KC)).status, 404);
+      assert.strictEqual((await learner({ action: 'exam_view', attempt_id: AT }, KC)).status, 403);
+      assert.strictEqual((await learner({ action: 'exam_submit', attempt_id: AT, answers: {} }, KC)).status, 403);
+      const team = await learner({ action: 'team' }, KC); assert.notStrictEqual(team.status, 200, 'not a Training Manager');
     });
     await t('Ending access stops the exam at once (the session ends; a new session cannot reach the old enrollment)', async () => {
       const mem = (await learner({ action: 'team' }, TMC)).body.roster.find(p => p.email === 'pat@north.example').membership_id;

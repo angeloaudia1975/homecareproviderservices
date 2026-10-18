@@ -3077,6 +3077,15 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
     `ok:false` (`grading_pending` / `grading_failed`) → API 409, never a result. Owner decisions still open (no
     requirement changed): the 45-minute limit for 25 questions and whether 17/17 lessons must be complete first.
     Pre-activation checks kept: the real Netlify production check and the trusted client-IP validation.
+  - **Final exam policy (Angelo, PR #22 comment 6252980040 + chat, 18 Oct 2026 — supersedes the "no time limit" comment
+    6252939569):** 45-minute hard limit, 25 randomized questions, 80% to pass; EVERY lesson of the enrolled version
+    completed by that enrollment before a start, enforced in the database (`completed` only; other enrollments / versions
+    never count; no lessons = no exam); 60-minute cooldown, 3 starts per Chicago day per enrollment, one open attempt per
+    learner, unlimited retakes; autosave + resume of the SAME attempt without resetting its deadline; grading at the
+    deadline from answers saved in time. **Reasonable accommodation:** extra minutes per enrollment only through
+    `academy_exam_op_accommodate` (active HCPS administrator + reason, audited, 0–240, future attempts only; guard
+    `academy_exam_enrollment_guard` refuses any other write); the Command Center offers it to the President only.
+    Proposed details (who may grant, cap, no request flow) are Angelo's to change.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

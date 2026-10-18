@@ -7,9 +7,13 @@
 --   * PER ENROLLMENT (one course version): at least exam_cooldown_minutes (default 60) between the end of one attempt
 --     and the start of the next, and at most exam_daily_limit (default 3) attempts started per calendar day,
 --     America/Chicago (DST-safe). An attempt in one course never uses up the cooldown or daily attempts of another;
+--   * every lesson of the ENROLLED course version completed by THIS enrollment before an exam can start (progress
+--     saved for another enrollment or another version never counts; a version without lessons never opens an exam);
 --   * unlimited retakes otherwise.
---   An open attempt has a time limit, exam_time_limit_minutes (default 45 for 25 questions — Angelo's decision I,
---   proposed default). An attempt still open at its deadline EXPIRES: it is graded with the answers saved before the
+--   An open attempt has a time limit, exam_time_limit_minutes (45 for 25 questions — approved by Angelo, 18 Oct 2026),
+--   plus the enrollment's exam_extra_minutes (0 by default): a reasonable-accommodation extension that only an HCPS
+--   administrator sets, with a reason, through academy_exam_op_accommodate (audited). It applies to attempts started
+--   after it is set; a running attempt's deadline never changes. An attempt still open at its deadline EXPIRES: it is graded with the answers saved before the
 --   deadline (unanswered = wrong), so an abandoned attempt can never block a learner, and answers sent after the
 --   deadline never count.
 -- A grading failure is never swallowed: it is recorded on the attempt (grading_failures, grading_failed_at,
@@ -25,7 +29,8 @@
 -- published version, exact-fraction pass mark, single submission) still runs. The server role loses EXECUTE on those
 -- two M1 functions and INSERT/UPDATE/DELETE on academy_attempts, so the limits cannot be bypassed.
 -- New columns: academy_attempts.learner_id (from the enrollment, by trigger), expires_at, draft_answers,
--- draft_saved_at, expired, grading_failures, grading_failed_at, grading_error; academy_course_versions.exam_time_limit_minutes / exam_cooldown_minutes / exam_daily_limit.
+-- draft_saved_at, expired, grading_failures, grading_failed_at, grading_error; academy_enrollments.exam_extra_minutes;
+-- academy_course_versions.exam_time_limit_minutes / exam_cooldown_minutes / exam_daily_limit.
 -- Every UPDATE carries a WHERE clause (pg-safeupdate).
 -- Run order: after M1–M5. Rollback: academy_a2e_m6_exam_attempts_rollback.sql (refused while any attempt exists).
 -- RULE 19: no new table or view. The operations are SECURITY DEFINER with a pinned search path, executable by
@@ -67,6 +72,8 @@ alter table public.academy_attempts
   add column grading_error     text check (length(grading_error) <= 400);
 alter table public.academy_attempts alter column learner_id set not null, alter column expires_at set not null;
 alter table public.academy_attempts add constraint academy_attempts_expiry check (expires_at > started_at);
+alter table public.academy_enrollments
+  add column exam_extra_minutes int not null default 0 check (exam_extra_minutes between 0 and 240);
 create index academy_attempts_learner_started on public.academy_attempts (learner_id, started_at desc);
 
 -- learner_id and expires_at are set by the database from the enrollment and its version, never by a caller.
@@ -74,7 +81,7 @@ create function public.academy_exam_attempt_defaults() returns trigger
 language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
 declare v_l uuid; v_min int;
 begin
-  select e.learner_id, v.exam_time_limit_minutes into v_l, v_min
+  select e.learner_id, v.exam_time_limit_minutes + e.exam_extra_minutes into v_l, v_min
     from academy_enrollments e join academy_course_versions v on v.id = e.version_id where e.id = new.enrollment_id;
   if tg_op = 'INSERT' then
     new.learner_id := v_l;
@@ -87,6 +94,23 @@ begin
 end $$;
 create trigger academy_exam_attempt_defaults before insert or update on public.academy_attempts
   for each row execute function public.academy_exam_attempt_defaults();
+
+-- Extra exam time is written only by academy_exam_op_accommodate (its marker, with the owner's rights) — not by the
+-- server role, not by hand, not on a new enrollment.
+create function public.academy_exam_enrollment_guard() returns trigger
+language plpgsql set search_path = pg_catalog, public, pg_temp as $$
+begin
+  if (tg_op = 'INSERT' and new.exam_extra_minutes <> 0)
+     or (tg_op = 'UPDATE' and new.exam_extra_minutes is distinct from old.exam_extra_minutes
+         and not (coalesce(current_setting('academy.op', true), '') = 'exam_accommodation'
+                  and current_user = (select pg_get_userbyid(p.proowner) from pg_proc p
+                                       where p.oid = 'public.academy_exam_enrollment_guard()'::regprocedure))) then
+    raise exception 'academy: extra exam time is set only through academy_exam_op_accommodate' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+create trigger academy_exam_enrollment_guard before insert or update on public.academy_enrollments
+  for each row execute function public.academy_exam_enrollment_guard();
 
 -- ---------------------------------------------------------------------------------------------
 -- HELPERS (owner only)
@@ -193,7 +217,7 @@ end $$;
 create function public.academy_exam_limits(p_learner uuid, p_enrollment academy_enrollments, p_now timestamptz) returns jsonb
 language plpgsql stable set search_path = pg_catalog, public, pg_temp as $$
 declare v_v academy_course_versions; v_open academy_attempts; v_stuck academy_attempts; v_last timestamptz;
-        v_day_start timestamptz; v_today int; v_next_day timestamptz;
+        v_day_start timestamptz; v_today int; v_next_day timestamptz; v_lessons int; v_done int;
 begin
   select * into v_v from academy_course_versions where id = p_enrollment.version_id;
   select * into v_open from academy_attempts where learner_id = p_learner and submitted_at is null and expires_at > p_now
@@ -207,6 +231,15 @@ begin
      and expires_at <= p_now and started_at <= p_now order by started_at limit 1;
   if v_stuck.id is not null then
     return jsonb_build_object('can_start', false, 'reason', 'grading_pending', 'pending_attempt_id', v_stuck.id, 'next_at', null);
+  end if;
+  -- every lesson of the enrolled version, completed by this enrollment (fail closed: no lessons = no exam)
+  select count(*), count(*) filter (where exists (select 1 from academy_progress pr where pr.enrollment_id = p_enrollment.id
+                                                    and pr.lesson_id = l.id and pr.status = 'completed'))
+    into v_lessons, v_done
+    from academy_lessons l join academy_modules m on m.id = l.module_id where m.version_id = p_enrollment.version_id;
+  if v_lessons = 0 or v_done < v_lessons then
+    return jsonb_build_object('can_start', false, 'reason', 'lessons_incomplete', 'lessons_total', v_lessons,
+                              'lessons_completed', v_done, 'next_at', null);
   end if;
   v_day_start := (date_trunc('day', p_now at time zone 'America/Chicago')) at time zone 'America/Chicago';
   v_next_day := (date_trunc('day', p_now at time zone 'America/Chicago') + interval '1 day') at time zone 'America/Chicago';
@@ -223,7 +256,8 @@ begin
                               'next_at', v_last + make_interval(mins => v_v.exam_cooldown_minutes),
                               'cooldown_minutes', v_v.exam_cooldown_minutes);
   end if;
-  return jsonb_build_object('can_start', true, 'attempts_today', v_today, 'daily_limit', v_v.exam_daily_limit);
+  return jsonb_build_object('can_start', true, 'attempts_today', v_today, 'daily_limit', v_v.exam_daily_limit,
+                            'lessons_total', v_lessons, 'lessons_completed', v_done);
 end $$;
 
 -- ---------------------------------------------------------------------------------------------
@@ -240,7 +274,8 @@ begin
   select * into v_v from academy_course_versions where id = v_e.version_id;
   return academy_exam_limits(v_e.learner_id, v_e, now()) || jsonb_build_object(
     'policy', jsonb_build_object('questions', v_v.exam_questions, 'pass_mark', v_v.pass_mark,
-               'time_limit_minutes', v_v.exam_time_limit_minutes, 'cooldown_minutes', v_v.exam_cooldown_minutes,
+               'time_limit_minutes', v_v.exam_time_limit_minutes, 'extra_minutes', v_e.exam_extra_minutes,
+               'your_time_limit_minutes', v_v.exam_time_limit_minutes + v_e.exam_extra_minutes, 'cooldown_minutes', v_v.exam_cooldown_minutes,
                'daily_limit', v_v.exam_daily_limit, 'version_published', v_v.status = 'published'),
     'attempts', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'started_at', a.started_at,
                'submitted_at', a.submitted_at, 'expires_at', a.expires_at, 'expired', a.expired,
@@ -345,6 +380,38 @@ begin
   return jsonb_build_object('ok', true, 'expired', false) || v_r;
 end $$;
 
+-- Reasonable accommodation: an HCPS administrator (staff:<email> of an active president / admin / owner, from the
+-- verified sign-in) sets extra exam time for ONE enrollment, with a reason. 0 removes it. It applies to attempts
+-- started afterwards; a running attempt keeps its deadline. Atomic with its audit row; a learner can never set it.
+create function public.academy_exam_op_accommodate(p_actor text, p_enrollment_id uuid, p_extra_minutes int, p_reason text)
+returns jsonb language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
+declare v_e academy_enrollments; v_open boolean;
+begin
+  perform academy_op_actor_staff(p_actor);
+  if p_extra_minutes is null or p_extra_minutes not between 0 and 240 then
+    raise exception 'academy: extra time is 0 to 240 minutes' using errcode = '22023';
+  end if;
+  if p_reason is null or length(trim(p_reason)) < 5 or length(p_reason) > 500 then
+    raise exception 'academy: a reason (5 to 500 characters) is required' using errcode = '22023';
+  end if;
+  select * into v_e from academy_enrollments where id = p_enrollment_id;
+  if not found then raise exception 'academy: enrollment not found' using errcode = 'P0002'; end if;
+  perform pg_advisory_xact_lock(hashtext('academy-exam:' || v_e.learner_id::text));
+  select * into v_e from academy_enrollments where id = p_enrollment_id for update;
+  if v_e.status = 'withdrawn' then raise exception 'academy: the enrollment was withdrawn' using errcode = '22023'; end if;
+  v_open := exists (select 1 from academy_attempts where enrollment_id = v_e.id and submitted_at is null and expires_at > now());
+  if v_e.exam_extra_minutes = p_extra_minutes then
+    return jsonb_build_object('ok', true, 'unchanged', true, 'enrollment_id', v_e.id, 'extra_minutes', p_extra_minutes, 'open_attempt_unchanged', v_open);
+  end if;
+  perform academy_op_begin('exam_accommodation', p_actor);
+  update academy_enrollments set exam_extra_minutes = p_extra_minutes where id = v_e.id;
+  perform academy_op_audit('staff', p_actor, 'academy_enrollments', v_e.id::text, 'exam_accommodation',
+    jsonb_build_object('extra_minutes', v_e.exam_extra_minutes),
+    jsonb_build_object('extra_minutes', p_extra_minutes, 'reason', trim(p_reason), 'open_attempt_unchanged', v_open));
+  perform academy_op_end();
+  return jsonb_build_object('ok', true, 'enrollment_id', v_e.id, 'extra_minutes', p_extra_minutes, 'open_attempt_unchanged', v_open);
+end $$;
+
 -- ---------------------------------------------------------------------------------------------
 -- PRIVILEGES
 -- ---------------------------------------------------------------------------------------------
@@ -366,14 +433,14 @@ revoke insert, update, delete, truncate on table public.academy_attempts from se
 -- ---------------------------------------------------------------------------------------------
 -- INSTALL CHECKS (each must read ok = true)
 -- ---------------------------------------------------------------------------------------------
-select 'M6 functions' as check, count(*) = 11 as ok from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+select 'M6 functions' as check, count(*) = 13 as ok from pg_proc p join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public' and p.proname like 'academy\_exam\_%'
 union all
 select 'operations are security definer with a pinned path', bool_and(p.prosecdef and p.proconfig::text like '%search_path=pg_catalog, public, pg_temp%')
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'academy\_exam\_op\_%'
 union all
-select 'server calls the 5 operations and nothing else of M6',
-       count(*) filter (where has_function_privilege('service_role', p.oid, 'execute')) = 5
+select 'server calls the 6 operations and nothing else of M6',
+       count(*) filter (where has_function_privilege('service_role', p.oid, 'execute')) = 6
    and count(*) filter (where p.proname not like 'academy\_exam\_op\_%' and has_function_privilege('service_role', p.oid, 'execute')) = 0
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'academy\_exam\_%'
 union all
@@ -394,6 +461,7 @@ select 'attempt columns, learner index and limits on versions',
        exists (select 1 from pg_attribute where attrelid = 'public.academy_attempts'::regclass and attname = 'learner_id' and attnotnull)
    and to_regclass('public.academy_attempts_learner_started') is not null
    and exists (select 1 from pg_attribute where attrelid = 'public.academy_course_versions'::regclass and attname = 'exam_daily_limit')
+   and exists (select 1 from pg_attribute where attrelid = 'public.academy_enrollments'::regclass and attname = 'exam_extra_minutes')
 union all
 select 'no attempts written', not exists (select 1 from academy_attempts);
 

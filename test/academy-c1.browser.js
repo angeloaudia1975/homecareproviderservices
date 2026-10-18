@@ -62,7 +62,7 @@ function demo(hostile) {
         { id: u(72), learner_id: u(52), dealer_id: BR, role: 'learner', access_type: 'training_only', status: 'active' },
         { id: u(73), learner_id: u(53), dealer_id: RMS, role: 'learner', access_type: 'dealer_user', status: 'active' },
       ],
-      academy_enrollments: [{ id: u(81), learner_id: u(51), version_id: u(11), status: 'completed' }, { id: u(82), learner_id: u(52), version_id: u(11), status: 'in_progress' }],
+      academy_enrollments: [{ id: u(81), learner_id: u(51), version_id: u(11), status: 'completed', exam_extra_minutes: 0 }, { id: u(82), learner_id: u(52), version_id: u(11), status: 'in_progress', exam_extra_minutes: 0 }],
       academy_certificates: [{ id: u(91), cert_number: 'HCPS-7K2D-Q9XA', learner_id: u(51), enrollment_id: u(81), version_id: u(11), attempt_id: u(92), learner_name: T('Tina Manager'), dealer_name: T('Glasgow Prescription Center'), issued_at: '2026-10-06T00:00:00Z', expires_at: '2027-10-06T00:00:00Z', status: 'valid' }],
       academy_external_certs: [
         { id: u(93), learner_id: u(52), course_id: u(2), manufacturer_slug: 'golden-technologies', status: 'certificate_uploaded', upload_media_id: u(94), note: hostile ? XSS : null, created_at: '2026-10-07T00:00:00Z' },
@@ -90,6 +90,11 @@ function server(world, opsLog, opts) {
     const base = global.fetch;
     global.fetch = async (url, opts) => {
       const s = String(url);
+      if (s.startsWith(BASE + '/rest/v1/rpc/academy_exam_op_accommodate')) {   // stand-in for the M6 accommodation operation
+        const a = JSON.parse(opts.body); opsLog.push({ name: 'exam_op_accommodate', args: a });
+        const e = world.db.academy_enrollments.find(x => x.id === a.p_enrollment_id); if (e) e.exam_extra_minutes = a.p_extra_minutes;
+        return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, enrollment_id: a.p_enrollment_id, extra_minutes: a.p_extra_minutes, open_attempt_unchanged: false }) };
+      }
       const m4 = s.startsWith(BASE + '/rest/v1/rpc/academy_publish_op_');
       if (m4 || s.startsWith(BASE + '/rest/v1/rpc/academy_op_')) {   // stand-in for the audited operations (M1, and M4 publication): same visible change
         const name = s.slice((BASE + (m4 ? '/rest/v1/rpc/academy_publish_op_' : '/rest/v1/rpc/academy_op_')).length), a = JSON.parse(opts.body); opsLog.push({ name, args: a });
@@ -204,6 +209,24 @@ async function t(name, fn) { try { await fn(); pass++; console.log('ok   ' + nam
       const acts = world.db.academy_events.filter(e => e.id === undefined || typeof e.id === 'string').map(e => [e.action, e.actor]);
       assert.deepStrictEqual(acts, [['create_course', 'staff:angelo@hcps.us'], ['create_version', 'staff:angelo@hcps.us'], ['create_module', 'staff:angelo@hcps.us'], ['create_lesson', 'staff:angelo@hcps.us'], ['submit_for_review', 'staff:angelo@hcps.us']]);
       assert.deepStrictEqual(pg.errors, []); await pg.context().close();
+    }));
+    await t('Exam time (reasonable accommodation): the President sets extra minutes with a reason for one enrollment; an admin has no such button', async () => withSite(demo(false), async ({ origin, world, ops }) => {
+      for (const [tok, w] of [['pres', 1280], ['pres', 390], ['admin', 1280]]) {
+        const pg = await page(browser, origin, tok, w);
+        await pg.goto(origin + '/admin/academy.html'); await pg.waitForSelector('#tabs .tab');
+        await pg.click('#tabs .tab[data-t="people"]'); await pg.click('#pl'); await pg.waitForSelector('text=Tina Manager');
+        const btn = pg.locator('[data-xt]');
+        if (tok === 'admin') { assert.strictEqual(await btn.count(), 0, 'no Exam time for a non-President'); await pg.context().close(); continue; }
+        await btn.first().click(); await pg.waitForSelector('#xtm');
+        if (w < 500) await noSideScroll(pg);
+        await pg.fill('#xtm', '15'); await pg.fill('#xtr', 'Approved accommodation request'); await pg.click('#msave');
+        await pg.waitForFunction(() => !document.querySelector('#xtm'));
+        assert.deepStrictEqual(pg.errors, []); await pg.context().close();
+      }
+      const calls = ops.filter(o => o.name === 'exam_op_accommodate');
+      assert.ok(calls.length >= 2, JSON.stringify(ops));
+      assert.strictEqual(calls[0].args.p_extra_minutes, 15); assert.strictEqual(calls[0].args.p_reason, 'Approved accommodation request');
+      assert.strictEqual(calls[0].args.p_actor, 'staff:angelo@hcps.us', 'the actor is the signed-in President');
     }));
     await t('switched OFF: the page shows the notice and no data; a rep sees "administrators only"', async () => {
       const off = demo(false); off.tables.app_settings[0].value = {};

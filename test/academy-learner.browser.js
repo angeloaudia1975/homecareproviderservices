@@ -188,11 +188,26 @@ async function signIn(pg, email) {
         run(DB, `delete from academy_login_codes where true`);   // test only: stay under the sign-in code limit across runs
         await signIn(pg, 'pat@north.example'); await pg.waitForSelector('text=Golden Lift Chair Sales Certification');
         await pg.click('text=Final exam'); await pg.waitForSelector('text=45 minutes once you start');
+        if (w === 390) {   // the lesson gate: the database refuses the exam until every lesson is complete
+          await pg.waitForSelector('text=/Finish every lesson first: \\d of 2 lessons completed/');
+          assert.strictEqual(await pg.locator('button:has-text("Start the exam")').count(), 0, 'no start button before the lessons are done');
+          assert.ok(await noSideScroll(pg)); assert.deepStrictEqual(await smallTargets(pg), []); await shot(pg, 'exam-390-lessons-first');
+          const pat = JSON.parse(run(DB, `select to_jsonb(x) from (select e.id as e, l.id as l from academy_enrollments e join academy_learners l on l.id = e.learner_id where l.email = 'pat@north.example') x`));
+          for (const lid of [L1, L2]) run(DB, `select academy_progress_op_save('learner:${pat.l}', '${pat.e}', '${lid}', 'completed', 0)`);
+          await pg.reload(); await pg.waitForSelector('button:has-text("Start the exam")');
+        }
         assert.ok(await noSideScroll(pg)); assert.deepStrictEqual(await smallTargets(pg), []); if (ax) assert.deepStrictEqual(await axe(pg), [], 'axe exam page');
         await shot(pg, `exam-${w}-rules`);
         await pg.click('text=Start the exam'); await pg.click('text=/Start now/'); await pg.waitForSelector('text=Question 1 of 1');
         assert.ok(!/answer_key|explanation/.test(await pg.content()), 'no key on the page');
         assert.match(await pg.textContent('.ac-clock'), /^4[45]:\d\d left$/);
+        if (w === 390) {   // lose the connection mid-exam: the answer is kept on screen, saved once back online; the clock runs on
+          await pg.context().setOffline(true);
+          await pg.click('.ac-choice:has-text("B")'); await pg.waitForSelector('text=/offline|Connection lost/');
+          await shot(pg, 'exam-390-offline');
+          await pg.context().setOffline(false); await pg.waitForSelector('text=Saved', { timeout: 15000 });
+          assert.deepStrictEqual(Object.values(JSON.parse(run(DB, `select draft_answers from academy_attempts where submitted_at is null`))), ['b'], 'saved after reconnecting');
+        }
         await pg.click('.ac-choice:has-text("A")'); await pg.waitForSelector('text=Saved');
         assert.ok(await noSideScroll(pg)); assert.deepStrictEqual(await smallTargets(pg), []); if (ax) assert.deepStrictEqual(await axe(pg), [], 'axe question');
         await shot(pg, `exam-${w}-question`);
@@ -205,7 +220,7 @@ async function signIn(pg, email) {
         await shot(pg, `exam-${w}-result`);
         await pg.click('text=Back to the exam page'); await pg.waitForSelector('text=Take a short break before your next attempt.');
         assert.ok(await pg.isVisible('.ac-attempts >> text=Passed'));
-        assert.deepStrictEqual(pg.errors.filter(e => !/favicon|status of 409/.test(e)), []);
+        assert.deepStrictEqual(pg.errors.filter(e => !/favicon|status of 409|ERR_INTERNET_DISCONNECTED|Failed to fetch/.test(e)), []);
         await pg.close();
       }
       run(DB, `delete from academy_login_codes where true`);

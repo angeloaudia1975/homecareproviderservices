@@ -235,6 +235,7 @@ const EXAM_WAIT = {
   cooldown: 'You can take the exam again after a short break.',
   daily_limit: 'You have used today’s exam attempts. You can try again tomorrow.',
   grading_pending: 'Your last attempt is still being graded. Your saved answers are kept. Please contact HCPS if this does not clear.',
+  lessons_incomplete: 'Finish every lesson in this course before you start the final exam.',
 };
 // A grade the database could not write (recorded there): never answered as a result.
 const EXAM_UNGRADED = {

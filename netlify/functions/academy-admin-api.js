@@ -480,6 +480,26 @@ WRITE.enroll_learner = async (staff, b) => {
 };
 WRITE.withdraw_enrollment = async (staff, b) => ({ ok: true, audited: true,
   result: await A.accessOp('enroll_op_withdraw', { p_actor: A.actorLabel(staff), p_enrollment_id: A.uuid(b.enrollment_id, 'enrollment'), p_reason: A.text(b.reason, 500, 'Reason') }) });
+/* A2E reasonable accommodation: extra exam time for ONE enrollment (0 removes it). President only here; the database
+   (academy_exam_op_accommodate, M6) also requires an active HCPS administrator and a reason, audits it, and applies it
+   only to attempts started afterwards. Reading it needs M6 (the column does not exist before). */
+READ.exam_accommodations = async (staff, b) => {
+  const lid = A.uuid(b.learner_id, 'learner');
+  const rows = await all(`academy_enrollments?select=id,version_id,status,exam_extra_minutes&learner_id=eq.${enc(lid)}`);
+  const vers = await byIds('academy_course_versions', rows.map(r => r.version_id), 'id,course_id,version,exam_time_limit_minutes');
+  const courses = await byIds('academy_courses', vers.map(v => v.course_id), 'id,title');
+  const V = Object.fromEntries(vers.map(v => [String(v.id), v])), C = Object.fromEntries(courses.map(c => [String(c.id), c]));
+  return { ok: true, enrollments: rows.map(r => { const v = V[String(r.version_id)] || {}; return { enrollment_id: r.id, status: r.status,
+    course: (C[String(v.course_id)] || {}).title || null, version: v.version || null, time_limit_minutes: v.exam_time_limit_minutes,
+    extra_minutes: r.exam_extra_minutes }; }) };
+};
+WRITE.exam_accommodation = async (staff, b) => {
+  requirePresident(staff);
+  const m = Number(b.extra_minutes);
+  if (!Number.isInteger(m) || m < 0 || m > 240) A.refuse(400, 'invalid', 'Extra time is a whole number of minutes from 0 to 240.');
+  return { ok: true, audited: true, result: await A.accessOp('exam_op_accommodate', { p_actor: A.actorLabel(staff),
+    p_enrollment_id: A.uuid(b.enrollment_id, 'enrollment'), p_extra_minutes: m, p_reason: A.text(b.reason, 500, 'Reason') }) };
+};
 
 /* ---------- product facts and their sources ---------- */
 const FACT_COLS = 'id,manufacturer_slug,model_code,field,value,unit,field_class,status,source_url,source_label,verified_on,verified_by,note,valid_from,valid_to,replaced_by,content_page_key';

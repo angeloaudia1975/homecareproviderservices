@@ -64,7 +64,12 @@ function learnerAt(db, dealer, email, code) {
   run(db, `select academy_access_op_request_code('${email}', '${H(N(email) + code)}', '${H('ip-' + email)}')`);
   return json(run(db, `select academy_access_op_verify_code('${email}', '${H(N(email) + code)}', '${H('ip-' + email)}')`)).learner_id;
 }
-const enroll = (db, l, v) => json(run(db, `select academy_enroll_op_enroll(${PRES}, '${l}', '${v}', null)`)).id;
+const enrollRaw = (db, l, v) => json(run(db, `select academy_enroll_op_enroll(${PRES}, '${l}', '${v}', null)`)).id;
+const lessonsOf = (db, v) => run(db, `select l.id from academy_lessons l join academy_modules m on m.id = l.module_id where m.version_id = '${v}' order by m.position, l.position`).split('\n').filter(Boolean);
+// the learner finishes lessons through M5's own progress operation (only `completed` counts for the exam)
+const finish = (db, l, e, ids, status) => { for (const id of ids) run(db, `select academy_progress_op_save('learner:${l}', '${e}', '${id}', '${status || 'completed'}', 0)`); };
+// most tests start from an enrollment whose lessons are all complete; the lesson-gate tests use enrollRaw
+const enroll = (db, l, v) => { const e = enrollRaw(db, l, v); finish(db, l, e, lessonsOf(db, v)); return e; };
 const op = (db, fn, args) => json(run(db, `select academy_exam_op_${fn}(${args})`));
 // test-only: move an attempt in time / write one as the owner with the operation marker (the guard lets the owner through)
 const asOwner = sql => `begin; select set_config('academy.op', 'test', true); ${sql}; commit;`;
@@ -225,6 +230,92 @@ try {
     const lim = (e, at) => json(run(DB, `select academy_exam_limits('${L}', e, '${at}'::timestamptz) from academy_enrollments e where e.id = '${e}'`));
     assert.strictEqual(lim(EA, '2026-11-05 20:00:00-06').reason, 'daily_limit');
     const b = lim(EB, '2026-11-05 20:00:00-06'); assert.strictEqual(b.can_start, true, JSON.stringify(b)); assert.strictEqual(b.attempts_today, 0);
+  });
+
+  // ---- owner decision 18 Oct 2026: every lesson of the enrolled version completed first, enforced in the database
+  await t('Lesson gate: no lessons, one of two, or "viewed" only → refused (lessons_incomplete, counts) with nothing written; all completed → starts', () => {
+    const L = learnerAt(DB, HQ, 'gate@test.example', '121212'); const E = enrollRaw(DB, L, V.v); const AL = `'learner:${L}'`; const ids = lessonsOf(DB, V.v);
+    const none = op(DB, 'start', `${AL}, '${E}'`);
+    assert.strictEqual(none.ok, false); assert.strictEqual(none.reason, 'lessons_incomplete'); assert.strictEqual(none.lessons_total, 2); assert.strictEqual(none.lessons_completed, 0);
+    finish(DB, L, E, [ids[0]]); finish(DB, L, E, [ids[1]], 'viewed');
+    const part = op(DB, 'start', `${AL}, '${E}'`); assert.strictEqual(part.reason, 'lessons_incomplete'); assert.strictEqual(part.lessons_completed, 1, 'viewed does not count');
+    assert.strictEqual(op(DB, 'status', `${AL}, '${E}'`).reason, 'lessons_incomplete', 'status says the same');
+    assert.strictEqual(count(DB, 'academy_attempts', `learner_id = '${L}'`), 0);
+    finish(DB, L, E, [ids[1]]);
+    const ok = op(DB, 'start', `${AL}, '${E}'`); assert.strictEqual(ok.ok, true, JSON.stringify(ok));
+    run(DB, `select academy_exam_op_submit(${AL}, '${ok.attempt_id}', '{}')`);
+  });
+  await t('Lesson gate across enrollments: lessons finished in another course never count; the M5 progress operation refuses another course\'s lesson', () => {
+    const L = learnerAt(DB, HQ, 'cross@test.example', '131313'); const EA = enrollRaw(DB, L, V.v), EB = enrollRaw(DB, L, V2.v); const AL = `'learner:${L}'`;
+    finish(DB, L, EB, lessonsOf(DB, V2.v));
+    assert.strictEqual(op(DB, 'start', `${AL}, '${EA}'`).reason, 'lessons_incomplete', 'course B\'s lessons do not open course A');
+    assert.match(tryRun(DB, `select academy_progress_op_save(${AL}, '${EA}', '${lessonsOf(DB, V2.v)[0]}', 'completed', 0)`).err, /not part of this course/);
+    assert.strictEqual(op(DB, 'start', `${AL}, '${EB}'`).ok, true);
+  });
+  await t('Lesson gate and a new course version: progress on version 1 does not open version 2; a withdrawn enrollment with every lesson done is still refused', () => {
+    const C3 = course(DB, 'versioned-course'); const W1 = version(DB, C3); publish(DB, W1.v);
+    const L = learnerAt(DB, HQ, 'ver@test.example', '141414'); const AL = `'learner:${L}'`; const E1v = enroll(DB, L, W1.v);
+    const W2 = version(DB, C3); publish(DB, W2.v);   // replaces version 1 (retired in the same step by M4)
+    const E2v = enrollRaw(DB, L, W2.v);
+    assert.strictEqual(op(DB, 'start', `${AL}, '${E2v}'`).reason, 'lessons_incomplete', 'version 2 needs its own lessons');
+    assert.strictEqual(tryRun(DB, `select academy_exam_op_start(${AL}, '${E1v}')`).ok, false, 'the retired version opens no new exam');
+    finish(DB, L, E2v, lessonsOf(DB, W2.v));
+    run(DB, `select academy_enroll_op_withdraw(${PRES}, '${E2v}', 'mistake')`);
+    assert.match(tryRun(DB, `select academy_exam_op_start(${AL}, '${E2v}')`).err, /withdrawn/);
+    assert.strictEqual(count(DB, 'academy_attempts', `learner_id = '${L}'`), 0);
+  });
+  await t('Lesson gate under load: 20 simultaneous starts with a lesson unfinished create no attempt; after finishing, 20 more create exactly one', async () => {
+    const L = learnerAt(DB, HQ, 'load@test.example', '151515'); const E = enrollRaw(DB, L, V.v); const AL = `'learner:${L}'`;
+    finish(DB, L, E, [lessonsOf(DB, V.v)[0]]);
+    const go = () => Promise.all(Array.from({ length: 20 }, () => bg(DB, `begin; select academy_exam_op_start(${AL}, '${E}'); select pg_sleep(0.05); commit;`)));
+    const a = await go(); assert.ok(a.every(r => r.ok && json(r.out.split('\n')[0]).reason === 'lessons_incomplete'));
+    assert.strictEqual(count(DB, 'academy_attempts', `learner_id = '${L}'`), 0);
+    finish(DB, L, E, [lessonsOf(DB, V.v)[1]]);
+    const b = await go(); assert.strictEqual(b.filter(r => r.ok && json(r.out.split('\n')[0]).ok).length, 1);
+    assert.strictEqual(count(DB, 'academy_attempts', `learner_id = '${L}'`), 1);
+  });
+  await t('Resume keeps the original deadline: view and save after a "reconnect" return the same expires_at; saved answers come back', () => {
+    const L = learnerAt(DB, HQ, 'resume@test.example', '161616'); const E = enroll(DB, L, V.v); const AL = `'learner:${L}'`;
+    const s0 = op(DB, 'start', `${AL}, '${E}'`);
+    op(DB, 'save', `${AL}, '${s0.attempt_id}', ${J({ [V.qs[0]]: 'a' })}`);
+    const v1 = op(DB, 'view', `${AL}, '${s0.attempt_id}'`), sv = op(DB, 'save', `${AL}, '${s0.attempt_id}', '{}'`), v2 = op(DB, 'view', `${AL}, '${s0.attempt_id}'`);
+    assert.strictEqual(new Date(v1.expires_at).getTime(), new Date(s0.expires_at).getTime());
+    assert.strictEqual(new Date(sv.expires_at).getTime(), new Date(s0.expires_at).getTime());
+    assert.deepStrictEqual(v2.answers, { [V.qs[0]]: 'a' }); assert.strictEqual(v2.open, true);
+    run(DB, `select academy_exam_op_submit(${AL}, '${s0.attempt_id}', '{}')`);
+  });
+
+  // ---- reasonable accommodation: extra time per enrollment, set only by an HCPS administrator, audited
+  await t('Accommodation: only an active HCPS administrator, with a reason and 0–240 minutes; never a learner; the server calls it, anon cannot', () => {
+    const L = learnerAt(DB, HQ, 'acc@test.example', '171717'); const E = enroll(DB, L, V.v);
+    assert.match(tryRun(DB, `select academy_exam_op_accommodate('learner:${L}', '${E}', 15, 'needs more time')`).err, /staff:<email>/);
+    assert.match(tryRun(DB, `select academy_exam_op_accommodate('staff:nobody@test.example', '${E}', 15, 'needs more time')`).err, /not an active HCPS administrator/);
+    assert.match(tryRun(DB, `select academy_exam_op_accommodate(${PRES}, '${E}', 15, '  ')`).err, /reason/);
+    assert.match(tryRun(DB, `select academy_exam_op_accommodate(${PRES}, '${E}', 241, 'needs more time')`).err, /0 to 240/);
+    assert.match(tryRun(DB, `select academy_exam_op_accommodate(${PRES}, '${E}', -1, 'needs more time')`).err, /0 to 240/);
+    assert.match(tryRun(DB, `set role anon; select academy_exam_op_accommodate(${PRES}, '${E}', 15, 'needs more time')`).err, /permission denied/);
+    assert.ok(tryRun(DB, `set role service_role; select academy_exam_op_accommodate(${PRES}, '${E}', 0, 'no change needed')`).ok);
+    assert.match(tryRun(DB, `update academy_enrollments set exam_extra_minutes = 60 where id = '${E}'`).err, /only through academy_exam_op_accommodate/, 'not even the owner by hand');
+    assert.match(tryRun(DB, `begin; select set_config('academy.op', 'exam_accommodation', true); set local role service_role; update academy_enrollments set exam_extra_minutes = 60 where id = '${E}'; commit;`).err, /permission denied|only through/);
+    assert.strictEqual(q1(DB, `select exam_extra_minutes from academy_enrollments where id = '${E}'`).exam_extra_minutes, 0);
+  });
+  await t('Accommodation: +15 applies to the NEXT attempt (60-minute deadline) and is audited with its reason; a running attempt keeps its deadline; 0 removes it', () => {
+    const L = learnerAt(DB, HQ, 'acc2@test.example', '181818'); const E = enroll(DB, L, V.v); const AL = `'learner:${L}'`;
+    const a = op(DB, 'start', `${AL}, '${E}'`); const before = q1(DB, `select expires_at from academy_attempts where id = '${a.attempt_id}'`).expires_at;
+    const r = json(run(DB, `select academy_exam_op_accommodate(${PRES}, '${E}', 15, 'Approved accommodation request')`));
+    assert.strictEqual(r.ok, true); assert.strictEqual(r.open_attempt_unchanged, true);
+    assert.strictEqual(q1(DB, `select expires_at from academy_attempts where id = '${a.attempt_id}'`).expires_at, before, 'the running attempt keeps its deadline');
+    const ev = q1(DB, `select actor, before, after from academy_events where entity_id = '${E}' and action = 'exam_accommodation'`);
+    assert.strictEqual(ev.actor, 'staff:admin@test.example'); assert.strictEqual(ev.before.extra_minutes, 0); assert.strictEqual(ev.after.extra_minutes, 15); assert.strictEqual(ev.after.reason, 'Approved accommodation request');
+    const st = op(DB, 'status', `${AL}, '${E}'`); assert.strictEqual(st.policy.extra_minutes, 15); assert.strictEqual(st.policy.your_time_limit_minutes, 60);
+    run(DB, `select academy_exam_op_submit(${AL}, '${a.attempt_id}', '{}')`);
+    // the next attempt (after its cooldown — moved in time as the owner, test only) gets 45 + 15 minutes
+    run(DB, asOwner(`insert into academy_attempts (enrollment_id, question_ids, started_at) values ('${E}', array['${V.qs[0]}','${V.qs[1]}']::uuid[], now() - interval '1 minute')`));
+    const n = q1(DB, `select round(extract(epoch from expires_at - started_at)) as secs from academy_attempts where enrollment_id = '${E}' and submitted_at is null`);
+    assert.strictEqual(Number(n.secs), 60 * 60, 'deadline = 45 + 15 minutes');
+    assert.strictEqual(json(run(DB, `select academy_exam_op_accommodate(${PRES}, '${E}', 15, 'same again please')`)).unchanged, true);
+    assert.strictEqual(json(run(DB, `select academy_exam_op_accommodate(${PRES}, '${E}', 0, 'Accommodation ended')`)).extra_minutes, 0);
+    assert.strictEqual(count(DB, 'academy_events', `entity_id = '${E}' and action = 'exam_accommodation'`), 2);
   });
 
   // ---- review items 2 and 3: a grade that cannot be written is recorded, reported and retried — never swallowed

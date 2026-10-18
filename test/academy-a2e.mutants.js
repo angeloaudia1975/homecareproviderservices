@@ -5,7 +5,7 @@
 const { spawnSync, execSync } = require('child_process');
 const fs = require('fs'); const os = require('os'); const path = require('path');
 const ROOT = path.join(__dirname, '..');
-const SQL = 'supabase/academy_a2e_m6_exam_attempts.sql', LRN = 'netlify/functions/_academy_learner.js';
+const SQL = 'supabase/academy_a2e_m6_exam_attempts.sql', LRN = 'netlify/functions/_academy_learner.js', ADM = 'netlify/functions/academy-admin-api.js';
 const MUTANTS = [
   { f: SQL, control: true, from: '-- Save answers so far', to: '-- Save answers so far (control)', why: 'CONTROL: a comment only' },
   { f: SQL, from: "  v_e := academy_exam_enrollment(p_actor, p_enrollment_id);\n  perform pg_advisory_xact_lock(hashtext('academy-exam:' || v_e.learner_id::text));\n  perform academy_exam_expire(v_e.learner_id);\n  v_lim", to: "  v_e := academy_exam_enrollment(p_actor, p_enrollment_id);\n  perform academy_exam_expire(v_e.learner_id);\n  v_lim", why: 'simultaneous starts (no per-learner lock)' },
@@ -38,6 +38,18 @@ const MUTANTS = [
   { f: SQL, from: "   where enrollment_id = p_enrollment.id and started_at >= v_day_start and started_at <= p_now;", to: "   where learner_id = p_learner and started_at >= v_day_start and started_at <= p_now;", why: 'the daily limit counts every course' },
   { f: SQL, from: "    from academy_attempts where enrollment_id = p_enrollment.id and started_at <= p_now;", to: "    from academy_attempts where learner_id = p_learner and started_at <= p_now;", why: 'one course’s cooldown holds another' },
   { f: LRN, from: "  if (r && r.ok === false) {", to: "  if (false) {", why: 'the API answers 200 for an ungraded submit' },
+  // owner decision 18 Oct 2026: the lesson gate and the reasonable-accommodation path
+  { f: SQL, from: "  if v_lessons = 0 or v_done < v_lessons then", to: "  if false then", why: 'the exam starts before the lessons are done' },
+  { f: SQL, from: "                                                    and pr.lesson_id = l.id and pr.status = 'completed'))", to: "                                                    and pr.lesson_id = l.id))", why: 'a viewed lesson counts as completed' },
+  { f: SQL, from: "exists (select 1 from academy_progress pr where pr.enrollment_id = p_enrollment.id", to: "exists (select 1 from academy_progress pr join academy_enrollments e2 on e2.id = pr.enrollment_id where e2.learner_id = p_learner", why: 'lessons finished in another enrollment count' },
+  { f: SQL, from: "    from academy_lessons l join academy_modules m on m.id = l.module_id where m.version_id = p_enrollment.version_id;", to: "    from academy_lessons l join academy_modules m on m.id = l.module_id where m.version_id = p_enrollment.version_id and l.position = 1;", why: 'only some of the version’s lessons are required' },
+  { f: SQL, from: "  select e.learner_id, v.exam_time_limit_minutes + e.exam_extra_minutes into v_l, v_min", to: "  select e.learner_id, v.exam_time_limit_minutes into v_l, v_min", why: 'extra time is ignored at the deadline' },
+  { f: SQL, from: "  perform academy_op_actor_staff(p_actor);\n  if p_extra_minutes is null", to: "  if p_extra_minutes is null", why: 'anyone sets extra time' },
+  { f: SQL, from: "  if p_reason is null or length(trim(p_reason)) < 5 or length(p_reason) > 500 then", to: "  if false then", why: 'extra time without a reason' },
+  { f: SQL, from: "  if p_extra_minutes is null or p_extra_minutes not between 0 and 240 then", to: "  if p_extra_minutes is null then", why: 'unbounded extra time' },
+  { f: SQL, from: "  perform academy_op_audit('staff', p_actor, 'academy_enrollments', v_e.id::text, 'exam_accommodation',", to: "  perform jsonb_build_array(", why: 'extra time is not audited' },
+  { f: SQL, from: "create trigger academy_exam_enrollment_guard before insert or update on public.academy_enrollments\n  for each row execute function public.academy_exam_enrollment_guard();", to: "", why: 'extra time written by hand, around the operation' },
+  { f: ADM, from: "  requirePresident(staff);\n  const m = Number(b.extra_minutes);", to: "  const m = Number(b.extra_minutes);", why: 'any administrator sets extra time from the Command Center' },
   { f: LRN, from: "LEARNER.exam_start = async (event, learner, b) => {\n  await examsOn();", to: "LEARNER.exam_start = async (event, learner, b) => {", why: 'exams start with the switch off' },
   { f: LRN, from: "    return { attempts: done.length, passed: done.some(x => x.passed === true), last_at:", to: "    return { attempts: done.length, score: done.map(x => x.passed), passed: done.some(x => x.passed === true), last_at:", why: 'the Training Manager sees more than pass/fail' },
   { f: LRN, from: "  if (!(await myEnrollments(learner)).some(e => String(e.id) === eid)) A.refuse(404, 'not_found', 'Course not found.');", to: "", why: 'another person’s enrollment reaches the database' },

@@ -2,7 +2,7 @@
 -- HCPS Academy — A2E M6 POST-MIGRATION CHECK (READ-ONLY)    supabase/academy_a2e_m6_postcheck.sql
 -- Changes nothing. Expected after M6:
 --   m6_code_fingerprint  see docs/academy/A2E_EXAMS.md (Unix form and Windows-paste form, both precomputed)
---   m6_functions 11 · m6_server_callable 5 · m6_public_callable 0 · m1_start_submit_server false / false
+--   m6_functions 13 · m6_server_callable 6 · m6_public_callable 0 · m1_start_submit_server false / false
 --   attempts_server_writes false · attempts 0 · version limits present (45 / 60 / 3 defaults)
 --   academy_switches exactly as in the preflight (only academy_admin on)
 -- Any other value = stop and investigate (never roll back on suspicion).
@@ -25,6 +25,6 @@ select jsonb_build_object(
   'attempts', (select count(*) from academy_attempts),
   'version_limits', (select jsonb_agg(jsonb_build_object('version', id, 'status', status, 'time_limit', exam_time_limit_minutes,
                           'cooldown', exam_cooldown_minutes, 'daily', exam_daily_limit) order by created_at) from academy_course_versions),
-  'trigger', (select count(*) from pg_trigger where tgname = 'academy_exam_attempt_defaults' and not tgisinternal),
+  'trigger', (select count(*) from pg_trigger where tgname in ('academy_exam_attempt_defaults', 'academy_exam_enrollment_guard') and not tgisinternal),
   'academy_switches', coalesce((select jsonb_object_agg(k, v) from app_settings, jsonb_each(value) e(k, v) where key = 'phase2_flags' and k like 'academy\_%'), '{}')
 ) as m6_post_check;

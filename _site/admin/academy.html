@@ -360,8 +360,20 @@ async function viewPeople(){
       ${L.map(l=>`<tr><td data-l="Learner"><b>${esc(l.full_name)}</b>${l.pilot?` <span class="pill p-test">TEST pilot</span>`:""}<div class="muted small">${esc(l.email)}</div></td>
         <td data-l="Dealership">${l.memberships.map(m=>`<div style="margin-bottom:4px">${esc(m.dealer||"?")} · ${m.role==="training_manager"?"<b>Training Manager</b>":"Learner"} <span class="muted small">(${esc(m.access_type==="training_only"?"training only":"dealer user")}${m.status!=="active"?", "+esc(m.status):""})</span>
           ${m.status==="active"?`<button class="go ghost sm" data-tm="${esc(m.id)}" data-make="${m.role==="training_manager"?"0":"1"}">${m.role==="training_manager"?"Remove TM role":"Make TM"}</button>`:""}</div>`).join("")||`<span class="muted">—</span>`}</td>
-        <td data-l="Enrollments">${sum(l.enrollments)}</td><td data-l="Status">${stPill(l.status)}</td></tr>`).join("")||`<tr><td colspan="4" class="muted">No learners yet.</td></tr>`}
+        <td data-l="Enrollments">${sum(l.enrollments)}${sum(l.enrollments)&&WHO.may&&WHO.may.publish?` <button class="go ghost sm" data-xt="${esc(l.id)}" data-xn="${esc(l.full_name)}">Exam time</button>`:""}</td><td data-l="Status">${stPill(l.status)}</td></tr>`).join("")||`<tr><td colspan="4" class="muted">No learners yet.</td></tr>`}
       </tbody></table></div>`;
+    $("#view").querySelectorAll("[data-xt]").forEach(b=>b.onclick=async()=>{   // A2E reasonable accommodation (President)
+      const r=await api({action:"exam_accommodations",learner_id:b.dataset.xt});
+      if(r.status!==200){ openModal(`<h2>Exam time</h2><p class="muted">${esc(errText(r))}</p><div class="bar end"><button class="go ghost" id="mcancel">Close</button></div>`); $("#mcancel").onclick=closeModal; return; }
+      const E=(r.body.enrollments||[]).filter(e=>e.status!=="withdrawn");
+      if(!E.length){ openModal(`<h2>Exam time</h2><p class="muted">No active enrollment.</p><div class="bar end"><button class="go ghost" id="mcancel">Close</button></div>`); $("#mcancel").onclick=closeModal; return; }
+      formModal("Exam time — "+b.dataset.xn,`<p class="muted">A reasonable-accommodation extension for ONE course. It applies to exam attempts started after you save; an attempt already running keeps its deadline. Recorded with your name and the reason.</p>
+        ${select("xte","Course",E.map(e=>[e.enrollment_id,(e.course||"Course")+(e.version?" v"+e.version:"")+" — "+(e.time_limit_minutes||45)+" min"+(e.extra_minutes?" + "+e.extra_minutes+" extra":"")]),E[0].enrollment_id)}
+        ${field("xtm","Extra minutes (0 removes the extension)",'type="number" min="0" max="240" step="1" inputmode="numeric"',E[0].extra_minutes||0)}
+        ${area("xtr","Reason (recorded)")}`,"Save exam time",async()=>{
+        await change({action:"exam_accommodation",enrollment_id:val("xte"),extra_minutes:Number(val("xtm")),reason:val("xtr")},"mmsg",viewPeople); });
+      $("#xte").onchange=()=>{ const e=E.find(x=>String(x.enrollment_id)===val("xte")); $("#xtm").value=e?e.extra_minutes||0:0; };
+    });
     $("#view").querySelectorAll("[data-tm]").forEach(b=>b.onclick=()=>{ const make=b.dataset.make==="1";
       formModal(make?"Grant Training Manager":"Remove Training Manager",`<p class="muted">${make?"A Training Manager sees the progress of learners at their own dealership (and its branches, for a parent dealership).":"They keep their learner access."}</p>${area("tmr","Reason (recorded)")}`,make?"Grant":"Remove",async()=>{
         await change({action:"set_training_manager",membership_id:b.dataset.tm,make,reason:val("tmr")},"mmsg",viewPeople); }); });
