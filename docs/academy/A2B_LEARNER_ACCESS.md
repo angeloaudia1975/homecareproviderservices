@@ -65,8 +65,8 @@ background run).
 
 ## Production procedure (NOT authorized yet)
 
-1. Read-only preflight (`academy_a2b_m5_postcheck.sql` before: `m5_functions` 0; record M1–M4 fingerprints, switches,
-   rows).
+1. Read-only preflight `academy_a2b_m5_preflight.sql`: `ready_for_m5` = true; record M1–M4 and outside-the-Academy
+   fingerprints, switches and row counts (run it again after M5: those must be identical).
 2. Angelo checks the sha256 in the editor and runs the migration himself; all 8 install checks `ok = true`.
 3. Postcheck: M5 fingerprint = the precomputed Unix or Windows-paste value; M1–M4 fingerprints unchanged; 22 / 15 / 0;
    learner rows 0; switches unchanged.
