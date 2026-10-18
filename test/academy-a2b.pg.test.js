@@ -161,7 +161,7 @@ async function signIn(addr, ip) {
       assert.strictEqual((await learner({ action: 'save_progress', enrollment_id: ENR, lesson_id: L1, status: 'viewed', resume_block: 0 }, LC)).body.progress.status, 'completed');
       const team = await learner({ action: 'team' }, TMC);
       const pat = team.body.roster.find(p => p.email === 'pat@north.example');
-      assert.strictEqual(pat.courses[0].lessons_completed, 1); assert.ok(!/score|passed/.test(JSON.stringify(pat)));
+      assert.strictEqual(pat.courses[0].lessons_completed, 1); assert.ok(!/score/.test(JSON.stringify(pat)), "no score"); assert.deepStrictEqual(pat.courses[0].exam, { attempts: 0, passed: false, last_at: null }, "A2E: pass/fail and attempt count only");
       assert.strictEqual((await learner({ action: 'save_progress', enrollment_id: ENR, lesson_id: L1, status: 'viewed', resume_block: 2 }, TMC)).status, 403, 'nobody saves another person\'s progress');
     });
     await t('Ending access ends the live session on the very next request; sign-out ends this session; a forged or old-format cookie is refused', async () => {
