@@ -44,7 +44,7 @@ function base(name, withM6) {
   if (withM6) file(name, MIG);
 }
 const course = (db, slug) => json(run(db, `select academy_content_op_create_course(${PRES}, null, ${J({ slug, title: slug, course_type: 'hcps_certification', manufacturer_slug: 'golden-technologies' })})`)).id;
-function version(db, c) {
+function version(db, c, extraLesson) {
   const v = json(run(db, `select academy_content_op_create_version(${PRES}, null, '${c}', '{"exam_questions":2}')`)).id;
   const qs = [];
   for (const k of ['A', 'B']) {
@@ -52,6 +52,10 @@ function version(db, c) {
     qs.push(json(run(db, `select academy_author_op_create_question(${PRES}, null, '${v}', ${J({ module_id: m, kind: 'single', prompt: 'Exam ' + k + ' ' + v.slice(0, 6) + '?', choices: [{ id: 'a', text: 'Right ' + k }, { id: 'b', text: 'Wrong ' + k }], answer_key: 'a', explanation: 'SECRET-EXPLANATION-' + k, objective_tags: ['topic-' + k.toLowerCase()] })})`)).id);
     const l = json(run(db, `select academy_content_op_create_lesson(${PRES}, null, '${m}', ${J({ title: 'Lesson ' + k, est_minutes: 10 })})`)).id;
     run(db, `select academy_author_op_set_blocks(${PRES}, '${l}', ${J([{ kind: 'text', heading: 'One', body: 'First.' }, { kind: 'text', heading: 'Two', body: 'Second.' }, { kind: 'text', heading: 'Three', body: 'Third.' }])})`);
+    if (extraLesson && k === 'A') {   // a second lesson in the same module (position 2)
+      const l2 = json(run(db, `select academy_content_op_create_lesson(${PRES}, null, '${m}', ${J({ title: 'Lesson A2', est_minutes: 10 })})`)).id;
+      run(db, `select academy_author_op_set_blocks(${PRES}, '${l2}', ${J([{ kind: 'text', heading: 'One', body: 'First.' }, { kind: 'text', heading: 'Two', body: 'Second.' }, { kind: 'text', heading: 'Three', body: 'Third.' }])})`);
+    }
   }
   return { v, qs };
 }
@@ -244,6 +248,21 @@ try {
     finish(DB, L, E, [ids[1]]);
     const ok = op(DB, 'start', `${AL}, '${E}'`); assert.strictEqual(ok.ok, true, JSON.stringify(ok));
     run(DB, `select academy_exam_op_submit(${AL}, '${ok.attempt_id}', '{}')`);
+  });
+  await t('Lesson gate counts EVERY lesson: with two lessons in one module, finishing the first lesson of each module is not enough', () => {
+    const C4 = course(DB, 'three-lessons'); const W = version(DB, C4, true); publish(DB, W.v);
+    const L = learnerAt(DB, HQ, 'three@lessons.example', '191919'); const E = enrollRaw(DB, L, W.v); const AL = `'learner:${L}'`;
+    const ids = run(DB, `select l.id from academy_lessons l join academy_modules m on m.id = l.module_id where m.version_id = '${W.v}' and l.position = 1`).split('\n').filter(Boolean);
+    assert.strictEqual(ids.length, 2); finish(DB, L, E, ids);
+    const r = op(DB, 'start', `${AL}, '${E}'`); assert.strictEqual(r.reason, 'lessons_incomplete'); assert.strictEqual(r.lessons_total, 3); assert.strictEqual(r.lessons_completed, 2);
+    finish(DB, L, E, lessonsOf(DB, W.v)); assert.strictEqual(op(DB, 'start', `${AL}, '${E}'`).ok, true);
+  });
+  await t('Simultaneous starts in TWO courses by one learner: exactly one open attempt in total (the per-learner lock)', async () => {
+    const L = learnerAt(DB, HQ, 'two@courses.example', '202020'); const EA = enroll(DB, L, V.v), EB = enroll(DB, L, V2.v); const AL = `'learner:${L}'`;
+    const rs = await Promise.all(Array.from({ length: 20 }, (_, i) => bg(DB, `begin; select academy_exam_op_start(${AL}, '${i % 2 ? EA : EB}'); select pg_sleep(0.1); commit;`)));
+    assert.ok(rs.every(r => r.ok), rs.map(r => r.err).join('\n'));
+    assert.strictEqual(rs.filter(r => json(r.out.split('\n')[0]).ok).length, 1);
+    assert.strictEqual(count(DB, 'academy_attempts', `learner_id = '${L}' and submitted_at is null`), 1);
   });
   await t('Lesson gate across enrollments: lessons finished in another course never count; the M5 progress operation refuses another course\'s lesson', () => {
     const L = learnerAt(DB, HQ, 'cross@test.example', '131313'); const EA = enrollRaw(DB, L, V.v), EB = enrollRaw(DB, L, V2.v); const AL = `'learner:${L}'`;

@@ -41,7 +41,8 @@ const MUTANTS = [
   // owner decision 18 Oct 2026: the lesson gate and the reasonable-accommodation path
   { f: SQL, from: "  if v_lessons = 0 or v_done < v_lessons then", to: "  if false then", why: 'the exam starts before the lessons are done' },
   { f: SQL, from: "                                                    and pr.lesson_id = l.id and pr.status = 'completed'))", to: "                                                    and pr.lesson_id = l.id))", why: 'a viewed lesson counts as completed' },
-  { f: SQL, from: "exists (select 1 from academy_progress pr where pr.enrollment_id = p_enrollment.id", to: "exists (select 1 from academy_progress pr join academy_enrollments e2 on e2.id = pr.enrollment_id where e2.learner_id = p_learner", why: 'lessons finished in another enrollment count' },
+  // (not a mutant: "lessons finished in another enrollment count" is equivalent under M5 — a progress row's lesson must
+  //  belong to its enrollment's version, and a learner has one enrollment per version — so it cannot be told apart)
   { f: SQL, from: "    from academy_lessons l join academy_modules m on m.id = l.module_id where m.version_id = p_enrollment.version_id;", to: "    from academy_lessons l join academy_modules m on m.id = l.module_id where m.version_id = p_enrollment.version_id and l.position = 1;", why: 'only some of the version’s lessons are required' },
   { f: SQL, from: "  select e.learner_id, v.exam_time_limit_minutes + e.exam_extra_minutes into v_l, v_min", to: "  select e.learner_id, v.exam_time_limit_minutes into v_l, v_min", why: 'extra time is ignored at the deadline' },
   { f: SQL, from: "  perform academy_op_actor_staff(p_actor);\n  if p_extra_minutes is null", to: "  if p_extra_minutes is null", why: 'anyone sets extra time' },

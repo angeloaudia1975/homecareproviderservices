@@ -58,9 +58,9 @@ server role are expected to be refused — that is the point of M6. Use the M6 s
 
 ## Tests
 
-`test/academy-m6.pg.test.js` (29), `test/academy-a2e.pg.test.js` (11), `test/academy-learner.browser.js` (exam flow, the
+`test/academy-m6.pg.test.js` (31), `test/academy-a2e.pg.test.js` (11), `test/academy-learner.browser.js` (exam flow, the
 lesson gate, a lost connection mid-exam and the ungraded state at 390 and 1280, axe), `test/academy-c1.browser.js` (Exam
-time in the Command Center), `test/academy-a2e.mutants.js` (43 + control). Edges covered: 20 simultaneous starts → 1 attempt; cooldown 59:59 refused /
+time in the Command Center), `test/academy-a2e.mutants.js` (42 + control; one candidate dropped as equivalent under M5). Edges covered: 20 simultaneous starts → 1 attempt; cooldown 59:59 refused /
 60:00 allowed; 3rd attempt of the day allowed, 4th refused until local midnight, on the day daylight saving ends
 (25-hour day) and starts (23-hour day); expiry grades only answers saved in time; no key or explanation in any learner
 response; withdrawn enrollment and ended access refused; across two courses one open attempt blocks the other course while
