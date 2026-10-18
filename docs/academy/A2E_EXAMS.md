@@ -100,3 +100,11 @@ outside_functions 108 / `5a4f7cf7e3f8074d35813d39493f9272`. Expected to change: 
 (server loses INSERT/UPDATE/DELETE on academy_attempts) and academy_columns 200 / `02864fbd…` (+5 attempts, +3 versions,
 +1 enrollments). Academy RLS 20/20, 0 policies. Key rows: dealers 447, monthly_sales 12,575, academy_events 524,
 courses 1, lessons 17, questions 111, media 39, learners 0, enrollments 0. M6 NOT installed — awaiting the owner's approval.
+
+## M6 RUN and ACCEPTED in production (18 Oct 2026 ~18:05 CT; evidence supplied by Angelo, PR #22 comments 6256282798 / 6256331845)
+
+- Run once by Angelo in the SQL editor (project `ycqmztthwldytkzyvmiv`) from the approved head `9e9df5c` (sha256 LF `b8601093…`, CRLF `f1e41a6f…`); **8/8 install checks true**.
+- Postcheck: 13 functions · 6 server-callable · 0 public · 2 triggers · 0 attempts · M1 start/submit for the server `[false,false]` · no server writes on attempts · limits 45 / 60 / 3 · fingerprint `372d3fbe777b89abaccf2ff996793afa` (the precomputed Windows-paste form).
+- Repeat preflight: `m6_installed` true; M1–M5 and M3.1 fingerprints unchanged; outside grants / policies / columns / functions = the before-baseline above; Academy grants 232 → 228 and columns 200 → 212 (as expected: 8 attempt + 3 version + 1 enrollment columns); RLS 20/20; learner rows 0; only `academy_admin` on; Golden v1 draft.
+- Public-key probe (`scripts/academy_m6_public_probe_browser.js`, public key verified first): **ALL 15 BLOCKED (401)**.
+- **Never rerun or roll back M6.** Still separate approvals: PR #22 merge + deploy, live Netlify / client-IP validation, `academy_exams` and every learner switch, learner email, Golden publication. M7 not installed.
