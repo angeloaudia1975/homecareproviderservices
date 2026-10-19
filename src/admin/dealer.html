@@ -342,6 +342,7 @@ function render(D,A){
   const acctCard=`<div class="card"><h2>Manufacturer account numbers</h2><div id="acctcard"><div class="hint">Loading…</div></div></div>`;
   const intelCard=`<div class="card"><h2>Digital activity &amp; interest</h2><div id="intel"><div class="hint">Loading activity…</div></div></div>`;
   const mfrIntelCard=`<div class="card" id="mfrIntelCard" style="display:none"><h2>Manufacturer-reported intelligence</h2><div id="mfrintel"></div></div>`;
+  const academyCard=`<div class="card" id="academyCard" style="display:none"><h2>HCPS Academy</h2><div id="academy360"></div></div>`;
   const salesCard=`<div class="card" id="salesCard"><h2>Monthly sales &amp; product detail</h2><div id="sales"><div class="hint">Loading sales…</div></div></div>`;
   const commCard=`<div class="card"><h2>Commission — paid vs. outstanding</h2><div id="commled"><div class="hint">Loading…</div></div></div>`;
   const emailCard=`<div class="card" id="emailCard"><h2>Outlook email <span id="emailCount" style="float:right;font-size:11px;color:var(--gray);font-weight:600"></span></h2>
@@ -379,10 +380,10 @@ function render(D,A){
   $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
       <div>${notesCard}${contactsCard}${emailCard}${callCard}${touchCard}${visitsCard}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
-      <div>${tasksCard}${signals}${addrCard}${acctCard}${mfrIntelCard}</div>
+      <div>${tasksCard}${signals}${addrCard}${acctCard}${academyCard}${mfrIntelCard}</div>
     </div>`;
   if(CUR!==d.id) TOUCH_LAST_STATUS=""; // Do not carry a previous dealer\'s save notice to a different account.
-  CUR=d.id; DPHONE=d.phone||""; VLIM=25; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadVisits(); loadHandout(); loadMfrIntel();
+  CUR=d.id; DPHONE=d.phone||""; VLIM=25; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadVisits(); loadHandout(); loadMfrIntel(); loadAcademy360();
 }
 function nextBestAction(d,lines,monthsSince,cart,sess){
   const due=(lines||[]).filter(l=>l.status==="due");
@@ -1820,6 +1821,41 @@ async function loadMfrIntel(){
       ${obs?`<ul style="margin:6px 0 0 16px;padding:0;font-size:12px">${obs}</ul>`:""}
     </div>`;}).join("");
   card.style.display="";
+}
+/* HCPS Academy (crm-api academy, switch academy_dealer360): who here is in training — course progress, exam passed /
+   not passed with the attempt count, HCPS certificates and expiry. Status only: never a score. Hidden while switched off. */
+async function loadAcademy360(){
+  const card=document.getElementById("academyCard"), box=document.getElementById("academy360"); if(!card||!box) return;
+  let j=null; try{ j=await crm({action:"academy",dealer_id:CUR}); }catch(e){ j=null; }
+  if(!j||j.ok===false){ if(j&&j.error){ box.innerHTML=`<div class="hint">${esc(j.message||j.error)}</div>`; card.style.display=""; } else card.style.display="none"; return; }
+  if(!j.enabled){ card.style.display="none"; return; }
+  const S=j.summary||{}, P=j.people||[];
+  const fmt=d=>{ if(!d) return ""; const x=new Date(d); return isNaN(x)?"":x.toLocaleDateString([], {month:"short",day:"numeric",year:"numeric"}); };
+  const chip=(n,label,cls)=>`<span class="pill2 ${cls||""}" style="margin:0 6px 6px 0;display:inline-block">${esc(String(n))} ${esc(label)}</span>`;
+  const test=(j.dealers||[]).some(d=>d.test&&!d.branch);
+  let h=test?`<div class="hint" style="margin-bottom:6px">TEST dealership — kept out of real Academy figures.</div>`:"";
+  if(!P.length){
+    h+=`<div class="hint">No one from this dealership is in the HCPS Academy yet.${S.pending_invites?` ${esc(String(S.pending_invites))} invitation(s) waiting to be accepted.`:""} Invitations are sent from the Academy Command Center or by the dealership's Training Manager.</div>`;
+    box.innerHTML=h; card.style.display=""; return;
+  }
+  h+=`<div style="margin-bottom:4px">${chip(S.active||0,"active")}${chip(S.enrolled||0,"enrolled")}${chip(S.passed||0,"passed","ok")}${chip(S.certified||0,"certified","ok")}${S.expiring_soon?chip(S.expiring_soon,"expiring within 60 days","due"):""}${S.expired?chip(S.expired,"expired","due"):""}${S.revoked?chip(S.revoked,"revoked","none"):""}${S.pending_invites?chip(S.pending_invites,"invitation(s) pending","none"):""}</div>`;
+  const multi=(j.dealers||[]).length>1;
+  h+=P.map(p=>{
+    const role=p.role==="training_manager"?"Training Manager":"Learner";
+    const head=`<div style="font-weight:700;color:var(--navy)">${esc(p.name)} <span class="hint" style="font-weight:400">· ${esc(role)}${multi?" · "+esc(p.dealer):""}${p.access==="ended"?" · access ended "+esc(fmt(p.ended_at)):""}</span></div>`;
+    const rows=(p.courses||[]).map(c=>{
+      const exam=c.exam.passed?"Exam passed":c.exam.attempts?`Exam not passed yet (${c.exam.attempts} attempt${c.exam.attempts===1?"":"s"})`:"Exam not taken";
+      let cert="";
+      if(c.certificate){ const x=c.certificate;
+        cert=x.status==="valid"?` · <span class="pill2 ${x.expiring_soon?"due":"ok"}" style="text-transform:none;letter-spacing:0;font-size:11px">HCPS certificate ${esc(x.cert_number)} · valid until ${esc(fmt(x.expires_at))}</span>`
+            :x.status==="expired"?` · <span class="pill2 due" style="text-transform:none;letter-spacing:0;font-size:11px">Certificate ${esc(x.cert_number)} expired ${esc(fmt(x.expires_at))}</span>`
+            :` · <span class="pill2 none" style="text-transform:none;letter-spacing:0;font-size:11px">Certificate ${esc(x.cert_number)} revoked</span>`; }
+      return `<div style="font-size:12px;margin:2px 0 0 0">${esc(c.course)}${c.test_course?" (TEST)":""}: ${esc(String(c.lessons_completed))}/${esc(String(c.lessons_total))} lessons · ${esc(exam)}${c.status==="withdrawn"?" · withdrawn":""}${cert}</div>`;
+    }).join("")||`<div class="hint" style="font-size:12px">Not enrolled in a course yet.</div>`;
+    return `<div style="margin:8px 0">${head}${rows}</div>`;
+  }).join("");
+  h+=`<div class="hint" style="margin-top:6px">Status only — exam scores are not shown here. HCPS certificates are HCPS sales certifications, not Golden Technologies credentials.</div>`;
+  box.innerHTML=h; card.style.display="";
 }
 async function loadVisits(){
   const el=$("#visits"); if(!el||!CUR) return;

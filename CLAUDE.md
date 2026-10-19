@@ -3143,6 +3143,14 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   delivered, TM + learner flows, 17/17 lessons, cooldown, resume, 100% pass, certificate HCPS-TMGS-THUD issued → verified →
   revoked by the President, access end closes the session. Rollback = `academy_open` false (TEST-only) or any switch off.
   No mass email to real dealers without a separate review of audience, content, suppression and opt-out.
+- **Academy on Dealer 360 (switch `academy_dealer360`, built 19 Oct 2026 at Angelo's request).** crm-api action `academy`
+  (`_academy_d360.js`), read-only: who at this dealer + its direct branches THE VIEWER MAY OPEN is in the Academy — role,
+  access active/ended, per course lessons done/total, exam passed / not passed + submitted-attempt count, HCPS certificate
+  number + valid/expired/revoked + expiring within 60 days, pending invitations. NEVER a score, answer, email or revocation
+  reason (reads never select them). Who may read it = who may open that Dealer 360 (crm-api scope check). TEST courses
+  never counted in the figures. Off = `{enabled:false}` and the card stays hidden. Tests: academy-d360 8, mutants 11/11,
+  academy-d360-ui.qa 5 (President / rep / Relations, phone + desktop). `academy_external_uploads` is reserved and NOT
+  built (learner upload of Golden credential proof).
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

@@ -68,6 +68,7 @@ async function whoami(event){
 const { dealerScope, isAdmin, seesAllDealers } = require("./_scope.js");
 const SC=require("./_scope.js");
 const FL=require("./_flags.js");
+const AD360=require("./_academy_d360.js");   // HCPS Academy on Dealer 360 (academy_dealer360)
 const UP=require("./_upsert.js");
 const DS=require("./_dealer_status.js");
 const TK=require("./_tasks.js");     // Phase 1: the one way to create a task
@@ -185,6 +186,21 @@ exports.handler = async (event)=>{
       const obs=await sbGet(`mfr_dealer_observations?snapshot_id=in.(${show.map(s=>s.id).join(",")})&kind=in.(contact_person,product_line,told_us,contact_log)&select=snapshot_id,kind,observed_on,text,structured&order=id.asc`);
       return json(200,{ok:true,reports:show.map(s=>({ ...s, report:pub.get(s.source_id),
         observations:obs.filter(o=>o.snapshot_id===s.id).map(o=>({kind:o.kind,observed_on:o.observed_on,text:o.text})) }))});
+    }
+
+    /* ---- HCPS Academy (switch academy_dealer360, 19 Oct 2026) ----------------------------------------------------------
+       Who at this dealer (and its direct branches the viewer may also open) is in the HCPS Academy: course progress, exam
+       passed / not passed + attempt count, HCPS certificates with expiry. Read-only; never a score, an email or a
+       revocation reason. Who may read it = who may open this Dealer 360 (the scope check at the top). Off = {enabled:false}. */
+    if(b.action==="academy"){
+      if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+      const did=String(b.dealer_id);
+      if(!/^[A-Za-z0-9-]{1,64}$/.test(did)) return json(400,{error:"bad dealer_id"});
+      if(!(await FL.flagOn(sbGet,"academy_dealer360"))) return json(200,{ok:true,enabled:false});
+      let kids=(await sbGet(`dealers?parent_id=eq.${encodeURIComponent(did)}&select=id`)).map(k=>String(k.id));
+      if(!isAdmin(scopeMe)){ const sc=await dealerScope(scopeMe, sbGet); if(!sc.isAll) kids=kids.filter(k=>sc.ids&&sc.ids.has(k)); }
+      try{ return json(200, await AD360.dealerAcademy(sbGet, did, kids)); }
+      catch(e){ if(/PGRST205|42P01|does not exist/i.test(String(e.message))) return json(200,{ok:true,enabled:true,dealers:[],people:[],summary:null,not_installed:true}); throw e; }
     }
 
     /* ---- Visits & Meetings (Phase 1) — the Dealer 360 card, in ONE dealer-scoped call ----------
