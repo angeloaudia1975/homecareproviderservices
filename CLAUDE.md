@@ -3089,6 +3089,10 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   - **M6 RUN and ACCEPTED in production (18 Oct 2026 ~18:05 CT, run by Angelo):** 8/8 install checks, postcheck 13 / 6 / 0 / 2 triggers,
     fingerprint `372d3fbe…` (Windows paste), M1–M5 + outside fingerprints unchanged, probe 15/15 BLOCKED. **Never rerun or roll back M6.**
     PR #22 merge/deploy, `academy_exams` and all learner switches still need separate approval.
+  - **PR #22 MERGED by Angelo (main 6150312, Netlify Published 18 Oct 2026 6:11 PM CT) and verified live:** academy pages
+    with strict CSP / DENY / noindex; learner + exam actions 403 `flag_off`; handoff disabled; admin 401 without a real token;
+    only `academy_admin` on. **Client-IP gate PASS** on Netlify's real edge (`x-nf-client-connection-ip` cannot be forged;
+    `x-forwarded-for` can — never read it). Evidence: PR #22 comment 6257614309.
 - **Golden certification launch directive (Angelo, 18 Oct 2026 16:30 CT — standing until the first Golden launch).**
   Continue autonomously through authorized coding, testing, documentation, PR preparation and independent-review requests
   without routine confirmations; GitHub is the shared source of truth; ask for an independent (ChatGPT) review at every
