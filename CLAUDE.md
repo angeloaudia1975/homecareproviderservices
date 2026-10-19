@@ -3116,6 +3116,11 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   Technologies". The server role loses EXECUTE on M1 issue/revoke and write rights on `academy_certificates`. Training
   Managers see number, status, validity and expiring-soon (≤60 days) for their own dealership + branches, never a score.
   Open owner decision (not blocking): re-certification after expiry (recommended: a new course version).
+  **M7 installed in production + PR #23 merged (main f2e8568, Published 18 Oct 2026 8:49 PM CT):** fingerprint 42dc5429…,
+  probe 9/9 BLOCKED; live flag-off checks PASS (verify `{enabled:false}`, learner/exam/cert 403 `flag_off`, admin 401
+  without a real token, 0 certificates). Learner end-to-end suite `test/academy-phase4.browser.js` (9/9, local, synthetic
+  accounts). Activation order + controlled pilot package: `docs/academy/LAUNCH_CHECKLIST.md` — every step there needs
+  Angelo's explicit go-ahead; switches stay OFF, Golden stays draft, no email until the sender is set.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

@@ -323,7 +323,7 @@
         show([el('h1', { text: R.passed ? 'You passed' : 'Not passed this time' }),
           el('section', { cls: 'ac-card ac-stack' }, [el('p', { cls: 'ac-score', text: (R.score != null ? R.score + '%' : '') }),
             R.expired ? msg('Time ran out: the answers saved before the deadline were graded.') : null,
-            R.passed && R.certificate ? el('p', { text: 'Well done — you have earned the HCPS ' + (R.certificate.course || '') + ' certificate (' + R.certificate.cert_number + ').' }) : null,
+            R.passed && R.certificate ? el('p', { text: 'Well done — you have earned your HCPS certificate for ' + (R.certificate.course || 'this course') + ' (' + R.certificate.cert_number + ').' }) : null,
             R.passed && R.certificate_pending ? msg('Well done. Your passing result is kept; your HCPS certificate will be issued shortly — it will appear under My certificates.') : null,
             R.passed && !R.certificate && !R.certificate_pending ? el('p', { text: 'Well done.' }) : null,
             R.passed ? null : el('p', { text: 'Review the topics below, then try again after the break.' }),
