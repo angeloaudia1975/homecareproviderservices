@@ -1,4 +1,4 @@
-/* Training Academy landing page (/training-academy/ + the three concept previews): renders from the built _site at
+/* Training Academy landing page (/training-academy/, design A): renders from the built _site at
    desktop / tablet / iPhone / Android widths — no horizontal scroll, no broken images, no page errors, axe clean
    (WCAG A/AA), one h1, every link resolves to a built page or an allowed destination, noindex only on the previews.
      npm run build && PLAYWRIGHT_MODULE=… AXE=… node test/training-academy.browser.js   (SHOTS=dir for screenshots) */
@@ -6,7 +6,7 @@ const path = require('path'), fs = require('fs'), http = require('http'), assert
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const SITE = path.join(__dirname, '..', '_site'), SHOTS = process.env.SHOTS || null;
 const AXE = process.env.AXE ? fs.readFileSync(process.env.AXE, 'utf8') : null;
-const PAGES = ['/training-academy/', '/training-academy/concept-a/', '/training-academy/concept-b/', '/training-academy/concept-c/'];
+const PAGES = ['/training-academy/'];   // design chosen by the owner 19 Oct 2026: A (the three previews were removed)
 const SIZES = { desktop: { width: 1366, height: 900 }, tablet: { width: 820, height: 1180 }, iphone: { width: 390, height: 844 }, android: { width: 360, height: 780 } };
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.json': 'application/json' };
 const fileFor = u => { let p = decodeURIComponent(new URL(u, 'http://x').pathname); let f = path.join(SITE, p); if (fs.existsSync(f) && fs.statSync(f).isDirectory()) f = path.join(f, 'index.html'); return f; };
