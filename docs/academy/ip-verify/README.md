@@ -14,3 +14,10 @@ Procedure (no production data, no secrets, nothing merged):
 
 If it FAILS: keep learner sign-in off; the fix is to key the network limit on a value a visitor cannot influence
 (e.g. drop the network bucket and rely on the per-address and per-code limits), then re-run.
+
+## Result — PASS (18 Oct 2026 ~18:30 CT, deploy preview of throwaway PR #24, closed unmerged)
+
+`x-nf-client-connection-ip` was the same real address in all 5 requests, including when the visitor forged it; it never
+showed the forged `203.0.113.66`. `x-forwarded-for` WAS visitor-influenced (`203.0.113.66, <real>`), which confirms the
+rule: the Academy rate limits read only `x-nf-client-connection-ip`. Full table: PR #22 comment 6257614309. The
+diagnostic function never reached main.
