@@ -23,7 +23,7 @@ const M = [
   { f: SQL, from: "  if v_test or h_test then return out || jsonb_build_object('eligible', false, 'reason', 'test_dealer'); end if;", to: "", why: 'TEST dealers free' },
   { f: SQL, from: "  if v_status <> 'active' or h_status <> 'active' then", to: "  if v_status <> 'active' then", why: 'branch of a prospect free' },
   { f: SQL, from: "  if v_class not in ('', 'dealer') or h_class not in ('', 'dealer') then", to: "  if false then", why: 'manufacturer accounts free' },
-  { f: SQL, from: "  if p_patch->>'sale_mode' = 'test' and v_c.slug not like 'test-%' then", to: "  if false then", why: 'test-mode sale of a real course (first check)' },
+  { f: SQL, from: "  if v_new.sale_mode = 'test' and v_c.slug not like 'test-%' then", to: "  if false then", why: 'test-mode sale of a real course' },
   { f: SQL, from: "  check (sale_mode <> 'live' or rights_status in ('confirmed','not_required'))", to: "  check (true)", why: 'live sale without manufacturer rights' },
   { f: SQL, from: "  if v.paid_at < now() - interval '14 days' then", to: "  if false then", why: 'refunds after 14 days' },
   { f: SQL, from: "  if p_refunded_total <= v.refunded_cents then", to: "  if false then", why: 'late smaller refund total lowers the record' },

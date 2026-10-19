@@ -83,5 +83,5 @@ update app_settings set value = value || '{"academy_payments": false, "academy_p
 
 ## Fingerprints (after M8)
 
-See `academy_p2_m8_postcheck.sql`. `m8_code_fingerprint`: Unix line endings **9d4ad838ea15ee19b263fa91e307e979**; pasted from Windows **0070da6d6f70aec8da3d37be5b188ac8** (both reproduced locally on PG16; M1–M7 fingerprint identical before and after M8).
+See `academy_p2_m8_postcheck.sql`. `m8_code_fingerprint`: Unix line endings **93e00785ecdd4e40a06a1356b0490aee**; pasted from Windows **a4b686988b632c2f8ce11b06f77fadd9** (both reproduced locally on PG16; M1–M7 fingerprint identical before and after M8).
 `m1_m7_fingerprint` must equal the value read before M8.

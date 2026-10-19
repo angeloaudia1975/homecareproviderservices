@@ -427,10 +427,6 @@ begin
   if p_patch ? 'network_included' and jsonb_typeof(p_patch->'network_included') <> 'boolean' then
     raise exception 'academy: network_included must be true or false' using errcode = '22023';
   end if;
-  -- Stripe TEST mode only for a TEST course: a test card must never open a real course.
-  if p_patch->>'sale_mode' = 'test' and v_c.slug not like 'test-%' then
-    raise exception 'academy: TEST-mode sales are only for TEST courses (slug test-…)' using errcode = '22023';
-  end if;
   perform pg_advisory_xact_lock(hashtext('academy-price:' || p_course_id::text));
   select * into v_old from academy_course_prices where course_id = p_course_id for update;
   perform academy_op_begin('commerce_set_price', p_actor);
@@ -451,6 +447,7 @@ begin
       updated_at = now(), updated_by = p_actor
      where course_id = p_course_id returning * into v_new;
   end if;
+  -- Stripe TEST mode only for a TEST course: a test card must never open a real course (checked on the row as saved)
   if v_new.sale_mode = 'test' and v_c.slug not like 'test-%' then
     raise exception 'academy: TEST-mode sales are only for TEST courses (slug test-…)' using errcode = '22023';
   end if;

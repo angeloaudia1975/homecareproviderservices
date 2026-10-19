@@ -369,6 +369,7 @@ const elig = d => jr(DB, `select academy_commerce_eligibility('${d}')`);
       assert.strictEqual(run(DB, `select count(*) from academy_purchases`), '1');
       assert.strictEqual(run(DB, `select count(*) from academy_organizations`), '1');
       assert.strictEqual(run(DB, `select count(*) from academy_enrollments where access_source = 'purchase'`), '1');
+      assert.strictEqual(run(DB, `select count(*) from academy_stripe_events where outcome = 'duplicate'`), '1', 'the second event is recognised as a duplicate, not re-processed');
     });
     await t('Webhook: an amount, currency or mode different from the checkout grants NOTHING (recorded for review)', async () => {
       const r = await buy({ course: 'test-sales-course', email: 'mis@outside.example', name: 'Mis Match', organization: 'Mis Co' });
@@ -408,6 +409,8 @@ const elig = d => jr(DB, `select academy_commerce_eligibility('${d}')`);
       assert.deepStrictEqual(ov.body.outside_organizations, { memberships: 1, organizations: 1 });
       const ds = await admin('pres', { action: 'dealer_summary' });
       assert.ok(!ds.body.dealerships.some(d => d.dealer_id == null), 'no "null dealership" row');
+      assert.strictEqual(ov.body.dealerships.with_learners, Number(run(DB, `select count(distinct dealer_id) from academy_memberships m where status = 'active' and dealer_id is not null and not exists (select 1 from dealers d where d.id = m.dealer_id and d.is_test)`)), 'dealership figures count dealers only');
+      assert.match(tryRun(DB, `select set_config('academy.op', 'enroll', false); insert into academy_memberships (learner_id, organization_id, role, access_type, created_by) values ('${PUR.learner_id}', (select organization_id from academy_memberships where id = '${PUR.membership_id}'), 'learner', 'purchased', 'x')`).err, /created only by a verified purchase/);
       const ll = await admin('pres', { action: 'list_learners' });
       const pat = ll.body.learners.find(l => l.email === 'pat@outside.example');
       assert.deepStrictEqual(pat.memberships.map(m => [m.outside, m.dealer]), [[true, 'Outside Mobility LLC']]);
