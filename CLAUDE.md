@@ -3121,6 +3121,23 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   without a real token, 0 certificates). Learner end-to-end suite `test/academy-phase4.browser.js` (9/9, local, synthetic
   accounts). Activation order + controlled pilot package: `docs/academy/LAUNCH_CHECKLIST.md` — every step there needs
   Angelo's explicit go-ahead; switches stay OFF, Golden stays draft, no email until the sender is set.
+- **LAUNCH AUTHORIZED (owner directive, PR #23 comment 6269613883, 19 Oct 2026 09:27 CT; confirmed in chat).** Decisions
+  settled: the 3 Golden advisories accepted; re-certification after expiry = a NEW course version; pilot = the TEST sandbox
+  dealer ("TEST — Golden Sandbox", 3f7d87a2-…) + HCPS-controlled mailboxes only (`angelo+academy-<role>@homecareproviderservices.us`,
+  never a staff_users address); pilot HCPS certificates are revoked by the President with a truthful reason afterwards
+  (never deleted or rewritten); switches on in the checklist order with a PASS gate + rollback line after each; general
+  availability after a successful pilot; no email to real dealers or real users in any test stage; no mass email without a
+  review of the real audience, content, suppression and opt-out. Do not pause for routine sign-offs; escalate only security /
+  privacy / legal issues, credentials or domain ownership the owner must enter, external costs, or an irreversible action
+  affecting real dealers. **Golden v1 PUBLISHED 19 Oct 2026 09:43 CT** (audited M4, President).
+- **Pilot gate (RULE, 19 Oct 2026): the learner switches are global, so until `academy_open` is exactly true only TEST
+  dealerships (`dealers.is_test`) can use the Academy** — `_academy.js pilotMode / pilotMemberships / pilotDealer /
+  pilotEmailAllowed`: sessions keep only TEST-dealership memberships; sign-in codes go only to TEST-dealership learners or
+  pending TEST invitations (others: same answer + decoy, code burned); verify refuses others; Partner 360 status / mint only
+  for a TEST-dealership login; invite / restore / appoint TM / enroll refused (403 `pilot_only`) for a real dealership, by
+  HCPS and Training Managers alike. Missing / non-true / unreadable = pilot. Tests: academy-pilot.pg + academy-pilot.mutants.
+  Any new learner-side write path must call the gate. Partner 360 (ordering repo `public/dashboard.html`) shows its
+  Training button only when academy-handoff status (sent with the dealer's token) answers `enabled:true`.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

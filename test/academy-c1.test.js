@@ -411,7 +411,8 @@ const noForbiddenWrites = w => { const bad = w.writes.filter(x => FORBIDDEN_WRIT
 
   // ---------- 6. identity always from the sign-in ----------
   await t('Training Manager role: through academy_op_set_training_manager, actor = the signed-in admin, reason required', async () => {
-    const w = world(); const m = mod(w); const ops = withOps(w);
+    const w = world(); w.db.app_settings[0].value = { academy_admin: true, academy_open: true };   // general availability; the pilot gate is tested in academy-pilot.pg
+    const m = mod(w); const ops = withOps(w);
     assert.strictEqual((await call(m, Object.assign({ action: 'set_training_manager', membership_id: MEM2, make: true }, IDENTITY_SPOOF), as('admin'))).status, 400);
     assert.strictEqual((await call(m, { action: 'set_training_manager', membership_id: MEM2, make: 'yes', reason: 'r' }, as('admin'))).status, 400);
     const r = await call(m, Object.assign({ action: 'set_training_manager', membership_id: MEM2, make: true, reason: 'Store lead' }, IDENTITY_SPOOF), as('admin'));

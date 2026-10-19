@@ -66,7 +66,7 @@ try {
   t('Preflight readiness: academy_admin ON (the pilot) is allowed; any other Academy switch ON is not', () => {
     run(DB, `insert into app_settings (key, value) values ('phase2_flags', '{"academy_admin": true}') on conflict (key) do update set value = excluded.value`);
     assert.strictEqual(json(file(DB, SUP('academy_a2d_m3_preflight.sql'))).ready_for_m3, true);
-    run(DB, `update app_settings set value = value || '{"academy_learner": true}' where key = 'phase2_flags'`);
+    run(DB, `update app_settings set value = value || '{"academy_learner": true, "academy_open": true}' where key = 'phase2_flags'`);
     assert.strictEqual(json(file(DB, SUP('academy_a2d_m3_preflight.sql'))).ready_for_m3, false);
     run(DB, `update app_settings set value = '{"academy_admin": true}' where key = 'phase2_flags'`);
   });

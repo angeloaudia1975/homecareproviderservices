@@ -94,7 +94,7 @@ const refused = r => r.status >= 400 && r.status < 500;
 const sqlTry = sql => { const r = psql(DB, ['-c', sql]); return { ok: r.status === 0, err: r.stderr }; };
 (async () => {
   try {
-    flags({ academy_admin: true, academy_learner: true, academy_invites: true, academy_exams: true, academy_certificates: true });
+    flags({ academy_admin: true, academy_learner: true, academy_open: true, academy_invites: true, academy_exams: true, academy_certificates: true });
     // HQ (with branch NORTH) and OTHER, each with its own Training Manager; a branch TM at NORTH (D3: branch only)
     await admin('pres', { action: 'invite_learner', dealer_id: HQ, email: 'tm@hqmed.example', role: 'training_manager' });
     await admin('pres', { action: 'invite_learner', dealer_id: OTHER, email: 'tm@other.example', role: 'training_manager' });

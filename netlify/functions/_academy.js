@@ -14,7 +14,7 @@ const FL = require('./_flags.js');
 const SESSION = require('./_academy_session.js');
 
 const SWITCHES = ['academy_admin', 'academy_learner', 'academy_handoff', 'academy_invites', 'academy_external_uploads',
-                  'academy_certificates', 'academy_dealer360', 'academy_exams'];
+                  'academy_certificates', 'academy_dealer360', 'academy_exams', 'academy_open'];
 const SITE_ORIGINS = ['https://homecareproviderservices.org', 'https://www.homecareproviderservices.org',
                       'https://homecareproviderservices.netlify.app'];
 const PARTNER360_ORIGINS = ['https://hcpsonlineordering.netlify.app'];
@@ -174,6 +174,42 @@ async function switches() {
 }
 async function sbGetLoose(path) { return sbGet(path); }   // _flags.js catches its own read errors (off)
 
+/* ---------- PILOT GATE (launch directive 19 Oct 2026) ----------
+   The learner switches are global, so until HCPS opens the Academy to every dealership (switch academy_open exactly true)
+   the Academy runs in PILOT MODE, default-deny: only dealerships marked TEST (dealers.is_test) can hold a working
+   Academy session, receive a sign-in code, get a Partner 360 Training link, be invited, appointed, restored or enrolled.
+   A missing, false or unreadable academy_open = pilot mode. Reads behind the gate are strict (unreadable = 503). */
+async function pilotMode() { return !(await switchOn('academy_open')); }
+async function testDealerIds(ids) {
+  const list = [...new Set((ids || []).map(String).filter(x => UUID.test(x)))];
+  if (!list.length) return new Set();
+  const rows = await sbGet(`dealers?id=in.(${list.map(enc).join(',')})&is_test=eq.true&select=id`);
+  return new Set(rows.map(r => String(r.id)));
+}
+/* Refuses unless the Academy is open to all, or the dealership is a TEST dealership. */
+async function pilotDealer(dealerId) {
+  if (!(await pilotMode())) return;
+  if (!(await testDealerIds([dealerId])).has(String(dealerId))) refuse(403, 'pilot_only', 'The HCPS Academy is in its pilot. It is not open for this dealership yet.');
+}
+/* Active memberships the pilot allows: all of them when open; only TEST dealerships' during the pilot. */
+async function pilotMemberships(mem) {
+  if (!(await pilotMode())) return mem;
+  const ok = await testDealerIds(mem.map(m => m.dealer_id));
+  return mem.filter(m => ok.has(String(m.dealer_id)));
+}
+/* May this address use the Academy right now? Pilot: an active learner with an active TEST-dealership membership, or a
+   pending, unexpired invitation to a TEST dealership (their first sign-in accepts it). */
+async function pilotEmailAllowed(email) {
+  if (!(await pilotMode())) return true;
+  const addr = enc(String(email).toLowerCase());
+  const inv = (await sbGet(`academy_invites?email=eq.${addr}&status=eq.pending&select=dealer_id,expires_at`)).filter(i => Date.parse(i.expires_at) > Date.now());
+  if ((await testDealerIds(inv.map(i => i.dealer_id))).size) return true;
+  const ls = await sbGet(`academy_learners?email=eq.${addr}&status=eq.active&select=id`);
+  if (!ls.length) return false;
+  const mem = await sbGet(`academy_memberships?learner_id=in.(${ls.map(l => enc(l.id)).join(',')})&status=eq.active&select=dealer_id`);
+  return (await testDealerIds(mem.map(m => m.dealer_id))).size > 0;
+}
+
 /* ---------- who is calling ---------- */
 function bearer(event) {
   const h = (event && event.headers) || {};
@@ -215,8 +251,8 @@ async function learnerActor(event) {
   if (!l || l.status !== 'active') return null;
   const staff = await sbGet(`staff_users?email=eq.${enc(String(l.email).toLowerCase())}&select=email,active`);
   if (staff.some(x => x.active !== false)) return null;
-  const mem = await sbGet(`academy_memberships?learner_id=eq.${enc(l.id)}&status=eq.active&select=id,dealer_id,role,access_type`);
-  if (!mem.length) return null;   // no active access for any dealership = no session
+  const mem = await pilotMemberships(await sbGet(`academy_memberships?learner_id=eq.${enc(l.id)}&status=eq.active&select=id,dealer_id,role,access_type`));
+  if (!mem.length) return null;   // no active access for any dealership (pilot: no TEST dealership) = no session
   return { kind: 'learner', learner_id: l.id, session_id: s.id, auth_user_id: l.auth_user_id || null, email: l.email, full_name: l.full_name, memberships: mem };
 }
 
@@ -341,6 +377,7 @@ function handler(fn, opts) {
 
 module.exports = {
   SWITCHES, SITE_ORIGINS, PARTNER360_ORIGINS, MAX_BODY, AcademyError, refuse,
+  pilotMode, testDealerIds, pilotDealer, pilotMemberships, pilotEmailAllowed,
   sbGet, sbSend, op, publishOp, publishConsistency, accessOp, contentOp, authorOp, saveOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
   bearer, bearerUser, staffActor, learnerActor,
   isAdmin, isRelations, isRep, family, dealerScope, canSeeDealer, canSeeScores, requireDealer, requireAdmin, actorLabel,

@@ -62,7 +62,13 @@ PUBLIC.request_code = async (event, b) => {
   const codeHash = A.SESSION.keyedHash('code', addr + ':' + code);
   const r = await A.accessOp('access_op_request_code', { p_email: addr, p_code_hash: codeHash, p_ip_hash: ipHash(event) });
   if (r && r.limited) { await holdUntil(t0); return A.respond(event, 429, { error: 'too_many', message: 'Too many codes were asked for. Wait 15 minutes and try again.' }); }
-  const real = !!(r && r.send);
+  let real = !!(r && r.send);
+  // PILOT GATE: during the pilot only TEST-dealership learners get a real code; anyone else gets the same decoy
+  // (same answer, same envelope, same time floor) and their code is burned.
+  if (real && !(await A.pilotEmailAllowed(addr))) {
+    real = false;
+    try { await A.accessOp('access_op_code_undelivered', { p_code_id: String(r.code_id), p_code_hash: codeHash }); } catch (e) { console.warn('[academy] pilot code could not be burned'); }
+  }
   // a decoy carries a dummy code of the same shape and a random id, so the two envelopes cannot be told apart
   const job = real ? { k: 'code', to: addr, code, id: String(r.code_id), h: codeHash }
                    : { k: 'none', to: 'x'.repeat(addr.length) + '@decoy', code: '000000', id: crypto.randomUUID(), h: '0'.repeat(64) };
@@ -86,6 +92,7 @@ PUBLIC.verify_code = async (event, b) => {
     if (why === 'not_allowed') return A.respond(event, 403, { error: 'no_access', message: 'This address does not have HCPS Academy access. Ask your Training Manager to invite you.' });
     return A.respond(event, 400, { error: 'expired', message: 'That code has expired or was already used. Ask for a new one.' });
   }
+  if (!(await A.pilotEmailAllowed(addr))) return A.respond(event, 403, { error: 'no_access', message: 'This address does not have HCPS Academy access. Ask your Training Manager to invite you.' });
   return signedIn(event, r.learner_id, r.session_id, { ok: true });
 };
 PUBLIC.handoff_redeem = async (event, b) => {
@@ -373,6 +380,7 @@ TM.courses = async () => {
 TM.invite = async (event, learner, b) => {
   if (!(await A.switchOn('academy_invites'))) A.refuse(403, 'flag_off', 'Invitations are not open yet.');
   const scope = await managedDealers(learner); const dealer = A.uuid(b.dealer_id, 'dealership'); inScope(scope, dealer);
+  await A.pilotDealer(dealer);
   const name = b.full_name == null || b.full_name === '' ? null : A.text(b.full_name, 200, 'Name');
   const inv = await A.accessOp('access_op_invite', { p_actor: actorOf(learner), p_dealer_id: dealer, p_email: email(b.email), p_full_name: name, p_role: 'learner' });
   const names = await dealerNames([dealer]);
@@ -389,6 +397,7 @@ TM.deactivate = async (event, learner, b) => {
 };
 TM.reactivate = async (event, learner, b) => {
   const scope = await managedDealers(learner); const dealer = A.uuid(b.dealer_id, 'dealership'); inScope(scope, dealer);
+  await A.pilotDealer(dealer);
   return { ok: true, result: await A.accessOp('access_op_reactivate', { p_actor: actorOf(learner), p_learner_id: A.uuid(b.learner_id, 'learner'), p_dealer_id: dealer }) };
 };
 TM.enroll = async (event, learner, b) => {

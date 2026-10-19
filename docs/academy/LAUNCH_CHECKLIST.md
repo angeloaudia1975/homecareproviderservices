@@ -1,7 +1,21 @@
 # HCPS Academy — Golden Lift Chair Sales Certification: launch checklist and controlled pilot
 
-Status (18 Oct 2026, ~21:00 CT): **all production database work and code are live; every learner-facing switch is OFF.**
-Nothing in this file is authorized by being written down — each step marked **OWNER** needs Angelo's explicit go-ahead.
+Status (19 Oct 2026): **launch authorized by the owner** (PR #23 comment 6269613883, 19 Oct 09:27 CT) — all decisions
+below are settled; activation proceeds step by step with a PASS gate and the rollback line after each. Golden v1 PUBLISHED
+19 Oct 2026 09:43 CT (audited, President). Learner-facing switches go on only behind the PILOT GATE.
+
+## Pilot gate (default-deny; built 19 Oct 2026 before any learner switch went on)
+
+The learner switches are global, so until the switch **`academy_open`** is exactly `true` the Academy is in PILOT MODE:
+only dealerships marked TEST (`dealers.is_test`) can
+- hold a working Academy session (`learnerActor` keeps only TEST-dealership memberships; none = signed out at once),
+- receive a sign-in code (anyone else gets the same answer, the same envelope, the same time floor — and the code is burned),
+- open a session with a code obtained earlier (refused `no_access`),
+- see the Partner 360 Training button or get a Training link (`academy-handoff` status / mint),
+- be invited, restored, appointed Training Manager or enrolled (Command Center AND Training Manager actions).
+Missing / false / "true" / 1 / unreadable `academy_open` = pilot. Tests: `test/academy-pilot.pg.test.js` 10/10 (real handlers,
+real M1–M5 rules) + `test/academy-pilot.mutants.js` 14/14 killed. **`academy_open` is turned on only at general availability, after the
+pilot is signed off.** Production TEST dealership: "TEST — Golden Sandbox" (Batesville, IN) `3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b`.
 
 ## Where things stand
 
@@ -13,10 +27,10 @@ Nothing in this file is authorized by being written down — each step marked **
 | Code on production | `main@f2e8568` Published 8:49 PM CT | Netlify deploy list |
 | Live flag-off behaviour | PASS (below) | PR #23 comment (this release) |
 | Trusted client IP (`x-nf-client-connection-ip`) | PASS on Netlify's real edge | PR #22 comment 6257614309 |
-| Golden course v1 | DRAFT · readiness 0 blocking / 3 advice · 11 modules · 60 usable exam questions (30 scenarios, every module) · 25 per attempt · 80% · 12-month validity | Command Center readiness (President session) |
+| Golden course v1 | **PUBLISHED 19 Oct 09:43 CT** (45 min · 25 Q · 80% · 60-min cooldown · 3/day · 12 months) · readiness 0 blocking / 3 advice (accepted by the owner) · 11 modules · 60 usable exam questions (30 scenarios, every module) · 25 per attempt · 80% · 12-month validity | Command Center readiness (President session) |
 | Learner journey, end to end | PASS locally (isolated DB, synthetic accounts) | `test/academy-phase4.browser.js` 9/9 |
 | Dealership management + isolation (API and database) | PASS locally | `test/academy-phase3.pg.test.js` 9/9 (PG16 + PG17.6) |
-| Learner email (sign-in codes, invitations) | **Not configured** — `RESEND_API_KEY` / `ACADEMY_MAIL_FROM` unset | — |
+| Learner email (sign-in codes, invitations) | `RESEND_API_KEY` set; `ACADEMY_MAIL_FROM` + `ACADEMY_SESSION_SECRET` entered by Angelo (19 Oct) | Netlify env list |
 
 ## Live flag-off checks (production, 18 Oct ~20:55 CT, no data written)
 
@@ -29,7 +43,13 @@ Nothing in this file is authorized by being written down — each step marked **
   `revoke_certificate` with a 2-character reason refused by the API (400) before the database.
 - Site and Connect 360 pages: 200.
 
-## Owner decisions still open (none blocks the pilot preparation)
+## Owner decisions — SETTLED 19 Oct 2026 (PR #23 comment 6269613883)
+
+Advisories accepted · re-certification on a NEW course version · TEST sandbox + HCPS-controlled mailboxes only for the
+pilot · pilot certificates revoked by the President with a truthful reason after the tests · switches on in this order with
+a PASS gate · Golden v1 published · general availability after a successful pilot. No email to real dealers in test stages.
+
+Earlier list (kept as history):
 
 1. **Learner email sender and wording** — set `RESEND_API_KEY` and `ACADEMY_MAIL_FROM` (Production scope) in Netlify,
    verify the sending domain in Resend, approve the code / invitation wording. Without it nobody can sign in by email
@@ -56,7 +76,7 @@ and off with the same line and `false` (the first step of any rollback; no deplo
 | 4 | `academy_handoff` ON (Partner 360 Training button) | OWNER | handoff status `enabled:true`; one pilot dealer user lands signed in |
 | 5 | `academy_exams` ON | OWNER | exam status shows 45 min / 25 / 80% / cooldown / 3 a day |
 | 6 | `academy_certificates` ON | OWNER | a pilot pass issues `HCPS-XXXX-XXXX`; `/academy/verify/` shows it valid |
-| 7 | Pilot review → real dealers | OWNER | separate approval |
+| 7 | Pilot signed off → `academy_open` ON (general availability) | after the pilot | a real dealership login sees Training; sign-in works for invited real learners; no mass email |
 
 Rollback at any step: turn the last switch off. Data written during the pilot (learners, attempts, certificates) is never
 deleted or rewritten; a pilot certificate is withdrawn only by a President revocation with a reason.
@@ -66,11 +86,11 @@ deleted or rewritten; a pilot certificate is withdrawn only by a President revoc
 | Role | Account | Expected |
 |---|---|---|
 | Pilot dealership | the existing TEST sandbox dealer (`is_test`) | kept out of real Academy figures |
-| Training Manager | an HCPS-controlled mailbox, appointed by the President in the Command Center | sees only the TEST dealer |
-| Learner A (pass) | HCPS-controlled mailbox | completes every lesson → exam → pass (≥ 80%) → certificate → verifies valid |
-| Learner B (fail, retake) | HCPS-controlled mailbox | fails once → cooldown shown → retake after 60 min → pass |
-| Learner C (interrupted) | HCPS-controlled mailbox | loses connection mid-exam → answers kept → reload resumes the same clock |
-| Learner D (leaves) | HCPS-controlled mailbox | TM ends access → signed out at once → certificate (if any) still verifies |
+| Training Manager | `angelo+academy-tm@homecareproviderservices.us`, invited by the President as Training Manager | sees only the TEST dealer |
+| Learner A (pass) | `angelo+academy-a@…` | completes every lesson → exam → pass (≥ 80%) → certificate → verifies valid |
+| Learner B (fail, retake) | `angelo+academy-b@…` | fails once → cooldown shown → retake after 60 min → pass |
+| Learner C (interrupted) | `angelo+academy-c@…` | loses connection mid-exam → answers kept → reload resumes the same clock |
+| Learner D (leaves) | `angelo+academy-d@…` | TM ends access → signed out at once → certificate (if any) still verifies |
 | President | Angelo | extra-time accommodation for Learner C (reason recorded) · revoke one pilot certificate (reason) · Activity tab shows every step |
 
 Expected results to sign off: every learner sees only their own courses; the TM sees lessons done / total, exam passed / not passed

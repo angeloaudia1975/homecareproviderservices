@@ -87,7 +87,7 @@ async function signIn(addr, ip) {
 (async () => {
   let TMC, LC, LID, ENR, AT;
   try {
-    flags({ academy_admin: true, academy_learner: true, academy_invites: true });
+    flags({ academy_admin: true, academy_learner: true, academy_open: true, academy_invites: true });
     await admin('pres', { action: 'invite_learner', dealer_id: HQ, email: 'tm@hqmed.example', role: 'training_manager' });
     TMC = await signIn('tm@hqmed.example', '198.51.100.1');
     await learner({ action: 'invite', dealer_id: NORTH, email: 'pat@north.example', full_name: 'Pat Learner' }, TMC);
@@ -99,7 +99,7 @@ async function signIn(addr, ip) {
       for (const action of ['exam_status', 'exam_start']) assert.strictEqual((await learner({ action, enrollment_id: ENR }, LC)).body.error, 'flag_off');
       assert.strictEqual((await learner({ action: 'my_courses' }, LC)).body.exams_open, false);
       assert.strictEqual(run(DB, 'select count(*) from academy_attempts'), '0');
-      flags({ academy_admin: true, academy_learner: true, academy_invites: true, academy_exams: true });
+      flags({ academy_admin: true, academy_learner: true, academy_open: true, academy_invites: true, academy_exams: true });
     });
     await t('Status: the policy (questions, pass mark, time limit, extra time, cooldown, daily limit); not startable until every lesson is complete', async () => {
       const r = await learner({ action: 'exam_status', enrollment_id: ENR }, LC);

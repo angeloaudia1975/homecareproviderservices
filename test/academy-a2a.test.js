@@ -33,7 +33,7 @@ function seed(extra) {
         { id: REP_DEALER, business_name: 'Greg Solo', parent_id: null, rep_name: 'Greg Campbell', rep_email: 'greg@hcps.us' },
       ],
       dealer_directory: [],
-      app_settings: [{ key: 'phase2_flags', value: { academy_admin: true, academy_learner: true, timeline: true } }],
+      app_settings: [{ key: 'phase2_flags', value: { academy_admin: true, academy_learner: true, academy_open: true, timeline: true } }],
       academy_learners: [
         { id: L_TM_HQ, auth_user_id: U(1), full_name: 'HQ Manager', email: 'tm@hqmed.test', status: 'active' },
         { id: L_TM_BR, auth_user_id: U(2), full_name: 'Branch Manager', email: 'tm@north.test', status: 'active' },

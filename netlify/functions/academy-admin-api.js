@@ -431,8 +431,13 @@ READ.dealer_summary = async () => {
 };
 WRITE.set_training_manager = async (staff, b) => {
   const make = b.make === true ? true : b.make === false ? false : A.refuse(400, 'invalid', 'Say whether to grant or remove the role.');
-  const m = await A.op('set_training_manager', { p_actor: A.actorLabel(staff), p_membership_id: A.uuid(b.membership_id, 'membership'),
-                                                  p_make: make, p_reason: A.text(b.reason, 500, 'Reason') });
+  const why = A.text(b.reason, 500, 'Reason'), mid = A.uuid(b.membership_id, 'membership');
+  if (make && await A.pilotMode()) {   // pilot gate: a Training Manager is appointed only at a TEST dealership until academy_open
+    const mm = one(await A.sbGet(`academy_memberships?id=eq.${enc(mid)}&select=dealer_id`));
+    if (!mm) A.refuse(404, 'not_found', 'Not found.');
+    await A.pilotDealer(mm.dealer_id);
+  }
+  const m = await A.op('set_training_manager', { p_actor: A.actorLabel(staff), p_membership_id: mid, p_make: make, p_reason: why });
   return { ok: true, audited: true, membership: m };
 };
 
@@ -458,6 +463,7 @@ READ.list_invites = async () => {
 WRITE.invite_learner = async (staff, b) => {
   if (!(await A.switchOn('academy_invites'))) A.refuse(403, 'flag_off', 'Invitations are switched off (academy_invites).');
   const role = A.oneOf(b.role || 'learner', ['learner', 'training_manager'], 'Role');
+  await A.pilotDealer(A.uuid(b.dealer_id, 'dealership'));   // pilot gate: TEST dealerships only until academy_open
   const inv = await A.accessOp('access_op_invite', { p_actor: A.actorLabel(staff), p_dealer_id: A.uuid(b.dealer_id, 'dealership'),
     p_email: String(b.email || ''), p_full_name: accessText(b.full_name, 200, 'Name'), p_role: role });
   const d = one(await A.sbGet(`dealers?id=eq.${enc(inv.dealer_id)}&select=business_name`)) || {};
@@ -468,7 +474,7 @@ WRITE.revoke_invite = async (staff, b) => ({ ok: true, audited: true,
   result: await A.accessOp('access_op_revoke_invite', { p_actor: A.actorLabel(staff), p_invite_id: A.uuid(b.id, 'invitation'), p_reason: A.text(b.reason, 500, 'Reason') }) });
 WRITE.end_membership = async (staff, b) => ({ ok: true, audited: true,
   result: await A.accessOp('access_op_deactivate', { p_actor: A.actorLabel(staff), p_membership_id: A.uuid(b.membership_id, 'membership'), p_reason: A.text(b.reason, 500, 'Reason') }) });
-WRITE.restore_membership = async (staff, b) => ({ ok: true, audited: true,
+WRITE.restore_membership = async (staff, b) => (await A.pilotDealer(A.uuid(b.dealer_id, 'dealership')), { ok: true, audited: true,
   result: await A.accessOp('access_op_reactivate', { p_actor: A.actorLabel(staff), p_learner_id: A.uuid(b.learner_id, 'learner'), p_dealer_id: A.uuid(b.dealer_id, 'dealership') }) });
 WRITE.set_learner_status = async (staff, b) => ({ ok: true, audited: true,
   result: await A.accessOp('access_op_set_learner_status', { p_actor: A.actorLabel(staff), p_learner_id: A.uuid(b.learner_id, 'learner'),
@@ -476,6 +482,10 @@ WRITE.set_learner_status = async (staff, b) => ({ ok: true, audited: true,
 WRITE.enroll_learner = async (staff, b) => {
   const due = b.due_on == null || b.due_on === '' ? null : String(b.due_on);
   if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) A.refuse(400, 'invalid', 'The due date is not valid.');
+  if (await A.pilotMode()) {   // pilot gate: only a learner with an active TEST-dealership membership is enrolled
+    const ms = await A.sbGet(`academy_memberships?learner_id=eq.${enc(A.uuid(b.learner_id, 'learner'))}&status=eq.active&select=dealer_id`);
+    if (!(await A.testDealerIds(ms.map(m => m.dealer_id))).size) A.refuse(403, 'pilot_only', 'The HCPS Academy is in its pilot. It is not open for this dealership yet.');
+  }
   return { ok: true, audited: true, enrollment: await A.accessOp('enroll_op_enroll', { p_actor: A.actorLabel(staff),
     p_learner_id: A.uuid(b.learner_id, 'learner'), p_version_id: A.uuid(b.version_id, 'course version'), p_due_on: due }) };
 };

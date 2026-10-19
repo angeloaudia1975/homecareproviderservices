@@ -47,7 +47,7 @@ run(DB, `alter table public.dealers add column is_test boolean not null default 
          insert into public.dealer_users values ('${DUID}', 'buyer@hqmed.example', '${HQ}', 'approved');`);
 file(DB, SUP('academy_a1_foundation.sql')); run(DB, 'grant all on all tables in schema public to service_role');
 for (const f of ['academy_a2a_m1_audited_ops.sql', 'academy_a2c_m2_content_ops.sql', 'academy_a2d_m3_author_ops.sql', 'academy_a2d_m3_1_save_lesson.sql', 'academy_c2_m4_publish_ops.sql', 'academy_a2b_m5_learner_access.sql', 'academy_a2e_m6_exam_attempts.sql']) file(DB, SUP(f));
-run(DB, `insert into app_settings (key, value) values ('phase2_flags', ${J({ academy_admin: true, academy_learner: true, academy_invites: true, academy_handoff: true, academy_exams: true })}) on conflict (key) do update set value = excluded.value`);
+run(DB, `insert into app_settings (key, value) values ('phase2_flags', ${J({ academy_admin: true, academy_learner: true, academy_open: true, academy_invites: true, academy_handoff: true, academy_exams: true })}) on conflict (key) do update set value = excluded.value`);
 const id = q => JSON.parse(run(DB, q)).id;
 const C = id(`select academy_content_op_create_course(${PRES}, null, ${J({ slug: 'golden-lift-chair-sales', title: 'Golden Lift Chair Sales Certification', course_type: 'hcps_certification', manufacturer_slug: 'golden-technologies' })})`);
 const V = id(`select academy_content_op_create_version(${PRES}, null, '${C}', '{"exam_questions":1}')`);

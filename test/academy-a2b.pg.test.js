@@ -93,11 +93,11 @@ async function signIn(addr, ip) {
       assert.deepStrictEqual((await call(HAND.handler, { action: 'status' }, { headers: { origin: P360 } })).body, { enabled: false });
       assert.strictEqual((await call(HAND.handler, { action: 'mint' }, { headers: { origin: P360, authorization: 'Bearer buyer' } })).body.error, 'flag_off');
       assert.strictEqual(run(DB, 'select count(*) from academy_login_codes'), '0');
-      flags({ academy_admin: true, academy_learner: true });
+      flags({ academy_admin: true, academy_learner: true, academy_open: true });
     });
     await t('HCPS invitations need academy_invites; then HCPS invites a Training Manager (email captured, no sign-in link in it)', async () => {
       assert.strictEqual((await admin('pres', { action: 'invite_learner', dealer_id: HQ, email: 'tm@hqmed.example', role: 'training_manager' })).body.error, 'flag_off');
-      flags({ academy_admin: true, academy_learner: true, academy_invites: true });
+      flags({ academy_admin: true, academy_learner: true, academy_open: true, academy_invites: true });
       mails.length = 0;
       const r = await admin('pres', { action: 'invite_learner', dealer_id: HQ, email: 'tm@hqmed.example', full_name: 'Terry Manager', role: 'training_manager' });
       assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.email_sent, true);
@@ -181,7 +181,7 @@ async function signIn(addr, ip) {
     });
     await t('Partner 360: status shows enabled only with academy_handoff; mint needs the Partner 360 origin and an approved login; the URL carries the code in its fragment; one redemption only', async () => {
       assert.deepStrictEqual((await call(HAND.handler, { action: 'status' }, { headers: { origin: P360 } })).body, { enabled: false });
-      flags({ academy_admin: true, academy_learner: true, academy_invites: true, academy_handoff: true });
+      flags({ academy_admin: true, academy_learner: true, academy_open: true, academy_invites: true, academy_handoff: true });
       assert.deepStrictEqual((await call(HAND.handler, { action: 'status' }, { headers: { origin: P360 } })).body, { enabled: true });
       assert.strictEqual((await call(HAND.handler, { action: 'mint' }, { headers: { origin: ORIGIN, authorization: 'Bearer buyer' } })).status, 403, 'only from Partner 360');
       assert.strictEqual((await call(HAND.handler, { action: 'mint' }, { headers: { origin: P360 } })).status, 401);
@@ -212,10 +212,10 @@ async function signIn(addr, ip) {
       const known = await learner({ action: 'request_code', email: 'tm@hqmed.example' }, null, { ip: '198.51.100.21' });
       assert.deepStrictEqual(known.body, unknown.body, 'nothing in the answer tells the two apart');
       TMC = await signIn('tm@hqmed.example', '198.51.100.22');
-      flags({ academy_admin: true, academy_learner: true, academy_handoff: true });
+      flags({ academy_admin: true, academy_learner: true, academy_open: true, academy_handoff: true });
       const off = await learner({ action: 'invite', dealer_id: NORTH, email: 'later@north.example' }, TMC);
       assert.strictEqual(off.status, 403); assert.strictEqual(off.body.error, 'flag_off');
-      flags({ academy_admin: true, academy_learner: true, academy_invites: true, academy_handoff: true });
+      flags({ academy_admin: true, academy_learner: true, academy_open: true, academy_invites: true, academy_handoff: true });
       const other = await learner({ action: 'invite', dealer_id: OTHER, email: 'spy2@other.example' }, TMC);
       assert.strictEqual(other.status, 403); assert.strictEqual(other.body.message, 'That person is not in your dealership.', 'refused by the server before the database');
       const crypto = require('crypto'); const b64 = x => Buffer.from(x).toString('base64url'); const now = Math.floor(Date.now() / 1000);

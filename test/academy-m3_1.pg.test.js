@@ -83,7 +83,7 @@ try {
     assert.deepStrictEqual(pre.m3, { functions: 24, triggers: 7, code_fingerprint: 'e48e4c2758dae2be0e679c3b9cbe97e8' });
   });
   await t('Preflight readiness refuses when a learner switch is on', () => {
-    run(DB, `update app_settings set value = value || '{"academy_learner": true}' where key = 'phase2_flags'`);
+    run(DB, `update app_settings set value = value || '{"academy_learner": true, "academy_open": true}' where key = 'phase2_flags'`);
     assert.strictEqual(json(file(DB, SUP('academy_a2d_m3_1_preflight.sql'))).ready_for_m3_1, false);
     run(DB, `update app_settings set value = '{"academy_admin": true}' where key = 'phase2_flags'`);
   });

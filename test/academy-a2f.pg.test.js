@@ -87,7 +87,7 @@ async function signIn(addr, ip) {
 
 
 const verify = (n, o) => call(VERIFY.handler, null, Object.assign({ method: 'GET', query: n == null ? {} : { n } }, o || {}));
-const ON = { academy_admin: true, academy_learner: true, academy_invites: true, academy_exams: true };
+const ON = { academy_admin: true, academy_learner: true, academy_open: true, academy_invites: true, academy_exams: true };
 async function passExam(cookie, enr, right) {
   assert.strictEqual((await learner({ action: 'save_progress', enrollment_id: enr, lesson_id: L1, status: 'completed', resume_block: 2 }, cookie)).status, 200);
   const s = await learner({ action: 'exam_start', enrollment_id: enr }, cookie); assert.strictEqual(s.status, 200, JSON.stringify(s.body));
@@ -97,7 +97,7 @@ async function passExam(cookie, enr, right) {
 }
 (async () => {
   try {
-    flags({ academy_admin: true, academy_learner: true, academy_invites: true });
+    flags({ academy_admin: true, academy_learner: true, academy_open: true, academy_invites: true });
     await admin('pres', { action: 'invite_learner', dealer_id: HQ, email: 'tm@hqmed.example', role: 'training_manager' });
     await admin('pres', { action: 'invite_learner', dealer_id: OTHER, email: 'tm@other.example', role: 'training_manager' });
     const TMC = await signIn('tm@hqmed.example', '198.51.100.1'), TM2 = await signIn('tm@other.example', '198.51.100.9');
