@@ -1,0 +1,86 @@
+{# Concept C — Product-Focused Academy: light hero with the Golden lifestyle photo in the depth frame and real chair
+   photography, a certification band with a certificate preview, course catalog, enrollment pathways, benefits,
+   dashboard, steps, CTA. #}
+{% import "academy/sections.njk" as S %}
+{% set L = academyLanding %}
+{% set live = false %}{% for c in L.courses.items %}{% if c.status == "live" and not live %}{% set live = c %}{% endif %}{% endfor %}
+<div class="ta ta-c">
+<section class="ta-hero">
+  <div class="wrap ta-heroband">
+    <div data-reveal="up">
+      <p class="kicker">{{ L.hero.eyebrow }}</p>
+      <h1>{{ L.hero.headline }}</h1>
+      <p class="lead">{{ L.hero.lead }}</p>
+      <div class="ta-actions"><a class="ta-btn primary" href="/academy/">{{ L.hero.cta1_label }}</a><a class="ta-btn outline" href="#courses">{{ L.hero.cta2_label }}</a></div>
+      <div class="ta-chairs" aria-hidden="true">{% for c in L.courses.items %}{% if c.status == "live" %}<img src="{{ c.image }}" alt="" loading="lazy" onerror="this.remove()">{% endif %}{% endfor %}<img src="/assets/training-academy/chair-pr531.jpg" alt="" loading="lazy" onerror="this.remove()"></div>
+    </div>
+    <div class="ta-tilt"><img src="{{ L.hero.side_image }}" alt="{{ L.hero.side_image_alt }}" width="1000" height="810" fetchpriority="high"><span class="ta-glare"></span></div>
+  </div>
+</section>
+{% if live %}
+<section class="ta-certband" id="certification">
+  <div class="wrap ta-certgrid">
+    <div data-reveal="right">
+      <p class="kicker" style="color:var(--gold)">Certification</p>
+      <h2>{{ live.title }}</h2>
+      <p>{{ live.summary }}</p>
+      {{ S.courseFacts(live) }}
+      <div class="ta-actions" style="margin-top:24px"><a class="ta-btn primary" href="{{ live.cta_url or '/academy/' }}">{{ live.cta_label or "Start this course" }}</a><a class="ta-btn ghost" href="/academy/verify/">Verify a certificate</a></div>
+    </div>
+    <div data-reveal="left" style="padding:10px 18px 30px">
+      <div class="ta-cert" role="img" aria-label="Sample HCPS certificate of completion for the {{ live.title }}">
+        <div class="t1">Home Care Provider Services · HCPS Academy</div>
+        <div class="t2">Certificate of Completion</div>
+        <div class="t3">this certifies that</div>
+        <div class="t4">Your Team Member</div>
+        <div class="t3">has passed the final examination of the</div>
+        <div class="t4">{{ live.title }}</div>
+        <div class="t5">Valid 12 months · verify online at homecareproviderservices.org/academy/verify<br>Issued by HCPS — not issued or endorsed by Golden Technologies.</div>
+        <div class="seal">HCPS</div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+<section class="ta-sec" id="courses">
+  <div class="wrap">
+    <div class="ta-head" data-reveal="up"><p class="kicker">{{ L.courses.eyebrow }}</p><h2>Course catalog</h2><p>{{ L.courses.intro }}</p></div>
+    <div class="ta-catalog">
+      {% for c in L.courses.items %}
+      <article class="ta-cat {{ c.status }}" data-reveal="up" style="--d:{{ loop.index0 * 80 }}ms">
+        <div class="img"><img src="{{ c.image }}" alt="{{ c.image_alt }}" loading="lazy" decoding="async" onerror="this.style.visibility='hidden'"></div>
+        <div class="body">
+          <div><span class="ta-badge {{ 'live' if c.status == 'live' else 'coming' }}">{{ c.badge }}</span></div>
+          <h3>{{ c.title }}</h3><p>{{ c.summary }}</p>
+          {% if c.price_note %}<p class="ta-price-note">{{ c.price_note }}</p>{% endif %}
+          {% if c.status == "live" and c.cta_label %}<a class="ta-btn primary" href="{{ c.cta_url or '/academy/' }}" style="margin-top:6px">{{ c.cta_label }}</a>{% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+<section class="ta-sec alt" id="pricing">
+  <div class="wrap">
+    <div class="ta-head" data-reveal="up"><p class="kicker">{{ L.pricing.eyebrow }}</p><h2>{{ L.pricing.title }}</h2><p>{{ L.pricing.intro }}</p></div>
+    <div class="ta-paths">
+      {% for t in L.pricing.tiers %}
+      <div class="ta-path{% if t.highlight %} hl{% endif %}" data-reveal="up" style="--d:{{ loop.index0 * 90 }}ms">
+        <h3>{{ t.title }}</h3><div class="price">{{ t.price }}</div><small>{{ t.price_note }}</small><p>{{ t.description }}</p>
+        {% if t.cta_label %}<div><a class="ta-btn {{ 'primary' if t.highlight else 'outline' }}" href="{{ t.cta_url }}">{{ t.cta_label }}</a></div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% if L.pricing.footnote %}<p class="ta-foot">{{ L.pricing.footnote }}</p>{% endif %}
+  </div>
+</section>
+{{ S.why(L, "") }}
+<section class="ta-sec alt" id="dashboard">
+  <div class="wrap">
+    <div class="ta-head" data-reveal="up"><p class="kicker">{{ L.dashboard.eyebrow }}</p><h2>{{ L.dashboard.title }}</h2><p>{{ L.dashboard.intro }}</p></div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:24px;max-width:980px;margin:0 auto">{{ S.dashPoints(L) }}<div style="max-width:720px;margin:0 auto;width:100%">{{ S.dashPreview(L) }}</div></div>
+  </div>
+</section>
+{{ S.how(L, "") }}
+{{ S.finalCta(L) }}
+</div>

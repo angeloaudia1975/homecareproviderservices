@@ -1,0 +1,108 @@
+{# Training Academy landing — shared sections. Every word, image, price line and button label comes from
+   academyLanding.json (Website editor → Training Academy). Used by the three layouts in academy/concept-*.njk. #}
+
+{% macro why(L, cls) %}
+<section class="ta-sec {{ cls }}" id="why">
+  <div class="wrap">
+    <div class="ta-head" data-reveal="up"><p class="kicker">{{ L.why.eyebrow }}</p><h2>{{ L.why.title }}</h2><p>{{ L.why.intro }}</p></div>
+    <div class="ta-why">
+      {% for c in L.why.cards %}
+      <div class="ta-why-card" data-reveal="up" style="--d:{{ loop.index0 * 80 }}ms">
+        {% if c.image %}<img src="{{ c.image }}" alt="" width="190" height="190" loading="lazy" decoding="async" onerror="this.style.visibility='hidden'">{% endif %}
+        <h3>{{ c.title }}</h3><p>{{ c.description }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endmacro %}
+
+{% macro courseFacts(c) %}{% if c.facts and c.facts.length %}<ul class="ta-facts">{% for f in c.facts %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}{% endmacro %}
+
+{% macro featuredCourses(L, cls) %}
+<section class="ta-sec {{ cls }}" id="courses">
+  <div class="wrap">
+    <div class="ta-head" data-reveal="up"><p class="kicker">{{ L.courses.eyebrow }}</p><h2>{{ L.courses.title }}</h2><p>{{ L.courses.intro }}</p></div>
+    {% for c in L.courses.items %}{% if c.status == "live" %}
+    <article class="ta-feature" data-reveal="up">
+      <div class="ta-feature-img"><img src="{{ c.image }}" alt="{{ c.image_alt }}" loading="lazy" decoding="async" onerror="this.style.visibility='hidden'"></div>
+      <div class="ta-feature-body">
+        <div><span class="ta-badge live">{{ c.badge or "Available now" }}</span></div>
+        <h3>{{ c.title }}</h3><p>{{ c.summary }}</p>{{ courseFacts(c) }}
+        {% if c.price_note %}<p class="ta-price-note">{{ c.price_note }}</p>{% endif %}
+        {% if c.cta_label %}<div class="ta-actions"><a class="ta-btn primary" href="{{ c.cta_url or '/academy/' }}">{{ c.cta_label }}</a></div>{% endif %}
+      </div>
+    </article>
+    {% endif %}{% endfor %}
+    <div class="ta-coming">
+      {% for c in L.courses.items %}{% if c.status != "live" %}
+      <div class="ta-mini" data-reveal="up" style="--d:{{ loop.index0 * 80 }}ms">
+        <img src="{{ c.image }}" alt="{{ c.image_alt }}" width="120" height="120" loading="lazy" decoding="async" onerror="this.style.visibility='hidden'">
+        <div><span class="ta-badge coming">{{ c.badge or "Coming soon" }}</span><h3>{{ c.title }}</h3><p>{{ c.summary }}</p></div>
+      </div>
+      {% endif %}{% endfor %}
+    </div>
+  </div>
+</section>
+{% endmacro %}
+
+{% macro dashPreview(L) %}
+<div class="ta-dash" role="img" aria-label="Illustration of the dealership training dashboard showing three sample employees with lessons completed, exam status and certificate status">
+  <div class="ta-dash-top">Team training <span>Golden Lift Chair Sales Certification</span></div>
+  {% for p in L.dashboard.preview %}
+  {%- set parts = p.lessons.split("/") -%}
+  <div class="ta-dash-row" aria-hidden="true">
+    <div><b>{{ p.name }}</b><small>{{ p.role }}</small></div>
+    <div><small>{{ p.lessons }} lessons</small><div class="ta-bar"><i style="width:{{ ((parts[0] | int) / (parts[1] | int) * 100) | round }}%"></i></div></div>
+    <div class="cert">{% if p.exam == "Passed" %}<span class="ta-pill {{ 'due' if 'Expires' in p.cert else 'ok' }}">{{ p.cert or "Passed" }}</span>{% else %}<span class="ta-pill none">Exam {{ p.exam | lower }}</span>{% endif %}</div>
+  </div>
+  {% endfor %}
+  {% if L.dashboard.preview_note %}<div class="ta-dash-note">{{ L.dashboard.preview_note }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro dashPoints(L) %}
+<div class="ta-points">{% for p in L.dashboard.points %}<div class="ta-point" data-reveal="up" style="--d:{{ loop.index0 * 70 }}ms"><h3>{{ p.title }}</h3><p>{{ p.description }}</p></div>{% endfor %}</div>
+{% endmacro %}
+
+{% macro how(L, cls) %}
+<section class="ta-sec {{ cls }}" id="how">
+  <div class="wrap">
+    <div class="ta-head" data-reveal="up"><p class="kicker">{{ L.how.eyebrow }}</p><h2>{{ L.how.title }}</h2></div>
+    <ol class="ta-steps">{% for s in L.how.steps %}<li data-reveal="up" style="--d:{{ loop.index0 * 70 }}ms"><h3>{{ s.title }}</h3><p>{{ s.description }}</p></li>{% endfor %}</ol>
+  </div>
+</section>
+{% endmacro %}
+
+{% macro pricing(L, cls) %}
+<section class="ta-sec {{ cls }}" id="pricing">
+  <div class="wrap">
+    <div class="ta-head" data-reveal="up"><p class="kicker">{{ L.pricing.eyebrow }}</p><h2>{{ L.pricing.title }}</h2><p>{{ L.pricing.intro }}</p></div>
+    <div class="ta-tiers">
+      {% for t in L.pricing.tiers %}
+      <div class="ta-tier{% if t.highlight %} hl{% endif %}" data-reveal="up" style="--d:{{ loop.index0 * 90 }}ms">
+        <h3>{{ t.title }}</h3>
+        <div class="price">{{ t.price }}<small>{{ t.price_note }}</small></div>
+        <p>{{ t.description }}</p>
+        {% if t.cta_label %}<a class="ta-btn {{ 'primary' if t.highlight else 'outline' }}" href="{{ t.cta_url }}">{{ t.cta_label }}</a>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% if L.pricing.footnote %}<p class="ta-foot">{{ L.pricing.footnote }}</p>{% endif %}
+    {% if L.certificate_note %}<p class="ta-certnote">{{ L.certificate_note }}</p>{% endif %}
+  </div>
+</section>
+{% endmacro %}
+
+{% macro finalCta(L) %}
+<section class="ta-sec dark ta-cta" id="get-started">
+  <div class="wrap" data-reveal="up">
+    <h2>{{ L.cta.title }}</h2><p>{{ L.cta.copy }}</p>
+    <div class="ta-actions">
+      <a class="ta-btn primary" href="/academy/">{{ L.cta.access_label }}</a>
+      <a class="ta-btn ghost" href="#courses">{{ L.cta.explore_label }}</a>
+      <a class="ta-btn ghost" href="/become-a-dealer/">{{ L.cta.dealer_label }}</a>
+    </div>
+  </div>
+</section>
+{% endmacro %}

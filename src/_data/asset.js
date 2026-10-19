@@ -13,5 +13,12 @@ module.exports = () => {
   } catch (e) {
     // fall back to "1" if the file can't be read at build time
   }
-  return { cssVersion };
+  // the Training Academy landing page's own CSS + JS (same reason: /assets is cached long and immutable)
+  let academyVersion = "1";
+  try {
+    const h = crypto.createHash("md5");
+    for (const f of ["/../assets/css/academy-landing.css", "/../assets/js/academy-landing.js"]) h.update(fs.readFileSync(__dirname + f));
+    academyVersion = h.digest("hex").slice(0, 8);
+  } catch (e) { /* fall back to "1" */ }
+  return { cssVersion, academyVersion };
 };

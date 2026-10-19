@@ -4,6 +4,7 @@
     { "label": "Manufacturers", "url": "/manufacturers/", "external": false, "dropdown": "manufacturers", "children": [] },
     { "label": "Dealer Hub", "url": "/dealer-hub/", "external": false, "dropdown": "", "children": [
       { "label": "Resource Library", "url": "/resources/", "external": false },
+      { "label": "Training & Certification Academy", "url": "/training-academy/", "external": false },
       { "label": "Pricing Access", "url": "/contact/?reason=Product%20or%20Pricing%20Question", "external": false },
       { "label": "Request In-Service", "url": "/dealer-hub/?service=staff-in-service#schedule", "external": false },
       { "label": "Technical Support", "url": "/dealer-hub/?service=technical-support#schedule", "external": false },
@@ -23,6 +24,7 @@
       { "label": "Dealer Hub", "url": "/dealer-hub/", "external": false },
       { "label": "Dealer Services", "url": "/dealer-services/", "external": false },
       { "label": "Resource Library", "url": "/resources/", "external": false },
+      { "label": "Training Academy", "url": "/training-academy/", "external": false },
       { "label": "Consulting", "url": "/consulting/", "external": false },
       { "label": "Online Ordering Portal", "url": "https://hcpsonlineordering.netlify.app/", "external": true }
     ] },
