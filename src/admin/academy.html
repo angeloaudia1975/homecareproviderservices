@@ -442,13 +442,17 @@ async function viewCreds(){
   loading();
   const [h,x]=await Promise.all([api({action:"list_certificates"}),api({action:"list_external_certs"})]);
   if(h.status!==200)return failed(h); if(x.status!==200)return failed(x);
-  const H=h.body.certificates, X=x.body.credentials, certsOn=!!(WHO.switches||{}).academy_certificates;
+  const H=h.body.certificates, X=x.body.credentials, certsOn=!!(WHO.switches||{}).academy_certificates, pres=!!(WHO.may&&WHO.may.publish), S=h.body.summary||{};
+  const cstat=c=>c.display_status==="revoked"?`<span class="pill p-off">revoked</span><div class="muted small">${esc(c.revoked_reason||"")}${c.revoked_by?" · "+esc(String(c.revoked_by).replace("staff:","")):""}</div>`
+    :c.display_status==="expired"?`<span class="pill p-off">expired</span>`:c.expiring_soon?`<span class="pill p-in_review">expires in ${esc(c.days_left)} days</span>`:`<span class="pill p-published">valid</span>`;
   $("#view").innerHTML=`<div class="card"><div class="bar"><h2 class="grow" style="margin:0">HCPS-issued certifications</h2>${credPill("hcps")}</div>
-    <div class="cred h" style="margin:10px 0">${esc(h.body.issuer.note)} Certificate issuing is <b>${certsOn?"ON":"OFF"}</b>${certsOn?"":" — none can be issued until the President approves it"}. Certificates are never edited; a revocation is its own recorded decision.</div>
-    <table class="stack"><thead><tr><th>Certificate</th><th>Learner</th><th>Course</th><th>Issued</th><th>Expires</th><th>Status</th></tr></thead><tbody>
+    <div class="cred h" style="margin:10px 0">${esc(h.body.issuer.note)} Certificate issuing is <b>${certsOn?"ON":"OFF"}</b>${certsOn?"":" — none can be issued until the President approves it"}. Certificates are never edited; a revocation is the President's own recorded decision. HCPS certificates are not issued or endorsed by Golden Technologies.</div>
+    <p class="small" style="margin:0 0 8px"><b>${esc(S.valid||0)}</b> valid · <b>${esc(S.expiring_soon||0)}</b> expiring within 60 days · <b>${esc(S.expired||0)}</b> expired · <b>${esc(S.revoked||0)}</b> revoked <span class="muted">(TEST courses not counted)</span></p>
+    <table class="stack"><thead><tr><th>Certificate</th><th>Learner</th><th>Course</th><th>Issued</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>
     ${H.map(c=>`<tr><td data-l="Certificate" class="mono">${esc(c.cert_number)}</td><td data-l="Learner">${esc(c.learner_name)}<div class="muted small">${esc(c.dealer_name||"")}</div></td><td data-l="Course">${esc(c.course||"")} ${c.version?"v"+esc(c.version):""}</td>
-      <td data-l="Issued">${day(c.issued_at)}</td><td data-l="Expires">${c.expires_at?day(c.expires_at):"—"}</td><td data-l="Status">${c.status==="valid"?`<span class="pill p-published">valid</span>`:`<span class="pill p-off">revoked</span><div class="muted small">${esc(c.revoked_reason||"")}</div>`}</td></tr>`).join("")
-      ||`<tr><td colspan="6" class="muted">No HCPS certificates have been issued.</td></tr>`}</tbody></table></div>
+      <td data-l="Issued">${day(c.issued_at)}</td><td data-l="Expires">${c.expires_at?day(c.expires_at):"—"}</td><td data-l="Status">${cstat(c)}${c.test?` <span class="pill p-off">TEST</span>`:""}</td>
+      <td data-l="">${pres&&c.status==="valid"?`<button class="go ghost sm" data-rk="${esc(c.id)}" data-rn="${esc(c.cert_number)}">Revoke…</button>`:""}</td></tr>`).join("")
+      ||`<tr><td colspan="7" class="muted">No HCPS certificates have been issued.</td></tr>`}</tbody></table></div>
    <div class="card"><div class="bar"><h2 class="grow" style="margin:0">Manufacturer-issued credentials</h2>${credPill("manufacturer")}</div>
     <div class="cred m" style="margin:10px 0">${esc(x.body.issuer.note)} Opening the manufacturer's exam or a learner's own report never counts as passing: only the manufacturer's certificate or another manufacturer confirmation, checked here, makes it verified.</div>
     <table class="stack"><thead><tr><th>Learner</th><th>Program</th><th>Issued by</th><th>Status</th><th>Evidence</th><th></th></tr></thead><tbody>
@@ -457,6 +461,11 @@ async function viewCreds(){
       <td data-l="Evidence">${c.evidence_type?esc(c.evidence_type.replace("_"," "))+(c.evidence_ref?" · "+esc(c.evidence_ref):""):(c.has_upload?"Certificate file uploaded — not yet checked":"—")}${c.verified_by?`<div class="muted small">checked by ${esc(String(c.verified_by).replace("staff:",""))} ${day(c.verified_at)}</div>`:""}${c.note?`<div class="muted small">${esc(c.note)}</div>`:""}</td>
       <td data-l="">${(c.status!=="verified"&&c.status!=="rejected")?`<button class="go ghost sm" data-rv="${esc(c.id)}">Review…</button>`:""}</td></tr>`).join("")
       ||`<tr><td colspan="6" class="muted">No manufacturer credentials are being tracked yet.</td></tr>`}</tbody></table></div>`;
+  $("#view").querySelectorAll("[data-rk]").forEach(b=>b.onclick=()=>{
+    formModal("Revoke HCPS certificate "+b.dataset.rn,`${area("rkr","Reason (5–500 characters; kept in the audit history, never shown publicly)")}
+      <p class="muted small" style="margin-top:8px">The certificate stays on record and will verify as <b>revoked</b>. This cannot be undone; a new certificate is not issued automatically.</p>`,
+      "Revoke certificate",async()=>{ await change({action:"revoke_certificate",id:b.dataset.rk,reason:val("rkr")},"mmsg",viewCreds); },{danger:true});
+  });
   $("#view").querySelectorAll("[data-rv]").forEach(b=>b.onclick=()=>{
     formModal("Review manufacturer credential",`${select("rd","Decision",[["verified","Verified — the manufacturer issued it"],["rejected","Rejected — evidence not sufficient"]],"verified")}
       <div id="evwrap">${select("ret","Evidence",[["golden_certificate","Manufacturer certificate (uploaded)"],["manufacturer_confirmation","Confirmation from the manufacturer"]],"golden_certificate")}${field("rer","Evidence reference (required for a confirmation)",'maxlength="300"')}</div>

@@ -73,3 +73,20 @@ label.ac-field { display: grid; gap: 6px; font-weight: 600; font-size: 14px; }
 .ac-jump { display: flex; flex-wrap: wrap; gap: 8px; }
 .ac-jump .ac-btn { min-width: 48px; padding: 0 10px; }
 .ac-score { font-size: 40px; font-weight: 800; margin: 0; font-variant-numeric: tabular-nums; }
+/* HCPS certificate (A2F): on screen a card, printed a one-page landscape certificate */
+.ac-cert { background: #fff; border: 2px solid var(--ac-navy); border-radius: 6px; padding: clamp(20px, 5vw, 48px); text-align: center; display: grid; gap: 10px; outline: 6px solid #eef3f8; outline-offset: -14px; }
+.ac-cert-issuer { margin: 0; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--ac-blue-dk); font-weight: 700; }
+.ac-cert-title { font-family: Georgia, "Times New Roman", serif; font-size: clamp(26px, 5vw, 40px); margin: 4px 0 8px; color: var(--ac-navy); }
+.ac-cert-line { margin: 0; color: var(--ac-muted); }
+.ac-cert-name { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(24px, 5vw, 36px); font-weight: 700; overflow-wrap: anywhere; }
+.ac-cert-course { margin: 0; font-size: clamp(18px, 3.4vw, 24px); font-weight: 700; color: var(--ac-navy); }
+.ac-cert-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; text-align: left; max-width: 520px; margin: 14px auto 0; font-size: 14px; }
+.ac-cert-facts dt { color: var(--ac-muted); } .ac-cert-facts dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ac-cert-void { margin: 8px 0 0; color: var(--ac-err); font-weight: 800; letter-spacing: .08em; }
+.ac-cert.void { border-color: var(--ac-err); }
+.ac-cert-disclosure { margin: 12px 0 0; font-size: 12px; color: var(--ac-muted); }
+@media print {
+  @page { size: landscape; margin: 12mm; }
+  body { background: #fff; } .ac-top, .ac-foot, .ac-noprint, .skip { display: none !important; }
+  main { padding: 0; } .ac-cert { break-inside: avoid; outline-color: #dde5ee; }
+}

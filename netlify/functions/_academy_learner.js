@@ -137,6 +137,7 @@ LEARNER.my_courses = async (event, learner) => {
   const examsOpen = await A.switchOn('academy_exams');
   const { vers, courses, mods, lessons } = await versionOutline(enr.map(e => e.version_id));
   const prog = enr.length ? await A.sbGet(`academy_progress?enrollment_id=${idsIn(enr.map(e => e.id))}&select=enrollment_id,lesson_id,status,resume_block`) : [];
+  const certs = enr.length ? await certificatesFor(`learner_id=eq.${enc(learner.learner_id)}&enrollment_id=${idsIn(enr.map(e => e.id))}`) : [];
   const out = enr.map(e => {
     const v = vers.find(x => String(x.id) === String(e.version_id)) || {};
     if (!['published', 'retired'].includes(v.status)) return null;
@@ -150,7 +151,8 @@ LEARNER.my_courses = async (event, learner) => {
     const all = outline.flatMap(m => m.lessons), done = all.filter(l => l.status === 'completed').length;
     const next = all.find(l => l.status !== 'completed') || null;
     return { enrollment_id: e.id, status: e.status, due_on: e.due_on, course: c.title || 'Course', version: v.version, version_status: v.status,
-      lessons_total: all.length, lessons_completed: done, next_lesson_id: next ? next.id : null, outline };
+      lessons_total: all.length, lessons_completed: done, next_lesson_id: next ? next.id : null, outline,
+      certificate: certs.find(x => String(x.enrollment_id) === String(e.id)) || null };
   }).filter(Boolean);
   return { ok: true, courses: out, exams_open: examsOpen };
 };
@@ -218,6 +220,44 @@ const ownEnrollment = async (learner, id) => {
 };
 // answers: {question id: "a" | ["a","c"]}; the database checks each one against the attempt's own questions
 const answersOf = v => { if (v == null) return {}; if (typeof v !== 'object' || Array.isArray(v)) A.refuse(400, 'invalid', 'Those answers are not valid.'); return v; };
+/* ================================ HCPS CERTIFICATES (A2F / M7) ================================
+   Issued by HCPS (never by Golden Technologies) through academy_cert_op_claim only: the learner's own passed attempt,
+   the dealership read in the database from that learner's membership, one per enrollment, 12 months. The learner and
+   the Training Manager see number, dates and status; never a revocation reason or a score. */
+const EXPIRING_DAYS = 60;
+const certStatus = (c, now) => c.status === 'revoked' ? 'revoked' : (c.expires_at && new Date(c.expires_at).getTime() <= now ? 'expired' : 'valid');
+function certOut(c, course, now) {
+  const st = certStatus(c, now);
+  const left = c.expires_at ? Math.floor((new Date(c.expires_at).getTime() - now) / 86400000) : null;
+  return { id: c.id, cert_number: c.cert_number, enrollment_id: c.enrollment_id, learner_name: c.learner_name, dealer_name: c.dealer_name,
+    course: course || 'Course', issued_at: c.issued_at, expires_at: c.expires_at, status: st, revoked_at: c.revoked_at || null,
+    expiring_soon: st === 'valid' && left != null && left <= EXPIRING_DAYS, days_left: st === 'valid' ? left : null,
+    issuer: 'Home Care Provider Services (HCPS)',
+    disclosure: 'Issued by Home Care Provider Services (HCPS). This is an HCPS sales certification; it is not issued or endorsed by Golden Technologies.' };
+}
+const CERT_COLS = 'id,cert_number,learner_id,enrollment_id,version_id,learner_name,dealer_name,issued_at,expires_at,status,revoked_at';
+async function certificatesFor(filter) {
+  const rows = await A.sbGet(`academy_certificates?${filter}&select=${CERT_COLS}&order=issued_at.desc`);
+  const vers = await byIds('academy_course_versions', rows.map(r => r.version_id), 'id,course_id');
+  const courses = await byIds('academy_courses', vers.map(v => v.course_id), 'id,title');
+  const title = vid => { const v = vers.find(x => String(x.id) === String(vid)) || {}; return (courses.find(x => String(x.id) === String(v.course_id)) || {}).title; };
+  const now = Date.now();
+  return rows.map(r => certOut(r, title(r.version_id), now));
+}
+const CERT_WAIT = { switched_off: 'HCPS certificates are not being issued yet. Your passing result is kept, and your certificate can be issued once they open.',
+  not_passed: 'A certificate is earned by a passing final exam.' };
+LEARNER.my_certificates = async (event, learner) => {
+  const enr = await myEnrollments(learner);
+  const certs = enr.length ? await certificatesFor(`learner_id=eq.${enc(learner.learner_id)}&enrollment_id=${idsIn(enr.map(e => e.id))}`) : [];
+  return { ok: true, certificates: certs, issuing: await A.switchOn('academy_certificates') };
+};
+LEARNER.claim_certificate = async (event, learner, b) => {
+  if (!(await A.switchOn('academy_certificates'))) A.refuse(403, 'flag_off', CERT_WAIT.switched_off);
+  const r = await A.accessOp('cert_op_claim', { p_actor: actorOf(learner), p_attempt_id: A.uuid(b.attempt_id, 'attempt') });
+  if (!r.ok) return A.respond(event, 409, { error: r.reason, message: CERT_WAIT[r.reason] || 'A certificate cannot be issued just now.' });
+  return { ok: true, existing: r.existing === true, certificate: (await certificatesFor(`id=eq.${enc(r.certificate.id)}`))[0] };
+};
+
 LEARNER.exam_status = async (event, learner, b) => {
   await examsOn();
   const eid = await ownEnrollment(learner, b.enrollment_id);
@@ -258,6 +298,14 @@ LEARNER.exam_submit = async (event, learner, b) => {
     return A.respond(event, 409, { error: r.reason || 'grading_failed', message: EXAM_UNGRADED[r.reason] || EXAM_UNGRADED.grading_failed,
       attempt_id: r.attempt_id, expired: r.expired === true });
   }
+  // a pass earns the HCPS certificate when issuance is open; a failure here never fails the submitted, graded exam
+  if (r && r.passed === true && await A.switchOn('academy_certificates')) {
+    try {
+      const c = await A.accessOp('cert_op_claim', { p_actor: actorOf(learner), p_attempt_id: String(r.attempt_id || b.attempt_id) });
+      if (c && c.ok) r.certificate = (await certificatesFor(`id=eq.${enc(c.certificate.id)}`))[0];
+      else r.certificate_pending = true;
+    } catch (e) { console.error('[academy] certificate not issued after a pass', JSON.stringify({ attempt: r.attempt_id, error: String(e && e.message || e).slice(0, 200) })); r.certificate_pending = true; }
+  }
   return r;
 };
 
@@ -297,6 +345,10 @@ TM.team = async (event, learner) => {
   const atts = enr.length ? await A.sbGet(`academy_attempts?enrollment_id=${idsIn(enr.map(e => e.id))}&select=enrollment_id,passed,submitted_at`) : [];
   const examOf = id => { const a = atts.filter(x => String(x.enrollment_id) === String(id)), done = a.filter(x => x.submitted_at);
     return { attempts: done.length, passed: done.some(x => x.passed === true), last_at: done.map(x => x.submitted_at).sort().pop() || null }; };
+  // HCPS certificates of the people in scope: number, dates, status and "expiring soon" — never a score
+  const certs = enr.length ? await certificatesFor(`enrollment_id=${idsIn(enr.map(e => e.id))}`) : [];
+  const certOf = id => { const c = certs.find(x => String(x.enrollment_id) === String(id)); return c ? { cert_number: c.cert_number, status: c.status,
+    issued_at: c.issued_at, expires_at: c.expires_at, expiring_soon: c.expiring_soon, days_left: c.days_left } : null; };
   const lessonCount = vid => { const ms = mods.filter(m => String(m.version_id) === String(vid)).map(m => String(m.id)); return lessons.filter(l => ms.includes(String(l.module_id))).length; };
   const roster = mems.map(m => {
     const p = people.find(x => String(x.id) === String(m.learner_id)) || {};
@@ -306,7 +358,7 @@ TM.team = async (event, learner) => {
       courses: enr.filter(e => String(e.membership_id) === String(m.id)).map(e => {
         const v = vers.find(x => String(x.id) === String(e.version_id)) || {}; const c = courses.find(x => String(x.id) === String(v.course_id)) || {};
         return { enrollment_id: e.id, course: c.title || 'Course', version: v.version, status: e.status, due_on: e.due_on,
-          lessons_total: lessonCount(e.version_id), lessons_completed: prog.filter(x => String(x.enrollment_id) === String(e.id)).length, exam: examOf(e.id) };
+          lessons_total: lessonCount(e.version_id), lessons_completed: prog.filter(x => String(x.enrollment_id) === String(e.id)).length, exam: examOf(e.id), certificate: certOf(e.id) };
       }) };
   });
   return { ok: true, dealers: ids.map(id => ({ id, name: names[id] || 'Dealership' })), roster,
