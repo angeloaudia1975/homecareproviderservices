@@ -219,6 +219,73 @@ async function viewCourses(){
   $("#cfilt").onchange=e=>{COURSE_FILTER=e.target.value;viewCourses();};
   $("#newc").onclick=newCourse;
   $("#view").querySelectorAll("tr.click").forEach(tr=>tr.onclick=()=>viewCourse(tr.dataset.id));
+  paymentsCard();
+}
+
+/* ---------- paid access (Phase 2 / M8 — Stripe TEST mode only) ----------
+   Prices and eligibility overrides: the President only (checked by the server and the database). Access is granted only
+   by the verified Stripe webhook; refunds are issued in the Stripe Dashboard and recorded here automatically. */
+const money=(c,cur)=>c==null?"—":(Number(c)/100).toLocaleString("en-US",{style:"currency",currency:String(cur||"usd").toUpperCase()});
+let PAY=null;
+async function paymentsCard(){
+  const box=document.createElement("div"); box.className="card"; box.id="paycard"; box.innerHTML=`<h2>Paid access (outside dealerships)</h2><p class="muted">Loading…</p>`;
+  $("#view").appendChild(box);
+  const r=await api({action:"payments"});
+  if(r.status!==200){ box.innerHTML=`<h2>Paid access (outside dealerships)</h2><div class="note warn">${esc(errText(r))}</div>`; return; }
+  PAY=r.body; const pres=!!(WHO.may&&WHO.may.publish);
+  const mode={test:["p-on","Stripe TEST mode"],live:["p-off","LIVE key refused"],missing:["p-off","Stripe key not set"],invalid:["p-off","Stripe key not valid"]}[PAY.stripe_mode]||["p-off",PAY.stripe_mode];
+  const T=PAY.totals||{};
+  box.innerHTML=`<div class="bar"><h2 class="grow" style="margin:0">Paid access (outside dealerships)</h2>
+      <span class="pill ${mode[0]}">${esc(mode[1])}</span>
+      <span class="pill ${PAY.webhook_configured?"p-on":"p-off"}">webhook secret ${PAY.webhook_configured?"set":"not set"}</span>
+      <span class="pill ${PAY.switch_on?"p-on":"p-off"}">sales: ${PAY.switch_on?"ON":"OFF"}</span></div>
+    ${PAY.installed?"":`<div class="note warn" style="margin-top:8px">The payments database step (M8) is not installed yet — prices and purchases appear here once the President runs it.</div>`}
+    <p class="muted small" style="margin:8px 0">HCPS network dealers are always included at no charge. Outside dealerships buy on Stripe's page; access is added only after Stripe's signed confirmation. A manufacturer course (Golden) stays off sale until the manufacturer's commercial-use permission is recorded. TEST mode only — no real card is charged.</p>
+    <table class="stack"><thead><tr><th>Course</th><th>Outside price</th><th>HCPS dealers</th><th>Outside sale</th><th>Manufacturer rights</th><th></th></tr></thead><tbody>
+    ${PAY.courses.map(c=>{const p=c.price||{};return `<tr><td data-l="Course"><b>${esc(c.title)}</b><div class="muted mono">${esc(c.slug)}</div></td>
+      <td data-l="Outside price">${money(p.price_outside_cents,p.currency)}</td>
+      <td data-l="HCPS dealers">${p.network_included===false?`<span class="pill p-off">charged</span>`:`<span class="pill p-on">included</span>`}</td>
+      <td data-l="Outside sale">${p.outside_sale_allowed?`<span class="pill p-on">on sale</span>`:`<span class="pill p-off">not on sale</span>`}</td>
+      <td data-l="Rights">${c.needs_rights?(p.commercial_rights_confirmed?`<span class="pill p-on">confirmed</span>`:`<span class="pill p-off">not confirmed</span>`):"HCPS-owned"}</td>
+      <td data-l="">${pres&&PAY.installed?`<button class="go ghost sm" data-price="${esc(c.id)}">Set price</button>`:""}</td></tr>`;}).join("")||`<tr><td colspan="6" class="muted">No courses.</td></tr>`}
+    </tbody></table>
+    <h3 style="margin:16px 0 6px">Purchases</h3>
+    <p class="muted small">${["paid","open","refunded","partially_refunded","disputed","review","failed","expired","superseded"].filter(k=>T[k]).map(k=>`${n(T[k])} ${esc(k.replace("_"," "))}`).join(" · ")||"None yet."}</p>
+    <table class="stack"><thead><tr><th>When</th><th>Buyer</th><th>Course</th><th>Amount</th><th>Status</th></tr></thead><tbody>
+    ${PAY.purchases.slice(0,50).map(p=>`<tr><td data-l="When">${when(p.created_at)}</td><td data-l="Buyer">${esc(p.full_name)}<div class="muted small">${esc(p.company)} · ${esc(p.email)}</div></td>
+      <td data-l="Course">${esc(p.course||"")}</td><td data-l="Amount">${money(p.amount_cents,p.currency)}${p.amount_refunded_cents?`<div class="muted small">refunded ${money(p.amount_refunded_cents,p.currency)}</div>`:""}</td>
+      <td data-l="Status">${stPill(p.status)}${p.review_reason?`<div class="muted small">${esc(p.review_reason)}</div>`:""}</td></tr>`).join("")||`<tr><td colspan="5" class="muted">No purchases yet.</td></tr>`}
+    </tbody></table>
+    <div class="bar" style="margin-top:14px"><h3 class="grow" style="margin:0">Free-access overrides</h3>${pres&&PAY.installed?`<button class="go ghost sm" id="eligbtn">Override a dealership</button>`:""}</div>
+    <p class="muted small">Standard rule: an active dealership (account class blank or dealer; a branch follows its head office) is included free. The President can include or exclude one dealership, with a reason.</p>
+    ${PAY.eligibility_overrides.length?`<table class="stack"><tbody>${PAY.eligibility_overrides.map(o=>`<tr><td data-l="Dealership">${esc(o.dealer||o.dealer_id)}</td><td data-l="Override">${o.eligible?"included free":"must pay"}</td><td data-l="Reason">${esc(o.reason)}</td><td data-l="Set">${when(o.set_at)}</td></tr>`).join("")}</tbody></table>`:`<p class="muted small">No overrides.</p>`}`;
+  box.querySelectorAll("[data-price]").forEach(b=>b.onclick=()=>priceModal(PAY.courses.find(c=>c.id===b.dataset.price)));
+  const eb=$("#eligbtn"); if(eb)eb.onclick=eligModal;
+}
+function priceModal(c){
+  const p=c.price||{};
+  formModal("Price — "+c.title,`
+    ${field("pprice","Outside-dealer price (USD, e.g. 19.99; blank = no price)",'inputmode="decimal" maxlength="9"',p.price_outside_cents==null?"":(p.price_outside_cents/100).toFixed(2))}
+    ${select("pincl","HCPS network dealers",[["true","Included at no charge"],["false","Also charged"]],String(p.network_included!==false))}
+    ${select("psale","Sell to outside dealerships",[["false","Not on sale"],["true","On sale"]],String(!!p.outside_sale_allowed))}
+    ${c.needs_rights?select("prights","Manufacturer commercial-use permission",[["false","Not confirmed"],["true","Confirmed in writing"]],String(!!p.commercial_rights_confirmed)):""}
+    ${area("pnote","Rights note (who confirmed, when, reference)",p.rights_note||"")}
+    <p class="muted small" style="margin-top:8px">A changed price applies to new checkouts; an open checkout at the old price is closed. ${c.needs_rights?"This is a manufacturer course: it cannot go on sale until the permission is confirmed.":""}</p>`,
+    "Save price",async()=>{
+      const raw=val("pprice").trim(); let cents=null;
+      if(raw){ if(!/^\d{1,4}(\.\d{1,2})?$/.test(raw)){ const m=$("#mmsg"); m.className="msg err"; m.textContent="Enter a price like 19.99."; return; } cents=Math.round(Number(raw)*100); }
+      const body={action:"set_price",course_id:c.id,price_outside_cents:cents,network_included:val("pincl")==="true",outside_sale_allowed:val("psale")==="true",rights_note:val("pnote")};
+      if(c.needs_rights)body.commercial_rights_confirmed=val("prights")==="true";
+      await change(body,"mmsg",()=>viewCourses());
+    },{intro:"The President's decision; recorded in the Academy audit history."});
+}
+function eligModal(){
+  formModal("Free-access override",`
+    ${field("edealer","Dealership id (from Dealer 360)",'maxlength="36" placeholder="00000000-0000-0000-0000-000000000000"')}
+    ${select("eelig","Decision",[["true","Include free"],["false","Must pay (outside price)"],["","Remove override (standard rule)"]],"true")}
+    ${area("ereason","Reason (required)","")}`,"Save override",async()=>{
+      const e=val("eelig"); await change({action:"set_eligibility",dealer_id:val("edealer").trim(),eligible:e===""?null:e==="true",reason:val("ereason")},"mmsg",()=>viewCourses());
+    });
 }
 const mname=s=>{ if(!s)return "—"; const m=MFRS.find(x=>x.slug===s); return m?m.name:s; };
 function newCourse(){

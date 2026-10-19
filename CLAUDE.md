@@ -3163,6 +3163,19 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   no Stripe, checkout or payment collection until Phase 2 (`docs/academy/PHASE2_PAYMENTS_PROPOSAL.md`, five owner
   decisions). Its CSS/JS carry their own cache stamp (`asset.academyVersion`). Tests: test/training-academy.browser.js,
   test/academy-landing-editor.browser.js, mobile-qa includes the page.
+- **Phase 2 paid access — Stripe SANDBOX (RULES, Angelo 19 Oct 2026 17:15 CT; runbook `docs/academy/P2_M8_PAYMENTS.md`).**
+  Stripe Checkout per course; adjustable prices in Connect 360 (President only, database + API); HCPS network dealers free
+  (`academy_purchase_dealer_eligible`: active, account class blank/dealer, branch follows head office, TEST included,
+  President override audited); outside dealerships pay and become `academy_organizations` members (never CRM dealers, never
+  in a dealer family, learner role only); access ONLY from the signature-verified webhook (`academy-stripe-webhook.js` →
+  `academy_purchase_op_stripe_event`; event id once, amount/currency/reference/session must match → else review);
+  refund/dispute withdraws unless completed; a won dispute restores. **Sandbox only:** live keys refused in `_stripe.js`,
+  `academy_purchases.livemode = false` CHECK, live events refused — production activation needs a reviewed migration and
+  Angelo's approval. **Golden (and any manufacturer course) is never sold to outside dealerships until commercial-use
+  permission is recorded** (trigger `academy_prices_rights_check`, every path). Secrets: `STRIPE_SECRET_KEY` /
+  `STRIPE_WEBHOOK_SECRET` entered by Angelo in Netlify; Claude never views, types, pastes or logs them. No Stripe products,
+  prices, payment links or subscriptions are created (inline `price_data`). Switch `academy_payments` gates checkout only;
+  the webhook records refunds/disputes even when it is off. M8 is run by Angelo; checkout refuses while in pilot mode.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

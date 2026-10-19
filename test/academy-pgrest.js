@@ -29,6 +29,10 @@ function shim(opts) {
     if (argTypes[fn]) return argTypes[fn];
     const r = sql(`select coalesce(json_agg(json_build_object('n', n, 't', t)), '[]') from pg_proc p, unnest(p.proargnames, p.proargtypes::oid[]::regtype[]::text[]) x(n, t) where p.proname = ${lit(fn)} and p.pronamespace = 'public'::regnamespace`);
     const list = r.error ? [] : JSON.parse(r.out || '[]');
+    if (!list.length) {   // a function with no arguments exists too (PostgREST calls it with {})
+      const e = sql(`select count(*) from pg_proc where proname = ${lit(fn)} and pronamespace = 'public'::regnamespace and pronargs = 0`);
+      if (!e.error && Number(e.out) > 0) return (argTypes[fn] = {});
+    }
     return (argTypes[fn] = list.length ? Object.fromEntries(list.map(x => [x.n, x.t])) : null);
   }
   function value(v, type) {

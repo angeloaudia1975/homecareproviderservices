@@ -14,7 +14,7 @@ const FL = require('./_flags.js');
 const SESSION = require('./_academy_session.js');
 
 const SWITCHES = ['academy_admin', 'academy_learner', 'academy_handoff', 'academy_invites', 'academy_external_uploads',
-                  'academy_certificates', 'academy_dealer360', 'academy_exams', 'academy_open'];
+                  'academy_certificates', 'academy_dealer360', 'academy_exams', 'academy_open', 'academy_payments'];
 const SITE_ORIGINS = ['https://homecareproviderservices.org', 'https://www.homecareproviderservices.org',
                       'https://homecareproviderservices.netlify.app'];
 const PARTNER360_ORIGINS = ['https://hcpsonlineordering.netlify.app'];
@@ -84,6 +84,12 @@ async function publishConsistency() { return rpc('academy_publish_consistency', 
 async function accessOp(name, args) {
   if (!/^(access|enroll|progress|exam|cert)_op_[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
   return rpc('academy_' + name, args);
+}
+/* Phase 2 / M8 paid access (academy_purchase_op_*): prices, eligibility overrides, checkout and verified Stripe events.
+   Same contract: the change and its audit row in one transaction, or neither; not installed = 503. */
+async function purchaseOp(name, args) {
+  if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
+  return rpc('academy_purchase_op_' + name, args);
 }
 async function op(name, args) {
   if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
@@ -378,7 +384,7 @@ function handler(fn, opts) {
 module.exports = {
   SWITCHES, SITE_ORIGINS, PARTNER360_ORIGINS, MAX_BODY, AcademyError, refuse,
   pilotMode, testDealerIds, pilotDealer, pilotMemberships, pilotEmailAllowed,
-  sbGet, sbSend, op, publishOp, publishConsistency, accessOp, contentOp, authorOp, saveOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
+  sbGet, sbSend, op, purchaseOp, publishOp, publishConsistency, accessOp, contentOp, authorOp, saveOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
   bearer, bearerUser, staffActor, learnerActor,
   isAdmin, isRelations, isRep, family, dealerScope, canSeeDealer, canSeeScores, requireDealer, requireAdmin, actorLabel,
   audit, redact, body, uuid, oneOf, text, respond, handler, SESSION,

@@ -113,10 +113,20 @@ const LEARNER = {};
 const dealerNames = async ids => Object.fromEntries((await byIds('dealers', ids, 'id,business_name')).map(d => [String(d.id), d.business_name || 'Dealership']));
 const isTM = learner => learner.memberships.some(m => m.role === 'training_manager');
 
+/* An outside dealership's learner (Phase 2 / M8: access bought by card) has an organization, not an HCPS dealership. */
+async function orgOf(memberships) {
+  const ids = memberships.filter(m => !m.dealer_id).map(m => m.id);
+  if (!ids.length) return {};
+  const rows = await A.sbGet(`academy_memberships?id=in.(${ids.map(encodeURIComponent).join(',')})&select=id,organization_id`);
+  const orgs = await byIds('academy_organizations', rows.map(r => r.organization_id), 'id,name');
+  const on = Object.fromEntries(orgs.map(o => [String(o.id), o.name]));
+  return Object.fromEntries(rows.map(r => [String(r.id), on[String(r.organization_id)] || 'Your company']));
+}
 LEARNER.me = async (event, learner) => {
-  const names = await dealerNames(learner.memberships.map(m => m.dealer_id));
+  const names = await dealerNames(learner.memberships.map(m => m.dealer_id).filter(Boolean));
+  const orgs = await orgOf(learner.memberships);
   return { ok: true, learner: { id: learner.learner_id, full_name: learner.full_name, email: learner.email },
-    memberships: learner.memberships.map(m => ({ id: m.id, dealer_id: m.dealer_id, dealer: names[String(m.dealer_id)] || 'Dealership', role: m.role, access_type: m.access_type })),
+    memberships: learner.memberships.map(m => ({ id: m.id, dealer_id: m.dealer_id, dealer: m.dealer_id ? (names[String(m.dealer_id)] || 'Dealership') : orgs[String(m.id)], role: m.role, access_type: m.access_type })),
     training_manager: isTM(learner) };
 };
 LEARNER.sign_out = async (event, learner) => {

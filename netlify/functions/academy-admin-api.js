@@ -385,22 +385,24 @@ WRITE.delete_lesson = async (staff, b) => {
 async function people() {
   const [learners, members, enrolls, courses, versions] = await Promise.all([
     all(`academy_learners?select=id,full_name,email,status,created_at`),
-    all(`academy_memberships?select=id,learner_id,dealer_id,role,access_type,status,started_at,ended_at`),
+    all(`academy_memberships?select=id,learner_id,dealer_id,${(await m8Installed()) ? 'organization_id,' : ''}role,access_type,status,started_at,ended_at`),
     all(`academy_enrollments?select=id,learner_id,version_id,status`),
     all(`academy_courses?select=id,slug`),
     all(`academy_course_versions?select=id,course_id`),
   ]);
   const dealers = await byIds('dealers', members.map(m => m.dealer_id), 'id,business_name,parent_id,is_test');
   const dname = Object.fromEntries(dealers.map(d => [String(d.id), d]));
+  const orgs = await orgNames(members.map(m => m.organization_id));
   const P = await pilotContext(courses, versions);
-  return { learners, members, enrolls, dname, P, pilot: pilotLearners(members, P.testDealers) };
+  return { learners, members, enrolls, dname, orgs, P, pilot: pilotLearners(members.filter(m => m.dealer_id), P.testDealers) };
 }
 READ.list_learners = async () => {
-  const { learners, members, enrolls, dname, P, pilot } = await people();
+  const { learners, members, enrolls, dname, orgs, P, pilot } = await people();
   return { ok: true, learners: learners.map(l => ({
     id: l.id, full_name: l.full_name, email: l.email, status: l.status, created_at: l.created_at, pilot: pilot.has(String(l.id)),
     memberships: members.filter(m => String(m.learner_id) === String(l.id)).map(m => ({
-      id: m.id, dealer_id: m.dealer_id, dealer: (dname[String(m.dealer_id)] || {}).business_name || null, role: m.role,
+      id: m.id, dealer_id: m.dealer_id, organization_id: m.organization_id || null, outside: !!m.organization_id,
+      dealer: m.organization_id ? (orgs[String(m.organization_id)] || 'Outside dealership') + ' (outside)' : (dname[String(m.dealer_id)] || {}).business_name || null, role: m.role,
       access_type: m.access_type, status: m.status, test_dealer: P.testDealers.has(String(m.dealer_id)) })),
     enrollments: tally(enrolls.filter(e => String(e.learner_id) === String(l.id) && !P.testVersions.has(String(e.version_id))), 'status'),
     test_enrollments: enrolls.filter(e => String(e.learner_id) === String(l.id) && P.testVersions.has(String(e.version_id))).length,
@@ -409,7 +411,7 @@ READ.list_learners = async () => {
 READ.dealer_summary = async () => {
   const { learners, members, enrolls, dname, P } = await people();
   const [certs, ext] = await Promise.all([all(`academy_certificates?select=id,learner_id,version_id,status`), all(`academy_external_certs?select=id,learner_id,course_id,status`)]);
-  const active = members.filter(m => m.status === 'active');
+  const active = members.filter(m => m.status === 'active' && m.dealer_id);   // outside organizations are not HCPS dealerships
   const lstatus = Object.fromEntries(learners.map(l => [String(l.id), l.status]));
   const out = {};
   for (const m of active) {
@@ -728,6 +730,60 @@ READ.preview_check = async (staff, b, event) => {
   const r = LESSON.checkPractice(q, b.answer);
   if (!r || r.invalid) A.refuse(400, 'invalid', 'Choose an answer first.');
   return { ok: true, correct: r.correct, explanation: r.explanation };   // never the answer key
+};
+
+/* ---------- Paid access (Phase 2 / M8, Stripe SANDBOX only) ----------
+   Reads: administrators. Writes (prices, eligibility overrides): the President only, here AND in the database.
+   Nothing here charges, refunds or grants access: access comes only from the signature-verified Stripe webhook and a
+   refund is issued in the Stripe Dashboard (its webhook withdraws the enrollment). No secret value is ever returned. */
+const STRIPE = require('./_stripe.js');
+/* Until Angelo installs M8 the membership table has no organization_id: older reads must keep working unchanged. */
+async function m8Installed() {
+  try { await A.sbGet('academy_organizations?select=id&limit=1'); return true; }
+  catch (e) { if (e && e.code === 'unreadable') return false; throw e; }
+}
+async function orgNames(ids) {
+  const list = [...new Set((ids || []).filter(Boolean).map(String))];
+  if (!list.length) return {};
+  let rows = [];
+  try { rows = await byIds('academy_organizations', list, 'id,name'); } catch (e) { if (e && e.code === 'unreadable') return {}; throw e; }
+  return Object.fromEntries(rows.map(o => [String(o.id), o.name]));
+}
+READ.payments = async () => {
+  const sw = await A.switches();
+  let installed = true, prices = [], purchases = [], overrides = [];
+  try {
+    [prices, purchases, overrides] = await Promise.all([
+      all(`academy_prices?select=course_id,price_outside_cents,currency,network_included,outside_sale_allowed,commercial_rights_confirmed,rights_note,updated_at,updated_by`, 'course_id.asc'),
+      A.sbGet(`academy_purchases?select=id,course_id,email,full_name,company,amount_cents,currency,status,created_at,paid_at,refunded_at,amount_refunded_cents,review_reason,enrollment_id&order=created_at.desc&limit=200`),
+      all(`academy_dealer_eligibility?select=dealer_id,eligible,reason,set_by,set_at`, 'dealer_id.asc'),
+    ]);
+  } catch (e) { if (e && e.code === 'unreadable') installed = false; else throw e; }
+  const courses = await all(`academy_courses?select=id,slug,title,course_type,manufacturer_slug,status`);
+  const pr = Object.fromEntries(prices.map(p => [String(p.course_id), p]));
+  const dn = Object.fromEntries((await byIds('dealers', overrides.map(o => o.dealer_id), 'id,business_name')).map(d => [String(d.id), d.business_name]));
+  const title = Object.fromEntries(courses.map(c => [String(c.id), c.title]));
+  return { ok: true, installed, switch_on: sw.academy_payments === true, stripe_mode: STRIPE.keyMode(), webhook_configured: STRIPE.webhookConfigured(),
+    courses: courses.filter(c => !isTest(c)).map(c => ({ id: c.id, slug: c.slug, title: c.title, status: c.status, course_type: c.course_type,
+      manufacturer_slug: c.manufacturer_slug || null, needs_rights: !!c.manufacturer_slug, price: pr[String(c.id)] || null })),
+    purchases: purchases.map(p => Object.assign({}, p, { course: title[String(p.course_id)] || null })),
+    totals: tally(purchases, 'status'),
+    eligibility_overrides: overrides.map(o => Object.assign({}, o, { dealer: dn[String(o.dealer_id)] || null })) };
+};
+WRITE.set_price = async (staff, b) => {
+  requirePresident(staff);
+  const spec = {};
+  if (Object.prototype.hasOwnProperty.call(b, 'price_outside_cents')) spec.price_outside_cents = b.price_outside_cents == null || b.price_outside_cents === '' ? null : int(b.price_outside_cents, 99, 100000, 'Price (cents)');
+  for (const k of ['network_included', 'outside_sale_allowed', 'commercial_rights_confirmed']) if (b[k] != null) {
+    if (typeof b[k] !== 'boolean') A.refuse(400, 'invalid', `${k} must be true or false.`); spec[k] = b[k];
+  }
+  if (Object.prototype.hasOwnProperty.call(b, 'rights_note')) spec.rights_note = opt(b.rights_note, 500, 'Rights note');
+  return { ok: true, audited: true, price: await A.purchaseOp('set_price', { p_actor: A.actorLabel(staff), p_course_id: A.uuid(b.course_id, 'course'), p_spec: spec }) };
+};
+WRITE.set_eligibility = async (staff, b) => {
+  requirePresident(staff);
+  const e = b.eligible === true || b.eligible === false ? b.eligible : (b.eligible == null ? null : A.refuse(400, 'invalid', 'eligible must be true, false or empty.'));
+  return { ok: true, audited: true, result: await A.purchaseOp('set_eligibility', { p_actor: A.actorLabel(staff), p_dealer_id: A.uuid(b.dealer_id, 'dealership'), p_eligible: e, p_reason: A.text(b.reason, 500, 'Reason') }) };
 };
 
 /* ---------- Course Builder (A2D Stage 3) ---------- */
