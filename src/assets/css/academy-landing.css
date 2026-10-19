@@ -121,7 +121,7 @@
 /* ===================== A · Premium Corporate ===================== */
 .ta-a .ta-hero{background:linear-gradient(150deg,#0b1f33 0%,#0f5c8f 62%,#1681c2 100%);color:#fff;padding:46px 0 56px;position:relative;overflow:hidden;perspective:1500px;}
 .ta-a .ta-hero::after{content:"";position:absolute;right:-120px;top:-120px;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle,rgba(252,178,30,.24),transparent 66%);pointer-events:none;}
-.ta-a .ta-tilt{max-width:1000px;margin:0 auto;aspect-ratio:16/9;}
+.ta-a .ta-tilt{max-width:1000px;margin:0 auto;aspect-ratio:1730/909;}   /* the hero banner's own ratio (CLAUDE.md §1) */
 .ta-a .ta-hero-copy{max-width:900px;margin:30px auto 0;text-align:center;position:relative;z-index:1;}
 .ta-a .ta-hero-copy .kicker{color:var(--gold);}
 .ta-a .ta-hero-copy h1{color:#fff;font-weight:800;font-size:clamp(25px,3.6vw,44px);line-height:1.08;margin:0 0 14px;}
