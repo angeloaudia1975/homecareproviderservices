@@ -345,8 +345,9 @@ const lines=s=>String(s||"").split("\n").map(x=>x.trim()).filter(Boolean);
 let PEOPLE="dealers";
 async function viewPeople(){
   loading();
+  const head=`<div class="bar" style="margin-bottom:10px"><button class="tab ${PEOPLE==="dealers"?"on":""}" id="pd">Dealerships</button><button class="tab ${PEOPLE==="learners"?"on":""}" id="pl">Learners</button><button class="tab ${PEOPLE==="commerce"?"on":""}" id="pc">Pricing &amp; purchases</button></div>`;
+  if(PEOPLE==="commerce") return viewCommerce(head);
   const r=await api({action:PEOPLE==="dealers"?"dealer_summary":"list_learners"}); if(r.status!==200)return failed(r);
-  const head=`<div class="bar" style="margin-bottom:10px"><button class="tab ${PEOPLE==="dealers"?"on":""}" id="pd">Dealerships</button><button class="tab ${PEOPLE==="learners"?"on":""}" id="pl">Learners</button></div>`;
   if(PEOPLE==="dealers"){
     const d=r.body.dealerships;
     $("#view").innerHTML=`<div class="card">${head}<table class="stack"><thead><tr><th>Dealership</th><th>Learners</th><th>Training Managers</th><th>Enrollments</th><th>HCPS certificates</th><th>Manufacturer credentials</th></tr></thead><tbody>
@@ -358,7 +359,7 @@ async function viewPeople(){
     const L=r.body.learners;
     $("#view").innerHTML=`<div class="card">${head}<table class="stack"><thead><tr><th>Learner</th><th>Dealership &amp; role</th><th>Enrollments</th><th>Status</th></tr></thead><tbody>
       ${L.map(l=>`<tr><td data-l="Learner"><b>${esc(l.full_name)}</b>${l.pilot?` <span class="pill p-test">TEST pilot</span>`:""}<div class="muted small">${esc(l.email)}</div></td>
-        <td data-l="Dealership">${l.memberships.map(m=>`<div style="margin-bottom:4px">${esc(m.dealer||"?")} · ${m.role==="training_manager"?"<b>Training Manager</b>":"Learner"} <span class="muted small">(${esc(m.access_type==="training_only"?"training only":"dealer user")}${m.status!=="active"?", "+esc(m.status):""})</span>
+        <td data-l="Dealership">${l.memberships.map(m=>`<div style="margin-bottom:4px">${esc(m.dealer||"?")}${m.outside?` <span class="pill p-mfr">Outside company</span>`:""} · ${m.role==="training_manager"?"<b>Training Manager</b>":"Learner"} <span class="muted small">(${esc(m.access_type==="training_only"?"training only":m.access_type==="purchased"?"purchased access":"dealer user")}${m.status!=="active"?", "+esc(m.status):""})</span>
           ${m.status==="active"?`<button class="go ghost sm" data-tm="${esc(m.id)}" data-make="${m.role==="training_manager"?"0":"1"}">${m.role==="training_manager"?"Remove TM role":"Make TM"}</button>`:""}</div>`).join("")||`<span class="muted">—</span>`}</td>
         <td data-l="Enrollments">${sum(l.enrollments)}${sum(l.enrollments)&&WHO.may&&WHO.may.publish?` <button class="go ghost sm" data-xt="${esc(l.id)}" data-xn="${esc(l.full_name)}">Exam time</button>`:""}</td><td data-l="Status">${stPill(l.status)}</td></tr>`).join("")||`<tr><td colspan="4" class="muted">No learners yet.</td></tr>`}
       </tbody></table></div>`;
@@ -378,7 +379,88 @@ async function viewPeople(){
       formModal(make?"Grant Training Manager":"Remove Training Manager",`<p class="muted">${make?"A Training Manager sees the progress of learners at their own dealership (and its branches, for a parent dealership).":"They keep their learner access."}</p>${area("tmr","Reason (recorded)")}`,make?"Grant":"Remove",async()=>{
         await change({action:"set_training_manager",membership_id:b.dataset.tm,make,reason:val("tmr")},"mmsg",viewPeople); }); });
   }
-  $("#pd").onclick=()=>{PEOPLE="dealers";viewPeople();}; $("#pl").onclick=()=>{PEOPLE="learners";viewPeople();};
+  $("#pd").onclick=()=>{PEOPLE="dealers";viewPeople();}; $("#pl").onclick=()=>{PEOPLE="learners";viewPeople();}; $("#pc").onclick=()=>{PEOPLE="commerce";viewPeople();};
+}
+
+/* ---------- Phase 2: pricing, free eligibility, purchases and refunds ----------
+   Prices, overrides, buyer reviews and refund decisions are the President's (the server and the database check it).
+   Access is granted only by Stripe's signed webhook; nothing here charges a card. */
+const SALE={off:"Not on sale",test:"Stripe TEST mode (TEST courses only)",live:"On sale (live payments)"};
+const RIGHTS={not_confirmed:"Manufacturer permission NOT confirmed",confirmed:"Manufacturer permission confirmed",not_required:"No manufacturer material (not required)"};
+const money=c=>"$"+(n(c)/100).toFixed(2);
+async function viewCommerce(head){
+  const r=await api({action:"commerce_overview"}); if(r.status!==200)return failed(r);
+  const o=r.body, R=o.readiness, pres=!!(WHO.may&&WHO.may.publish);
+  const yes=v=>`<span class="pill ${v?"p-on":"p-off"}">${v?"yes":"no"}</span>`;
+  $("#view").innerHTML=`<div class="card">${head}
+    <h2 style="margin:4px 0 8px">Payment readiness</h2>
+    <p class="small">Sales switch ${yes(R.payments_switch)} · Live-payments switch ${yes(R.live_switch)} · Academy open to all ${yes(R.academy_open)} · Stripe key ${R.stripe_key_mode?`<span class="pill p-on">${esc(R.stripe_key_mode.toUpperCase())} mode</span>`:`<span class="pill p-off">not set</span>`} · Webhook secret ${yes(R.webhook_secret)}</p>
+    <p class="muted small">${R.live_ready?"Live payments are ready. A course sells only when its sale mode is “On sale” and the manufacturer permission is confirmed.":"No real card can be charged: live payments need the live switch, a live Stripe key and the webhook secret. TEST mode sells only TEST courses with Stripe test cards."}</p></div>
+  <div class="card"><h2 style="margin:0 0 8px">Course prices</h2>
+    <table class="stack"><thead><tr><th>Course</th><th>Price</th><th>HCPS network dealers</th><th>Sale</th><th>Manufacturer permission</th><th></th></tr></thead><tbody>
+    ${o.courses.map(c=>`<tr><td data-l="Course"><b>${esc(c.title)}</b>${c.test_course?` <span class="pill p-test">TEST</span>`:""}<div class="muted mono">${esc(c.slug)}</div></td>
+      <td data-l="Price">${c.price?esc(c.price.price):`<span class="muted">not set</span>`}${c.price&&c.price.public_note?`<div class="muted small">${esc(c.price.public_note)}</div>`:""}</td>
+      <td data-l="Network">${c.price?(c.price.network_included?"Included (free)":"Pays"):"—"}</td>
+      <td data-l="Sale">${c.price?esc(SALE[c.price.sale_mode]||c.price.sale_mode):"—"}</td>
+      <td data-l="Permission" class="small">${c.price?esc(RIGHTS[c.price.rights_status]||c.price.rights_status):"—"}${c.price&&c.price.rights_ref?`<div class="muted">${esc(c.price.rights_ref)}</div>`:""}</td>
+      <td>${pres?`<button class="go ghost sm" data-pr="${esc(c.id)}">Edit</button>`:""}</td></tr>`).join("")||`<tr><td colspan="6" class="muted">No courses.</td></tr>`}
+    </tbody></table>
+    <p class="muted small" style="margin-top:8px">Prices are separate from course content: publishing a new version never changes a price. Every change is kept with its reason. The public Training Academy page keeps showing “coming soon” until checkout opens.</p>
+    ${o.price_history.length?`<details style="margin-top:8px"><summary class="small"><b>Price history</b> (last ${n(o.price_history.length)})</summary><table class="stack"><tbody>${o.price_history.map(h=>`<tr><td class="small">${when(h.at)}</td><td class="small">${esc(h.course)}</td><td class="small">${h.before?money(h.before.price_cents)+" / "+esc(h.before.sale_mode):"—"} → ${money(h.after.price_cents)} / ${esc(h.after.sale_mode)}</td><td class="small muted">${esc(h.reason)} · ${esc(String(h.actor).replace("staff:",""))}</td></tr>`).join("")}</tbody></table></details>`:""}</div>
+  <div class="card"><h2 style="margin:0 0 8px">Purchases</h2>
+    <p class="small">${n(o.totals.live_purchases)} live purchase(s) · ${esc(o.totals.live_revenue)} net · <b>${n(o.totals.refund_requests)}</b> refund request(s) · <b>${n(o.totals.needs_review)}</b> need review</p>
+    <table class="stack"><thead><tr><th>Buyer</th><th>Course</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody>
+    ${o.purchases.map(p=>`<tr><td data-l="Buyer"><b>${esc(p.organization||"—")}</b> <span class="pill p-mfr">Outside company</span><div class="muted small">${esc(p.buyer_email)}${p.buyer_refunds>=2?` · <b>${n(p.buyer_refunds)} refunds</b>`:""}</div></td>
+      <td data-l="Course">${esc(p.course)}${p.mode==="test"?` <span class="pill p-test">TEST payment</span>`:""}</td>
+      <td data-l="Amount">${esc(p.amount)}${p.refunded!=="$0.00"?`<div class="muted small">refunded ${esc(p.refunded)}</div>`:""}<div class="muted small">${day(p.paid_at)}</div></td>
+      <td data-l="Status">${stPill(p.status)}${p.access!=="granted"?` <span class="pill p-off">needs review</span><div class="muted small">${esc(p.access_note||"")}</div>`:""}${p.refund_request_reason?`<div class="muted small">Asked: ${esc(p.refund_request_reason)}</div>`:""}${p.review_note?`<div class="muted small">Decision: ${esc(p.review_note)}</div>`:""}</td>
+      <td>${pres&&p.status!=="refunded"?`<button class="go ghost sm" data-rf="${esc(p.id)}" data-st="${esc(p.status)}">Refund…</button>`:""}</td></tr>`).join("")||`<tr><td colspan="5" class="muted">No purchases yet.</td></tr>`}
+    </tbody></table>
+    <p class="muted small" style="margin-top:8px">Buyers may ask for a refund within 14 days. A refund ends unfinished course access; a completed course or an earned HCPS certificate is never taken back. Two refunds in 12 months: the buyer's next purchase waits for your review.</p>
+    ${pres?`<div class="bar" style="margin-top:8px"><button class="go ghost sm" id="brv">Buyer review…</button></div>`:""}
+    ${o.buyer_reviews.length?`<p class="small" style="margin-top:6px">${o.buyer_reviews.map(b=>`${esc(b.email)}: <b>${esc(b.decision)}</b> <span class="muted">(${esc(b.reason)})</span>`).join(" · ")}</p>`:""}</div>
+  <div class="card"><h2 style="margin:0 0 8px">Free access for HCPS network dealers</h2>
+    <p class="muted small">Included free: the dealership AND its head office are Active, classed as a dealer (or not classed), and not TEST. Prospects, manufacturers, vendors and inactive accounts pay. A President override (with a reason) wins.</p>
+    <div class="bar" style="margin:8px 0"><input class="i" id="elq" placeholder="Dealership name…" style="max-width:280px"><button class="go dk sm" id="elgo">Check</button></div>
+    <div id="elres"></div>
+    ${o.overrides.length?`<h3 style="margin:10px 0 4px;font-size:14px">Overrides</h3><table class="stack"><tbody>${o.overrides.map(x=>`<tr><td><b>${esc(x.dealer||x.dealer_id)}</b></td><td>${x.eligible===true?"Included (override)":x.eligible===false?"Not included (override)":"Standard rule"}</td><td class="small muted">${esc(x.reason)} · ${day(x.set_at)}</td></tr>`).join("")}</tbody></table>`:""}</div>`;
+  $("#pd").onclick=()=>{PEOPLE="dealers";viewPeople();}; $("#pl").onclick=()=>{PEOPLE="learners";viewPeople();}; $("#pc").onclick=()=>{PEOPLE="commerce";viewPeople();};
+  const again=()=>viewPeople();
+  $("#view").querySelectorAll("[data-pr]").forEach(b=>b.onclick=()=>{
+    const c=o.courses.find(x=>String(x.id)===b.dataset.pr), p=c.price||{price_cents:0,network_included:true,sale_mode:"off",rights_status:"not_confirmed"};
+    formModal("Price — "+c.title,`
+      ${field("pp","Price in US dollars",'inputmode="decimal" placeholder="19.99"',(n(p.price_cents)/100).toFixed(2))}
+      ${select("pn","HCPS network dealers",[["true","Included at no charge"],["false","Pay like everyone else"]],String(p.network_included))}
+      ${select("ps","Sale",Object.entries(SALE).filter(e=>e[0]!=="test"||c.test_course),p.sale_mode)}
+      ${select("prs","Manufacturer permission for paid outside access",Object.entries(RIGHTS),p.rights_status)}
+      ${field("prr","Permission reference (letter, email, date)",'maxlength="500"',p.rights_ref||"")}
+      ${field("ppn","Public note (optional)",'maxlength="300"',p.public_note||"")}
+      ${area("preason","Reason for this change (recorded)")}
+      <p class="muted small">On sale needs the manufacturer's permission recorded. TEST mode is only for TEST courses.</p>`,"Save price",async()=>{
+      const d=String(val("pp")).trim(); if(!/^\d{1,5}(\.\d{1,2})?$/.test(d)){ const m=$("#mmsg"); m.className="msg err"; m.textContent="Enter the price like 19.99."; return; }
+      await change({action:"set_price",course_id:c.id,reason:val("preason"),patch:{price_cents:Math.round(Number(d)*100),network_included:val("pn")==="true",sale_mode:val("ps"),rights_status:val("prs"),rights_ref:val("prr"),public_note:val("ppn")}},"mmsg",again);
+    });
+  });
+  $("#view").querySelectorAll("[data-rf]").forEach(b=>b.onclick=()=>{
+    const asked=b.dataset.st==="refund_requested";
+    formModal("Refund decision",`<p class="muted">${asked?"The buyer asked for a refund.":"Refund a purchase nobody asked about."} Approving sends the refund to Stripe; the course access ends when Stripe confirms it. A completed course or earned certificate is kept.</p>
+      ${select("rfd","Decision",asked?[["approve","Approve the refund"],["decline","Decline"]]:[["approve","Refund in full"]],"approve")}${area("rfr","Reason (recorded)")}`,"Save decision",async()=>{
+      const res=await change({action:"refund_decide",purchase_id:b.dataset.rf,decision:val("rfd"),reason:val("rfr")},"mmsg",again);
+      if(res&&res.message){ openModal(`<h2>Refund</h2><p>${esc(res.message)}</p><div class="bar end"><button class="go ghost" id="mcancel">Close</button></div>`); $("#mcancel").onclick=closeModal; }
+    });
+  });
+  const brv=$("#brv"); if(brv)brv.onclick=()=>formModal("Buyer review",`${field("bre","Buyer email",'type="email"')}${select("brd","Decision",[["allow","Allow future purchases"],["block","Block future purchases"]],"allow")}${area("brr","Reason (recorded)")}`,"Save",async()=>{
+    await change({action:"buyer_review",email:val("bre"),decision:val("brd"),reason:val("brr")},"mmsg",again); });
+  const check=async()=>{ const q=val("elq").trim(); const box=$("#elres"); box.innerHTML=`<p class="muted small">Checking…</p>`;
+    const r=await api({action:"eligibility_check",q}); if(r.status!==200){ box.innerHTML=`<p class="msg err">${esc(errText(r))}</p>`; return; }
+    const WHY={network_dealer:"Active HCPS network dealer",override:"President override",not_active:"Not an active account (or its head office is not)",account_class:"Not classed as a dealer",test_dealer:"TEST dealership",unknown_dealer:"Unknown"};
+    box.innerHTML=`<table class="stack"><tbody>${r.body.dealers.map(d=>`<tr><td><b>${esc(d.dealer)}</b>${d.branch?` <span class="muted small">branch</span>`:""}<div class="muted small">status ${esc(d.status||"—")} · class ${esc(d.account_class||"—")}</div></td>
+      <td>${d.eligibility.eligible?`<span class="pill p-on">Included free</span>`:`<span class="pill p-off">Pays</span>`}<div class="muted small">${esc(WHY[d.eligibility.reason]||d.eligibility.reason)}</div></td>
+      <td>${pres?`<button class="go ghost sm" data-ov="${esc(d.id)}" data-dn="${esc(d.dealer)}">Override…</button>`:""}</td></tr>`).join("")||`<tr><td class="muted">No dealership by that name.</td></tr>`}</tbody></table>`;
+    box.querySelectorAll("[data-ov]").forEach(x=>x.onclick=()=>formModal("Free access — "+x.dataset.dn,`${select("ove","Decision",[["true","Include at no charge (override)"],["false","Not included (override)"],["null","Remove the override (standard rule)"]],"true")}${area("ovr","Reason (recorded)")}`,"Save",async()=>{
+      const v=val("ove"); await change({action:"set_eligibility_override",dealer_id:x.dataset.ov,eligible:v==="null"?null:v==="true",reason:val("ovr")},"mmsg",async()=>{ await viewPeople(); }); }));
+  };
+  $("#elgo").onclick=check; $("#elq").onkeydown=e=>{ if(e.key==="Enter")check(); };
 }
 
 /* ---------- product facts ---------- */
@@ -477,7 +559,7 @@ async function viewCreds(){
 }
 
 /* ---------- activity ---------- */
-const ENT=[["","All records"],["academy_courses","Courses"],["academy_course_versions","Course versions"],["academy_modules","Modules"],["academy_lessons","Lessons"],["product_facts","Product facts"],["academy_memberships","Training Manager roles"],["academy_external_certs","Manufacturer credentials"],["academy_certificates","HCPS certificates"],["academy_attempts","Exams"],["academy_enrollments","Enrollments"],["academy_learners","Learners"],["academy_invites","Invitations"]];
+const ENT=[["","All records"],["academy_courses","Courses"],["academy_course_versions","Course versions"],["academy_modules","Modules"],["academy_lessons","Lessons"],["product_facts","Product facts"],["academy_memberships","Training Manager roles"],["academy_external_certs","Manufacturer credentials"],["academy_certificates","HCPS certificates"],["academy_attempts","Exams"],["academy_enrollments","Enrollments"],["academy_learners","Learners"],["academy_invites","Invitations"],["academy_course_prices","Course prices"],["academy_purchases","Purchases & refunds"],["academy_eligibility_overrides","Free-access overrides"],["academy_organizations","Outside companies"],["academy_checkouts","Checkouts"],["academy_buyer_reviews","Buyer reviews"]];
 let ACTF="", EVENTS=[], NEXT=null;
 function eventsTable(ev){
   return `<table class="stack"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Record</th><th></th></tr></thead><tbody>

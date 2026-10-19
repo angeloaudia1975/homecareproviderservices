@@ -1,6 +1,6 @@
 # HCPS Academy — Phase 2: paid course access (implementation proposal)
 
-Status: **proposal only (read-only review, 19 Oct 2026). Nothing here is built.** Phase 1 shows prices as "coming soon"
+Status: **built on branch `academy/phase2-commerce` (19 Oct 2026) with the agreed defaults — see `PHASE2_COMMERCE.md`. M8 not run in production; no live payment possible.** Original proposal below. Phase 1 shows prices as "coming soon"
 and takes no payment. Each numbered owner decision below must be settled before Phase 2 code starts.
 
 ## 1. Who is an "eligible HCPS network dealer" (free) — what the data supports today

@@ -58,6 +58,7 @@
     if (!ME) return;
     nav.appendChild(el('button', { type: 'button', text: 'My courses', onclick: function () { go('courses'); }, 'aria-current': ROUTE === 'courses' ? 'page' : null }));
     nav.appendChild(el('button', { type: 'button', text: 'My certificates', onclick: function () { go('certificates'); }, 'aria-current': ROUTE === 'certificates' || ROUTE === 'certificate' ? 'page' : null }));
+    if ((ME.memberships || []).some(function (m) { return m.outside; })) nav.appendChild(el('button', { type: 'button', text: 'My purchases', onclick: function () { go('purchases'); }, 'aria-current': ROUTE === 'purchases' ? 'page' : null }));
     if (ME.training_manager) nav.appendChild(el('button', { type: 'button', text: 'My team', onclick: function () { go('team'); }, 'aria-current': ROUTE === 'team' ? 'page' : null }));
     nav.appendChild(el('button', { type: 'button', text: 'Sign out', onclick: signOut }));
   }
@@ -70,6 +71,7 @@
     if (name === 'team' && ME.training_manager) { ROUTE = 'team'; drawNav(); return team(); }
     if (name === 'exam' && params.get('e')) { ROUTE = 'exam'; drawNav(); return exam(params.get('e')); }
     if (name === 'certificates') { ROUTE = 'certificates'; drawNav(); return certificates(); }
+    if (name === 'purchases') { ROUTE = 'purchases'; drawNav(); return purchases(); }
     if (name === 'certificate' && params.get('c')) { ROUTE = 'certificate'; drawNav(); return certificate(params.get('c')); }
     if (name === 'take' && params.get('a')) { ROUTE = 'take'; drawNav(); return take(params.get('a'), params.get('e')); }
     ROUTE = 'courses'; drawNav(); courses();
@@ -357,6 +359,39 @@
     });
   }
 
+  /* ------------------------------------------------------------ purchases and refund requests (Phase 2) */
+  var STATUS = { paid: 'Paid', refund_requested: 'Refund requested', refund_approved: 'Refund approved — on its way', refunded: 'Refunded', disputed: 'Under review' };
+  function purchases() {
+    show(el('p', { cls: 'ac-muted', text: 'Loading your purchases…' }));
+    api({ action: 'my_purchases' }).then(function (r) {
+      if (r.status !== 200) { show(msg(text(r), true)); return; }
+      var list = r.body.purchases || [];
+      show([el('h1', { text: 'My purchases' }),
+        el('p', { cls: 'ac-muted ac-small', text: 'You can ask for a refund within ' + r.body.refund_days + ' days of buying a course. HCPS reviews every request. A completed course and an earned certificate are kept.' }),
+        list.length ? el('div', { cls: 'ac-courses' }, list.map(function (p) {
+          var out = el('div', { 'aria-live': 'polite' });
+          var card = el('section', { cls: 'ac-card ac-stack' }, [el('h2', { text: p.course }),
+            el('p', { cls: 'ac-small', text: p.amount + ' · ' + fmtDate(p.paid_at) + ' · ' + (STATUS[p.status] || p.status) + (p.refunded !== '$0.00' ? ' · refunded ' + p.refunded : '') }), out]);
+          if (p.can_request_refund) {
+            var why = el('textarea', { id: 'rr-' + p.id, maxlength: 500, rows: 2 });
+            var btn = el('button', { type: 'button', cls: 'ac-btn sec', text: 'Ask for a refund' });
+            btn.addEventListener('click', function () {
+              if (why.value.trim().length < 5) { out.replaceChildren(msg('Tell us briefly why (at least 5 characters).', true)); why.focus(); return; }
+              busy(btn, true, 'Sending…');
+              api({ action: 'refund_request', purchase_id: p.id, reason: why.value.trim() }).then(function (x) {
+                if (x.status === 200) { purchases(); return; }
+                busy(btn, false, 'Ask for a refund'); out.replaceChildren(msg(text(x), true));
+              });
+            });
+            card.appendChild(el('label', { cls: 'ac-field', for: 'rr-' + p.id }, ['Why are you asking for a refund?', why]));
+            card.appendChild(el('div', { cls: 'ac-row' }, [btn]));
+          }
+          return card;
+        })) : el('div', { cls: 'ac-card' }, [el('p', { text: 'No purchases.' })])]);
+      focusMain();
+    });
+  }
+
   /* ------------------------------------------------------------ HCPS certificates (A2F) */
   var DISCLOSURE = 'Issued by Home Care Provider Services (HCPS). This is an HCPS sales certification; it is not issued or endorsed by Golden Technologies.';
   function fmtDate(v) { if (!v) return ''; var d = new Date(v); return isNaN(d) ? String(v).slice(0, 10) : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Chicago' }); }
@@ -373,7 +408,7 @@
       show([el('h1', { text: 'My certificates' }), el('p', { cls: 'ac-muted ac-small', text: DISCLOSURE }),
         list.length ? el('div', { cls: 'ac-courses' }, list.map(function (c) {
           return el('section', { cls: 'ac-card ac-stack' }, [el('h2', { text: c.course }), el('p', { cls: 'ac-row' }, [certPill(c), el('span', { cls: 'ac-small ac-muted', text: c.cert_number })]),
-            el('p', { cls: 'ac-small', text: 'Issued ' + fmtDate(c.issued_at) + ' · ' + c.dealer_name }),
+            el('p', { cls: 'ac-small', text: 'Issued ' + fmtDate(c.issued_at) + (c.dealer_name ? ' · ' + c.dealer_name : '') }),
             el('div', { cls: 'ac-row' }, [el('button', { type: 'button', cls: 'ac-btn pri', text: 'View and print', onclick: function () { go('certificate', { c: c.id }); } })])]);
         })) : el('div', { cls: 'ac-card' }, [el('h2', { text: 'No certificates yet' }), el('p', { text: r.body.issuing ? 'Pass a course’s final exam to earn its HCPS certificate.' : 'HCPS certificates are not being issued yet.' })])]);
       focusMain();
@@ -391,7 +426,7 @@
         el('h1', { cls: 'ac-cert-title', text: 'Certificate of Completion' }),
         el('p', { cls: 'ac-cert-line', text: 'This certifies that' }),
         el('p', { cls: 'ac-cert-name', text: c.learner_name }),
-        el('p', { cls: 'ac-cert-line', text: 'of ' + c.dealer_name + ' has passed the final examination of' }),
+        el('p', { cls: 'ac-cert-line', text: (c.dealer_name ? 'of ' + c.dealer_name + ' ' : '') + 'has passed the final examination of' }),
         el('p', { cls: 'ac-cert-course', text: c.course }),
         el('dl', { cls: 'ac-cert-facts' }, [el('dt', { text: 'Certificate number' }), el('dd', { text: c.cert_number }),
           el('dt', { text: 'Issued' }), el('dd', { text: fmtDate(c.issued_at) }),

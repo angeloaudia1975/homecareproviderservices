@@ -3163,6 +3163,28 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   no Stripe, checkout or payment collection until Phase 2 (`docs/academy/PHASE2_PAYMENTS_PROPOSAL.md`, five owner
   decisions). Its CSS/JS carry their own cache stamp (`asset.academyVersion`). Tests: test/training-academy.browser.js,
   test/academy-landing-editor.browser.js, mobile-qa includes the page.
+- **Phase 2 — paid access for outside dealerships (built 19 Oct 2026 on branch `academy/phase2-commerce`; M8 NOT run;
+  defaults from PR #25 comment 6278300397; runbook `docs/academy/PHASE2_COMMERCE.md`).** Binding rules:
+  - Free eligibility is decided ONLY by `academy_commerce_eligibility` (dealer AND head office `status = active`,
+    `account_class` blank or `dealer`, not TEST; a President override with a reason wins). Prospects are never free.
+  - Course prices are commercial metadata (`academy_course_prices`), separate from immutable course versions; changed only
+    by the President through `academy_commerce_op_set_price`, every change kept in append-only price history. The public
+    landing page stays "coming soon" until checkout is live.
+  - Outside buyers are `academy_organizations`, never dealers: membership with `organization_id`, role learner, access
+    `purchased`; never in Dealer 360, reps' books, analytics, Zoho, Training Manager teams or dealership figures. Any new
+    dealer-scoped Academy read must key on `dealer_id` and keep them out; select memberships with `select=*` (works before
+    and after M8).
+  - The price always comes from the database; access is granted ONLY by a signature-verified Stripe webhook (raw body,
+    5-minute tolerance, event mode = key mode), idempotent on event id AND Checkout Session id; a mismatched amount /
+    currency / mode grants nothing. Card data never touches HCPS. Every Stripe write carries an Idempotency-Key.
+  - TEST-mode sales only for TEST courses (`test-…`): a Stripe test card must never open a real course. LIVE needs
+    `academy_payments_live`, a live key and the course's manufacturer commercial permission recorded as confirmed (database
+    check). Golden's education-use permission is NOT commercial permission — Golden stays "not on sale" until Angelo
+    provides Golden's written permission.
+  - Refunds: buyer asks within 14 days; the President decides; access ends when Stripe's signed refund event arrives; a
+    completed course and an earned certificate are never taken back. Two refunds in 12 months → President buyer review.
+  - Stripe keys and the webhook secret are entered by Angelo in Netlify; Claude never sees them. Switches
+    `academy_payments` / `academy_payments_live` are turned on only by Angelo's own SQL.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

@@ -27,7 +27,8 @@ const { randomUUID } = require('crypto');
 
 const ENTITIES = ['academy_courses', 'academy_course_versions', 'academy_modules', 'academy_lessons', 'academy_memberships',
                   'academy_external_certs', 'academy_certificates', 'academy_attempts', 'academy_enrollments', 'product_facts',
-                  'academy_learners', 'academy_invites'];
+                  'academy_learners', 'academy_invites', 'academy_course_prices', 'academy_purchases', 'academy_eligibility_overrides',
+                  'academy_organizations', 'academy_checkouts', 'academy_buyer_reviews'];
 const SLUG = /^[a-z0-9-]+$/;
 const MODEL = /^[A-Z0-9][A-Z0-9._\/-]{0,39}$/;
 const FIELD = /^[a-z0-9_.]+$/;
@@ -160,11 +161,11 @@ function pilotLearners(members, testDealers) {
   return new Set(Object.entries(by).filter(([, ms]) => ms.every(m => testDealers.has(String(m.dealer_id)))).map(([k]) => k));
 }
 READ.overview = async () => {
-  const [courses, versions, learners, members, enrolls, certs, ext, facts, events, sw] = await Promise.all([
+  let [courses, versions, learners, members, enrolls, certs, ext, facts, events, sw] = await Promise.all([
     all(`academy_courses?select=id,slug,status,course_type,issuer,manufacturer_slug`),
     all(`academy_course_versions?select=id,course_id,status`),
     all(`academy_learners?select=id,status`),
-    all(`academy_memberships?status=eq.active&select=id,learner_id,dealer_id,role,status`),
+    all(`academy_memberships?status=eq.active&select=*`),
     all(`academy_enrollments?select=id,learner_id,version_id,status`),
     all(`academy_certificates?select=id,learner_id,version_id,status`),
     all(`academy_external_certs?select=id,learner_id,course_id,status`),
@@ -172,7 +173,11 @@ READ.overview = async () => {
     A.sbGet(`academy_events?select=id,at,actor_type,actor,entity,entity_id,action,before,after&order=id.desc&limit=12`),
     A.switches(),
   ]);
-  const P = await pilotContext(courses, versions); const pilot = pilotLearners(members, P.testDealers);
+  const P = await pilotContext(courses, versions);
+  // Phase 2: outside organizations are never dealerships — counted apart, never in dealer figures
+  const outside = members.filter(m => m.organization_id);
+  members = members.filter(m => !m.organization_id);
+  const pilot = pilotLearners(members, P.testDealers);
   const realL = l => !pilot.has(String(l));
   const split = (rows, isReal) => { const r = rows.filter(isReal); return [r, rows.length - r.length]; };
   const [rLearners, xLearners] = split(learners, l => realL(l.id));
@@ -192,6 +197,7 @@ READ.overview = async () => {
     manufacturer_credentials: { total: rExt.length, by_status: tally(rExt, 'status') },
     test_pilot: { excluded: true, dealerships: new Set(members.filter(m => P.testDealers.has(String(m.dealer_id))).map(m => String(m.dealer_id))).size,
                   memberships: xMembers, learners: xLearners, enrollments: xEnrolls, hcps_certificates: xCerts, manufacturer_credentials: xExt },
+    outside_organizations: { memberships: outside.length, organizations: new Set(outside.map(m => String(m.organization_id))).size },
     product_facts: { current: facts.length, by_status: tally(facts, 'status'), approval_required: facts.filter(f => f.field_class === 'approval_required').length },
     recent: events.map(eventOut),
   };
@@ -385,13 +391,15 @@ WRITE.delete_lesson = async (staff, b) => {
 async function people() {
   const [learners, members, enrolls, courses, versions] = await Promise.all([
     all(`academy_learners?select=id,full_name,email,status,created_at`),
-    all(`academy_memberships?select=id,learner_id,dealer_id,role,access_type,status,started_at,ended_at`),
+    all(`academy_memberships?select=*`),
     all(`academy_enrollments?select=id,learner_id,version_id,status`),
     all(`academy_courses?select=id,slug`),
     all(`academy_course_versions?select=id,course_id`),
   ]);
-  const dealers = await byIds('dealers', members.map(m => m.dealer_id), 'id,business_name,parent_id,is_test');
+  const dealers = await byIds('dealers', members.map(m => m.dealer_id).filter(Boolean), 'id,business_name,parent_id,is_test');
   const dname = Object.fromEntries(dealers.map(d => [String(d.id), d]));
+  const orgs = await byIds('academy_organizations', members.map(m => m.organization_id).filter(Boolean), 'id,name');
+  for (const o of orgs) dname['org:' + o.id] = { business_name: o.name, outside: true };
   const P = await pilotContext(courses, versions);
   return { learners, members, enrolls, dname, P, pilot: pilotLearners(members, P.testDealers) };
 }
@@ -400,7 +408,8 @@ READ.list_learners = async () => {
   return { ok: true, learners: learners.map(l => ({
     id: l.id, full_name: l.full_name, email: l.email, status: l.status, created_at: l.created_at, pilot: pilot.has(String(l.id)),
     memberships: members.filter(m => String(m.learner_id) === String(l.id)).map(m => ({
-      id: m.id, dealer_id: m.dealer_id, dealer: (dname[String(m.dealer_id)] || {}).business_name || null, role: m.role,
+      id: m.id, dealer_id: m.dealer_id, organization_id: m.organization_id || null, outside: !!m.organization_id,
+      dealer: (dname[m.organization_id ? 'org:' + m.organization_id : String(m.dealer_id)] || {}).business_name || null, role: m.role,
       access_type: m.access_type, status: m.status, test_dealer: P.testDealers.has(String(m.dealer_id)) })),
     enrollments: tally(enrolls.filter(e => String(e.learner_id) === String(l.id) && !P.testVersions.has(String(e.version_id))), 'status'),
     test_enrollments: enrolls.filter(e => String(e.learner_id) === String(l.id) && P.testVersions.has(String(e.version_id))).length,
@@ -409,7 +418,7 @@ READ.list_learners = async () => {
 READ.dealer_summary = async () => {
   const { learners, members, enrolls, dname, P } = await people();
   const [certs, ext] = await Promise.all([all(`academy_certificates?select=id,learner_id,version_id,status`), all(`academy_external_certs?select=id,learner_id,course_id,status`)]);
-  const active = members.filter(m => m.status === 'active');
+  const active = members.filter(m => m.status === 'active' && !m.organization_id);   // dealerships only (outside organizations are not dealers)
   const lstatus = Object.fromEntries(learners.map(l => [String(l.id), l.status]));
   const out = {};
   for (const m of active) {
@@ -734,6 +743,11 @@ READ.preview_check = async (staff, b, event) => {
 const BUILDER = require('./_academy_builder.js');
 for (const [k, fn] of Object.entries(BUILDER.READ)) { if (READ[k] || WRITE[k]) throw new Error('duplicate action ' + k); READ[k] = fn; }
 for (const [k, fn] of Object.entries(BUILDER.WRITE)) { if (READ[k] || WRITE[k]) throw new Error('duplicate action ' + k); WRITE[k] = fn; }
+
+/* ---------- Phase 2 commerce (prices, eligibility, purchases, refunds) ---------- */
+const COMMERCE = require('./_academy_commerce_admin.js');
+for (const [k, fn] of Object.entries(COMMERCE.READ)) { if (READ[k] || WRITE[k]) throw new Error('duplicate action ' + k); READ[k] = fn; }
+for (const [k, fn] of Object.entries(COMMERCE.WRITE)) { if (READ[k] || WRITE[k]) throw new Error('duplicate action ' + k); WRITE[k] = fn; }
 
 /* ================================== HANDLER ================================== */
 const ACTIONS = {};

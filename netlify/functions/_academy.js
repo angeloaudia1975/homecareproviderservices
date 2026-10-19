@@ -14,7 +14,8 @@ const FL = require('./_flags.js');
 const SESSION = require('./_academy_session.js');
 
 const SWITCHES = ['academy_admin', 'academy_learner', 'academy_handoff', 'academy_invites', 'academy_external_uploads',
-                  'academy_certificates', 'academy_dealer360', 'academy_exams', 'academy_open'];
+                  'academy_certificates', 'academy_dealer360', 'academy_exams', 'academy_open',
+                  'academy_payments', 'academy_payments_live'];
 const SITE_ORIGINS = ['https://homecareproviderservices.org', 'https://www.homecareproviderservices.org',
                       'https://homecareproviderservices.netlify.app'];
 const PARTNER360_ORIGINS = ['https://hcpsonlineordering.netlify.app'];
@@ -85,6 +86,13 @@ async function accessOp(name, args) {
   if (!/^(access|enroll|progress|exam|cert)_op_[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
   return rpc('academy_' + name, args);
 }
+/* Phase 2 / M8 commerce: eligibility overrides, prices, checkouts, purchases, refunds. Same contract: one database call =
+   the change and its audit row, or neither; not installed = 503. */
+async function commerceOp(name, args) {
+  if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
+  return rpc('academy_commerce_op_' + name, args);
+}
+async function eligibility(dealerId) { return rpc('academy_commerce_eligibility', { p_dealer: dealerId }); }
 async function op(name, args) {
   if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
   return rpc('academy_op_' + name, args);
@@ -251,7 +259,8 @@ async function learnerActor(event) {
   if (!l || l.status !== 'active') return null;
   const staff = await sbGet(`staff_users?email=eq.${enc(String(l.email).toLowerCase())}&select=email,active`);
   if (staff.some(x => x.active !== false)) return null;
-  const mem = await pilotMemberships(await sbGet(`academy_memberships?learner_id=eq.${enc(l.id)}&status=eq.active&select=id,dealer_id,role,access_type`));
+  // select=*: works before and after M8 (which adds organization_id)
+  const mem = (await pilotMemberships(await sbGet(`academy_memberships?learner_id=eq.${enc(l.id)}&status=eq.active&select=*`))).map(m => ({ id: m.id, dealer_id: m.dealer_id, organization_id: m.organization_id || null, role: m.role, access_type: m.access_type }));
   if (!mem.length) return null;   // no active access for any dealership (pilot: no TEST dealership) = no session
   return { kind: 'learner', learner_id: l.id, session_id: s.id, auth_user_id: l.auth_user_id || null, email: l.email, full_name: l.full_name, memberships: mem };
 }
@@ -378,7 +387,7 @@ function handler(fn, opts) {
 module.exports = {
   SWITCHES, SITE_ORIGINS, PARTNER360_ORIGINS, MAX_BODY, AcademyError, refuse,
   pilotMode, testDealerIds, pilotDealer, pilotMemberships, pilotEmailAllowed,
-  sbGet, sbSend, op, publishOp, publishConsistency, accessOp, contentOp, authorOp, saveOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
+  sbGet, sbSend, op, commerceOp, eligibility, publishOp, publishConsistency, accessOp, contentOp, authorOp, saveOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
   bearer, bearerUser, staffActor, learnerActor,
   isAdmin, isRelations, isRep, family, dealerScope, canSeeDealer, canSeeScores, requireDealer, requireAdmin, actorLabel,
   audit, redact, body, uuid, oneOf, text, respond, handler, SESSION,
