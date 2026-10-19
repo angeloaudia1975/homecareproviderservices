@@ -33,5 +33,11 @@
     "path": "/contact/",
     "title": "Contact HomeCare Provider Services | HME & DME Representation",
     "description": "Get in touch with HomeCare Provider Services — manufacturer representation and dealer support across the Ohio Valley and Southeast. Call 937-626-5141."
+  },
+  {
+    "path": "/training-academy/",
+    "title": "HCPS Training & Certification Academy | Dealer Product Training & Certification",
+    "description": "Self-paced product and sales training for home medical equipment dealers. Enroll your team, track progress, and earn the HCPS Golden Lift Chair Sales Certification — included for eligible HCPS network dealers.",
+    "canonical": "https://www.homecareproviderservices.org/training-academy/"
   }
 ]

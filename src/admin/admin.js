@@ -20,6 +20,7 @@
     landing: "src/_data/landing.json",
     nav: "src/_data/nav.json",
     dealerServices: "src/_data/dealerServices.json",
+    academyLanding: "src/_data/academyLanding.json",
   };
 
   // ---- Schemas for the simple data editors (Home Page / Site / Team / Testimonials) ----
@@ -276,8 +277,95 @@
       { k: "referral_note", label: "Referral note (small line at the foot of the card)", type: "textarea", full: true } ] },
   ];
 
+
+  // ---- Training Academy landing page (academyLanding.json → /training-academy/) ----
+  var TA_IMG = function (label) { return { type: "image", dir: "training-academy", label: label, full: true }; };
+  var ACADEMY_LANDING_SCHEMA = [
+    { k: "design", label: "Page design — a: Premium Corporate · b: Training Dashboard · c: Product-Focused", type: "select", options: ["a", "b", "c"] },
+    { k: "seo_title", label: "Search title (browser tab / Google)", type: "text", full: true },
+    { k: "seo_description", label: "Search description", type: "textarea", full: true },
+    { k: "hero", label: "Hero", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+      { k: "headline", label: "Headline", type: "text", full: true },
+      { k: "lead", label: "Intro paragraph", type: "textarea", full: true },
+      { k: "cta1_label", label: "Primary button label (opens the Academy)", type: "text" },
+      { k: "cta2_label", label: "Secondary button label (scrolls to the courses)", type: "text" },
+      Object.assign({ k: "image" }, TA_IMG("Hero banner image (design a) — wide, about 16:9")),
+      { k: "image_alt", label: "Hero banner — description for screen readers", type: "text", full: true },
+      Object.assign({ k: "side_image" }, TA_IMG("Hero photo (designs b and c, and the Dealer Services card)")),
+      { k: "side_image_alt", label: "Hero photo — description for screen readers", type: "text", full: true },
+      { k: "stats", label: "Highlight numbers", type: "objlist", full: true, item: [
+        { k: "value", label: "Number", type: "text" }, { k: "label", label: "Label", type: "text" } ] } ] },
+    { k: "why", label: "Why the Academy", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+      { k: "title", label: "Heading", type: "text", full: true },
+      { k: "intro", label: "Intro", type: "textarea", full: true },
+      { k: "cards", label: "Benefit cards", type: "objlist", full: true, item: [
+        Object.assign({ k: "image" }, TA_IMG("Icon image")),
+        { k: "title", label: "Title", type: "text" },
+        { k: "description", label: "Text", type: "textarea", full: true } ] } ] },
+    { k: "courses", label: "Featured courses", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+      { k: "title", label: "Heading", type: "text", full: true },
+      { k: "intro", label: "Intro", type: "textarea", full: true },
+      { k: "items", label: "Courses (live = featured with a Start button; coming = shown as Coming soon)", type: "objlist", full: true, item: [
+        { k: "status", label: "Status", type: "select", options: ["live", "coming"] },
+        { k: "badge", label: "Badge text", type: "text" },
+        { k: "title", label: "Course title", type: "text", full: true },
+        { k: "summary", label: "Summary", type: "textarea", full: true },
+        { k: "facts", label: "Key facts (one per line)", type: "list", full: true },
+        Object.assign({ k: "image" }, TA_IMG("Course image")),
+        { k: "image_alt", label: "Image description", type: "text", full: true },
+        { k: "price_note", label: "Price / eligibility line", type: "text", full: true },
+        { k: "cta_label", label: "Button label (live courses)", type: "text" },
+        { k: "cta_url", label: "Button link (live courses — normally /academy/)", type: "text" } ] } ] },
+    { k: "dashboard", label: "Dealership training dashboard", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+      { k: "title", label: "Heading", type: "text", full: true },
+      { k: "intro", label: "Intro", type: "textarea", full: true },
+      { k: "points", label: "Feature points", type: "objlist", full: true, item: [
+        { k: "title", label: "Title", type: "text" }, { k: "description", label: "Text", type: "textarea", full: true } ] },
+      { k: "preview", label: "Dashboard illustration rows (sample names only)", type: "objlist", full: true, item: [
+        { k: "name", label: "Sample name", type: "text" }, { k: "role", label: "Role", type: "text" },
+        { k: "lessons", label: "Lessons (e.g. 12/17)", type: "text" }, { k: "exam", label: "Exam (Passed / Not taken)", type: "text" },
+        { k: "cert", label: "Certificate line", type: "text" } ] },
+      { k: "preview_note", label: "Illustration note", type: "text", full: true } ] },
+    { k: "how", label: "How it works", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+      { k: "title", label: "Heading", type: "text", full: true },
+      { k: "steps", label: "Steps", type: "objlist", full: true, item: [
+        { k: "title", label: "Title", type: "text" }, { k: "description", label: "Text", type: "textarea", full: true } ] } ] },
+    { k: "pricing", label: "Pricing & eligibility (display only — no payments are taken)", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
+      { k: "title", label: "Heading", type: "text", full: true },
+      { k: "intro", label: "Intro", type: "textarea", full: true },
+      { k: "tiers", label: "Pricing cards", type: "objlist", full: true, item: [
+        { k: "title", label: "Who it is for", type: "text", full: true },
+        { k: "price", label: "Price (display text)", type: "text" },
+        { k: "price_note", label: "Under the price", type: "text" },
+        { k: "description", label: "Text", type: "textarea", full: true },
+        { k: "cta_label", label: "Button label", type: "text" },
+        { k: "cta_url", label: "Button link", type: "text" },
+        { k: "highlight", label: "Highlight this card", type: "bool" } ] },
+      { k: "footnote", label: "Footnote", type: "textarea", full: true } ] },
+    { k: "certificate_note", label: "Certificate disclosure (HCPS-issued, not Golden)", type: "textarea", full: true },
+    { k: "cta", label: "Bottom call-to-action", type: "object", full: true, item: [
+      { k: "title", label: "Heading", type: "text", full: true },
+      { k: "copy", label: "Copy", type: "textarea", full: true },
+      { k: "access_label", label: "Access the Academy button", type: "text" },
+      { k: "explore_label", label: "Explore Courses button", type: "text" },
+      { k: "dealer_label", label: "Become a Dealer button", type: "text" } ] },
+    { k: "dealer_services_card", label: "Card on the Dealer Services page", type: "object", full: true, item: [
+      { k: "eyebrow", label: "Tag", type: "text", full: true },
+      { k: "title", label: "Title", type: "text", full: true },
+      { k: "copy", label: "Copy", type: "textarea", full: true },
+      { k: "cta_label", label: "Button label", type: "text" } ] },
+  ];
+
   // config for each simple data view
   var DATA_VIEWS = {
+    academyLanding: { file: "academyLanding", title: "Training Academy", root: "object", schema: ACADEMY_LANDING_SCHEMA,
+      note: "Edit the public Training & Certification Academy page (/training-academy/) and its card on Dealer Services: headings, text, images, featured courses, pricing display and button labels. Pick one of the three page designs. Pricing here is display only — no payment is taken. Changes go live on the next publish." },
     dealerServices: { file: "dealerServices", title: "Dealer Services", root: "object", schema: DEALER_SERVICES_SCHEMA,
       note: "Edit the Dealer Services page — the hero text and the value-added service partners (like CardChamp). Each partner is its own branded card; set Status to “active” to show it live or “coming” to keep it hidden while you prepare it. Add a new partner here to grow the page without touching the manufacturer lines. Changes go live on the next publish." },
     pages: { file: "pages", title: "Pages", root: "object", schema: PAGES_SCHEMA,

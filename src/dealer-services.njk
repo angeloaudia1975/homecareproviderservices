@@ -172,6 +172,17 @@ description: "Value-added business services for HomeCare Provider Services deale
         </div>
       </article>
 
+      {%- set ac = academyLanding.dealer_services_card %}
+      <article class="ds-svc rev" id="training-academy">
+        <div class="ds-svc-img" data-reveal="right"><img src="{{ academyLanding.hero.side_image }}" alt="{{ academyLanding.hero.side_image_alt }}" loading="lazy" onerror="this.style.visibility='hidden'"></div>
+        <div class="ds-svc-body" data-reveal="up" style="--d:120ms">
+          <span class="ds-svc-tag">{{ ac.eyebrow }}</span>
+          <h3>{{ ac.title }}</h3>
+          <p>{{ ac.copy }}</p>
+          <a class="ds-btn primary" href="/training-academy/">{{ ac.cta_label }} &rarr;</a>
+        </div>
+      </article>
+
     </div>
   </div>
 </section>

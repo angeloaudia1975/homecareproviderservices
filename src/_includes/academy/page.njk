@@ -1,0 +1,13 @@
+{# Wrapper: the chosen layout (`design`: a | b | c — Website editor → Training Academy), the related-pages row and the
+   page's own CSS / tilt script. #}
+<link rel="stylesheet" href="/assets/css/academy-landing.css?v={{ asset.academyVersion }}">
+{%- set d = (forceDesign or academyLanding.design or "a") | lower -%}
+{%- if d == "b" -%}{% include "academy/concept-b.njk" %}{%- elif d == "c" -%}{% include "academy/concept-c.njk" %}{%- else -%}{% include "academy/concept-a.njk" %}{%- endif %}
+{% set relatedPages = [
+  { href: "/dealer-hub/", label: "Dealer Hub", blurb: "Book in-person training, technical support and showroom help." },
+  { href: "/resources/", label: "Resource Library", blurb: "Brochures, manuals and price lists for every line HCPS represents." },
+  { href: "/become-a-dealer/", label: "Become a Dealer", blurb: "Join the HCPS dealer network — and your team's training is included." }
+] %}
+{% set relatedHeading = "Keep exploring the HCPS platform" %}
+{% include "related.njk" %}
+<script src="/assets/js/academy-landing.js?v={{ asset.academyVersion }}" defer></script>

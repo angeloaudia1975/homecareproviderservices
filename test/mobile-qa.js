@@ -47,6 +47,7 @@ const PAGES = [
   ['consulting',        '/consulting/'],
   ['contact',           '/contact/'],
   ['become-a-dealer',   '/become-a-dealer/'],
+  ['training-academy',  '/training-academy/'],
 ];
 
 const MIME = { '.html':'text/html','.css':'text/css','.js':'application/javascript','.json':'application/json',

@@ -1,0 +1,34 @@
+{# Concept A — Premium Corporate: depth hero with the Golden showroom, stats strip, benefit cards, featured course,
+   dashboard, steps, pricing, CTA. #}
+{% import "academy/sections.njk" as S %}
+{% set L = academyLanding %}
+<div class="ta ta-a">
+<section class="ta-hero">
+  <div class="wrap">
+    <div class="ta-tilt" role="img" aria-label="{{ L.hero.image_alt }}" style="background-image:url('{{ L.hero.image }}')"><span class="ta-glare"></span></div>
+    <div class="ta-hero-copy" data-reveal="up" style="--d:120ms">
+      <p class="kicker">{{ L.hero.eyebrow }}</p>
+      <h1>{{ L.hero.headline }}</h1>
+      <p>{{ L.hero.lead }}</p>
+      <div class="ta-actions"><a class="ta-btn primary" href="/academy/">{{ L.hero.cta1_label }}</a><a class="ta-btn ghost" href="#courses">{{ L.hero.cta2_label }}</a></div>
+    </div>
+    <div class="ta-stats" data-reveal="up" style="--d:200ms">{% for s in L.hero.stats %}<div><b>{{ s.value }}</b><span>{{ s.label }}</span></div>{% endfor %}</div>
+  </div>
+</section>
+{{ S.why(L, "") }}
+{{ S.featuredCourses(L, "alt") }}
+<section class="ta-sec" id="dashboard">
+  <div class="wrap ta-dashwrap">
+    <div data-reveal="right">
+      <p class="kicker">{{ L.dashboard.eyebrow }}</p>
+      <h2 style="font-size:clamp(24px,3vw,34px);font-weight:800;margin:0 0 12px">{{ L.dashboard.title }}</h2>
+      <p style="color:var(--muted);font-size:16px;margin:0 0 22px">{{ L.dashboard.intro }}</p>
+      {{ S.dashPoints(L) }}
+    </div>
+    <div data-reveal="left">{{ S.dashPreview(L) }}</div>
+  </div>
+</section>
+{{ S.how(L, "alt") }}
+{{ S.pricing(L, "") }}
+{{ S.finalCta(L) }}
+</div>

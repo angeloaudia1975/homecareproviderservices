@@ -3151,6 +3151,18 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   never counted in the figures. Off = `{enabled:false}` and the card stays hidden. Tests: academy-d360 8, mutants 11/11,
   academy-d360-ui.qa 5 (President / rep / Relations, phone + desktop). `academy_external_uploads` is reserved and NOT
   built (learner upload of Golden credential proof).
+- **Public Academy landing page `/training-academy/` (Phase 1, owner directive 19 Oct 2026; design A "Premium Corporate"
+  chosen by Angelo 16:38 CT).** Promotional page only — the Academy app (`/academy/`) is unchanged and is where every
+  "Access the Academy" button goes; no second sign-in system. All words, images, courses, pricing display and button labels
+  live in `src/_data/academyLanding.json`, edited in Website editor → **Training Academy** (also picks the layout:
+  `design` a | b | c → `src/_includes/academy/concept-*.njk`, shared sections in `academy/sections.njk`). Dealer Hub menu:
+  "Training & Certification Academy" directly below Resource Library (nav.json + base.njk fallback); footer link; an
+  Academy card on Dealer Services (`#training-academy`, text from `dealer_services_card`). Real HCPS / Golden assets only
+  (`src/assets/training-academy/`); certificates always shown as HCPS-issued, not Golden-issued or endorsed; unpublished
+  courses never shown — future ones only as "Coming soon". **Pricing is display only** ("Paid course access coming soon"):
+  no Stripe, checkout or payment collection until Phase 2 (`docs/academy/PHASE2_PAYMENTS_PROPOSAL.md`, five owner
+  decisions). Its CSS/JS carry their own cache stamp (`asset.academyVersion`). Tests: test/training-academy.browser.js,
+  test/academy-landing-editor.browser.js, mobile-qa includes the page.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
