@@ -3138,6 +3138,11 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   HCPS and Training Managers alike. Missing / non-true / unreadable = pilot. Tests: academy-pilot.pg + academy-pilot.mutants.
   Any new learner-side write path must call the gate. Partner 360 (ordering repo `public/dashboard.html`) shows its
   Training button only when academy-handoff status (sent with the dealer's token) answers `enabled:true`.
+- **HCPS ACADEMY LAUNCHED — general availability 19 Oct 2026 11:15 CT** (`academy_open` ON; every Academy switch ON).
+  Live pilot passed (results in `docs/academy/LAUNCH_CHECKLIST.md`): pilot gate refused a real dealership, emails
+  delivered, TM + learner flows, 17/17 lessons, cooldown, resume, 100% pass, certificate HCPS-TMGS-THUD issued → verified →
+  revoked by the President, access end closes the session. Rollback = `academy_open` false (TEST-only) or any switch off.
+  No mass email to real dealers without a separate review of audience, content, suppression and opt-out.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

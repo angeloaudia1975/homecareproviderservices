@@ -1,5 +1,31 @@
 # HCPS Academy — Golden Lift Chair Sales Certification: launch checklist and controlled pilot
 
+> **LAUNCHED 19 Oct 2026 11:15 CT — general availability (`academy_open` ON).** All switches on: academy_admin, learner,
+> invites, handoff, exams, certificates, open. Live pilot passed at TEST — Golden Sandbox (results below). Rollback: set
+> `academy_open` false (back to TEST-only pilot) or turn any single switch off — no deploy needed.
+
+## Live pilot results (production, 19 Oct 2026, HCPS-controlled mailboxes only)
+
+| Check | Result |
+|---|---|
+| Pilot gate: HCPS invite to a real dealership | refused 403 `pilot_only` |
+| Invitation + sign-in code emails (Resend) | delivered to `angelo+academy-*` mailboxes |
+| HCPS staff address asks for a code | no code (by design) |
+| Training Manager: sees only the sandbox, invites 4 learners, enrolls, team view (lessons/attempts, no score), sign-out ends session | PASS |
+| Learner: 17/17 lessons, 30/30 pictures load, no answer key / explanation in any payload | PASS |
+| Exam before lessons complete | refused `lessons_incomplete` |
+| Attempt 1 (deliberate blank) | score 0, not passed; restart refused `cooldown` 60 min |
+| President extra time | refused without a reason; +10 min recorded with one |
+| Autosave + reload | same attempt, same deadline, 12 saved answers kept |
+| Attempt 2 | 100%, passed; second submit refused |
+| HCPS certificate | HCPS-TMGS-THUD issued automatically, valid to 19 Oct 2027, Golden disclosure, printable page |
+| Public verification | valid → President revocation (reason recorded) → revoked |
+| Access ended | session closed at once (401); certificate still verifies (revoked) |
+| After `academy_open` | handoff status enabled, forged admin token 401, anonymous learner API 401 |
+
+Pilot data left in place (TEST dealership, excluded from real figures): TM + learners A/B, pending invitations C/D, learner
+B's certificate REVOKED with reason. Not deleted or rewritten.
+
 Status (19 Oct 2026): **launch authorized by the owner** (PR #23 comment 6269613883, 19 Oct 09:27 CT) — all decisions
 below are settled; activation proceeds step by step with a PASS gate and the rollback line after each. Golden v1 PUBLISHED
 19 Oct 2026 09:43 CT (audited, President). Learner-facing switches go on only behind the PILOT GATE.
