@@ -2,7 +2,7 @@
      GET  ?action=catalog  -> { enabled, test_mode, courses:[{slug,title,price_cents,currency}] }   (public, read only)
      POST {action:"start", course_slug, full_name, company, email}
           -> { ok:true, url }  the Stripe-hosted payment page (card data never touches HCPS)
-          -> 409 included / already_enrolled · 404 not_for_sale · 403 staff / not_allowed · 429 limited · 503 not set up
+          -> 409 included / already_enrolled / free (F1: a FREE course is never sold) · 404 not_for_sale · 403 staff / not_allowed · 429 limited · 503 not set up
    Rules (docs/academy/P2_M8_PAYMENTS.md):
      - Off unless the academy_payments switch is exactly true AND the key of the current mode is ready. The mode is the
        academy_payments_live switch (exactly true = live, STRIPE_SECRET_KEY_LIVE; otherwise sandbox, STRIPE_SECRET_KEY);
@@ -45,11 +45,19 @@ async function enabled(live) {
   return (await A.switchOn('academy_payments')) && STRIPE.keyReady(live) && STRIPE.webhookConfigured(live) && !(await A.pilotMode());
 }
 
+/* F1 (free launch): a course whose access policy is FREE is never sold — it is left out of the paid catalog and a
+   checkout for it is answered "free" (the database also refuses the checkout row). Before F1 is installed: no change. */
+async function freeSlugs() {
+  try { const c = await A.freeOp('catalog', {}); return new Set((Array.isArray(c) ? c : []).map(x => x.slug)); }
+  catch (e) { if (e && e.code === 'not_installed') return new Set(); throw e; }
+}
+
 async function catalog(event) {
   const live = await liveMode();
   if (!(await enabled(live))) return A.respond(event, 200, { enabled: false, test_mode: !live, courses: [] });
   const courses = await A.purchaseOp('catalog', {});
-  return A.respond(event, 200, { enabled: true, test_mode: !live, tax_added: await A.switchOn('academy_payments_tax'), courses: Array.isArray(courses) ? courses : [] });
+  const free = await freeSlugs();
+  return A.respond(event, 200, { enabled: true, test_mode: !live, tax_added: await A.switchOn('academy_payments_tax'), courses: (Array.isArray(courses) ? courses : []).filter(c => !free.has(c.slug)) });
 }
 
 async function start(event) {
@@ -64,6 +72,7 @@ async function start(event) {
   const email = A.text(b.email, 254, 'Email').toLowerCase();
   if (!EMAIL.test(email)) A.refuse(400, 'invalid', 'Please enter a valid email address.');
   const name = A.text(b.full_name, 120, 'Your name'), company = A.text(b.company, 160, 'Company');
+  if ((await freeSlugs()).has(slug)) return A.respond(event, 409, { error: 'free', message: 'This course is free during launch — no credit card required. Use the free sign-up instead.' });
   if (!(await liveMode()) && !sandboxBuyer(email)) {
     return A.respond(event, 403, { error: 'sandbox_test_only', message: 'Paid course access is not open yet. Please contact HCPS.' });
   }

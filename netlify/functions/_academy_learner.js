@@ -149,6 +149,32 @@ async function versionOutline(versionIds) {
   const lessons = mods.length ? await A.sbGet(`academy_lessons?module_id=${idsIn(mods.map(m => m.id))}&select=id,module_id,position,title,est_minutes&order=position.asc`) : [];
   return { vers, courses, mods, lessons };
 }
+/* Phase 2 / F1 free launch: the free courses a signed-in learner may start, and starting one (idempotent). Before F1 is
+   installed the list is empty. */
+async function freeCatalog() {
+  try { const c = await A.freeOp('catalog', {}); return Array.isArray(c) ? c : []; }
+  catch (e) { if (e && e.code === 'not_installed') return []; throw e; }
+}
+LEARNER.free_courses = async (event, learner) => {
+  const list = await freeCatalog();
+  if (!list.length) return { ok: true, courses: [] };
+  const mine = new Set();
+  const enr = await myEnrollments(learner);
+  if (enr.length) {
+    const vers = await byIds('academy_course_versions', enr.map(e => e.version_id), 'id,course_id');
+    const cs = await byIds('academy_courses', vers.map(v => v.course_id), 'id,slug');
+    for (const c of cs) mine.add(c.slug);
+  }
+  return { ok: true, courses: list.map(c => ({ slug: c.slug, title: c.title, note: c.note || null, enrolled: mine.has(c.slug) })) };
+};
+LEARNER.enroll_free = async (event, learner, b) => {
+  const slug = String(b.course_slug || '');
+  if (!/^[a-z0-9-]{1,120}$/.test(slug)) A.refuse(400, 'invalid', 'Course is not valid.');
+  const c = one(await A.sbGet(`academy_courses?slug=eq.${enc(slug)}&select=id`));
+  if (!c) A.refuse(404, 'not_found', 'Course not found.');
+  const r = await A.freeOp('enroll', { p_actor: actorOf(learner), p_course_id: c.id });
+  return { ok: true, enrollment_id: r.enrollment_id, existing: !!r.existing };
+};
 LEARNER.my_courses = async (event, learner) => {
   const enr = await myEnrollments(learner);
   const examsOpen = await A.switchOn('academy_exams');

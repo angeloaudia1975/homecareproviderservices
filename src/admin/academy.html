@@ -252,14 +252,17 @@ async function paymentsCard(){
     ${L.switch_on&&!L.ready?`<div class="note warn" style="margin-top:8px">The live switch is on but the live key or live webhook secret is missing, so checkout is closed.</div>`:""}
     ${PAY.installed?"":`<div class="note warn" style="margin-top:8px">The payments database step (M8) is not installed yet — prices and purchases appear here once the President runs it.</div>`}
     <p class="muted small" style="margin:8px 0">HCPS network dealers are always included at no charge. Outside dealerships buy on Stripe's page; access is added only after Stripe's signed confirmation. A manufacturer course (Golden) stays off sale until the manufacturer's commercial-use permission is recorded. ${isLive?"Live mode — real cards are charged.":"Sandbox mode — no real card is charged."}</p>
-    <table class="stack"><thead><tr><th>Course</th><th>Outside price</th><th>HCPS dealers</th><th>Outside sale</th><th>Manufacturer rights</th><th></th></tr></thead><tbody>
-    ${PAY.courses.map(c=>{const p=c.price||{};return `<tr><td data-l="Course"><b>${esc(c.title)}</b><div class="muted mono">${esc(c.slug)}</div></td>
+    ${PAY.access_installed?"":`<div class="note warn" style="margin-top:8px">The free-launch database step (F1) is not installed yet — course access policies appear here once the President runs it.</div>`}
+    <table class="stack"><thead><tr><th>Course</th><th>Access</th><th>Outside price</th><th>HCPS dealers</th><th>Outside sale</th><th>Manufacturer rights</th><th></th></tr></thead><tbody>
+    ${PAY.courses.map(c=>{const p=c.price||{}, a=c.access;return `<tr><td data-l="Course"><b>${esc(c.title)}</b><div class="muted mono">${esc(c.slug)}</div></td>
+      <td data-l="Access">${!a?`<span class="pill p-off">not set (price rules)</span>`:a.mode==="free"?`<span class="pill p-on">Free during launch</span>`:a.mode==="paid"?`<span class="pill p-on">Paid</span>`:`<span class="pill p-off">Off</span>`}${c.free_enrollments?`<div class="muted small">${n(c.free_enrollments)} free enrollment${c.free_enrollments===1?"":"s"}</div>`:""}${pres&&PAY.access_installed&&c.course_type!=="manufacturer_program"?`<div><button class="go ghost sm" data-access="${esc(c.id)}">Set access</button></div>`:""}</td>
       <td data-l="Outside price">${money(p.price_outside_cents,p.currency)}</td>
       <td data-l="HCPS dealers">${p.network_included===false?`<span class="pill p-off">charged</span>`:`<span class="pill p-on">included</span>`}</td>
       <td data-l="Outside sale">${p.outside_sale_allowed?`<span class="pill p-on">on sale</span>`:`<span class="pill p-off">not on sale</span>`}</td>
       <td data-l="Rights">${c.needs_rights?(p.commercial_rights_confirmed?`<span class="pill p-on">confirmed</span>`:`<span class="pill p-off">not confirmed</span>`):"HCPS-owned"}</td>
-      <td data-l="">${pres&&PAY.installed?`<button class="go ghost sm" data-price="${esc(c.id)}">Set price</button>`:""}</td></tr>`;}).join("")||`<tr><td colspan="6" class="muted">No courses.</td></tr>`}
+      <td data-l="">${pres&&PAY.installed?`<button class="go ghost sm" data-price="${esc(c.id)}">Set price</button>`:""}</td></tr>`;}).join("")||`<tr><td colspan="7" class="muted">No courses.</td></tr>`}
     </tbody></table>
+    <p class="muted small">Access is independent of the price: a free course keeps its price on record but is never sold, and learners who enrolled free keep their access if the course later becomes paid.</p>
     <div class="bar" style="margin:16px 0 6px"><h3 class="grow" style="margin:0">Purchases</h3><button class="go ghost sm" id="reconbtn">Check Stripe against HCPS</button></div>
     <div id="reconout"></div>
     <p class="muted small"><b>Live:</b> ${tline(LT)||"none yet"} · <b>Sandbox:</b> ${tline(T)||"none"}</p>
@@ -272,6 +275,7 @@ async function paymentsCard(){
     <p class="muted small">Standard rule: an active dealership (account class blank or dealer; a branch follows its head office) is included free. The President can include or exclude one dealership, with a reason.</p>
     ${PAY.eligibility_overrides.length?`<table class="stack"><tbody>${PAY.eligibility_overrides.map(o=>`<tr><td data-l="Dealership">${esc(o.dealer||o.dealer_id)}</td><td data-l="Override">${o.eligible?"included free":"must pay"}</td><td data-l="Reason">${esc(o.reason)}</td><td data-l="Set">${when(o.set_at)}</td></tr>`).join("")}</tbody></table>`:`<p class="muted small">No overrides.</p>`}`;
   box.querySelectorAll("[data-price]").forEach(b=>b.onclick=()=>priceModal(PAY.courses.find(c=>c.id===b.dataset.price)));
+  box.querySelectorAll("[data-access]").forEach(b=>b.onclick=()=>accessModal(PAY.courses.find(c=>c.id===b.dataset.access)));
   const eb=$("#eligbtn"); if(eb)eb.onclick=eligModal;
   const rb=$("#reconbtn"); if(rb)rb.onclick=async()=>{
     rb.disabled=true; const out=$("#reconout"); out.innerHTML=`<p class="muted small">Checking the last 14 days in Stripe…</p>`;
@@ -298,6 +302,16 @@ function priceModal(c){
       if(c.needs_rights)body.commercial_rights_confirmed=val("prights")==="true";
       await change(body,"mmsg",()=>viewCourses());
     },{intro:"The President's decision; recorded in the Academy audit history."});
+}
+function accessModal(c){
+  const a=c.access||{};
+  formModal("Access — "+c.title,`
+    ${select("amode","Access",[["free","Free during launch (no card)"],["paid","Paid (outside dealerships buy on Stripe)"],["off","Off (no new enrollments)"]],a.mode||"free")}
+    ${field("anote","Public note (optional, shown with the course)",'maxlength="300"',a.note||"")}
+    ${area("areason","Reason (required)","")}
+    <p class="muted small" style="margin-top:8px">The price is not changed. Free: anyone can sign up and enroll without a card; open checkouts are closed. Learners who enrolled free keep their enrollment, progress and certificate whatever you choose later.</p>`,
+    "Save access",async()=>{ await change({action:"set_course_access",course_id:c.id,mode:val("amode"),note:val("anote"),reason:val("areason")},"mmsg",()=>viewCourses()); },
+    {intro:"The President's decision; recorded in the Academy audit history."});
 }
 function eligModal(){
   formModal("Free-access override",`

@@ -288,7 +288,8 @@
       { k: "eyebrow", label: "Eyebrow", type: "text", full: true },
       { k: "headline", label: "Headline", type: "text", full: true },
       { k: "lead", label: "Intro paragraph", type: "textarea", full: true },
-      { k: "cta1_label", label: "Primary button label (opens the Academy)", type: "text" },
+      { k: "cta1_label", label: "Primary button label", type: "text" },
+      { k: "cta1_url", label: "Primary button link (e.g. /academy/start/ for free sign-up, /academy/ to sign in)", type: "text" },
       { k: "cta2_label", label: "Secondary button label (scrolls to the courses)", type: "text" },
       Object.assign({ k: "image" }, TA_IMG("Hero banner image (design a) — wide, about 16:9")),
       { k: "image_alt", label: "Hero banner — description for screen readers", type: "text", full: true },
@@ -353,7 +354,8 @@
     { k: "cta", label: "Bottom call-to-action", type: "object", full: true, item: [
       { k: "title", label: "Heading", type: "text", full: true },
       { k: "copy", label: "Copy", type: "textarea", full: true },
-      { k: "access_label", label: "Access the Academy button", type: "text" },
+      { k: "access_label", label: "Primary button label", type: "text" },
+      { k: "access_url", label: "Primary button link (e.g. /academy/start/ or /academy/)", type: "text" },
       { k: "explore_label", label: "Explore Courses button", type: "text" },
       { k: "dealer_label", label: "Become a Dealer button", type: "text" } ] },
     { k: "dealer_services_card", label: "Card on the Dealer Services page", type: "object", full: true, item: [

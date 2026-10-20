@@ -766,15 +766,25 @@ READ.payments = async () => {
     ]);
   } catch (e) { if (e && e.code === 'unreadable') installed = false; else throw e; }
   const courses = await all(`academy_courses?select=id,slug,title,course_type,manufacturer_slug,status`);
+  // F1 (free launch): each course's access policy, independent of its price. Before F1 is installed: none.
+  let accessInstalled = true, access = [], freeCounts = {};
+  try {
+    access = await all(`academy_course_access?select=course_id,mode,note,reason,set_by,set_at`, 'course_id.asc');
+    const fe = await all(`academy_enrollments?select=id,version_id,access_source&access_source=eq.free`);
+    const vc = Object.fromEntries((await byIds('academy_course_versions', fe.map(e => e.version_id), 'id,course_id')).map(v => [String(v.id), String(v.course_id)]));
+    for (const e of fe) { const c = vc[String(e.version_id)]; if (c) freeCounts[c] = (freeCounts[c] || 0) + 1; }
+  } catch (e) { if (e && e.code === 'unreadable') accessInstalled = false; else throw e; }
+  const ac = Object.fromEntries(access.map(a => [String(a.course_id), a]));
   const pr = Object.fromEntries(prices.map(p => [String(p.course_id), p]));
   const dn = Object.fromEntries((await byIds('dealers', overrides.map(o => o.dealer_id), 'id,business_name')).map(d => [String(d.id), d.business_name]));
   const title = Object.fromEntries(courses.map(c => [String(c.id), c.title]));
   const live = { tax_switch_on: sw.academy_payments_tax === true, switch_on: sw.academy_payments_live === true, key_mode: STRIPE.liveKeyMode(), webhook_configured: STRIPE.webhookConfigured(true) };
   live.ready = live.key_mode === 'live' && live.webhook_configured;
-  return { ok: true, installed, m9_installed: m9, switch_on: sw.academy_payments === true, stripe_mode: STRIPE.keyMode(), webhook_configured: STRIPE.webhookConfigured(false),
+  return { ok: true, installed, access_installed: accessInstalled, m9_installed: m9, switch_on: sw.academy_payments === true, stripe_mode: STRIPE.keyMode(), webhook_configured: STRIPE.webhookConfigured(false),
     live, mode: live.switch_on ? 'live' : 'sandbox',
     courses: courses.filter(c => !isTest(c)).map(c => ({ id: c.id, slug: c.slug, title: c.title, status: c.status, course_type: c.course_type,
-      manufacturer_slug: c.manufacturer_slug || null, needs_rights: !!c.manufacturer_slug, price: pr[String(c.id)] || null })),
+      manufacturer_slug: c.manufacturer_slug || null, needs_rights: !!c.manufacturer_slug, price: pr[String(c.id)] || null,
+      access: ac[String(c.id)] || null, free_enrollments: freeCounts[String(c.id)] || 0 })),
     purchases: purchases.map(p => Object.assign({}, p, { course: title[String(p.course_id)] || null })),
     totals: tally(purchases.filter(p => p.livemode !== true), 'status'),
     live_totals: tally(purchases.filter(p => p.livemode === true), 'status'),
@@ -801,6 +811,15 @@ WRITE.set_eligibility = async (staff, b) => {
   requirePresident(staff);
   const e = b.eligible === true || b.eligible === false ? b.eligible : (b.eligible == null ? null : A.refuse(400, 'invalid', 'eligible must be true, false or empty.'));
   return { ok: true, audited: true, result: await A.purchaseOp('set_eligibility', { p_actor: A.actorLabel(staff), p_dealer_id: A.uuid(b.dealer_id, 'dealership'), p_eligible: e, p_reason: A.text(b.reason, 500, 'Reason') }) };
+};
+/* F1 (free launch): the President sets a course's access policy — off / free / paid — with a reason (audited). It never
+   changes the price; switching a course to paid later keeps every free learner's enrollment, progress and certificate. */
+WRITE.set_course_access = async (staff, b) => {
+  requirePresident(staff);
+  const mode = A.oneOf(b.mode, ['off', 'free', 'paid'], 'Access');
+  const note = b.note == null || String(b.note).trim() === '' ? null : A.text(b.note, 300, 'Note');
+  return { ok: true, audited: true, access: await A.freeOp('set_access', { p_actor: A.actorLabel(staff), p_course_id: A.uuid(b.course_id, 'course'),
+    p_mode: mode, p_note: note, p_reason: A.text(b.reason, 500, 'Reason') }) };
 };
 
 /* ---------- Course Builder (A2D Stage 3) ---------- */

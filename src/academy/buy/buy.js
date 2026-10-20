@@ -20,7 +20,10 @@
       if (j.test_mode) say(mode, 'TEST MODE — payments use Stripe test cards only. No real card is charged.', 'err');
       if (!j.enabled) { say(q.get('paid') ? mode : state, 'Paid course access is not open yet.', 'err'); return; }
       var list = j.courses || [];
-      if (!list.length) { say(state, 'No courses are available for purchase right now.', 'err'); return; }
+      if (!list.length) {
+        say(state, 'No courses are for sale right now. During launch our courses are free — no credit card required.', 'ok');
+        var a = el('a', 'ac-btn pri', 'Start free'); a.href = '/academy/start/'; state.append(a); return;
+      }
       list.forEach(function (c) { var o = el('option', null, c.title + ' — ' + money(c.price_cents, c.currency) + (j.tax_added ? ' + applicable sales tax' : '')); o.value = c.slug; sel.append(o); });
       var want = q.get('course'); if (want) sel.value = want;
       form.hidden = false;

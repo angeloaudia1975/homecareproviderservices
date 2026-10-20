@@ -3215,6 +3215,19 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   viewed. Terms of Sale / Refund Policy / Sales tax draft for Angelo: Claude Doc
   claude.ai/code/artifact/788b834d-66db-4367-a93d-611a28db8b11 (Tennessee LR 23-07: self-paced online course = taxable remotely
   accessed software; accountant to confirm). M9 is NOT run; live switch NOT on.
+- **Free launch — F1 (owner, issue #29, 20 Oct 2026; runbook `docs/academy/P2_F1_FREE_LAUNCH.md`).** Courses launch FREE
+  for HCPS network dealers and outside learners; paid enrollment later. Access is a per-course POLICY
+  (`academy_course_access`: free / paid / off; President only, reason, audited) independent of the price — never wipe a
+  price, never fake a $0 order. A non-paid course is never sold (trigger on `academy_purchases`). Outside learners register
+  on `/academy/start/` (learner + outside organization + learner-only membership; NO course until they sign in with the
+  emailed code), then `enroll_free` (`access_source='free'`, idempotent). Network status = the dealership AND its head office
+  active (`dealers.active` not false — `status` is blank for almost every dealer), not prospect / closed / inactive /
+  dormant, account class blank or dealer; a branch never inherits it; TEST never inherited. It only decides which
+  membership an enrollment sits under — never ordering, pricing, CRM or Training Manager rights. Switching a course to
+  paid / off later never removes a free learner's enrollment, progress or certificate. Public wording only: "Free during
+  launch", "No credit card required", "Complimentary introductory access — paid enrollment may be introduced in the
+  future" — no public $ price, "normally" or discount claim (the price stays in admin). Proposed next courses (issue #30):
+  `docs/academy/COURSE_OUTLINES_PROPOSED.md` — Claude-drafted, PROPOSED until the owner adopts them; never attributed to him.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

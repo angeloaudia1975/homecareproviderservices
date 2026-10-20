@@ -1,7 +1,7 @@
 /* HCPS Academy — learner API. Learners and Dealer Training Managers only, signed in with the Academy's own session
    cookie (_academy_session.js + academy_sessions, A2B / M5). Connect 360 and Partner 360 tokens are never accepted here.
      PUBLIC   request_code · verify_code · handoff_redeem      (POST; they open a session)
-     LEARNER  me · my_courses · my_certificates · claim_certificate · lesson · practice_check · save_progress · sign_out
+     LEARNER  me · my_courses · my_certificates · free_courses · enroll_free · claim_certificate · lesson · practice_check · save_progress · sign_out
      EXAM (A2E, switch academy_exams)  exam_status · exam_start · exam_view · exam_save · exam_submit
      TRAINING MANAGER  team · courses · invite · revoke_invite · deactivate · reactivate · enroll · withdraw
    Refused with 403 flag_off while the academy_learner switch is off (invitations also need academy_invites, the
@@ -13,7 +13,7 @@ const L = require('./_academy_learner.js');
 
 // GET may only READ. Every action that changes anything is POST, so it always passes the cross-site check (security
 // review 10 Oct 2026, finding C1). Answers (practice_check) and the sign-in actions are POST too.
-const READ_ACTIONS = new Set(['me', 'my_courses', 'my_certificates', 'lesson', 'team', 'courses']);
+const READ_ACTIONS = new Set(['me', 'my_courses', 'my_certificates', 'free_courses', 'lesson', 'team', 'courses']);
 const TM_ACTIONS = new Set(Object.keys(L.TM));
 
 exports.handler = A.handler(async event => {

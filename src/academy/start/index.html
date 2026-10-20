@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Start Free — HCPS Academy</title>
+<link rel="stylesheet" href="/academy/academy.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="ac-top">
+  <div class="ac-wrap ac-bar">
+    <a class="ac-brand" href="/academy/" aria-label="HCPS Academy home"><span class="ac-mark" aria-hidden="true">HCPS</span><span>Academy</span></a>
+  </div>
+</header>
+<main id="main" class="ac-wrap" tabindex="-1">
+  <h1>Start your free course</h1>
+  <p class="ac-muted"><b>Free during launch</b> · No credit card required. Complimentary introductory access — paid enrollment may be introduced in the future.</p>
+  <div id="sstate" aria-live="polite"></div>
+
+  <form id="sf" class="ac-card ac-stack" novalidate hidden>
+    <label class="ac-field" for="sc">Course<select id="sc" name="course" required></select></label>
+    <label class="ac-field" for="sn">Your name<input id="sn" name="name" type="text" autocomplete="name" maxlength="120" required></label>
+    <label class="ac-field" for="so">Company / dealership<input id="so" name="company" type="text" autocomplete="organization" maxlength="160" required></label>
+    <label class="ac-field" for="se">Work email (you will sign in with it)<input id="se" name="email" type="email" autocomplete="email" maxlength="254" required></label>
+    <p class="ac-small ac-muted">We email you a 6-digit sign-in code. No password and no card. HCPS dealers with Partner 360 can also open Training from Partner 360.</p>
+    <button class="ac-btn pri" type="submit" id="sgo">Email me a sign-in code</button>
+  </form>
+
+  <form id="cf" class="ac-card ac-stack" novalidate hidden>
+    <p id="csent" class="ac-small"></p>
+    <label class="ac-field" for="cc">6-digit code<input id="cc" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label>
+    <button class="ac-btn pri" type="submit" id="cgo">Sign in and start the course</button>
+    <button class="ac-btn" type="button" id="cback">Use a different email</button>
+  </form>
+
+  <p class="ac-muted ac-small">Already have an HCPS Academy account? <a href="/academy/">Sign in here</a>.</p>
+  <p class="ac-muted ac-small">HCPS certificates are issued by Home Care Provider Services (HCPS). HCPS courses are independently developed and administered by HCPS; they are not issued, sponsored or endorsed by Golden Technologies or any other manufacturer.</p>
+</main>
+<footer class="ac-foot ac-wrap"><p>HCPS Training &amp; Certification Academy · Home Care Provider Services</p></footer>
+<script src="/academy/start/start.js"></script>
+</body>
+</html>
