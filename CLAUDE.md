@@ -3176,6 +3176,12 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   `STRIPE_WEBHOOK_SECRET` entered by Angelo in Netlify; Claude never views, types, pastes or logs them. No Stripe products,
   prices, payment links or subscriptions are created (inline `price_data`). Switch `academy_payments` gates checkout only;
   the webhook records refunds/disputes even when it is off. M8 is run by Angelo; checkout refuses while in pilot mode.
+  **M8 RUN by Angelo 2026-10-20 ~09:25 CT (4/4 install checks true); public-key probe (storefront publishable key) 29/29
+  BLOCKED (+ the trigger function not callable, 404). Netlify STRIPE_SECRET_KEY (test) + STRIPE_WEBHOOK_SECRET set by
+  Angelo and live. Golden commercial-use permission CONFIRMED by Angelo 2026-10-20 09:29 CT (Golden allows him to offer
+  the course to outside dealerships); recorded on academy_prices. Golden Lift Chair Sales Certification: $19.99 outside
+  price, HCPS network dealers free, on sale (set 2026-10-20 14:35 UTC, audited, President). Stripe Sandbox webhook
+  destination we_1USPKeGbhQzRXLGHewmNRsiV (7 events). Still sandbox only.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
