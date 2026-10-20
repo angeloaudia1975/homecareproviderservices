@@ -395,7 +395,7 @@
   }
 
   /* ------------------------------------------------------------ HCPS certificates (A2F) */
-  var DISCLOSURE = 'Issued by Home Care Provider Services (HCPS). This is an HCPS sales certification; it is not issued or endorsed by Golden Technologies.';
+  var DISCLOSURE = 'Issued by Home Care Provider Services (HCPS). This course is independently developed and administered by HCPS; it is not issued, sponsored or endorsed by Golden Technologies.';
   function fmtDate(v) { if (!v) return ''; var d = new Date(v); return isNaN(d) ? String(v).slice(0, 10) : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Chicago' }); }
   function certPill(c) {
     if (c.status === 'revoked') return el('span', { cls: 'ac-pill ended', text: 'Revoked' });

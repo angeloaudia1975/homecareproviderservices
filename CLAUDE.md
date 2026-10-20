@@ -3188,6 +3188,27 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   webhook are set up (owner) — never ask for them again; confirm only through status (key mode, webhook configured),
   never by viewing secrets. Production (20 Oct, read-only via the Command Center): M8 tables present, key mode test,
   webhook secret set, sales switch off.
+  **M8 RUN by Angelo 2026-10-20 ~09:25 CT (4/4 install checks true); public-key probe (storefront publishable key) 29/29
+  BLOCKED (+ the trigger function not callable, 404). Netlify STRIPE_SECRET_KEY (test) + STRIPE_WEBHOOK_SECRET set by
+  Angelo and live. Golden commercial-use permission CONFIRMED by Angelo 2026-10-20 09:29 CT (Golden allows him to offer
+  the course to outside dealerships); recorded on academy_prices. Golden Lift Chair Sales Certification: $19.99 outside
+  price, HCPS network dealers free, on sale (set 2026-10-20 14:35 UTC, audited, President). Stripe Sandbox webhook
+  destination we_1USPKeGbhQzRXLGHewmNRsiV (7 events). Still sandbox only.
+  **Sales switch `academy_payments` ON (Angelo, 2026-10-20 09:43 CT). Sandbox end-to-end PASSED 2026-10-20:** paid —
+  Test Buyer (angelo+academy-buyer@…) $19.99 card 4242, webhook marked it paid 09:46 CT and enrolled him in Golden at once,
+  membership = outside organization "HCPS Sandbox Test Dealer" (learner only, no CRM dealer); declined — card 0002 left the
+  checkout open with no enrollment (Stripe keeps a session open after a decline; it becomes "expired" when the 1-hour
+  session ends); refund — full refund in the Stripe dashboard 10:12 CT → purchase "refunded" $19.99, enrollment withdrawn,
+  membership kept. Card numbers are entered by Angelo on Stripe's page, never by Claude. Live payments still need a
+  reviewed migration + approval.
+- **Course positioning (owner, PR #26 comments 6293477574 / 6293503488, 20 Oct 2026):** the lift chair course is
+  **"HCPS Lift Chair Sales & Product Knowledge Certification"**, subtitle "Independent dealer sales training featuring
+  Golden Technologies lift chairs and power recliners." HCPS-issued only; every certificate / course surface says it is
+  independently developed and administered by HCPS and not issued, sponsored or endorsed by Golden Technologies — never
+  imply Golden accreditation. Keep slug `golden-lift-chair-sales-certification` and all ids. Lessons and assessments are
+  written by the owner (never ask for proof of authorship again); the owner is authorized to use Golden product images.
+  Third-party documents / videos are tracked per asset in `docs/academy/RIGHTS_INVENTORY.md` — report exact asset
+  blockers, never a blanket "Golden approval" blocker.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

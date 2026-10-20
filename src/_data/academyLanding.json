@@ -1,7 +1,7 @@
 {
   "design": "a",
   "seo_title": "HCPS Training & Certification Academy | Dealer Product Training & Certification",
-  "seo_description": "Self-paced product and sales training for home medical equipment dealers. Enroll your team, track progress, and earn the HCPS Golden Lift Chair Sales Certification — included for eligible HCPS network dealers.",
+  "seo_description": "Self-paced product and sales training for home medical equipment dealers. Enroll your team, track progress, and earn the HCPS Lift Chair Sales & Product Knowledge Certification — included for eligible HCPS network dealers.",
   "hero": {
     "eyebrow": "HCPS Training & Certification Academy",
     "headline": "Build Product Knowledge. Strengthen Your Team. Certify With Confidence.",
@@ -65,13 +65,13 @@
   },
   "courses": {
     "eyebrow": "Featured courses",
-    "title": "Start with the Golden Lift Chair Sales Certification",
+    "title": "Start with the HCPS Lift Chair Sales & Product Knowledge Certification",
     "intro": "Our first certification is live today. More courses for the lines HCPS represents are in development.",
     "items": [
       {
         "status": "live",
         "badge": "Available now",
-        "title": "Golden Lift Chair Sales Certification",
+        "title": "HCPS Lift Chair Sales & Product Knowledge Certification",
         "summary": "Everything a dealer needs to recommend and sell Golden Technologies lift chairs with confidence: the current lineup, Comfort Zones and positioning, fitting and weight capacity, fabrics and options, warranty, troubleshooting and the HCPS Model-Size-Fabric-Color consultation.",
         "facts": [
           "11 modules · 17 lessons",
@@ -83,7 +83,8 @@
         "image_alt": "Golden Technologies PR519 Cloud lift chair in navy",
         "price_note": "Included for eligible HCPS network dealers",
         "cta_label": "Start this course",
-        "cta_url": "/academy/"
+        "cta_url": "/academy/",
+        "subtitle": "Independent dealer sales training featuring Golden Technologies lift chairs and power recliners."
       },
       {
         "status": "coming",
@@ -202,7 +203,7 @@
         "title": "Dealers outside the HCPS network",
         "price": "From $9.99",
         "price_note": "per course — planned",
-        "description": "Paid course access is coming soon. Proposed price for the Golden Lift Chair Sales Certification: $19.99. Each course will carry its own price.",
+        "description": "Paid course access is coming soon. Proposed price for the HCPS Lift Chair Sales & Product Knowledge Certification: $19.99. Each course will carry its own price.",
         "cta_label": "Become an HCPS Dealer",
         "cta_url": "/become-a-dealer/",
         "highlight": false
@@ -210,10 +211,10 @@
     ],
     "footnote": "Paid course access coming soon — no payment is taken today. Proposed prices are subject to change and to manufacturer permissions for commercial training."
   },
-  "certificate_note": "HCPS certificates are issued by Home Care Provider Services. They are HCPS sales certifications and are not issued or endorsed by Golden Technologies.",
+  "certificate_note": "HCPS certificates are issued by Home Care Provider Services. The HCPS Lift Chair Sales & Product Knowledge Certification is independent dealer sales training developed and administered by HCPS; it is not issued, sponsored or endorsed by Golden Technologies.",
   "cta": {
     "title": "Ready to train your team?",
-    "copy": "Start with the Golden Lift Chair Sales Certification today, or talk to us about joining the HCPS dealer network.",
+    "copy": "Start with the HCPS Lift Chair Sales & Product Knowledge Certification today, or talk to us about joining the HCPS dealer network.",
     "explore_label": "Explore Courses",
     "access_label": "Access the Academy",
     "dealer_label": "Become an HCPS Dealer"
@@ -221,7 +222,7 @@
   "dealer_services_card": {
     "eyebrow": "New · HCPS Training & Certification Academy",
     "title": "Train and certify your team — included for HCPS dealers",
-    "copy": "Self-paced product and sales training with a dealership dashboard and HCPS-issued certifications. Start with the Golden Lift Chair Sales Certification.",
+    "copy": "Self-paced product and sales training with a dealership dashboard and HCPS-issued certifications. Start with the HCPS Lift Chair Sales & Product Knowledge Certification.",
     "cta_label": "Explore the Academy"
   }
 }

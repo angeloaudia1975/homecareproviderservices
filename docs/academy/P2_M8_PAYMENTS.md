@@ -1,6 +1,7 @@
 # HCPS Academy — Phase 2 / M8: paid course access (Stripe SANDBOX)
 
-Status (19 Oct 2026): code deployed **switched off**; migration M8 **not run**; Stripe Sandbox webhook configured.
+Status (20 Oct 2026): M8 installed, sales switch ON in **Sandbox**, Golden on sale at $19.99 (commercial permission recorded);
+sandbox paid / declined / refund tests PASSED. Live payments still need a reviewed migration + approval.
 Live payments are impossible by construction (live keys refused in code, `livemode = false` enforced by the table).
 
 ## What it does
