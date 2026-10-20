@@ -92,6 +92,12 @@ async function purchaseOp(name, args) {
   if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
   return rpc('academy_purchase_op_' + name, args);
 }
+/* Phase 2 / F1 free launch (academy_free_op_*): per-course access policy, outside-learner registration, free
+   self-enrollment. Same contract: one database call = the change and its audit row, or neither; not installed = 503. */
+async function freeOp(name, args) {
+  if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
+  return rpc('academy_free_op_' + name, args);
+}
 async function op(name, args) {
   if (!/^[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
   return rpc('academy_op_' + name, args);
@@ -385,7 +391,7 @@ function handler(fn, opts) {
 module.exports = {
   SWITCHES, SITE_ORIGINS, PARTNER360_ORIGINS, MAX_BODY, AcademyError, refuse,
   pilotMode, testDealerIds, pilotDealer, pilotMemberships, pilotEmailAllowed,
-  sbGet, sbSend, op, purchaseOp, publishOp, publishConsistency, accessOp, contentOp, authorOp, saveOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
+  sbGet, sbSend, op, purchaseOp, freeOp, publishOp, publishConsistency, accessOp, contentOp, authorOp, saveOp, switchOn, switches, signPrivate, putPrivate, listPrivate, removePrivate, MEDIA_PATH,
   bearer, bearerUser, staffActor, learnerActor,
   isAdmin, isRelations, isRep, family, dealerScope, canSeeDealer, canSeeScores, requireDealer, requireAdmin, actorLabel,
   audit, redact, body, uuid, oneOf, text, respond, handler, SESSION,

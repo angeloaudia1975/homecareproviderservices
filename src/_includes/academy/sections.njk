@@ -99,7 +99,7 @@
   <div class="wrap" data-reveal="up">
     <h2>{{ L.cta.title }}</h2><p>{{ L.cta.copy }}</p>
     <div class="ta-actions">
-      <a class="ta-btn primary" href="/academy/">{{ L.cta.access_label }}</a>
+      <a class="ta-btn primary" href="{{ L.cta.access_url or '/academy/' }}">{{ L.cta.access_label }}</a>
       <a class="ta-btn ghost" href="#courses">{{ L.cta.explore_label }}</a>
       <a class="ta-btn ghost" href="/become-a-dealer/">{{ L.cta.dealer_label }}</a>
     </div>

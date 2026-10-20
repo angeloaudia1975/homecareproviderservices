@@ -11,7 +11,7 @@
       <p class="kicker">{{ L.hero.eyebrow }}</p>
       <h1>{{ L.hero.headline }}</h1>
       <p class="lead">{{ L.hero.lead }}</p>
-      <div class="ta-actions"><a class="ta-btn primary" href="/academy/">{{ L.hero.cta1_label }}</a><a class="ta-btn outline" href="#courses">{{ L.hero.cta2_label }}</a></div>
+      <div class="ta-actions"><a class="ta-btn primary" href="{{ L.hero.cta1_url or '/academy/' }}">{{ L.hero.cta1_label }}</a><a class="ta-btn outline" href="#courses">{{ L.hero.cta2_label }}</a></div>
       <div class="ta-chairs" aria-hidden="true">{% for c in L.courses.items %}{% if c.status == "live" %}<img src="{{ c.image }}" alt="" loading="lazy" onerror="this.remove()">{% endif %}{% endfor %}<img src="/assets/training-academy/chair-pr531.jpg" alt="" loading="lazy" onerror="this.remove()"></div>
     </div>
     <div class="ta-tilt"><img src="{{ L.hero.side_image }}" alt="{{ L.hero.side_image_alt }}" width="1000" height="810" fetchpriority="high"><span class="ta-glare"></span></div>

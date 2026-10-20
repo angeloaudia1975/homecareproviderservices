@@ -127,9 +127,31 @@
       var dealers = (ME.memberships || []).map(function (m) { return m.dealer; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
       var head = [el('h1', { text: 'Hello, ' + (ME.learner.full_name || 'there') }), el('p', { cls: 'ac-muted', text: dealers.join(' · ') })];
       var list = r.body.courses || [];
-      if (!list.length) { show(head.concat(el('div', { cls: 'ac-card' }, [el('h2', { text: 'No courses yet' }), el('p', { text: 'Your Training Manager or HCPS will enroll you in a course. It will appear here.' })]))); focusMain(); return; }
+      var free = el('div', { id: 'freebox' });
+      if (!list.length) { show(head.concat(el('div', { cls: 'ac-card' }, [el('h2', { text: 'No courses yet' }), el('p', { text: 'Add a free course below, or your Training Manager or HCPS will enroll you in a course. It will appear here.' })]), free)); focusMain(); freeCourses(free); return; }
       EXAMS_OPEN = !!r.body.exams_open;
-      show(head.concat(el('div', { cls: 'ac-courses' }, list.map(courseCard)))); focusMain();
+      show(head.concat(el('div', { cls: 'ac-courses' }, list.map(courseCard)), free)); focusMain(); freeCourses(free);
+    });
+  }
+  /* F1 free launch: published FREE courses the learner can add themselves (no card). Enrolling is idempotent. */
+  function freeCourses(box) {
+    api({ action: 'free_courses' }).then(function (r) {
+      var open = ((r.body && r.body.courses) || []).filter(function (c) { return !c.enrolled; });
+      if (r.status !== 200 || !open.length) return;
+      var out = el('div', { 'aria-live': 'polite' });
+      box.replaceChildren(el('section', { cls: 'ac-card' }, [el('h2', { text: 'Free courses' }),
+        el('p', { cls: 'ac-small ac-muted', text: 'Free during launch · No credit card required.' }),
+        el('ul', { cls: 'ac-stack' }, open.map(function (c) {
+          var b = el('button', { type: 'button', cls: 'ac-btn pri', text: 'Enroll free' });
+          b.addEventListener('click', function () {
+            busy(b, true, 'Enrolling…');
+            api({ action: 'enroll_free', course_slug: c.slug }).then(function (x) {
+              if (x.status === 200) { courses(); return; }
+              busy(b, false, 'Enroll free'); out.replaceChildren(msg(text(x), true));
+            });
+          });
+          return el('li', { cls: 'ac-row' }, [el('span', { text: c.title + (c.note ? ' — ' + c.note : '') }), b]);
+        })), out]));
     });
   }
   function courseCard(c) {

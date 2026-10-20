@@ -1,12 +1,13 @@
 {
   "design": "a",
   "seo_title": "HCPS Training & Certification Academy | Dealer Product Training & Certification",
-  "seo_description": "Self-paced product and sales training for home medical equipment dealers. Enroll your team, track progress, and earn the HCPS Lift Chair Sales & Product Knowledge Certification — included for eligible HCPS network dealers.",
+  "seo_description": "Self-paced product and sales training for home medical equipment dealers. Free during launch — no credit card required. Enroll your team, track progress, and earn the HCPS Lift Chair Sales & Product Knowledge Certification.",
   "hero": {
     "eyebrow": "HCPS Training & Certification Academy",
     "headline": "Build Product Knowledge. Strengthen Your Team. Certify With Confidence.",
     "lead": "Self-paced, dealer-focused training on the product lines HCPS represents — built so your staff can explain, fit and sell with confidence, and earn an HCPS certification that shows it.",
-    "cta1_label": "Access the Academy",
+    "cta1_label": "Start Free",
+    "cta1_url": "/academy/start/",
     "cta2_label": "Explore Courses",
     "image": "/assets/training-academy/hero-academy-banner.jpg",
     "image_alt": "HCPS Training & Certification Academy — a Golden Technologies lift chair beside a laptop showing the Academy course, with the headline \"Build Product Knowledge. Strengthen Your Team. Certify With Confidence.\" and Learn, Train, Sell and Earn HCPS Certification icons",
@@ -81,9 +82,9 @@
         ],
         "image": "/assets/training-academy/chair-pr519.jpg",
         "image_alt": "Golden Technologies PR519 Cloud lift chair in navy",
-        "price_note": "Included for eligible HCPS network dealers",
-        "cta_label": "Start this course",
-        "cta_url": "/academy/",
+        "price_note": "Free during launch · No credit card required",
+        "cta_label": "Start Free",
+        "cta_url": "/academy/start/",
         "subtitle": "Independent dealer sales training featuring Golden Technologies lift chairs and power recliners."
       },
       {
@@ -187,41 +188,42 @@
   },
   "pricing": {
     "eyebrow": "Pricing & eligibility",
-    "title": "Included for HCPS dealers. Open to more dealers soon.",
-    "intro": "Training is part of the support HCPS gives the dealers in our network. Paid access for other dealerships is planned.",
+    "title": "Free during launch. No credit card required.",
+    "intro": "Complimentary introductory access — paid enrollment may be introduced in the future.",
     "tiers": [
       {
-        "title": "Eligible HCPS network dealers",
-        "price": "Included",
-        "price_note": "at no additional charge",
-        "description": "Active dealers in the HCPS network can enroll their staff in available Academy courses. Some future premium programs may have their own eligibility rules.",
+        "title": "HCPS network dealers",
+        "price": "Free",
+        "price_note": "during launch",
+        "description": "Dealers in the HCPS network enroll their staff in available Academy courses at no charge. Partner 360 users open Training from Partner 360.",
         "cta_label": "Access the Academy",
         "cta_url": "/academy/",
-        "highlight": true
+        "highlight": false
       },
       {
         "title": "Dealers outside the HCPS network",
-        "price": "From $9.99",
-        "price_note": "per course — planned",
-        "description": "Paid course access is coming soon. Proposed price for the HCPS Lift Chair Sales & Product Knowledge Certification: $19.99. Each course will carry its own price.",
-        "cta_label": "Become an HCPS Dealer",
-        "cta_url": "/become-a-dealer/",
-        "highlight": false
+        "price": "Free",
+        "price_note": "during launch",
+        "description": "Sign up with your name, company and work email, confirm the emailed code, and start learning. No credit card required.",
+        "cta_label": "Start Free",
+        "cta_url": "/academy/start/",
+        "highlight": true
       }
     ],
-    "footnote": "Paid course access coming soon — no payment is taken today. Proposed prices are subject to change and to manufacturer permissions for commercial training."
+    "footnote": "Complimentary introductory access — paid enrollment may be introduced in the future. No payment is taken."
   },
   "certificate_note": "HCPS certificates are issued by Home Care Provider Services. The HCPS Lift Chair Sales & Product Knowledge Certification is independent dealer sales training developed and administered by HCPS; it is not issued, sponsored or endorsed by Golden Technologies.",
   "cta": {
     "title": "Ready to train your team?",
-    "copy": "Start with the HCPS Lift Chair Sales & Product Knowledge Certification today, or talk to us about joining the HCPS dealer network.",
+    "copy": "Start the HCPS Lift Chair Sales & Product Knowledge Certification free during launch — no credit card required — or talk to us about joining the HCPS dealer network.",
     "explore_label": "Explore Courses",
-    "access_label": "Access the Academy",
-    "dealer_label": "Become an HCPS Dealer"
+    "access_label": "Start Free",
+    "dealer_label": "Become an HCPS Dealer",
+    "access_url": "/academy/start/"
   },
   "dealer_services_card": {
     "eyebrow": "New · HCPS Training & Certification Academy",
-    "title": "Train and certify your team — included for HCPS dealers",
+    "title": "Train and certify your team — free during launch",
     "copy": "Self-paced product and sales training with a dealership dashboard and HCPS-issued certifications. Start with the HCPS Lift Chair Sales & Product Knowledge Certification.",
     "cta_label": "Explore the Academy"
   }

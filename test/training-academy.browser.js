@@ -43,7 +43,9 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
     const text = await p.evaluate(() => document.querySelector('main').innerText);
     ok(/not issued, sponsored or endorsed by Golden Technologies/.test(text), `${tag}: HCPS-not-Golden disclosure missing`);
     ok(/11 modules/.test(text) && /17 lessons/.test(text) && /80%/.test(text) && /12 month/i.test(text) && /25-question|25 question/.test(text), `${tag}: course facts`);
-    ok(/coming soon/i.test(text) && !/buy now|add to cart|checkout/i.test(text), `${tag}: payments must read as coming soon only`);
+    ok(/Free during launch/i.test(text) && /No credit card required/i.test(text) && /paid enrollment may be introduced in the future/i.test(text), `${tag}: free-launch wording (issue #29)`);
+    ok(!/\$\s?\d|normally|regular price|buy now|add to cart|checkout|% off|discount/i.test(text), `${tag}: no public price, discount or checkout wording`);
+    if (pg === '/training-academy/') ok(m.links.includes('/academy/start/'), `${tag}: a Start Free link to /academy/start/`);
     if (AXE && (sz === 'desktop' || sz === 'iphone')) {
       await p.addScriptTag({ content: AXE });
       const r = await p.evaluate(async () => (await axe.run(document.querySelector('main'), { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] } })).violations.map(v => v.id + ':' + v.nodes.length));
