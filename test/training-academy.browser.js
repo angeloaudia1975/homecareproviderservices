@@ -41,7 +41,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
       ok(fs.existsSync(fileFor(h.split('#')[0].split('?')[0])), `${tag}: link ${h} has no built page`);
     }
     const text = await p.evaluate(() => document.querySelector('main').innerText);
-    ok(/not issued or endorsed by Golden Technologies/.test(text), `${tag}: HCPS-not-Golden disclosure missing`);
+    ok(/not issued, sponsored or endorsed by Golden Technologies/.test(text), `${tag}: HCPS-not-Golden disclosure missing`);
     ok(/11 modules/.test(text) && /17 lessons/.test(text) && /80%/.test(text) && /12 month/i.test(text) && /25-question|25 question/.test(text), `${tag}: course facts`);
     ok(/coming soon/i.test(text) && !/buy now|add to cart|checkout/i.test(text), `${tag}: payments must read as coming soon only`);
     if (AXE && (sz === 'desktop' || sz === 'iphone')) {

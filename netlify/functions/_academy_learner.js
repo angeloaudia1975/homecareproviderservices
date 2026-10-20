@@ -250,7 +250,7 @@ function certOut(c, course, now) {
     course: course || 'Course', issued_at: c.issued_at, expires_at: c.expires_at, status: st, revoked_at: c.revoked_at || null,
     expiring_soon: st === 'valid' && left != null && left <= EXPIRING_DAYS, days_left: st === 'valid' ? left : null,
     issuer: 'Home Care Provider Services (HCPS)',
-    disclosure: 'Issued by Home Care Provider Services (HCPS). This is an HCPS sales certification; it is not issued or endorsed by Golden Technologies.' };
+    disclosure: 'Issued by Home Care Provider Services (HCPS). This course is independently developed and administered by HCPS; it is not issued, sponsored or endorsed by Golden Technologies.' };
 }
 const CERT_COLS = 'id,cert_number,learner_id,enrollment_id,version_id,learner_name,dealer_name,issued_at,expires_at,status,revoked_at';
 async function certificatesFor(filter) {
