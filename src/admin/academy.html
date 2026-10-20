@@ -228,6 +228,7 @@ async function viewCourses(){
 const money=(c,cur)=>c==null?"—":(Number(c)/100).toLocaleString("en-US",{style:"currency",currency:String(cur||"usd").toUpperCase()});
 let PAY=null;
 async function paymentsCard(){
+  const old=document.getElementById("paycard"); if(old)old.remove();   // two quick renders never leave two cards
   const box=document.createElement("div"); box.className="card"; box.id="paycard"; box.innerHTML=`<h2>Paid access (outside dealerships)</h2><p class="muted">Loading…</p>`;
   $("#view").appendChild(box);
   const r=await api({action:"payments"});
@@ -257,10 +258,37 @@ async function paymentsCard(){
       <td data-l="Status">${stPill(p.status)}${p.review_reason?`<div class="muted small">${esc(p.review_reason)}</div>`:""}</td></tr>`).join("")||`<tr><td colspan="5" class="muted">No purchases yet.</td></tr>`}
     </tbody></table>
     <div class="bar" style="margin-top:14px"><h3 class="grow" style="margin:0">Free-access overrides</h3>${pres&&PAY.installed?`<button class="go ghost sm" id="eligbtn">Override a dealership</button>`:""}</div>
-    <p class="muted small">Standard rule: an active dealership (account class blank or dealer; a branch follows its head office) is included free. The President can include or exclude one dealership, with a reason.</p>
+    <p class="muted small">Standard rule: an active dealership (account class blank or dealer; a branch follows its head office) is included free. A TEST dealership is free only for sandbox tests; a real dealership under a TEST head office is not free by inheritance. The President can include or exclude one dealership, with a reason.</p>
     ${PAY.eligibility_overrides.length?`<table class="stack"><tbody>${PAY.eligibility_overrides.map(o=>`<tr><td data-l="Dealership">${esc(o.dealer||o.dealer_id)}</td><td data-l="Override">${o.eligible?"included free":"must pay"}</td><td data-l="Reason">${esc(o.reason)}</td><td data-l="Set">${when(o.set_at)}</td></tr>`).join("")}</tbody></table>`:`<p class="muted small">No overrides.</p>`}`;
   box.querySelectorAll("[data-price]").forEach(b=>b.onclick=()=>priceModal(PAY.courses.find(c=>c.id===b.dataset.price)));
   const eb=$("#eligbtn"); if(eb)eb.onclick=eligModal;
+  if(PAY.installed) salesReview(box,pres);
+}
+/* M9: refund requests (14 days; the President decides, then refunds in the Stripe Dashboard), price history, buyer reviews */
+async function salesReview(box,pres){
+  const r=await api({action:"sales_review"}); const sec=document.createElement("div"); box.appendChild(sec);
+  if(r.status!==200){ sec.innerHTML=`<div class="note warn" style="margin-top:12px">${esc(errText(r))}</div>`; return; }
+  const R=r.body;
+  if(!R.installed){ sec.innerHTML=`<div class="note" style="margin-top:12px">Refund requests, price history and buyer reviews arrive with the next database step (M9).</div>`; return; }
+  const RQ={requested:"waiting for your decision",approved:"approved — refund it in Stripe",declined:"declined",refunded:"refunded"};
+  sec.innerHTML=`<h3 style="margin:16px 0 6px">Refund requests</h3>
+    <p class="muted small">Buyers may ask within 14 days. Approving records your decision; then refund the payment in the Stripe Dashboard — the purchase and the request close by themselves when Stripe confirms it. A completed course or an earned certificate is never taken back.</p>
+    <table class="stack"><thead><tr><th>Asked</th><th>Buyer</th><th>Course</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody>
+    ${R.refund_requests.map(q=>`<tr><td data-l="Asked">${when(q.requested_at)}</td><td data-l="Buyer">${esc(q.company||"")}<div class="muted small">${esc(q.email||"")}</div></td>
+      <td data-l="Course">${esc(q.course||"")}<div class="muted small">${money(q.amount_cents)}</div></td><td data-l="Reason" class="small">${esc(q.reason)}</td>
+      <td data-l="Status">${esc(RQ[q.status]||q.status)}${q.decision_reason?`<div class="muted small">${esc(q.decision_reason)}</div>`:""}${q.stripe_payment_intent?`<div class="muted small mono">Stripe payment ${esc(q.stripe_payment_intent)}</div>`:""}</td>
+      <td>${pres&&q.status==="requested"?`<button class="go ghost sm" data-rq="${esc(q.id)}">Decide…</button>`:""}</td></tr>`).join("")||`<tr><td colspan="6" class="muted">No refund requests.</td></tr>`}
+    </tbody></table>
+    <div class="bar" style="margin-top:14px"><h3 class="grow" style="margin:0">Buyer reviews</h3>${pres?`<button class="go ghost sm" id="brv">Review a buyer…</button>`:""}</div>
+    <p class="muted small">A buyer with two or more refunds in 12 months cannot buy again until you choose “allow”; “block” stops a buyer at any time.</p>
+    ${R.buyer_reviews.length?`<table class="stack"><tbody>${R.buyer_reviews.map(v=>`<tr><td>${esc(v.email)}</td><td><b>${esc(v.decision)}</b></td><td class="small muted">${esc(v.reason)} · ${when(v.decided_at)}</td></tr>`).join("")}</tbody></table>`:`<p class="muted small">No reviews.</p>`}
+    ${R.price_history.length?`<details style="margin-top:12px"><summary class="small"><b>Price history</b> (last ${n(R.price_history.length)})</summary><table class="stack"><tbody>${R.price_history.map(h=>`<tr><td class="small">${when(h.at)}</td><td class="small">${esc(h.course||"")}</td><td class="small">${h.before?money(h.before.price_outside_cents)+(h.before.outside_sale_allowed?" on sale":" off sale"):"—"} → ${money(h.after.price_outside_cents)}${h.after.outside_sale_allowed?" on sale":" off sale"}</td><td class="small muted">${esc(h.reason)} · ${esc(String(h.actor).replace("staff:",""))}</td></tr>`).join("")}</tbody></table></details>`:""}`;
+  sec.querySelectorAll("[data-rq]").forEach(b=>b.onclick=()=>formModal("Refund request",`${select("rqd","Decision",[["approve","Approve — I will refund it in Stripe"],["decline","Decline"]],"approve")}${area("rqr","Reason (recorded; a decline reason is shown to the buyer)")}`,"Save decision",async()=>{
+    const res=await change({action:"refund_decide",request_id:b.dataset.rq,decision:val("rqd"),reason:val("rqr")},"mmsg",()=>viewCourses());
+    if(res&&res.message){ openModal(`<h2>Refund request</h2><p>${esc(res.message)}</p>${res.stripe_payment_intent?`<p class="mono small">${esc(res.stripe_payment_intent)} · ${money(res.amount_cents)}</p>`:""}<div class="bar end"><button class="go ghost" id="mcancel">Close</button></div>`); $("#mcancel").onclick=closeModal; }
+  }));
+  const brv=sec.querySelector("#brv"); if(brv)brv.onclick=()=>formModal("Buyer review",`${field("bre","Buyer email",'type="email" maxlength="254"')}${select("brd","Decision",[["allow","Allow future purchases"],["block","Block future purchases"]],"allow")}${area("brr","Reason (recorded)")}`,"Save",async()=>{
+    await change({action:"buyer_review",email:val("bre"),decision:val("brd"),reason:val("brr")},"mmsg",()=>viewCourses()); });
 }
 function priceModal(c){
   const p=c.price||{};
@@ -270,11 +298,12 @@ function priceModal(c){
     ${select("psale","Sell to outside dealerships",[["false","Not on sale"],["true","On sale"]],String(!!p.outside_sale_allowed))}
     ${c.needs_rights?select("prights","Manufacturer commercial-use permission",[["false","Not confirmed"],["true","Confirmed in writing"]],String(!!p.commercial_rights_confirmed)):""}
     ${area("pnote","Rights note (who confirmed, when, reference)",p.rights_note||"")}
+    ${area("preason","Reason for this change (kept in the price history)","")}
     <p class="muted small" style="margin-top:8px">A changed price applies to new checkouts; an open checkout at the old price is closed. ${c.needs_rights?"This is a manufacturer course: it cannot go on sale until the permission is confirmed.":""}</p>`,
     "Save price",async()=>{
       const raw=val("pprice").trim(); let cents=null;
       if(raw){ if(!/^\d{1,4}(\.\d{1,2})?$/.test(raw)){ const m=$("#mmsg"); m.className="msg err"; m.textContent="Enter a price like 19.99."; return; } cents=Math.round(Number(raw)*100); }
-      const body={action:"set_price",course_id:c.id,price_outside_cents:cents,network_included:val("pincl")==="true",outside_sale_allowed:val("psale")==="true",rights_note:val("pnote")};
+      const body={action:"set_price",course_id:c.id,price_outside_cents:cents,network_included:val("pincl")==="true",outside_sale_allowed:val("psale")==="true",rights_note:val("pnote"),reason:val("preason")};
       if(c.needs_rights)body.commercial_rights_confirmed=val("prights")==="true";
       await change(body,"mmsg",()=>viewCourses());
     },{intro:"The President's decision; recorded in the Academy audit history."});
