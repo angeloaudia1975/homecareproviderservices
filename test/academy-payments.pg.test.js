@@ -45,6 +45,8 @@ run(DB, 'grant all on all tables in schema public to service_role');
 for (const f of ['academy_a2a_m1_audited_ops.sql', 'academy_a2c_m2_content_ops.sql', 'academy_a2d_m3_author_ops.sql', 'academy_a2d_m3_1_save_lesson.sql',
                  'academy_c2_m4_publish_ops.sql', 'academy_a2b_m5_learner_access.sql', 'academy_a2e_m6_exam_attempts.sql', 'academy_a2f_m7_certificates.sql']) file(DB, SUP(f));
 const installOut = file(DB, SUP('academy_p2_m8_payments.sql'));
+const M9FILE = process.env.ACADEMY_M9_FILE || SUP('academy_p2_m9_live_payments.sql');
+const installM9 = file(DB, M9FILE);
 const flags = f => run(DB, `insert into app_settings (key, value) values ('phase2_flags', ${J(f)}) on conflict (key) do update set value = excluded.value`);
 const ON = { academy_admin: true, academy_learner: true, academy_invites: true, academy_open: true, academy_payments: true };
 flags(ON);
@@ -62,15 +64,23 @@ function course(slug, title, mfr) {
 const SALES = course('dealer-sales-basics', 'Dealer Sales Basics', null);
 const GOLD = course('golden-lift-chair-sales-certification', 'Golden Lift Chair Sales Certification', 'golden-technologies');
 
-const mails = [], pendingJobs = [], stripeCalls = []; let stripeFails = false, stripeLive = false, sessionN = 0;
+const stripeExpired = [], stripeCompleted = [];
+const mails = [], pendingJobs = [], stripeCalls = []; let stripeFails = false, stripeLive = null, sessionN = 0;
 const S = shim({ db: DB, psql: PSQL, tokens: { pres: 'admin@test.example', adm: 'admin2@test.example' },
   passthrough: async (url, o) => {
     const u = String(url);
+    const ex = u.match(/^https:\/\/api\.stripe\.com\/v1\/checkout\/sessions\/(cs_[A-Za-z0-9_]+)\/expire$/);
+    if (ex) { stripeExpired.push({ id: ex[1], key: o.headers.authorization }); return new Response(JSON.stringify({ id: ex[1], status: 'expired' }), { status: 200 }); }
+    if (u.startsWith('https://api.stripe.com/v1/checkout/sessions?')) {
+      const live = /sk_live_/.test(String(o.headers.authorization));
+      return new Response(JSON.stringify({ has_more: false, data: stripeCompleted.filter(x => x.live === live).map(x => x.session) }), { status: 200 });
+    }
     if (u === 'https://api.stripe.com/v1/checkout/sessions') {
       stripeCalls.push({ body: new URLSearchParams(o.body), headers: o.headers });
       if (stripeFails) return new Response('{"error":{"type":"api_error"}}', { status: 500 });
-      sessionN++; const id = 'cs_test_a1' + String(sessionN).padStart(8, '0');
-      return new Response(JSON.stringify({ id, url: 'https://checkout.stripe.com/c/pay/' + id, expires_at: Math.floor(Date.now() / 1000) + 3600, livemode: stripeLive }), { status: 200 });
+      const liveKey = /sk_live_/.test(String(o.headers.authorization)); const lm = stripeLive === null ? liveKey : stripeLive;
+      sessionN++; const id = (lm ? 'cs_live_a1' : 'cs_test_a1') + String(sessionN).padStart(8, '0');
+      return new Response(JSON.stringify({ id, url: 'https://checkout.stripe.com/c/pay/' + id, expires_at: Math.floor(Date.now() / 1000) + 3600, livemode: lm }), { status: 200 });
     }
     if (u === 'https://api.resend.com/emails') { mails.push(JSON.parse(o.body)); return new Response('{"id":"x"}', { status: 200 }); }
     if (u.endsWith('/.netlify/functions/academy-mail-background')) { pendingJobs.push(require('../netlify/functions/academy-mail-background.js')._run({ httpMethod: 'POST', body: o.body })); return new Response(null, { status: 202 }); }
@@ -81,7 +91,9 @@ process.env.SUPABASE_URL = BASE; process.env.SUPABASE_SERVICE_ROLE = 'svc-test-k
 process.env.ACADEMY_SESSION_SECRET = 'test-secret-0123456789-abcdefghijklmnopqrstuvwxyz-0123';
 process.env.RESEND_API_KEY = 're_test'; process.env.ACADEMY_SIGNIN_FLOOR_MS = '20'; process.env.ACADEMY_MAIL_FROM = 'HCPS Academy <academy@test.example>';
 const TESTKEY = 'sk_test_' + 'A'.repeat(24), WHSEC = 'whsec_' + 'B'.repeat(32);
+const LIVEKEY = 'sk_live_' + 'L'.repeat(24), LIVE_WHSEC = 'whsec_' + 'W'.repeat(32);
 process.env.STRIPE_SECRET_KEY = TESTKEY; process.env.STRIPE_WEBHOOK_SECRET = WHSEC;
+process.env.ACADEMY_SANDBOX_BUYER_RE = '@(outside|hqnorth|prospect|hqmed)\\.example$|^angelo\\+academy-';
 global.fetch = S.fetch;
 const API = require('../netlify/functions/academy-api.js');
 const ADMIN = require('../netlify/functions/academy-admin-api.js');
@@ -136,6 +148,7 @@ async function startPaid(email, company, slug) {
   return { id: p.id, session: sid, amount: p.amount_cents, url: r.body.url };
 }
 
+let SANDBOX_OPEN = null;
 (async () => {
   try {
     await t('install: the four M8 install checks read true', async () => {
@@ -153,10 +166,12 @@ async function startPaid(email, company, slug) {
       assert.ok(!tryRun(DB, `set role service_role; select academy_purchase_grant(null::academy_purchases)`).ok, 'helpers are not callable');
       assert.ok(!tryRun(DB, `set role anon; select academy_purchase_op_catalog()`).ok, 'operations are not public');
     });
-    await t('sandbox only: a live-mode purchase row is refused by the table itself', async () => {
-      const r = tryRun(DB, `select set_config('academy.op','x',true); insert into academy_purchases (course_id, version_id, email, full_name, company, amount_cents, currency, ip_hash, livemode)
-                            values ('${SALES.C}', '${SALES.V}', 'a@b.co', 'Pat', 'Co', 999, 'usd', repeat('a',64), true)`);
-      assert.ok(!r.ok);
+    await t('M9 install: the four install checks read true; the live switch is not set; nobody but the owner can read it', async () => {
+      const rows = installM9.split('\n').filter(l => l.includes('|'));
+      assert.strictEqual(rows.length, 4, installM9); for (const x of rows) assert.ok(x.endsWith('|t'), x);
+      assert.ok(!tryRun(DB, `set role service_role; select academy_purchase_live_mode()`).ok);
+      assert.ok(!tryRun(DB, `set role anon; select academy_purchase_live_mode()`).ok);
+      assert.notStrictEqual(psql(DB, ['-f', M9FILE]).status, 0, 'a second run is refused');
     });
     await t('catalog: off when the switch is off; on, nothing is for sale until the President sets a price', async () => {
       flags(Object.assign({}, ON, { academy_payments: false }));
@@ -296,18 +311,197 @@ async function startPaid(email, company, slug) {
       assert.strictEqual((await hook('checkout.session.completed', completed(C, { client_reference_id: B.id }))).body.outcome, 'review');
       assert.strictEqual((await hook('checkout.session.completed', completed({ id: C.id, session: 'cs_test_unknown00000001', amount: 1999 }))).body.outcome, 'unknown_session');
     });
-    await t('live mode: a live event is recorded and refused; a live key turns checkout off', async () => {
+    await t('sandbox checkout is open only to HCPS test mailboxes (a test card must never enroll a real buyer)', async () => {
+      const own = process.env.ACADEMY_SANDBOX_BUYER_RE; delete process.env.ACADEMY_SANDBOX_BUYER_RE; const n = stripeCalls.length;
+      const r = await buy({ course_slug: 'dealer-sales-basics', full_name: 'Pat', company: 'Co', email: 'stranger@outside.example' }, { ip: '198.51.100.240' });
+      const ok = await buy({ course_slug: 'dealer-sales-basics', full_name: 'Pat', company: 'Co', email: 'angelo+academy-qa@homecareproviderservices.us' }, { ip: '198.51.100.241' });
+      const near = await buy({ course_slug: 'dealer-sales-basics', full_name: 'Pat', company: 'Co', email: 'angelo+academy-qa@homecareproviderservices.us.evil.example' }, { ip: '198.51.100.242' });
+      process.env.ACADEMY_SANDBOX_BUYER_RE = own;
+      assert.strictEqual(r.status, 403); assert.strictEqual(r.body.error, 'sandbox_test_only');
+      assert.strictEqual(near.status, 403); assert.strictEqual(ok.status, 200, JSON.stringify(ok.body)); assert.strictEqual(stripeCalls.length, n + 1);
+    });
+    await t('sandbox mode (live switch off): a live key alone never opens live checkout; live events never touch a sandbox purchase', async () => {
+      process.env.STRIPE_SECRET_KEY_LIVE = LIVEKEY; process.env.STRIPE_WEBHOOK_SECRET_LIVE = LIVE_WHSEC;
+      flags(Object.assign({}, ON, { academy_payments_live: false }));     // an explicit false is sandbox
+      assert.strictEqual((await catalog()).body.test_mode, true);
+      flags(Object.assign({}, ON, { academy_payments_live: 'true' }));    // a string is not exactly true: still sandbox
+      assert.strictEqual(run(DB, `select academy_purchase_live_mode()`), 'f'); flags(ON);
       const L = await startPaid('live@outside.example', 'Live Co');
-      assert.strictEqual((await hook('checkout.session.completed', completed(L), { livemode: true })).body.outcome, 'live_mode_refused');
+      assert.ok(L.session.startsWith('cs_test_'), 'sandbox session'); assert.strictEqual(purchase(L.session).livemode, false);
+      assert.ok(/sk_test_/.test(stripeCalls[stripeCalls.length - 1].headers.authorization), 'the sandbox key was used');
+      // signed with the LIVE secret and claiming livemode: valid signature, but the database refuses it for a sandbox purchase
+      assert.strictEqual((await hook('checkout.session.completed', completed(L), { livemode: true, secret: LIVE_WHSEC })).body.outcome, 'mode_mismatch');
+      // signed with the SANDBOX secret but claiming livemode: refused before the database
+      assert.strictEqual((await hook('checkout.session.completed', completed(L), { livemode: true })).status, 400);
+      // signed with the LIVE secret but claiming sandbox: refused before the database
+      assert.strictEqual((await hook('checkout.session.completed', completed(L), { secret: LIVE_WHSEC })).status, 400);
       assert.strictEqual(purchase(L.session).status, 'open');
-      process.env.STRIPE_SECRET_KEY = 'sk_live_' + 'Z'.repeat(24);
-      const n = stripeCalls.length;
+      // a live key in the sandbox slot turns sandbox checkout off; a test key in the live slot is never used for live
+      process.env.STRIPE_SECRET_KEY = LIVEKEY; const n = stripeCalls.length;
       assert.strictEqual((await catalog()).body.enabled, false);
       assert.strictEqual((await buy({ course_slug: 'dealer-sales-basics', full_name: 'Pat', company: 'Co', email: 'k@outside.example' })).status, 503);
       process.env.STRIPE_SECRET_KEY = TESTKEY; assert.strictEqual(stripeCalls.length, n);
       stripeLive = true;
-      const s = await buy({ course_slug: 'dealer-sales-basics', full_name: 'Pat', company: 'Co', email: 'k2@outside.example' });
-      stripeLive = false; assert.strictEqual(s.status, 503, 'a live session from Stripe is refused');
+      const s2 = await buy({ course_slug: 'dealer-sales-basics', full_name: 'Pat', company: 'Co', email: 'k2@outside.example' });
+      stripeLive = null; assert.strictEqual(s2.status, 502, 'a live session returned for a sandbox purchase is refused');
+      // the database refuses a live session on a sandbox purchase, and any live session while the live switch is off
+      const P = JSON.parse(run(DB, `select academy_purchase_op_open('db@outside.example', 'Pat', 'Co', 'dealer-sales-basics', repeat('c',64))`)); SANDBOX_OPEN = P.purchase_id;
+      assert.ok(/live payments are not enabled/.test(tryRun(DB, `select academy_purchase_op_attach('${P.purchase_id}', 'cs_live_abcdefgh12', 'https://checkout.stripe.com/x', now() + interval '1 hour', true)`).err));
+      assert.ok(/malformed/.test(tryRun(DB, `select academy_purchase_op_attach('${P.purchase_id}', 'cs_live_abcdefgh12', 'https://checkout.stripe.com/x', now() + interval '1 hour', false)`).err));
+    });
+    let LP = null;
+    await t('LIVE mode (switch on): the live key, a cs_live_ session and a live-signed webhook grant access; sandbox stays separate', async () => {
+      flags(Object.assign({}, ON, { academy_payments_live: true }));
+      const c = await catalog(); assert.strictEqual(c.body.enabled, true); assert.strictEqual(c.body.test_mode, false);
+      // the open SANDBOX checkout of the same buyer is not reused for live
+      const r = await buy({ course_slug: 'dealer-sales-basics', full_name: 'Pat Buyer', company: 'Live Co', email: 'live@outside.example' }, { ip: '198.51.100.250' });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.ok(!r.body.reused);
+      const sid = r.body.url.split('/').pop(); assert.ok(sid.startsWith('cs_live_')); const p = purchase(sid);
+      assert.strictEqual(p.livemode, true); assert.ok(/sk_live_/.test(stripeCalls[stripeCalls.length - 1].headers.authorization), 'the live key was used');
+      assert.strictEqual(run(DB, `select count(*) from academy_purchases where email = 'live@outside.example' and status = 'superseded' and not livemode`), '1');
+      LP = { id: p.id, session: sid, amount: p.amount_cents };
+      assert.ok(/does not match/.test(tryRun(DB, `select academy_purchase_op_attach('${SANDBOX_OPEN}', 'cs_live_abcdefgh12', 'https://checkout.stripe.com/x', now() + interval '1 hour', true)`).err),
+        'a live session is never attached to a sandbox purchase');
+      assert.strictEqual((await hook('checkout.session.completed', completed(LP))).body.outcome, 'mode_mismatch', 'a sandbox event never pays a live purchase');
+      assert.strictEqual((await hook('checkout.session.completed', completed(LP), { livemode: true, secret: LIVE_WHSEC })).body.outcome, 'granted');
+      assert.strictEqual((await hook('charge.refunded', { object: 'charge', payment_intent: 'pi_' + sid.slice(8), amount_refunded: LP.amount })).body.outcome, 'mode_mismatch',
+        'a sandbox refund event never refunds a live purchase');
+      assert.strictEqual((await hook('charge.dispute.created', { object: 'dispute', payment_intent: 'pi_' + sid.slice(8), status: 'needs_response' })).body.outcome, 'mode_mismatch');
+      assert.strictEqual(purchase(sid).status, 'paid');
+      assert.ok(/malformed/.test(tryRun(DB, `select academy_purchase_op_attach('${SANDBOX_OPEN}', 'cs_test_abcdefgh12', 'https://checkout.stripe.com/x', now() + interval '1 hour', true)`).err),
+        'a live attach needs a cs_live_ session');
+      const g = purchase(sid); assert.strictEqual(g.status, 'paid'); assert.ok(g.enrollment_id);
+      // a second checkout while live is reused as live
+      const again = await buy({ course_slug: 'golden-lift-chair-sales-certification', full_name: 'Pat', company: 'Live Co', email: 'live2@outside.example' }, { ip: '198.51.100.251' });
+      assert.ok([200, 404].includes(again.status));
+      // a test key in the live slot closes live checkout (no Stripe call); a missing live webhook secret too
+      const n = stripeCalls.length;
+      process.env.STRIPE_SECRET_KEY_LIVE = TESTKEY; assert.strictEqual((await catalog()).body.enabled, false);
+      assert.strictEqual((await buy({ course_slug: 'dealer-sales-basics', full_name: 'Pat', company: 'Co', email: 'nokey@outside.example' })).status, 503);
+      process.env.STRIPE_SECRET_KEY_LIVE = LIVEKEY; delete process.env.STRIPE_WEBHOOK_SECRET_LIVE;
+      assert.strictEqual((await catalog()).body.enabled, false); process.env.STRIPE_WEBHOOK_SECRET_LIVE = LIVE_WHSEC;
+      assert.strictEqual(stripeCalls.length, n);
+      // Stripe answering in sandbox mode while HCPS is live: refused and the purchase closed
+      stripeLive = false;
+      const m = await buy({ course_slug: 'dealer-sales-basics', full_name: 'Pat', company: 'Co', email: 'modeflip@outside.example' }, { ip: '198.51.100.252' });
+      stripeLive = null; assert.strictEqual(m.status, 502);
+      assert.strictEqual(run(DB, `select status from academy_purchases where email = 'modeflip@outside.example'`), 'failed');
+    });
+    await t('sales tax (Stripe Tax switch): tax goes on top; the price is checked before tax and the tax is stored', async () => {
+      flags(Object.assign({}, ON, { academy_payments_tax: true }));
+      assert.strictEqual((await catalog()).body.tax_added, true);
+      const T = await startPaid('tax@outside.example', 'Tax Co');
+      assert.strictEqual(stripeCalls[stripeCalls.length - 1].body.get('automatic_tax[enabled]'), 'true');
+      const withTax = completed(T, { amount_subtotal: T.amount, amount_total: T.amount + 194, total_details: { amount_tax: 194 } });
+      assert.strictEqual((await hook('checkout.session.completed', withTax)).body.outcome, 'granted');
+      assert.strictEqual(purchase(T.session).amount_tax_cents, 194);
+      const U = await startPaid('tax2@outside.example', 'Tax Co');
+      const bad = completed(U, { amount_subtotal: U.amount, amount_total: U.amount + 500, total_details: { amount_tax: 194 } });
+      assert.strictEqual((await hook('checkout.session.completed', bad)).body.outcome, 'review', 'total must equal price + tax');
+      const V = await startPaid('tax3@outside.example', 'Tax Co');
+      const low = completed(V, { amount_subtotal: V.amount - 100, amount_total: V.amount, total_details: { amount_tax: 100 } });
+      assert.strictEqual((await hook('checkout.session.completed', low)).body.outcome, 'review', 'the price before tax must be the course price');
+      flags(ON);
+      const W = await startPaid('notax@outside.example', 'Tax Co');
+      assert.strictEqual(stripeCalls[stripeCalls.length - 1].body.get('automatic_tax[enabled]'), null, 'no tax unless the switch is on');
+    });
+    await t('LIVE refund is recorded after the live switch is turned off; the sandbox keeps working beside it', async () => {
+      flags(ON);
+      assert.strictEqual((await catalog()).body.test_mode, true);
+      const rf = await hook('charge.refunded', { object: 'charge', payment_intent: 'pi_' + LP.session.slice(8), amount_refunded: LP.amount }, { livemode: true, secret: LIVE_WHSEC });
+      assert.strictEqual(rf.body.outcome, 'refunded'); assert.strictEqual(purchase(LP.session).status, 'refunded');
+      assert.strictEqual(run(DB, `select status from academy_enrollments where id = '${purchase(LP.session).enrollment_id}'`), 'withdrawn');
+      const S2 = await startPaid('after@outside.example', 'After Co'); assert.ok(S2.session.startsWith('cs_test_'));
+      assert.strictEqual((await hook('checkout.session.completed', completed(S2))).body.outcome, 'granted');
+      const v = await admin('adm', { action: 'payments' });
+      assert.strictEqual(v.body.mode, 'sandbox'); assert.strictEqual(v.body.live.key_mode, 'live'); assert.strictEqual(v.body.live.ready, true);
+      assert.ok(v.body.live_totals.refunded === 1); const txt = JSON.stringify(v.body);
+      assert.ok(!txt.includes(LIVEKEY) && !txt.includes(LIVE_WHSEC) && !txt.includes('sk_live'), 'no secret in the view');
+    });
+    await t('M9 rollback is refused while live purchase records exist', async () => {
+      const r = psql(DB, ['-f', SUP('academy_p2_m9_live_payments_rollback.sql')]);
+      assert.notStrictEqual(r.status, 0); assert.ok(/live purchases exist/.test(r.stderr), r.stderr);
+    });
+    await t('review fixes: event order, duplicate payment, sandbox-after-live, refund/dispute edges, tax-inclusive refund threshold', async () => {
+      flags(ON);
+      // a refund that reaches HCPS BEFORE the payment confirmation is kept and applied when the confirmation arrives
+      const A1 = await startPaid('order1@outside.example', 'Order Co'); const pi1 = 'pi_' + A1.session.slice(8);
+      assert.strictEqual((await hook('charge.refunded', { object: 'charge', payment_intent: pi1, amount_refunded: A1.amount })).body.outcome, 'unknown_payment');
+      assert.strictEqual((await hook('checkout.session.completed', completed(A1))).body.outcome, 'granted_then_refunded');
+      assert.strictEqual(purchase(A1.session).status, 'refunded');
+      assert.strictEqual(run(DB, `select status from academy_enrollments where id = '${purchase(A1.session).enrollment_id}'`), 'withdrawn');
+      // a dispute that arrives first
+      const A2 = await startPaid('order2@outside.example', 'Order Co'); const pi2 = 'pi_' + A2.session.slice(8);
+      await hook('charge.dispute.created', { object: 'dispute', payment_intent: pi2, status: 'needs_response' });
+      assert.strictEqual((await hook('checkout.session.completed', completed(A2))).body.outcome, 'granted_then_disputed');
+      // a refund with a different mode never counts
+      const A3 = await startPaid('order3@outside.example', 'Order Co'); const pi3 = 'pi_' + A3.session.slice(8);
+      await hook('charge.refunded', { object: 'charge', payment_intent: pi3, amount_refunded: A3.amount }, { livemode: true, secret: LIVE_WHSEC });
+      assert.strictEqual((await hook('checkout.session.completed', completed(A3))).body.outcome, 'granted');
+      // a dispute won after a full refund never restores access
+      await hook('charge.refunded', { object: 'charge', payment_intent: pi3, amount_refunded: A3.amount });
+      await hook('charge.dispute.created', { object: 'dispute', payment_intent: pi3, status: 'needs_response' });
+      assert.strictEqual(purchase(A3.session).status, 'refunded', 'a dispute on a refunded purchase changes nothing');
+      assert.strictEqual((await hook('charge.dispute.closed', { object: 'dispute', payment_intent: pi3, status: 'won' })).body.outcome, 'ignored');
+      assert.strictEqual(run(DB, `select status from academy_enrollments where id = '${purchase(A3.session).enrollment_id}'`), 'withdrawn');
+      // a lost dispute withdraws access even if the "created" event never arrived
+      const A4 = await startPaid('order4@outside.example', 'Order Co'); const pi4 = 'pi_' + A4.session.slice(8);
+      await hook('checkout.session.completed', completed(A4));
+      assert.strictEqual((await hook('charge.dispute.closed', { object: 'dispute', payment_intent: pi4, status: 'lost' })).body.outcome, 'dispute_lost');
+      assert.strictEqual(run(DB, `select status from academy_enrollments where id = '${purchase(A4.session).enrollment_id}'`), 'withdrawn');
+      // a payment that went to review keeps its payment id, so its refund is still recorded against it
+      const A5 = await startPaid('order5@outside.example', 'Order Co'); const pi5 = 'pi_' + A5.session.slice(8);
+      assert.strictEqual((await hook('checkout.session.completed', completed(A5, { amount_total: 1 }))).body.outcome, 'review');
+      assert.strictEqual(purchase(A5.session).stripe_payment_intent, pi5);
+      assert.strictEqual((await hook('charge.refunded', { object: 'charge', payment_intent: pi5, amount_refunded: 1 })).body.outcome, 'recorded_for_review');
+      // a second paid checkout for a course the buyer already has goes to review (refund one)
+      const B1 = await startPaid('twice@outside.example', 'Twice Co');
+      run(DB, `select set_config('academy.op','x',true); update academy_purchases set status = 'superseded' where id = '${B1.id}'`);
+      const B2 = await startPaid('twice@outside.example', 'Twice Co');
+      assert.strictEqual((await hook('checkout.session.completed', completed(B1))).body.outcome, 'granted', 'a paid superseded checkout is honoured');
+      assert.strictEqual((await hook('checkout.session.completed', completed(B2))).body.outcome, 'review');
+      assert.ok(/second payment/.test(purchase(B2.session).review_reason));
+      // with tax, "full refund" means everything charged (price + tax)
+      flags(Object.assign({}, ON, { academy_payments_tax: true }));
+      const C1 = await startPaid('taxref@outside.example', 'Tax Co'); const pic = 'pi_' + C1.session.slice(8);
+      await hook('checkout.session.completed', completed(C1, { amount_subtotal: C1.amount, amount_total: C1.amount + 140, total_details: { amount_tax: 140 } }));
+      assert.strictEqual(stripeCalls[stripeCalls.length - 1].body.get('line_items[0][price_data][tax_behavior]'), 'exclusive');
+      assert.strictEqual((await hook('charge.refunded', { object: 'charge', payment_intent: pic, amount_refunded: C1.amount })).body.outcome, 'partially_refunded');
+      assert.strictEqual((await hook('charge.refunded', { object: 'charge', payment_intent: pic, amount_refunded: C1.amount + 140 })).body.outcome, 'refunded');
+      // an absurd tax figure goes to review instead of failing the event
+      const C2 = await startPaid('taxbig@outside.example', 'Tax Co');
+      assert.strictEqual((await hook('checkout.session.completed', completed(C2, { amount_subtotal: C2.amount, amount_total: C2.amount + 150000, total_details: { amount_tax: 150000 } }))).body.outcome, 'review');
+      flags(ON);
+    });
+    await t('a sandbox (test-card) payment never enrolls anyone while live payments are on', async () => {
+      process.env.STRIPE_SECRET_KEY_LIVE = LIVEKEY; process.env.STRIPE_WEBHOOK_SECRET_LIVE = LIVE_WHSEC;
+      const S1 = await startPaid('sbflip@outside.example', 'Flip Co');
+      flags(Object.assign({}, ON, { academy_payments_live: true }));
+      assert.strictEqual((await hook('checkout.session.completed', completed(S1))).body.outcome, 'review');
+      assert.ok(/sandbox/.test(purchase(S1.session).review_reason)); assert.strictEqual(purchase(S1.session).enrollment_id, null);
+      flags(ON);
+    });
+    await t('superseded checkouts are closed at Stripe (price change, buyer starting again), with the key of their own mode', async () => {
+      flags(ON); stripeExpired.length = 0;
+      const D = await startPaid('expire@outside.example', 'Exp Co');
+      const set = await admin('pres', { action: 'set_price', course_id: SALES.C, price_outside_cents: 2499 });
+      assert.strictEqual(set.status, 200, JSON.stringify(set.body));
+      assert.strictEqual(purchase(D.session).status, 'superseded');
+      assert.ok(stripeExpired.some(x => x.id === D.session && /sk_test_/.test(x.key)), 'the old checkout was expired at Stripe ' + JSON.stringify(set.body.stripe_checkouts_closed));
+      assert.strictEqual(set.body.stripe_checkouts_closed.failed, 0);
+      await admin('pres', { action: 'set_price', course_id: SALES.C, price_outside_cents: 1999 });
+    });
+    await t('reconciliation: a paid Stripe checkout without its HCPS record is reported (never a secret)', async () => {
+      stripeCompleted.length = 0;
+      const R1 = await startPaid('recon@outside.example', 'Recon Co');
+      await hook('checkout.session.completed', completed(R1));
+      stripeCompleted.push({ live: false, session: { id: R1.session, client_reference_id: R1.id, payment_status: 'paid', amount_total: 1999, created: Math.floor(Date.now() / 1000), metadata: { source: 'hcps-academy' } } });
+      stripeCompleted.push({ live: false, session: { id: 'cs_test_lost00000001', client_reference_id: null, payment_status: 'paid', amount_total: 1999, created: Math.floor(Date.now() / 1000), customer_details: { email: 'lost@outside.example' }, metadata: { source: 'hcps-academy' } } });
+      stripeCompleted.push({ live: false, session: { id: 'cs_test_other0000001', payment_status: 'paid', amount_total: 5000, created: Math.floor(Date.now() / 1000), metadata: {} } });
+      const r = await admin('adm', { action: 'payments_reconcile' });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.problems.length, 1);
+      assert.strictEqual(r.body.problems[0].session_id, 'cs_test_lost00000001'); assert.strictEqual(r.body.problems[0].hcps_status, 'no purchase found');
+      assert.ok(!JSON.stringify(r.body).includes('sk_'));
     });
     await t('rate limits: one network address is stopped after 10 checkouts in 15 minutes (no Stripe call)', async () => {
       const n = stripeCalls.length; let limited = 0;
@@ -385,7 +579,7 @@ async function startPaid(email, company, slug) {
     await t('Command Center payments view: modes and history, never a secret', async () => {
       const r = await admin('adm', { action: 'payments' });
       assert.strictEqual(r.status, 200); assert.strictEqual(r.body.stripe_mode, 'test'); assert.strictEqual(r.body.webhook_configured, true);
-      assert.ok(r.body.purchases.length >= 8); assert.ok(r.body.totals.paid >= 1 && r.body.totals.refunded === 1);
+      assert.ok(r.body.purchases.length >= 8); assert.ok(r.body.totals.paid >= 1 && r.body.totals.refunded >= 1);
       const g = r.body.courses.find(c => c.slug === 'golden-lift-chair-sales-certification'); assert.strictEqual(g.needs_rights, true);
       const txt = JSON.stringify(r.body); assert.ok(!txt.includes(TESTKEY) && !txt.includes(WHSEC) && !txt.includes('sk_test') && !txt.includes('whsec'));
       assert.strictEqual((await call(ADMIN.handler, { action: 'payments' }, { headers: { 'x-academy-request': undefined } })).status, 401);

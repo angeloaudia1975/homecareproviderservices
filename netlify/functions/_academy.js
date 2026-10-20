@@ -14,7 +14,8 @@ const FL = require('./_flags.js');
 const SESSION = require('./_academy_session.js');
 
 const SWITCHES = ['academy_admin', 'academy_learner', 'academy_handoff', 'academy_invites', 'academy_external_uploads',
-                  'academy_certificates', 'academy_dealer360', 'academy_exams', 'academy_open', 'academy_payments'];
+                  'academy_certificates', 'academy_dealer360', 'academy_exams', 'academy_open', 'academy_payments',
+                  'academy_payments_live', 'academy_payments_tax'];
 const SITE_ORIGINS = ['https://homecareproviderservices.org', 'https://www.homecareproviderservices.org',
                       'https://homecareproviderservices.netlify.app'];
 const PARTNER360_ORIGINS = ['https://hcpsonlineordering.netlify.app'];

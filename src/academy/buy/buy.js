@@ -1,4 +1,4 @@
-/* HCPS Academy — buy course access (Phase 2 / M8, Stripe SANDBOX). No inline script (the /academy/* policy); every
+/* HCPS Academy — buy course access (Phase 2 / M8 sandbox, M9 live). No inline script (the /academy/* policy); every
    server text is placed with textContent. The price shown comes from the server catalog and the server charges its own
    price whatever this page sends. Coming back from Stripe never grants anything: access arrives only through the
    verified Stripe webhook, so the "paid" message tells the buyer to sign in once it is confirmed. */
@@ -21,7 +21,7 @@
       if (!j.enabled) { say(q.get('paid') ? mode : state, 'Paid course access is not open yet.', 'err'); return; }
       var list = j.courses || [];
       if (!list.length) { say(state, 'No courses are available for purchase right now.', 'err'); return; }
-      list.forEach(function (c) { var o = el('option', null, c.title + ' — ' + money(c.price_cents, c.currency)); o.value = c.slug; sel.append(o); });
+      list.forEach(function (c) { var o = el('option', null, c.title + ' — ' + money(c.price_cents, c.currency) + (j.tax_added ? ' + applicable sales tax' : '')); o.value = c.slug; sel.append(o); });
       var want = q.get('course'); if (want) sel.value = want;
       form.hidden = false;
     });

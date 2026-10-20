@@ -56,6 +56,8 @@ function shim(opts) {
       else if (v.startsWith('neq.')) where.push(`${k}::text is distinct from ${lit(v.slice(4))}`);
       else if (v.startsWith('ilike.')) where.push(`${k}::text ilike ${lit(v.slice(6).replace(/\*/g, '%'))}`);
       else if (v === 'is.null') where.push(`${k} is null`);
+      else if (v === 'not.is.null') where.push(`${k} is not null`);
+      else if (/^(gt|lt|gte|lte)\.\d{4}-\d\d-\d\dT[0-9:.]+Z$/.test(v)) { const op = v.split('.')[0]; where.push(`${k} ${{ gt: '>', lt: '<', gte: '>=', lte: '<=' }[op]} ${lit(v.slice(op.length + 1))}::timestamptz`); }
       else if (/^(gt|lt|gte|lte)\.-?\d+$/.test(v)) { const [op, n] = v.split('.'); where.push(`${k} ${{ gt: '>', lt: '<', gte: '>=', lte: '<=' }[op]} ${Number(n)}`); }
       else if (v.startsWith('in.(') && v.endsWith(')')) { const items = v.slice(4, -1).split(',').filter(x => x !== ''); where.push(items.length ? `${k}::text in (${items.map(lit).join(',')})` : 'false'); }
       else return { status: 400, body: { code: 'PGRST100', message: 'unsupported filter ' + v } };

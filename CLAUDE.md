@@ -3197,6 +3197,24 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   written by the owner (never ask for proof of authorship again); the owner is authorized to use Golden product images.
   Third-party documents / videos are tracked per asset in `docs/academy/RIGHTS_INVENTORY.md` — report exact asset
   blockers, never a blanket "Golden approval" blocker.
+- **Live card payments — M9 (Angelo 2026-10-20 10:14 + 10:16 CT: prepare production-payment readiness; do NOT activate real
+  payments until the final readiness review). Runbook: end of `docs/academy/P2_M8_PAYMENTS.md` (checklist, sha256, fingerprints).**
+  RULES: one switch `phase2_flags.academy_payments_live` (exactly true = live) decides each NEW checkout's mode in the database;
+  separate credential slots (`STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` sandbox; `STRIPE_SECRET_KEY_LIVE` /
+  `STRIPE_WEBHOOK_SECRET_LIVE` live), a key of the wrong mode in a slot is refused; an event's livemode must match the secret
+  that signed it AND the purchase's mode; **a sandbox (test-card) checkout is open only to HCPS test mailboxes
+  (`angelo+academy-…@homecareproviderservices.us`) — a test card must never enroll a real buyer** (the public sandbox page had
+  allowed it until 20 Oct 2026); a sandbox payment never enrolls while live is on; superseded checkouts are expired at Stripe;
+  a second payment for a course already paid → review; payment id stored even on review; refunds/disputes arriving before the
+  payment confirmation are applied when it comes; `tax_behavior=exclusive`; full refund = price + tax; lost dispute withdraws;
+  won dispute never restores a refunded purchase; "Check Stripe against HCPS" (READ `payments_reconcile`) lists paid Stripe
+  checkouts without their HCPS record. Optional sales tax = switch `academy_payments_tax` (Stripe Tax; owner/accountant decision).
+  **Emergency stop = `academy_payments` false** (not the live switch). Independent payment-security review: NO-GO until its
+  2 high + medium items were fixed — all fixed and tested; migration review: GO. Live Stripe webhook destination
+  `we_1USfBPCuUJFT4hsNPdcMLoH5` created 2026-10-20 (live account acct_1USOeYCuUJFT4hsN, 7 events); its signing secret was not
+  viewed. Terms of Sale / Refund Policy / Sales tax draft for Angelo: Claude Doc
+  claude.ai/code/artifact/788b834d-66db-4367-a93d-611a28db8b11 (Tennessee LR 23-07: self-paced online course = taxable remotely
+  accessed software; accountant to confirm). M9 is NOT run; live switch NOT on.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

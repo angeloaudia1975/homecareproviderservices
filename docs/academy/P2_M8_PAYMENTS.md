@@ -1,6 +1,6 @@
 # HCPS Academy — Phase 2 / M8: paid course access (Stripe SANDBOX)
 
-Status (20 Oct 2026): M8 installed, sales switch ON in **Sandbox**, Golden on sale at $19.99 (commercial permission recorded);
+Status (20 Oct 2026): M8 installed; M9 (live) prepared — see the end of this file;, sales switch ON in **Sandbox**, Golden on sale at $19.99 (commercial permission recorded);
 sandbox paid / declined / refund tests PASSED. Live payments still need a reviewed migration + approval.
 Live payments are impossible by construction (live keys refused in code, `livemode = false` enforced by the table).
 
@@ -54,3 +54,60 @@ Installed-code fingerprint (postcheck row 1, 15 functions): `f7ea1b2d029d2a5324e
 Refund window (Stripe Dashboard is the control); refunds from the Command Center; Training Managers for outside organizations;
 receipt email (Stripe sends its own receipt in test mode only if enabled); production (live) activation — needs a reviewed
 follow-up migration + approval.
+
+
+---
+
+# M9 — LIVE card payments (prepared 20 Oct 2026; NOT installed; real payments NOT switched on)
+
+| File | sha256 |
+|---|---|
+| `supabase/academy_p2_m9_live_payments.sql` (24,186 bytes) | `fedffe8ed7feca91784b6774ec5971733559e7fc4404635c3db178ce660ca925` |
+| `supabase/academy_p2_m9_live_payments_rollback.sql` | `f98b112862fc38a5467a1ee24703368fc8b7bbc6bf1e6e466ed1f782da7d51f9` |
+| `supabase/academy_p2_m9_postcheck.sql` (read-only) | `e1bd7a2431f67e8993c566b68b54a3c9ffbd4060402a5e4373bd6d328000e0ba` |
+
+Postcheck row 1 fingerprint (4 functions): `0543c55fe1346d254fc4314b9076d392` (Unix) / `3047df24ab9f020aea02819cb7706cb4`
+(pasted from Windows, CRLF) — both computed by installing the exact file on top of M8. Tests: academy-payments.pg 35,
+academy-m9.pg (rollback round trip + 18/18 SQL mutants), academy-stripe 21 + 8/8 mutants, academy-buy.browser 8,
+academy-c1.browser 7; all 21 earlier Academy suites green with pg-safeupdate loaded (as on Supabase).
+The sandbox keeps working beside live. ONE switch decides the mode of every new checkout:
+`phase2_flags.academy_payments_live` (exactly true = live; anything else = sandbox). The database stamps each purchase with
+it; a Stripe session, a webhook event and a refund/dispute must all be of that purchase's mode.
+
+| | Sandbox | Live |
+|---|---|---|
+| Netlify key | `STRIPE_SECRET_KEY` (sk_test_/rk_test_ only) | `STRIPE_SECRET_KEY_LIVE` (sk_live_/rk_live_ only) |
+| Netlify webhook secret | `STRIPE_WEBHOOK_SECRET` | `STRIPE_WEBHOOK_SECRET_LIVE` |
+| Stripe webhook destination | `we_1USPKeGbhQzRXLGHewmNRsiV` (sandbox acct_1UQJ0wGbhQzRXLGH) | `we_1USfBPCuUJFT4hsNPdcMLoH5` (live acct_1USOeYCuUJFT4hsN, created 20 Oct 2026, 7 events) |
+| Who may buy | HCPS test mailboxes only (`angelo+academy-…@homecareproviderservices.us`) — a test card must never enroll a real buyer | anyone outside the HCPS network |
+
+Security review fixes (independent payment-security + migration reviews, 20 Oct 2026), all tested:
+sandbox checkout limited to HCPS test mailboxes (deployed at once — before it, the public sandbox page let anyone enroll with
+Stripe's public test card); a sandbox payment never enrolls anyone while live is on; superseded checkouts are expired at Stripe
+(price change / buyer starting again); a second payment for a course already paid goes to review; the payment id is stored even
+when a payment goes to review; refunds / disputes that arrive before the payment confirmation are applied when it comes;
+`tax_behavior = exclusive` (tax on top, never inside the price); full refund = price + tax; a lost dispute withdraws access; a
+won dispute never restores a refunded purchase; absurd tax → review; daily-usable "Check Stripe against HCPS" (Command Center →
+Courses → Paid access) lists paid Stripe checkouts without their HCPS record. Install refuses if the live switch is already on.
+
+## Production activation checklist (owner = Angelo)
+1. **Run M9** in the Supabase SQL editor (check its sha256 first). All 4 install checks must read true — if any is false, stop.
+2. **Netlify → Environment variables** (Functions; Production): add `STRIPE_SECRET_KEY_LIVE` = a live **restricted key** with
+   *Checkout Sessions: Write* (Stripe → Developers → API keys → Create restricted key; a full `sk_live_` also works) and
+   `STRIPE_WEBHOOK_SECRET_LIVE` = the signing secret of destination `we_1USfBPCuUJFT4hsNPdcMLoH5` (Workbench → Webhooks →
+   HCPS Academy payments (LIVE) → Signing secret → reveal → copy). Keep the two sandbox variables. **Trigger deploy**, wait
+   for Published. Never paste either value in chat.
+3. **Stripe live settings → Public details:** support email info@homecareproviderservices.us, phone 937-626-5141,
+   statement descriptor (e.g. HCPS ACADEMY); after step 4, the Terms and Refund policy URLs.
+4. **Approve** the Terms of Sale / Refund Policy / Sales tax doc; Claude publishes `/academy/terms/` and the agreement line.
+5. **Sales tax decision:** with your accountant — if collecting, add the registration(s) in Stripe Tax, then switch
+   `academy_payments_tax` on; otherwise leave it off.
+6. **Final readiness review** (Claude): Command Center shows Live key set · live webhook secret set · M9 installed; public-key
+   probe of the M9 objects all blocked; tests green on main.
+7. **Turn live on:** `update app_settings set value = value || '{"academy_payments_live": true}' where key = 'phase2_flags';`
+8. **First real purchase:** buy the course yourself with a real card from a non-HCPS address, confirm access, refund it in the
+   Stripe dashboard, confirm access withdrawn; then "Check Stripe against HCPS" shows no problems.
+
+**Emergency stop:** `update app_settings set value = value || '{"academy_payments": false}' where key = 'phase2_flags';`
+(closes checkout entirely; refunds/disputes are still recorded). Turning only `academy_payments_live` off returns to the
+sandbox, which is limited to HCPS test mailboxes.

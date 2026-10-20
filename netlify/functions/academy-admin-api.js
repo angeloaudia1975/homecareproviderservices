@@ -732,7 +732,7 @@ READ.preview_check = async (staff, b, event) => {
   return { ok: true, correct: r.correct, explanation: r.explanation };   // never the answer key
 };
 
-/* ---------- Paid access (Phase 2 / M8, Stripe SANDBOX only) ----------
+/* ---------- Paid access (Phase 2 / M8 sandbox, M9 live) ----------
    Reads: administrators. Writes (prices, eligibility overrides): the President only, here AND in the database.
    Nothing here charges, refunds or grants access: access comes only from the signature-verified Stripe webhook and a
    refund is issued in the Stripe Dashboard (its webhook withdraws the enrollment). No secret value is ever returned. */
@@ -749,13 +749,19 @@ async function orgNames(ids) {
   try { rows = await byIds('academy_organizations', list, 'id,name'); } catch (e) { if (e && e.code === 'unreadable') return {}; throw e; }
   return Object.fromEntries(rows.map(o => [String(o.id), o.name]));
 }
+/* M9 adds academy_purchases.amount_tax_cents; until it is installed the list is read without it (m9: false). */
+async function m9Installed() {
+  try { await A.sbGet('academy_purchases?select=amount_tax_cents&limit=1'); return true; }
+  catch (e) { if (e && e.code === 'unreadable') return false; throw e; }
+}
 READ.payments = async () => {
   const sw = await A.switches();
-  let installed = true, prices = [], purchases = [], overrides = [];
+  let installed = true, prices = [], purchases = [], overrides = [], m9 = false;
   try {
+    m9 = await m9Installed();
     [prices, purchases, overrides] = await Promise.all([
       all(`academy_prices?select=course_id,price_outside_cents,currency,network_included,outside_sale_allowed,commercial_rights_confirmed,rights_note,updated_at,updated_by`, 'course_id.asc'),
-      A.sbGet(`academy_purchases?select=id,course_id,email,full_name,company,amount_cents,currency,status,created_at,paid_at,refunded_at,amount_refunded_cents,review_reason,enrollment_id&order=created_at.desc&limit=200`),
+      A.sbGet(`academy_purchases?select=id,course_id,email,full_name,company,amount_cents,currency,status,livemode,${m9 ? 'amount_tax_cents,' : ''}created_at,paid_at,refunded_at,amount_refunded_cents,review_reason,enrollment_id&order=created_at.desc&limit=200`),
       all(`academy_dealer_eligibility?select=dealer_id,eligible,reason,set_by,set_at`, 'dealer_id.asc'),
     ]);
   } catch (e) { if (e && e.code === 'unreadable') installed = false; else throw e; }
@@ -763,11 +769,15 @@ READ.payments = async () => {
   const pr = Object.fromEntries(prices.map(p => [String(p.course_id), p]));
   const dn = Object.fromEntries((await byIds('dealers', overrides.map(o => o.dealer_id), 'id,business_name')).map(d => [String(d.id), d.business_name]));
   const title = Object.fromEntries(courses.map(c => [String(c.id), c.title]));
-  return { ok: true, installed, switch_on: sw.academy_payments === true, stripe_mode: STRIPE.keyMode(), webhook_configured: STRIPE.webhookConfigured(),
+  const live = { tax_switch_on: sw.academy_payments_tax === true, switch_on: sw.academy_payments_live === true, key_mode: STRIPE.liveKeyMode(), webhook_configured: STRIPE.webhookConfigured(true) };
+  live.ready = live.key_mode === 'live' && live.webhook_configured;
+  return { ok: true, installed, m9_installed: m9, switch_on: sw.academy_payments === true, stripe_mode: STRIPE.keyMode(), webhook_configured: STRIPE.webhookConfigured(false),
+    live, mode: live.switch_on ? 'live' : 'sandbox',
     courses: courses.filter(c => !isTest(c)).map(c => ({ id: c.id, slug: c.slug, title: c.title, status: c.status, course_type: c.course_type,
       manufacturer_slug: c.manufacturer_slug || null, needs_rights: !!c.manufacturer_slug, price: pr[String(c.id)] || null })),
     purchases: purchases.map(p => Object.assign({}, p, { course: title[String(p.course_id)] || null })),
-    totals: tally(purchases, 'status'),
+    totals: tally(purchases.filter(p => p.livemode !== true), 'status'),
+    live_totals: tally(purchases.filter(p => p.livemode === true), 'status'),
     eligibility_overrides: overrides.map(o => Object.assign({}, o, { dealer: dn[String(o.dealer_id)] || null })) };
 };
 WRITE.set_price = async (staff, b) => {
@@ -778,7 +788,14 @@ WRITE.set_price = async (staff, b) => {
     if (typeof b[k] !== 'boolean') A.refuse(400, 'invalid', `${k} must be true or false.`); spec[k] = b[k];
   }
   if (Object.prototype.hasOwnProperty.call(b, 'rights_note')) spec.rights_note = opt(b.rights_note, 500, 'Rights note');
-  return { ok: true, audited: true, price: await A.purchaseOp('set_price', { p_actor: A.actorLabel(staff), p_course_id: A.uuid(b.course_id, 'course'), p_spec: spec }) };
+  const price = await A.purchaseOp('set_price', { p_actor: A.actorLabel(staff), p_course_id: A.uuid(b.course_id, 'course'), p_spec: spec });
+  const expired = await require('./_academy_stripe_ops.js').expireStale(50);   // open checkouts at the old price are closed at Stripe too
+  return { ok: true, audited: true, price, stripe_checkouts_closed: expired };
+};
+/* Money taken in Stripe without the matching HCPS record (read-only; sandbox and live; never a secret). */
+READ.payments_reconcile = async (staff, b) => {
+  const days = b && b.days != null ? int(b.days, 1, 90, 'Days') : 14;
+  return Object.assign({ ok: true }, await require('./_academy_stripe_ops.js').reconcile(days));
 };
 WRITE.set_eligibility = async (staff, b) => {
   requirePresident(staff);

@@ -233,14 +233,25 @@ async function paymentsCard(){
   const r=await api({action:"payments"});
   if(r.status!==200){ box.innerHTML=`<h2>Paid access (outside dealerships)</h2><div class="note warn">${esc(errText(r))}</div>`; return; }
   PAY=r.body; const pres=!!(WHO.may&&WHO.may.publish);
-  const mode={test:["p-on","Stripe TEST mode"],live:["p-off","LIVE key refused"],missing:["p-off","Stripe key not set"],invalid:["p-off","Stripe key not valid"]}[PAY.stripe_mode]||["p-off",PAY.stripe_mode];
-  const T=PAY.totals||{};
+  const mode={test:["p-on","Sandbox key set"],live:["p-off","Sandbox slot holds a LIVE key"],missing:["p-off","Sandbox key not set"],invalid:["p-off","Sandbox key not valid"]}[PAY.stripe_mode]||["p-off",PAY.stripe_mode];
+  const L=PAY.live||{}; const isLive=PAY.mode==="live";
+  const lkey={live:["p-on","Live key set"],test:["p-off","Live slot holds a TEST key"],missing:["p-off","Live key not set"],invalid:["p-off","Live key not valid"]}[L.key_mode]||["p-off","Live key ?"];
+  const T=PAY.totals||{}, LT=PAY.live_totals||{};
+  const tline=o=>["paid","open","refunded","partially_refunded","disputed","review","failed","expired","superseded"].filter(k=>o[k]).map(k=>`${n(o[k])} ${esc(k.replace("_"," "))}`).join(" · ");
   box.innerHTML=`<div class="bar"><h2 class="grow" style="margin:0">Paid access (outside dealerships)</h2>
-      <span class="pill ${mode[0]}">${esc(mode[1])}</span>
+      <span class="pill ${PAY.switch_on?"p-on":"p-off"}">sales: ${PAY.switch_on?"ON":"OFF"}</span>
+      <span class="pill ${isLive?"p-on":"p-off"}">${isLive?"LIVE — real cards":"Sandbox — test cards only"}</span></div>
+    <div class="bar" style="margin-top:6px;flex-wrap:wrap;gap:6px">
+      <span class="muted small">Sandbox:</span><span class="pill ${mode[0]}">${esc(mode[1])}</span>
       <span class="pill ${PAY.webhook_configured?"p-on":"p-off"}">webhook secret ${PAY.webhook_configured?"set":"not set"}</span>
-      <span class="pill ${PAY.switch_on?"p-on":"p-off"}">sales: ${PAY.switch_on?"ON":"OFF"}</span></div>
+      <span class="muted small">Live:</span><span class="pill ${lkey[0]}">${esc(lkey[1])}</span>
+      <span class="pill ${L.webhook_configured?"p-on":"p-off"}">webhook secret ${L.webhook_configured?"set":"not set"}</span>
+      <span class="pill ${L.switch_on?"p-on":"p-off"}">live switch ${L.switch_on?"ON":"OFF"}</span>
+      <span class="pill ${L.tax_switch_on?"p-on":""}">sales tax ${L.tax_switch_on?"added by Stripe Tax":"not collected"}</span></div>
+    ${PAY.installed&&PAY.m9_installed===false?`<div class="note" style="margin-top:8px">The live-payments database step (M9) is not installed yet — the Academy can only take sandbox payments.</div>`:""}
+    ${L.switch_on&&!L.ready?`<div class="note warn" style="margin-top:8px">The live switch is on but the live key or live webhook secret is missing, so checkout is closed.</div>`:""}
     ${PAY.installed?"":`<div class="note warn" style="margin-top:8px">The payments database step (M8) is not installed yet — prices and purchases appear here once the President runs it.</div>`}
-    <p class="muted small" style="margin:8px 0">HCPS network dealers are always included at no charge. Outside dealerships buy on Stripe's page; access is added only after Stripe's signed confirmation. A manufacturer course (Golden) stays off sale until the manufacturer's commercial-use permission is recorded. TEST mode only — no real card is charged.</p>
+    <p class="muted small" style="margin:8px 0">HCPS network dealers are always included at no charge. Outside dealerships buy on Stripe's page; access is added only after Stripe's signed confirmation. A manufacturer course (Golden) stays off sale until the manufacturer's commercial-use permission is recorded. ${isLive?"Live mode — real cards are charged.":"Sandbox mode — no real card is charged."}</p>
     <table class="stack"><thead><tr><th>Course</th><th>Outside price</th><th>HCPS dealers</th><th>Outside sale</th><th>Manufacturer rights</th><th></th></tr></thead><tbody>
     ${PAY.courses.map(c=>{const p=c.price||{};return `<tr><td data-l="Course"><b>${esc(c.title)}</b><div class="muted mono">${esc(c.slug)}</div></td>
       <td data-l="Outside price">${money(p.price_outside_cents,p.currency)}</td>
@@ -249,18 +260,27 @@ async function paymentsCard(){
       <td data-l="Rights">${c.needs_rights?(p.commercial_rights_confirmed?`<span class="pill p-on">confirmed</span>`:`<span class="pill p-off">not confirmed</span>`):"HCPS-owned"}</td>
       <td data-l="">${pres&&PAY.installed?`<button class="go ghost sm" data-price="${esc(c.id)}">Set price</button>`:""}</td></tr>`;}).join("")||`<tr><td colspan="6" class="muted">No courses.</td></tr>`}
     </tbody></table>
-    <h3 style="margin:16px 0 6px">Purchases</h3>
-    <p class="muted small">${["paid","open","refunded","partially_refunded","disputed","review","failed","expired","superseded"].filter(k=>T[k]).map(k=>`${n(T[k])} ${esc(k.replace("_"," "))}`).join(" · ")||"None yet."}</p>
+    <div class="bar" style="margin:16px 0 6px"><h3 class="grow" style="margin:0">Purchases</h3><button class="go ghost sm" id="reconbtn">Check Stripe against HCPS</button></div>
+    <div id="reconout"></div>
+    <p class="muted small"><b>Live:</b> ${tline(LT)||"none yet"} · <b>Sandbox:</b> ${tline(T)||"none"}</p>
     <table class="stack"><thead><tr><th>When</th><th>Buyer</th><th>Course</th><th>Amount</th><th>Status</th></tr></thead><tbody>
     ${PAY.purchases.slice(0,50).map(p=>`<tr><td data-l="When">${when(p.created_at)}</td><td data-l="Buyer">${esc(p.full_name)}<div class="muted small">${esc(p.company)} · ${esc(p.email)}</div></td>
-      <td data-l="Course">${esc(p.course||"")}</td><td data-l="Amount">${money(p.amount_cents,p.currency)}${p.amount_refunded_cents?`<div class="muted small">refunded ${money(p.amount_refunded_cents,p.currency)}</div>`:""}</td>
-      <td data-l="Status">${stPill(p.status)}${p.review_reason?`<div class="muted small">${esc(p.review_reason)}</div>`:""}</td></tr>`).join("")||`<tr><td colspan="5" class="muted">No purchases yet.</td></tr>`}
+      <td data-l="Course">${esc(p.course||"")}</td><td data-l="Amount">${money(p.amount_cents,p.currency)}${p.amount_tax_cents?`<div class="muted small">+ tax ${money(p.amount_tax_cents,p.currency)}</div>`:""}${p.amount_refunded_cents?`<div class="muted small">refunded ${money(p.amount_refunded_cents,p.currency)}</div>`:""}</td>
+      <td data-l="Status">${p.livemode?`<span class="pill p-on">LIVE</span> `:`<span class="pill">test</span> `}${stPill(p.status)}${p.review_reason?`<div class="muted small">${esc(p.review_reason)}</div>`:""}</td></tr>`).join("")||`<tr><td colspan="5" class="muted">No purchases yet.</td></tr>`}
     </tbody></table>
     <div class="bar" style="margin-top:14px"><h3 class="grow" style="margin:0">Free-access overrides</h3>${pres&&PAY.installed?`<button class="go ghost sm" id="eligbtn">Override a dealership</button>`:""}</div>
     <p class="muted small">Standard rule: an active dealership (account class blank or dealer; a branch follows its head office) is included free. The President can include or exclude one dealership, with a reason.</p>
     ${PAY.eligibility_overrides.length?`<table class="stack"><tbody>${PAY.eligibility_overrides.map(o=>`<tr><td data-l="Dealership">${esc(o.dealer||o.dealer_id)}</td><td data-l="Override">${o.eligible?"included free":"must pay"}</td><td data-l="Reason">${esc(o.reason)}</td><td data-l="Set">${when(o.set_at)}</td></tr>`).join("")}</tbody></table>`:`<p class="muted small">No overrides.</p>`}`;
   box.querySelectorAll("[data-price]").forEach(b=>b.onclick=()=>priceModal(PAY.courses.find(c=>c.id===b.dataset.price)));
   const eb=$("#eligbtn"); if(eb)eb.onclick=eligModal;
+  const rb=$("#reconbtn"); if(rb)rb.onclick=async()=>{
+    rb.disabled=true; const out=$("#reconout"); out.innerHTML=`<p class="muted small">Checking the last 14 days in Stripe…</p>`;
+    const r=await api({action:"payments_reconcile",days:14}); rb.disabled=false;
+    if(r.status!==200){ out.innerHTML=`<div class="note warn">${esc(errText(r))}</div>`; return; }
+    const m=r.body.modes||{}; const ms=Object.entries(m).map(([k,v])=>`${esc(k)}: ${typeof v==="object"?n(v.completed)+" completed":esc(v)}`).join(" · ");
+    out.innerHTML=r.body.problems.length?`<div class="note warn"><b>${n(r.body.problems.length)} payment(s) in Stripe without access in HCPS</b> (${ms})<ul>${r.body.problems.map(p=>`<li>${esc(p.mode)} · ${when(p.created)} · ${money(p.amount_total,"usd")} · ${esc(p.email||"")} · HCPS: ${esc(p.hcps_status)} · <span class="mono">${esc(p.session_id)}</span></li>`).join("")}</ul></div>`
+      :`<div class="note" style="margin-bottom:8px">Every paid Stripe checkout in the last 14 days has its HCPS record (${ms}).</div>`;
+  };
 }
 function priceModal(c){
   const p=c.price||{};

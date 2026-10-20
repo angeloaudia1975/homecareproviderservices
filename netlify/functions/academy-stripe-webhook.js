@@ -1,5 +1,7 @@
-/* HCPS Academy — Stripe webhook (Phase 2 / M8). SANDBOX ONLY.
-   Stripe → POST /.netlify/functions/academy-stripe-webhook (endpoint configured in the Stripe Sandbox Workbench).
+/* HCPS Academy — Stripe webhook (Phase 2 / M8 sandbox, M9 live).
+   Stripe → POST /.netlify/functions/academy-stripe-webhook. Two Stripe endpoints point here: the sandbox one (signed with
+   STRIPE_WEBHOOK_SECRET) and the live one (STRIPE_WEBHOOK_SECRET_LIVE). An event's livemode must match the secret that
+   signed it, and the database acts only when it matches the purchase's own mode.
    Events handled (the endpoint subscribes to exactly these):
      checkout.session.completed · checkout.session.async_payment_succeeded · checkout.session.async_payment_failed ·
      checkout.session.expired · charge.refunded · charge.dispute.created · charge.dispute.closed
@@ -9,7 +11,7 @@
      - Only fields HCPS needs are passed on (_stripe.js extract); card data is never read or stored.
      - ONE audited database call decides: academy_purchase_op_stripe_event. Each event id is processed once; a replayed
        or duplicated delivery grants nothing twice; amount, currency, purchase id and session id must match the checkout.
-     - Live-mode events are recorded and refused (never grant access).
+     - Mode: a sandbox event never touches a live purchase and vice versa (database outcome 'mode_mismatch').
      - This endpoint does NOT depend on the academy_payments sales switch: refunds and disputes must still be recorded
        after sales are switched off. A database error answers 5xx so Stripe retries.
      - Nothing secret is ever logged or returned. */
