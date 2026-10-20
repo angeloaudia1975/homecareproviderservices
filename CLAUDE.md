@@ -3182,6 +3182,13 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   the course to outside dealerships); recorded on academy_prices. Golden Lift Chair Sales Certification: $19.99 outside
   price, HCPS network dealers free, on sale (set 2026-10-20 14:35 UTC, audited, President). Stripe Sandbox webhook
   destination we_1USPKeGbhQzRXLGHewmNRsiV (7 events). Still sandbox only.
+  **Sales switch `academy_payments` ON (Angelo, 2026-10-20 09:43 CT). Sandbox end-to-end PASSED 2026-10-20:** paid —
+  Test Buyer (angelo+academy-buyer@…) $19.99 card 4242, webhook marked it paid 09:46 CT and enrolled him in Golden at once,
+  membership = outside organization "HCPS Sandbox Test Dealer" (learner only, no CRM dealer); declined — card 0002 left the
+  checkout open with no enrollment (Stripe keeps a session open after a decline; it becomes "expired" when the 1-hour
+  session ends); refund — full refund in the Stripe dashboard 10:12 CT → purchase "refunded" $19.99, enrollment withdrawn,
+  membership kept. Card numbers are entered by Angelo on Stripe's page, never by Claude. Live payments still need a
+  reviewed migration + approval.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
