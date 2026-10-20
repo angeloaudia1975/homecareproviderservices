@@ -770,6 +770,45 @@ READ.payments = async () => {
     totals: tally(purchases, 'status'),
     eligibility_overrides: overrides.map(o => Object.assign({}, o, { dealer: dn[String(o.dealer_id)] || null })) };
 };
+/* M9 (refund requests, price history, buyer review) is a separate, later database step: until it is installed, the
+   M8 behaviour above stays exactly as it was. */
+async function m9Installed() {
+  try { await A.sbGet('academy_refund_requests?select=id&limit=1'); return true; }
+  catch (e) { if (e && e.code === 'unreadable') return false; throw e; }
+}
+READ.sales_review = async () => {
+  if (!(await m9Installed())) return { ok: true, installed: false, refund_requests: [], price_history: [], buyer_reviews: [] };
+  const [reqs, hist, revs] = await Promise.all([
+    A.sbGet(`academy_refund_requests?select=id,purchase_id,learner_id,reason,status,requested_at,decided_by,decided_at,decision_reason,closed_at&order=requested_at.desc&limit=200`),
+    A.sbGet(`academy_price_history?select=id,course_id,before,after,reason,actor,at&order=id.desc&limit=50`),
+    A.sbGet(`academy_buyer_reviews?superseded_at=is.null&select=id,email,decision,reason,decided_by,decided_at&order=id.desc`),
+  ]);
+  const pur = reqs.length ? await byIds('academy_purchases', reqs.map(r => r.purchase_id), 'id,course_id,email,company,amount_cents,amount_refunded_cents,status,paid_at,stripe_payment_intent') : [];
+  const courses = await all(`academy_courses?select=id,title`);
+  const title = Object.fromEntries(courses.map(c => [String(c.id), c.title]));
+  const pm = Object.fromEntries(pur.map(p => [String(p.id), p]));
+  return { ok: true, installed: true,
+    refund_requests: reqs.map(r => { const p = pm[String(r.purchase_id)] || {};
+      return Object.assign({}, r, { course: title[String(p.course_id)] || null, email: p.email || null, company: p.company || null, amount_cents: p.amount_cents,
+        amount_refunded_cents: p.amount_refunded_cents, purchase_status: p.status || null, paid_at: p.paid_at || null,
+        stripe_payment_intent: r.status === 'approved' ? (p.stripe_payment_intent || null) : null }); }),
+    price_history: hist.map(h => Object.assign({}, h, { course: title[String(h.course_id)] || null })),
+    buyer_reviews: revs };
+};
+WRITE.refund_decide = async (staff, b) => {
+  requirePresident(staff);
+  const r = await A.saleOp('refund_decide', { p_actor: A.actorLabel(staff), p_request_id: A.uuid(b.request_id, 'request'),
+    p_decision: A.oneOf(b.decision, ['approve', 'decline'], 'Decision'), p_reason: A.text(b.reason, 500, 'Reason') });
+  return { ok: true, audited: true, decision: r.decision, stripe_payment_intent: r.stripe_payment_intent || null, amount_cents: r.amount_cents,
+    message: r.decision === 'approve' ? 'Approved and recorded. Now refund this payment in the Stripe Dashboard; the purchase and the request close automatically when Stripe confirms the refund.' : 'Declined and recorded.' };
+};
+WRITE.buyer_review = async (staff, b) => {
+  requirePresident(staff);
+  const email = String(b.email || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) A.refuse(400, 'invalid', 'Enter a valid email address.');
+  await A.saleOp('buyer_review', { p_actor: A.actorLabel(staff), p_email: email, p_decision: A.oneOf(b.decision, ['allow', 'block'], 'Decision'), p_reason: A.text(b.reason, 500, 'Reason') });
+  return { ok: true, audited: true };
+};
 WRITE.set_price = async (staff, b) => {
   requirePresident(staff);
   const spec = {};
@@ -778,6 +817,12 @@ WRITE.set_price = async (staff, b) => {
     if (typeof b[k] !== 'boolean') A.refuse(400, 'invalid', `${k} must be true or false.`); spec[k] = b[k];
   }
   if (Object.prototype.hasOwnProperty.call(b, 'rights_note')) spec.rights_note = opt(b.rights_note, 500, 'Rights note');
+  // M9 installed: every price change carries a reason and is kept in the price history (the M8 call is no longer allowed)
+  if (await m9Installed()) {
+    const reason = A.text(b.reason, 500, 'Reason for the price change');
+    if (reason.length < 5) A.refuse(400, 'invalid', 'Give a reason for the price change (at least 5 characters).');
+    return { ok: true, audited: true, price: await A.saleOp('set_price', { p_actor: A.actorLabel(staff), p_course_id: A.uuid(b.course_id, 'course'), p_spec: spec, p_reason: reason }) };
+  }
   return { ok: true, audited: true, price: await A.purchaseOp('set_price', { p_actor: A.actorLabel(staff), p_course_id: A.uuid(b.course_id, 'course'), p_spec: spec }) };
 };
 WRITE.set_eligibility = async (staff, b) => {

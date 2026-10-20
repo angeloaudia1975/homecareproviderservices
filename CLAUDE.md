@@ -3176,6 +3176,18 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   `STRIPE_WEBHOOK_SECRET` entered by Angelo in Netlify; Claude never views, types, pastes or logs them. No Stripe products,
   prices, payment links or subscriptions are created (inline `price_data`). Switch `academy_payments` gates checkout only;
   the webhook records refunds/disputes even when it is off. M8 is run by Angelo; checkout refuses while in pilot mode.
+- **Phase 2 canonical baseline (owner decision A, PR #26 comment 6293379665, 20 Oct 2026):** main's M8
+  (`academy_p2_m8_payments.sql`, commit 9327d40) is THE Phase 2 migration. Never introduce an alternate M8; additions go in
+  incremental migrations on top of it. Draft PR #26 (`academy_p2_m8_commerce.sql`) is superseded and closed once its
+  additions are tracked. M9 (`academy_p2_m9_refunds.sql`, branch `academy/phase2-refunds-m9`, NOT run) adds: refund
+  requests (14 days; the President approves/declines; money refunded in the Stripe Dashboard, closed by Stripe's signed
+  event), append-only price history with a required reason, buyer review after 2 refunds in 12 months, refund totals
+  that never go down, and the TEST rule: **a TEST dealership is free only when it is itself TEST (sandbox/pilot only); a
+  real dealership never inherits free access from a TEST head office; TEST courses are never sold.** No admin refund
+  API until a restricted Stripe key and idempotent partial-refund handling are reviewed. Stripe account + Sandbox
+  webhook are set up (owner) — never ask for them again; confirm only through status (key mode, webhook configured),
+  never by viewing secrets. Production (20 Oct, read-only via the Command Center): M8 tables present, key mode test,
+  webhook secret set, sales switch off.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

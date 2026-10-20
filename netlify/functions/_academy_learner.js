@@ -129,6 +129,26 @@ LEARNER.me = async (event, learner) => {
     memberships: learner.memberships.map(m => ({ id: m.id, dealer_id: m.dealer_id, dealer: m.dealer_id ? (names[String(m.dealer_id)] || 'Dealership') : orgs[String(m.id)], role: m.role, access_type: m.access_type })),
     training_manager: isTM(learner) };
 };
+/* Phase 2: the learner's own card purchases (M8) and refund requests within 14 days (M9; the President decides and
+   refunds in Stripe). Before M9 is installed the list still shows, without the request button. */
+const REFUND_DAYS = 14;
+LEARNER.my_purchases = async (event, learner) => {
+  let rows;
+  try { rows = await A.sbGet(`academy_purchases?learner_id=eq.${enc(learner.learner_id)}&select=id,course_id,amount_cents,currency,status,paid_at,amount_refunded_cents&order=paid_at.desc`); }
+  catch (e) { if (e && e.code === 'unreadable') return { ok: true, refund_days: REFUND_DAYS, purchases: [] }; throw e; }
+  let reqs = [], m9 = true;
+  if (rows.length) { try { reqs = await A.sbGet(`academy_refund_requests?purchase_id=${idsIn(rows.map(r => r.id))}&select=purchase_id,status,requested_at,decision_reason`); } catch (e) { if (e && e.code === 'unreadable') m9 = false; else throw e; } }
+  const courses = Object.fromEntries((await byIds('academy_courses', rows.map(r => r.course_id), 'id,title')).map(c => [String(c.id), c.title]));
+  const now = Date.now(), money = c => '$' + (Number(c || 0) / 100).toFixed(2);
+  return { ok: true, refund_days: REFUND_DAYS, purchases: rows.map(r => { const q = reqs.filter(x => String(x.purchase_id) === String(r.id)).pop() || null;
+    return { id: r.id, course: courses[String(r.course_id)] || 'Course', amount: money(r.amount_cents), status: r.status, paid_at: r.paid_at,
+      refunded: money(r.amount_refunded_cents), request: q && { status: q.status, requested_at: q.requested_at, note: q.status === 'declined' ? q.decision_reason : null },
+      can_request_refund: m9 && !q && r.status === 'paid' && !r.amount_refunded_cents && !!r.paid_at && now - Date.parse(r.paid_at) < REFUND_DAYS * 86400000 }; }) };
+};
+LEARNER.refund_request = async (event, learner, b) => {
+  await A.saleOp('refund_request', { p_actor: actorOf(learner), p_purchase_id: A.uuid(b.purchase_id, 'purchase'), p_reason: A.text(b.reason, 500, 'Reason') });
+  return { ok: true, message: 'Your refund request was sent to HCPS. You will hear back by email.' };
+};
 LEARNER.sign_out = async (event, learner) => {
   await A.accessOp('access_op_end_session', { p_actor: actorOf(learner), p_session_id: learner.session_id });
   return A.respond(event, 200, { ok: true }, { cookie: A.SESSION.clearCookie() });
