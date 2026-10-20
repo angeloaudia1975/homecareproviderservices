@@ -38,7 +38,8 @@ let pass = 0, fail = 0; const t = async (n, fn) => { try { await fn(); pass++; c
       assert.ok(txt.includes(s), 'section missing: ' + s);
     const vals = await p.$$eval('#view input, #view textarea', els => els.map(e => e.value));
     assert.ok(vals.includes('Build Product Knowledge. Strengthen Your Team. Certify With Confidence.'), 'headline loaded');
-    assert.ok(vals.includes('Golden Lift Chair Sales Certification'), 'course loaded');
+    assert.ok(vals.includes('HCPS Lift Chair Sales & Product Knowledge Certification'), 'course loaded');
+    assert.ok(vals.includes('Independent dealer sales training featuring Golden Technologies lift chairs and power recliners.'), 'subtitle loaded (editable)');
   });
   await t('editing the headline and publishing writes valid JSON to src/_data/academyLanding.json; nothing else changes', async () => {
     const h = await p.$$('#view input');

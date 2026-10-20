@@ -33,7 +33,7 @@ const MUTANTS = [
   // (not a mutant: widening the TM certificate read is equivalent — certOf() maps only the TM's own in-scope enrollment ids; the roster scope itself is covered by A2B)
   { f: LRN, from: "  const enr = memIds.length ? await A.sbGet(`academy_enrollments?membership_id=${idsIn(memIds)}", to: "  const enr = memIds.length ? await A.sbGet(`academy_enrollments?membership_id=not.is.null&x=${idsIn(memIds)}", why: 'a Training Manager sees other dealerships’ courses and certificates' },
   { f: LRN, from: "const certStatus = (c, now) => c.status === 'revoked' ? 'revoked' :", to: "const certStatus = (c, now) => false ? 'revoked' :", why: 'a revoked certificate shows as valid to the learner' },
-  { f: LRN, from: "it is not issued or endorsed by Golden Technologies.' };", to: "' };", why: 'no Golden disclosure' },
+  { f: LRN, from: "it is not issued, sponsored or endorsed by Golden Technologies.' };", to: "' };", why: 'no Golden disclosure' },
   { f: ADM, from: "WRITE.revoke_certificate = async (staff, b) => {\n  requirePresident(staff);", to: "WRITE.revoke_certificate = async (staff, b) => {", why: 'the API lets any administrator revoke' },
   { f: ADM, from: "  if (reason.trim().length < 5) A.refuse(400, 'invalid', 'Give a reason of at least 5 characters.');", to: "", why: 'the API sends a short reason' },
   { f: ADM, from: "p_actor: A.actorLabel(staff), p_certificate_id:", to: "p_actor: b.p_actor || A.actorLabel(staff), p_certificate_id:", why: 'the API takes the acting person from the request' },

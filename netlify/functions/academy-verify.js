@@ -6,7 +6,7 @@
    academy_cert_op_verify (server role only; M7). Off (enabled:false) until academy_certificates is on. Read only:
    GET only, no cookie, no session; the number space (32^8) makes guessing impractical. */
 const A = require('./_academy.js');
-const DISCLOSURE = 'Issued by Home Care Provider Services (HCPS). This is an HCPS sales certification; it is not issued or endorsed by Golden Technologies.';
+const DISCLOSURE = 'Issued by Home Care Provider Services (HCPS). This course is independently developed and administered by HCPS; it is not issued, sponsored or endorsed by Golden Technologies.';
 const SHAPE = /^HCPS-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
 
 exports.handler = A.handler(async event => {

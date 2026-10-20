@@ -156,11 +156,11 @@ run(DB, `delete from academy_login_codes where true`);   // test only: the brows
         const pg = await page(browser, w); await signIn(pg, 'pat@north.example'); await pg.waitForSelector('text=Golden Lift Chair Sales Certification');
         assert.ok(await pg.isVisible('.ac-course >> text=/Valid until/'), 'the course card shows the certificate');
         await pg.click('nav >> text=My certificates'); await pg.waitForSelector('text=View and print');
-        assert.ok((await pg.textContent('#view')).includes('not issued or endorsed by Golden Technologies'));
+        assert.ok((await pg.textContent('#view')).includes('not issued, sponsored or endorsed by Golden Technologies'));
         assert.ok(await noSideScroll(pg)); assert.deepStrictEqual(await smallTargets(pg), []); await shot(pg, `cert-${w}-list`);
         await pg.click('text=View and print'); await pg.waitForSelector('.ac-cert');
         const txt = await pg.textContent('.ac-cert');
-        for (const s of ['Certificate of Completion', 'Pat Learner', 'HQ Medical North', 'Golden Lift Chair Sales Certification', PAT.cert_number, '/academy/verify/#' + PAT.cert_number, 'Home Care Provider Services', 'not issued or endorsed by Golden Technologies'])
+        for (const s of ['Certificate of Completion', 'Pat Learner', 'HQ Medical North', 'Golden Lift Chair Sales Certification', PAT.cert_number, '/academy/verify/#' + PAT.cert_number, 'Home Care Provider Services', 'not issued, sponsored or endorsed by Golden Technologies'])
           assert.ok(txt.includes(s), s);
         assert.ok(!/\d+%/.test(txt), 'no score on the certificate');
         assert.ok(await noSideScroll(pg)); assert.deepStrictEqual(await smallTargets(pg), []); await shot(pg, `cert-${w}-certificate`);
@@ -195,7 +195,7 @@ run(DB, `delete from academy_login_codes where true`);   // test only: the brows
         const pg = await page(browser, w, { bypassCSP: w === 1280 });
         await pg.goto(ORIGIN + '/academy/verify/#' + PAT.cert_number); await pg.waitForSelector('.ac-cert-facts');
         let v = await pg.textContent('#vr');
-        for (const s of ['Valid', 'Pat Learner', 'HQ Medical North', 'Golden Lift Chair Sales Certification', 'Home Care Provider Services', 'not issued or endorsed by Golden']) assert.ok(v.includes(s), s);
+        for (const s of ['Valid', 'Pat Learner', 'HQ Medical North', 'Golden Lift Chair Sales Certification', 'Home Care Provider Services', 'not issued, sponsored or endorsed by Golden']) assert.ok(v.includes(s), s);
         assert.ok(!/@/.test(v));
         if (w === 1280) assert.deepStrictEqual(await axe(pg), [], 'axe verify');
         assert.ok(await noSideScroll(pg)); assert.deepStrictEqual(await smallTargets(pg), []); await shot(pg, `verify-${w}-valid`);

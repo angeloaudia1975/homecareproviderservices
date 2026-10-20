@@ -91,7 +91,7 @@ const eventOut = e => ({ id: e.id, at: e.at, actor_type: e.actor_type, actor: e.
                          action: e.action, before: scrub(e.before, 0), after: scrub(e.after, 0) });
 
 const CREDENTIAL = {
-  hcps: { issuer: 'hcps', label: 'HCPS-issued certification', note: 'Issued and verified by HCPS. Not issued or endorsed by Golden Technologies or any manufacturer.' },
+  hcps: { issuer: 'hcps', label: 'HCPS-issued certification', note: 'Issued and verified by HCPS. Independently developed and administered by HCPS; not issued, sponsored or endorsed by Golden Technologies or any manufacturer.' },
   manufacturer: { issuer: 'manufacturer', label: 'Manufacturer-issued credential', note: 'Issued by the manufacturer. HCPS tracks it and checks the evidence; HCPS does not issue it.' },
   none: { issuer: 'none', label: 'Training only', note: 'No credential is issued.' },
 };

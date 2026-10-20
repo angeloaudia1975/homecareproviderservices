@@ -215,7 +215,7 @@ async function walkLesson(pg) {   // every screen shown for a moment, each pract
     await t('6 · The certificate: view, print layout, and public verification of its number', async () => {
       await buyer.click('text=View your certificate'); await buyer.waitForSelector('.ac-cert');
       const t1 = await buyer.textContent('.ac-cert');
-      for (const s of [CERT, 'HQ Medical', 'Golden Lift Chair Sales Certification', 'not issued or endorsed by Golden Technologies']) assert.ok(t1.includes(s), s);
+      for (const s of [CERT, 'HQ Medical', 'Golden Lift Chair Sales Certification', 'not issued, sponsored or endorsed by Golden Technologies']) assert.ok(t1.includes(s), s);
       await check(buyer, 'p4-390-certificate');
       await buyer.emulateMedia({ media: 'print' }); assert.strictEqual(await buyer.evaluate(() => getComputedStyle(document.querySelector('.ac-top')).display), 'none');
       await buyer.emulateMedia({ media: 'screen' });

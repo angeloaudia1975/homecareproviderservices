@@ -312,6 +312,7 @@
         { k: "status", label: "Status", type: "select", options: ["live", "coming"] },
         { k: "badge", label: "Badge text", type: "text" },
         { k: "title", label: "Course title", type: "text", full: true },
+        { k: "subtitle", label: "Subtitle (optional)", type: "text", full: true },
         { k: "summary", label: "Summary", type: "textarea", full: true },
         { k: "facts", label: "Key facts (one per line)", type: "list", full: true },
         Object.assign({ k: "image" }, TA_IMG("Course image")),

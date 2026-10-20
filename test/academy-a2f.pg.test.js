@@ -127,7 +127,7 @@ async function passExam(cookie, enr, right) {
       CERT = r.body.certificate;
       assert.strictEqual(CERT.dealer_name, 'HQ Medical North'); assert.strictEqual(CERT.status, 'valid'); assert.strictEqual(CERT.expiring_soon, false);
       assert.ok(CERT.days_left >= 364 && CERT.days_left <= 366, String(CERT.days_left));
-      assert.match(CERT.disclosure, /not issued or endorsed by Golden Technologies/);
+      assert.match(CERT.disclosure, /not issued, sponsored or endorsed by Golden Technologies/);
       assert.strictEqual(CERT.course, 'Golden Lift Chair Sales Certification');
       const again = await learner({ action: 'claim_certificate', attempt_id: PA }, PC); assert.strictEqual(again.body.existing, true); assert.strictEqual(again.body.certificate.id, CERT.id);
       assert.strictEqual(run(DB, 'select count(*) from academy_certificates'), '1');
@@ -165,7 +165,7 @@ async function passExam(cookie, enr, right) {
     });
     await t('Public verification: GET only, public fields only; format 400, unknown 404; lower case and spaces accepted', async () => {
       const r = await verify(' ' + CERT.cert_number.toLowerCase() + ' '); assert.strictEqual(r.status, 200, JSON.stringify(r.body));
-      assert.strictEqual(r.body.status, 'valid'); assert.strictEqual(r.body.learner_name, 'Pat Learner'); assert.match(r.body.disclosure, /not issued or endorsed by Golden/);
+      assert.strictEqual(r.body.status, 'valid'); assert.strictEqual(r.body.learner_name, 'Pat Learner'); assert.match(r.body.disclosure, /not issued, sponsored or endorsed by Golden/);
       assert.ok(!/@|score|attempt|reason|enrollment|learner_id/.test(JSON.stringify(r.body)), JSON.stringify(r.body));
       assert.deepStrictEqual(Object.keys(r.body).sort(), ['cert_number', 'course_title', 'dealer_name', 'disclosure', 'enabled', 'expires_at', 'found', 'issued_at', 'issuer', 'learner_name', 'revoked_at', 'status'], 'exactly the public fields');
       assert.strictEqual((await verify('nope')).status, 400); assert.strictEqual((await verify('HCPS-ZZZZ-ZZZZ')).status, 404);
