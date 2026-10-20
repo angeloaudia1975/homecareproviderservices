@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>HCPS Admin — Academy Student View</title>
+<link rel="stylesheet" href="/assets/academy/lesson-player.css">
+<link rel="stylesheet" href="/academy/academy.css">
+<style>
+ /* staff controls only — everything inside .sv-device is the learner's own styling */
+ .sv-staff{background:#0b1f33;color:#fff;font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:10px 16px;position:sticky;top:0;z-index:20}
+ .sv-staff .sv-row{max-width:1280px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+ .sv-staff b{color:#fcb21e}.sv-staff a{color:#fff;font-weight:700}
+ .sv-staff select,.sv-staff button{font:inherit;font-size:14px;min-height:40px;border-radius:20px;border:1px solid #3d5a78;background:#132c45;color:#fff;padding:0 12px;cursor:pointer;max-width:100%}
+ .sv-staff button[aria-pressed="true"]{background:#fcb21e;border-color:#fcb21e;color:#0b1f33;font-weight:700}
+ .sv-staff .sv-grow{flex:1 1 auto}
+ .sv-stage{padding:18px 16px 40px;background:#e9eef4;min-height:70vh}
+ .sv-device{margin:0 auto;background:var(--ac-bg,#fff);border-radius:16px;box-shadow:0 6px 24px rgba(11,31,51,.14);overflow:clip;transition:max-width .2s}
+ .sv-device .ac-top{position:static}
+ .sv-note{max-width:1280px;margin:0 auto 10px;background:#fff7e6;border:1px solid #f0c36d;border-radius:10px;padding:10px 12px;font:14px/1.5 system-ui,sans-serif;color:#3a2a00}
+ .sv-note ul{margin:6px 0 0 18px;padding:0}
+ .sv-review{margin-top:14px}.sv-review li{margin:6px 0}.sv-review .ok{color:#14733a}.sv-review .no{color:#b42323}
+ .sv-gate{max-width:380px;margin:40px auto;background:#fff;border:1px solid #d8dee4;border-radius:12px;padding:20px;font-family:system-ui,sans-serif}
+ .sv-gate input{display:block;width:100%;margin:8px 0;padding:10px;border:1px solid #d8dee4;border-radius:8px;font-size:16px}
+ @media (prefers-reduced-motion: reduce){.sv-device{transition:none}}
+</style>
+</head>
+<body>
+<div class="sv-staff" role="region" aria-label="Staff controls">
+  <div class="sv-row">
+    <span><b>STAFF · Student view</b> — what a learner sees. Nothing is saved: no enrollment, progress, exam attempt or certificate.</span>
+    <span class="sv-grow"></span>
+    <select id="sv-course" aria-label="Course version"></select>
+    <span id="sv-widths" role="group" aria-label="Screen width"></span>
+    <button type="button" id="sv-reset">Start over</button>
+    <a href="/admin/academy.html#courses">← Command Center</a>
+  </div>
+</div>
+<div id="sv-gate"></div>
+<div class="sv-stage" id="sv-stage" hidden>
+  <div id="sv-notes"></div>
+  <div class="sv-device" id="sv-device">
+    <header class="ac-top"><div class="ac-wrap ac-bar">
+      <span class="ac-brand"><span class="ac-mark" aria-hidden="true">HCPS</span><span>Academy</span></span>
+      <nav class="ac-nav" aria-label="Academy"><button type="button" id="sv-home" aria-current="page">My courses</button><button type="button" disabled>My certificates</button></nav>
+    </div></header>
+    <main id="main" class="ac-wrap" tabindex="-1"><div id="view" aria-live="polite"><p class="ac-muted">Loading…</p></div></main>
+    <footer class="ac-foot ac-wrap"><p>HCPS Training &amp; Certification Academy · Home Care Provider Services</p></footer>
+  </div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/assets/academy/lesson-player.js"></script>
+<script src="/admin/academy-student.js"></script>
+</body>
+</html>

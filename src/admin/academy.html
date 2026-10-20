@@ -212,6 +212,8 @@ async function viewCourses(){
       <td data-l="Training available">${trainPill(c)}</td><td data-l="Versions" class="small">${vCounts(c)}</td><td data-l="Course record">${recPill(c.status)}</td></tr>`).join("")
       ||`<tr><td colspan="6" class="muted">No courses yet. Start with “New course”.</td></tr>`}
     </tbody></table></div>
+    <div class="card"><div class="bar"><h2 class="grow" style="margin:0">Student view</h2><a class="go dk sm" href="/admin/academy-student.html" target="_blank" rel="noopener">👁 View a course as a student</a></div>
+      <p class="muted small" style="margin-top:8px">Walk any course version — drafts included — exactly as a learner sees it: the course page, every lesson in the learner player, practice checks and a sample final exam with its result. Desktop, tablet and phone widths. Nothing is saved, and no learner, enrollment, attempt or certificate is created.</p></div>
     <div class="card"><div class="bar"><h2 class="grow" style="margin:0">Lesson player preview</h2>
       <a class="go ghost sm" href="/admin/academy-preview.html?sample=A" target="_blank" rel="noopener">Sample A · Comfort Zones</a>
       <a class="go ghost sm" href="/admin/academy-preview.html?sample=B" target="_blank" rel="noopener">Sample B · Cloud family</a></div>
@@ -397,7 +399,8 @@ async function viewVersion(id){
     ${v.status==="in_review"?`<div class="bar" style="margin-top:10px">${pres?`<button class="go dk sm" id="pub">Publish v${esc(v.version)}…</button>`:`<span class="muted small">Publishing is reserved for the President.</span>`}</div>`:""}
     ${v.status==="draft"?`<p class="muted small" style="margin-top:10px">Submit this version for review before it can be published.</p>`:""}
     ${v.status==="published"&&pres?`<div class="bar" style="margin-top:10px"><button class="go warn sm" id="retire">Retire v${esc(v.version)}…</button></div>`:""}
-    <div class="bar" style="margin-top:10px"><a class="go dk sm" id="builder" href="/admin/academy-builder.html?version=${esc(v.id)}">${ed?"Open course builder":"Open course builder (read only)"}</a></div>
+    <div class="bar" style="margin-top:10px"><a class="go dk sm" id="builder" href="/admin/academy-builder.html?version=${esc(v.id)}">${ed?"Open course builder":"Open course builder (read only)"}</a>
+      <a class="go ghost sm" href="/admin/academy-student.html?version=${esc(v.id)}" target="_blank" rel="noopener" aria-label="View v${esc(v.version)} as a student (opens in a new tab)">👁 View as a student</a></div>
     <p class="muted small" style="margin-top:10px">Lesson screens, pictures, the question bank and the exam distribution are edited in the <b>course builder</b>. <b>Preview</b> beside a lesson shows it in the learner lesson player, staff only; nothing is saved. Answer keys are never shown on this screen.</p></div>
    <div class="card"><div class="bar" style="margin-bottom:8px"><h2 class="grow" style="margin:0">Modules &amp; lessons</h2>${ed?`<button class="go dk sm" id="addm">+ Module</button>`:""}</div>
     ${mods.map(m=>`<div class="mod"><div class="bar"><b class="grow">${esc(m.position)}. ${esc(m.title)}</b>${ed?`<button class="go ghost sm" data-em="${esc(m.id)}">Edit</button><button class="go ghost sm" data-al="${esc(m.id)}">+ Lesson</button>${m.lessons.length?"":`<button class="go warn sm" data-dm="${esc(m.id)}">Remove</button>`}`:""}</div>

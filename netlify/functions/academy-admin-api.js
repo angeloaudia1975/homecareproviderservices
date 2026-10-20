@@ -15,7 +15,8 @@
      - Reads are strict (unreadable = 503, never "empty"). Exam questions, answer keys and learners' answers are never
        returned here; audit history is scrubbed of answers before it leaves the server. The one place an answer key is
        READ is preview_check (A2D Stage 2): it grades a single PRACTICE answer on the server and returns only right/wrong
-       and the explanation; exam questions are refused there.
+       and the explanation; exam questions are refused there. The Student view (student_exam_draw / student_exam_grade)
+       shows an administrator a SAMPLE exam drawn like the real one — prompts and choices only — graded here, recorded nowhere.
      - Changes are POST only. Nothing here issues an HCPS certificate (only a passed exam does, through M7), changes a switch,
        or touches ordering. Revoking one (revoke_certificate) is the President's alone, checked here and in the database.
      - A2D Stage 3 (Course Builder, _academy_builder.js) adds its actions to the same maps, behind the same gate. Its
@@ -686,8 +687,9 @@ async function lessonContext(lessonId) {
   const v = need(one(await A.sbGet(`academy_course_versions?id=eq.${enc(m.version_id)}&select=${VERSION_COLS}`)), 'Course version');
   return { l, m, v };
 }
-READ.preview_lesson = async (staff, b) => {
-  const { l, m, v } = await lessonContext(A.uuid(b.lesson_id, 'lesson'));
+READ.preview_lesson = async (staff, b) => ({ ok: true, lesson: (await lessonPayload(A.uuid(b.lesson_id, 'lesson')))('preview') });
+async function lessonPayload(lessonId) {
+  const { l, m, v } = await lessonContext(lessonId);
   const blocks = Array.isArray(l.blocks) ? l.blocks : [];
   const refs = LESSON.references(blocks);
   const models = [...new Set(refs.facts.map(f => f.model).filter(x => MODEL.test(x)))], mfrs = [...new Set(refs.facts.map(f => f.mfr).filter(x => SLUG.test(String(x || ''))))];
@@ -702,11 +704,15 @@ READ.preview_lesson = async (staff, b) => {
   ]);
   const lessons = mods.length ? await all(`academy_lessons?module_id=${idsIn(mods.map(x => x.id))}&select=id,module_id,position,title`, 'position.asc') : [];
   for (const md of media) md.signed_url = md.storage_path ? await A.signPrivate(md.storage_path, 900) : null;
-  return { ok: true, lesson: LESSON.buildLesson({ mode: 'preview', course: course[0] || {}, version: v, module: m, lesson: l,
+  const ordered = mods.flatMap(x => lessons.filter(y => String(y.module_id) === String(x.id)).map(y => String(y.id)));
+  const at = ordered.indexOf(String(l.id));
+  const build = mode => LESSON.buildLesson({ mode, course: course[0] || {}, version: v, module: m, lesson: l,
     outline: mods.map(x => ({ position: x.position, title: x.title, lessons: lessons.filter(y => String(y.module_id) === String(x.id)) })),
     facts, media, questions: questions.filter(q => String(q.version_id) === String(v.id)),
-    manufacturers: Object.fromEntries(mfrRows.map(r => [r.slug, r.name || r.slug])) }) };
-};
+    manufacturers: Object.fromEntries(mfrRows.map(r => [r.slug, r.name || r.slug])) });
+  build.version_id = v.id; build.prev = at > 0 ? ordered[at - 1] : null; build.next = at >= 0 && at < ordered.length - 1 ? ordered[at + 1] : null;
+  return build;
+}
 const A_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 READ.preview_check = async (staff, b, event) => {
   if (!event || event.httpMethod !== 'POST') A.refuse(405, 'method', 'Send answers as POST.');   // an answer never travels in a web address
@@ -730,6 +736,118 @@ READ.preview_check = async (staff, b, event) => {
   const r = LESSON.checkPractice(q, b.answer);
   if (!r || r.invalid) A.refuse(400, 'invalid', 'Choose an answer first.');
   return { ok: true, correct: r.correct, explanation: r.explanation };   // never the answer key
+};
+
+/* ---------- Student view (administrators; 20 Oct 2026) ----------
+   "View as a student": walk a course version (draft, in review, published or retired) exactly as a learner sees it —
+   course page, lessons in order in the learner lesson player, practice checks, and a SAMPLE final exam drawn by the
+   same rules as the real one. Nothing is written: no learner, enrollment, progress, attempt or certificate is created.
+   The exam sample never sends an answer key to the browser; it is graded here, and only then does the reviewer see
+   which questions were right (staff only, like the question bank). */
+async function studentVersion(id) {
+  const v = need(one(await A.sbGet(`academy_course_versions?id=eq.${enc(id)}&select=${VERSION_COLS}`)), 'Course version');
+  let limits = {};
+  try { limits = one(await A.sbGet(`academy_course_versions?id=eq.${enc(id)}&select=exam_time_limit_minutes,exam_cooldown_minutes,exam_daily_limit`)) || {}; }
+  catch (e) { if (!(e && e.code === 'unreadable')) throw e; }
+  return Object.assign({}, v, limits);
+}
+async function examPool(versionId) {
+  const [qs, refs] = await Promise.all([
+    all(`academy_questions?version_id=eq.${enc(versionId)}&use=eq.exam&status=eq.active&select=id,module_id,kind,prompt,choices,objective_tags`),
+    all(`academy_content_refs?version_id=eq.${enc(versionId)}&question_id=not.is.null&field=not.is.null&select=question_id,pinned_fact_id`)]);
+  const facts = await byIds('product_facts', refs.map(r => r.pinned_fact_id), 'id,valid_to,status');
+  const okFact = Object.fromEntries(facts.map(f => [String(f.id), !f.valid_to && f.status === 'verified']));
+  const blocked = new Set(refs.filter(r => !r.pinned_fact_id || !okFact[String(r.pinned_fact_id)]).map(r => String(r.question_id)));
+  return { eligible: qs.filter(q => !blocked.has(String(q.id))), held: qs.filter(q => blocked.has(String(q.id))).length };
+}
+const shuffle = a => { const x = a.slice(); for (let i = x.length - 1; i > 0; i--) { const j = require('crypto').randomInt(0, i + 1); [x[i], x[j]] = [x[j], x[i]]; } return x; };
+/* The same rules as the database draw (academy_author_exam_draw): only active exam questions whose facts are current and
+   verified; with a per-module distribution, exactly that many from each module; without one, every module represented
+   and the rest at random. A version the real exam could not draw for says why instead of drawing. */
+function drawExam(v, modules, pool) {
+  const want = Number(v.exam_questions) || 0, el = pool.eligible;
+  const byMod = id => el.filter(q => String(q.module_id) === String(id));
+  if (modules.some(m => m.exam_quota != null)) {
+    const missing = modules.find(m => m.exam_quota == null);
+    if (missing) return { problem: `The exam distribution is incomplete: module "${missing.title}" has no number of questions.` };
+    const sum = modules.reduce((a, m) => a + Number(m.exam_quota), 0);
+    if (sum !== want) return { problem: `The exam distribution adds up to ${sum} questions; this version draws ${want}.` };
+    let out = [];
+    for (const m of modules) {
+      const have = byMod(m.id);
+      if (have.length < m.exam_quota) return { problem: `Module "${m.title}" has ${have.length} usable exam question(s); the exam draws ${m.exam_quota} from it.` };
+      out = out.concat(shuffle(have).slice(0, m.exam_quota));
+    }
+    return { questions: shuffle(out) };
+  }
+  const empty = modules.find(m => !byMod(m.id).length);
+  if (empty) return { problem: `Module "${empty.title}" has no usable exam question; every module must be represented in the exam.` };
+  if (el.length < want) return { problem: `Only ${el.length} usable exam question(s); the exam draws ${want}.` };
+  const first = modules.map(m => shuffle(byMod(m.id))[0]);
+  const ids = new Set(first.map(q => String(q.id)));
+  return { questions: shuffle(first.concat(shuffle(el.filter(q => !ids.has(String(q.id)))).slice(0, Math.max(0, want - first.length)))) };
+}
+READ.student_catalog = async () => {
+  const courses = (await all(`academy_courses?select=${COURSE_COLS}`, 'title.asc')).filter(c => c.course_type !== 'manufacturer_program');
+  const versions = courses.length ? await all(`academy_course_versions?course_id=${idsIn(courses.map(c => c.id))}&select=id,course_id,version,status`, 'version.desc') : [];
+  return { ok: true, courses: courses.map(c => ({ id: c.id, title: c.title, is_test: isTest(c),
+    versions: versions.filter(v => String(v.course_id) === String(c.id)).map(v => ({ id: v.id, version: v.version, status: v.status })) })) };
+};
+READ.student_course = async (staff, b) => {
+  const v = await studentVersion(A.uuid(b.version_id, 'version'));
+  const [course, modules] = await Promise.all([
+    A.sbGet(`academy_courses?id=eq.${enc(v.course_id)}&select=${COURSE_COLS}`),
+    all(`academy_modules?version_id=eq.${enc(v.id)}&select=id,position,title,objectives,exam_quota`, 'position.asc')]);
+  const c = need(one(course), 'Course');
+  const lessons = modules.length ? await all(`academy_lessons?module_id=${idsIn(modules.map(m => m.id))}&select=id,module_id,position,title,est_minutes`, 'position.asc') : [];
+  const pool = await examPool(v.id);
+  const draw = drawExam(v, modules, pool);
+  return { ok: true, course: { id: c.id, slug: c.slug, title: c.title, course_type: c.course_type, issuer: c.issuer, manufacturer_slug: c.manufacturer_slug || null, status: c.status, is_test: /^test-/.test(c.slug) },
+    version: { id: v.id, version: v.version, status: v.status, pass_mark: v.pass_mark, exam_questions: v.exam_questions, validity_months: v.validity_months,
+      time_limit_minutes: v.exam_time_limit_minutes || null, cooldown_minutes: v.exam_cooldown_minutes || null, daily_limit: v.exam_daily_limit || null },
+    modules: modules.map(m => ({ id: m.id, position: m.position, title: m.title, objectives: m.objectives || [],
+      lessons: lessons.filter(l => String(l.module_id) === String(m.id)).map(l => ({ id: l.id, position: l.position, title: l.title, est_minutes: l.est_minutes })) })),
+    exam: { usable: pool.eligible.length, held_unverified: pool.held, ready: !draw.problem, problem: draw.problem || null },
+    disclosure: c.issuer === 'hcps' || c.course_type === 'hcps_certification'
+      ? 'Issued by Home Care Provider Services (HCPS). This course is independently developed and administered by HCPS; it is not issued, sponsored or endorsed by Golden Technologies.' : null };
+};
+/* One lesson exactly as a learner's player receives it (learner mode: no staff badge, no staff warnings inside the
+   player); the preview warnings come back beside it, for the staff ribbon only. */
+READ.student_lesson = async (staff, b) => {
+  const build = await lessonPayload(A.uuid(b.lesson_id, 'lesson'));
+  if (b.version_id != null && String(A.uuid(b.version_id, 'version')) !== String(build.version_id)) A.refuse(404, 'not_found', 'Lesson not found in this version.');
+  return { ok: true, lesson: build('learner'), staff_warnings: build('preview').warnings || [], prev_lesson_id: build.prev, next_lesson_id: build.next };
+};
+READ.student_exam_draw = async (staff, b, event) => {
+  if (!event || event.httpMethod !== 'POST') A.refuse(405, 'method', 'Use POST.');
+  const v = await studentVersion(A.uuid(b.version_id, 'version'));
+  const modules = await all(`academy_modules?version_id=eq.${enc(v.id)}&select=id,position,title,exam_quota`, 'position.asc');
+  const d = drawExam(v, modules, await examPool(v.id));
+  if (d.problem) return { ok: false, problem: d.problem };
+  // what a learner gets: prompt and choices only — never the answer key, the explanation or the topic tags
+  return { ok: true, pass_mark: v.pass_mark, time_limit_minutes: v.exam_time_limit_minutes || null,
+    questions: d.questions.map(q => ({ id: q.id, kind: q.kind, prompt: q.prompt, choices: (q.choices || []).map(c => ({ id: c.id, text: c.text })) })) };
+};
+READ.student_exam_grade = async (staff, b, event) => {
+  if (!event || event.httpMethod !== 'POST') A.refuse(405, 'method', 'Send answers as POST.');
+  const v = await studentVersion(A.uuid(b.version_id, 'version'));
+  const ids = Array.isArray(b.question_ids) ? b.question_ids.map(x => A.uuid(x, 'question')) : [];
+  if (!ids.length || ids.length > 200 || new Set(ids).size !== ids.length) A.refuse(400, 'invalid', 'The sample exam could not be read.');
+  const qs = await byIds('academy_questions', ids, 'id,version_id,use,status,kind,prompt,answer_key,explanation,objective_tags');
+  if (qs.length !== ids.length || qs.some(q => String(q.version_id) !== String(v.id) || q.use !== 'exam')) A.refuse(400, 'invalid', 'These are not this version\'s exam questions.');
+  const answers = b.answers && typeof b.answers === 'object' && !Array.isArray(b.answers) ? b.answers : {};
+  const byId = Object.fromEntries(qs.map(q => [String(q.id), q]));
+  let right = 0; const topics = new Set(), review = [];
+  for (const id of ids) {
+    const q = byId[id], given = LESSON.normAnswer(q.kind, answers[id]);
+    const keyv = q.kind === 'multi' ? [...new Set(Array.isArray(q.answer_key) ? q.answer_key : [])].sort() : q.answer_key;
+    const ok = given !== null && JSON.stringify(given) === JSON.stringify(keyv);
+    if (ok) right++; else (q.objective_tags || []).forEach(t => topics.add(t));
+    review.push({ id, prompt: q.prompt, answered: given !== null, correct: ok, explanation: String(q.explanation || '').slice(0, 2000) });
+  }
+  const total = ids.length;
+  return { ok: true, recorded: false, score: Math.floor(right * 100 / total), passed: right * 100 >= Number(v.pass_mark) * total,
+    pass_mark: v.pass_mark, right, total, study_topics: [...topics].sort(), staff_review: review };
 };
 
 /* ---------- Paid access (Phase 2 / M8 sandbox, M9 live) ----------

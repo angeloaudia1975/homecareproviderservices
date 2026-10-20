@@ -3228,6 +3228,14 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   launch", "No credit card required", "Complimentary introductory access — paid enrollment may be introduced in the
   future" — no public $ price, "normally" or discount claim (the price stays in admin). Proposed next courses (issue #30):
   `docs/academy/COURSE_OUTLINES_PROPOSED.md` — Claude-drafted, PROPOSED until the owner adopts them; never attributed to him.
+- **Student view (Angelo, 20 Oct 2026):** Command Center → Courses → "View a course as a student" (and "👁 View as a
+  student" on every version) opens `/admin/academy-student.html`: administrators walk ANY version (drafts included) as a
+  learner sees it — the My courses card, every lesson in the learner player in LEARNER mode (staff warnings only in the
+  staff ribbon), practice checks, and a SAMPLE final exam drawn by the real exam's rules (`academy-admin-api`
+  student_catalog / student_course / student_lesson / student_exam_draw / student_exam_grade; JS mirror of
+  `academy_author_exam_draw`, kept equal by `test/academy-student-view.pg.test.js`). The drawn exam carries no key; grading
+  is server-side; NOTHING is written (no learner, enrollment, progress, attempt, certificate or audit row) — progress lives
+  in that browser tab only. Desktop / tablet / phone widths.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.
