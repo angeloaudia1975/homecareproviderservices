@@ -406,6 +406,8 @@ async function viewVersion(id){
     ${v.status==="in_review"?`<div class="bar" style="margin-top:10px">${pres?`<button class="go dk sm" id="pub">Publish v${esc(v.version)}…</button>`:`<span class="muted small">Publishing is reserved for the President.</span>`}</div>`:""}
     ${v.status==="draft"?`<p class="muted small" style="margin-top:10px">Submit this version for review before it can be published.</p>`:""}
     ${v.status==="published"&&pres?`<div class="bar" style="margin-top:10px"><button class="go warn sm" id="retire">Retire v${esc(v.version)}…</button></div>`:""}
+    ${!ed&&pres?`<div class="note" style="margin-top:10px"><b>To edit this version:</b> a ${v.status==="published"?"published":esc(v.status.replace("_"," "))} version never changes, so learners' records stay exactly as they took it. <b>Edit as a new version</b> copies everything — modules, lessons, screens, pictures, questions, fact links and the exam distribution — into a new draft you can change freely in the course builder; publishing it replaces this version for new learners.</div>
+      <div class="bar" style="margin-top:8px"><button class="go dk sm" id="copyv">✎ Edit as a new version…</button></div>`:""}
     <div class="bar" style="margin-top:10px"><a class="go dk sm" id="builder" href="/admin/academy-builder.html?version=${esc(v.id)}">${ed?"Open course builder":"Open course builder (read only)"}</a>
       <a class="go ghost sm" href="/admin/academy-student.html?version=${esc(v.id)}" target="_blank" rel="noopener" aria-label="View v${esc(v.version)} as a student (opens in a new tab)">👁 View as a student</a></div>
     <p class="muted small" style="margin-top:10px">Lesson screens, pictures, the question bank and the exam distribution are edited in the <b>course builder</b>. <b>Preview</b> beside a lesson shows it in the learner lesson player, staff only; nothing is saved. Answer keys are never shown on this screen.</p></div>
@@ -415,6 +417,24 @@ async function viewVersion(id){
       ${m.lessons.map(l=>`<div class="lesson"><span class="grow">${esc(m.position)}.${esc(l.position)} ${esc(l.title)} <span class="muted">· ${esc(l.est_minutes)} min · ${n(l.blocks)} block(s)</span></span><a class="go ghost sm" href="/admin/academy-preview.html?lesson=${esc(l.id)}" target="_blank" rel="noopener" aria-label="Preview lesson ${esc(m.position)}.${esc(l.position)} (opens in a new tab)">Preview</a>${ed?`<button class="go ghost sm" data-el="${esc(l.id)}">Edit</button><button class="go warn sm" data-dl="${esc(l.id)}">Remove</button>`:""}</div>`).join("")}</div>`).join("")
       ||`<p class="muted">No modules yet.</p>`}</div>`;
   $("#back").onclick=()=>viewCourse(v.course_id);
+  const cv=$("#copyv"); if(cv)cv.onclick=()=>formModal("Edit "+(c.title||"course")+" — new version",`<p>This makes <b>a new draft version</b> with a full copy of v${esc(v.version)}. v${esc(v.version)} stays live for learners until you publish the new version.</p>
+      <ul class="small"><li>Learners already in v${esc(v.version)} keep their progress, attempts and certificates.</li><li>Publishing the new version retires v${esc(v.version)} for new enrollments.</li><li>Nothing learners see changes until you publish.</li></ul><div id="copyprog" class="muted small" aria-live="polite"></div>`,
+    "Make the editable copy",async()=>{
+      const pg=$("#copyprog"), m=$("#mmsg");
+      let to=null, label="";
+      const st=await api({action:"copy_version_start",from_version_id:v.id});
+      if(st.status===200&&st.body.ok){ to=st.body.version.id; label="v"+st.body.version.version; }
+      else if(st.body&&st.body.error==="draft_exists"&&st.body.draft_id&&cv.dataset.resume!==st.body.draft_id){
+        cv.dataset.resume=st.body.draft_id; if(m){m.className="msg err";m.textContent=errText(st)+" To finish an interrupted copy into it instead, press the button again.";} return; }
+      else if(st.body&&st.body.error==="draft_exists"&&st.body.draft_id){ to=st.body.draft_id; label="v"+st.body.draft_version; }
+      else { if(m){m.className="msg err";m.textContent=errText(st);} return; }
+      let r=null, steps=0;
+      do { pg.textContent="Copying into "+label+"…"+(r?` (${n(r.body.made.lessons)} lessons, ${n(r.body.made.questions)} questions, ${n(r.body.made.screens)} lesson screens in the last step)`:"");
+        r=await api({action:"copy_version_continue",from_version_id:v.id,to_version_id:to}); steps++;
+        if(r.status!==200){ if(m){m.className="msg err";m.textContent=errText(r)+" The draft "+label+" was kept; press the button again to continue the copy.";} return; }
+      } while(!r.body.done && steps<40);
+      closeModal(); viewVersion(to);
+    },{intro:"The President's decision; every step is recorded in the Academy audit history."});
   const reload=()=>viewVersion(id);
   const q1=s=>$("#view").querySelectorAll(s);
   if(ed){

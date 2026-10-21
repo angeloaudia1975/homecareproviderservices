@@ -154,6 +154,41 @@ const snapshot = () => run(DB, `select string_agg(t || '=' || n, ',' order by t)
     await t('nothing was written: no event, learner, enrollment, progress, attempt or certificate', async () => {
       assert.strictEqual(snapshot(), before, 'every count identical, the audit history included');
     });
+    await t('edit a published course: copy into a new draft (resumable in steps), identical content, old version untouched; President only', async () => {
+      run(DB, `select set_config('academy.op','x',true); update academy_modules set exam_quota = 1 where id = '${M1}'; update academy_modules set exam_quota = 2 where id = '${M2}'; insert into product_facts (id, manufacturer_slug, model_code, field, value, field_class, status, source_url, source_label, verified_on, verified_by)
+        values ('00000000-0000-0000-0000-00000000f002', 'golden-technologies', 'PR511', 'seat_width', '21', 'display', 'verified', 'https://www.goldentech.com/', 'Golden', current_date, 'staff:admin@test.example');
+        update academy_content_refs set field = 'seat_width', pinned_fact_id = '00000000-0000-0000-0000-00000000f002' where question_id = '${EX[3]}';`);
+      run(DB, `select academy_content_op_move_version(${PRES}, '${V}', 'in_review')`); run(DB, `select academy_publish_op_publish_version(${PRES}, '${V}', null)`);
+      const srcBefore = run(DB, `select md5(string_agg(l.title || l.blocks::text, '|' order by m.position, l.position)) from academy_lessons l join academy_modules m on m.id = l.module_id where m.version_id = '${V}'`);
+      assert.strictEqual((await admin('adm', { action: 'copy_version_start', from_version_id: V })).status, 403, 'an administrator who is not the President is refused');
+      const st = await admin('pres', { action: 'copy_version_start', from_version_id: V }); assert.strictEqual(st.status, 200, JSON.stringify(st.body));
+      const V2 = st.body.version.id; assert.strictEqual(st.body.version.status, 'draft'); assert.strictEqual(st.body.version.version, 2);
+      const again = await admin('pres', { action: 'copy_version_start', from_version_id: V }); assert.strictEqual(again.body.error, 'draft_exists'); assert.strictEqual(again.body.draft_id, V2);
+      process.env.ACADEMY_COPY_BUDGET_MS = '1';   // one small step per call: the copy must resume, never duplicate
+      let r, steps = 0;
+      do { r = await admin('pres', { action: 'copy_version_continue', from_version_id: V, to_version_id: V2 }); assert.strictEqual(r.status, 200, JSON.stringify(r.body)); steps++; } while (!r.body.done && steps < 60);
+      delete process.env.ACADEMY_COPY_BUDGET_MS;
+      assert.ok(r.body.done && steps > 1, 'finished in several steps: ' + steps);
+      const tree = vid => run(DB, `select string_agg(x, '|' order by x) from (
+        select 'M' || m.position || ':' || m.title || ':' || coalesce(m.exam_quota::text, '-') x from academy_modules m where m.version_id = '${vid}'
+        union all select 'L' || m.position || '.' || l.position || ':' || l.title || ':' || jsonb_array_length(l.blocks) from academy_lessons l join academy_modules m on m.id = l.module_id where m.version_id = '${vid}'
+        union all select 'Q' || coalesce(m.position, 0) || ':' || q.use || ':' || q.prompt || ':' || q.answer_key::text from academy_questions q left join academy_modules m on m.id = q.module_id where q.version_id = '${vid}' and q.status = 'active'
+        union all select 'R' || q.prompt || ':' || r.model_code || ':' || coalesce(r.field, '') from academy_content_refs r join academy_questions q on q.id = r.question_id where r.version_id = '${vid}') z`);
+      assert.strictEqual(tree(V2), tree(V), 'modules, lessons, questions, fact links and the distribution are copied');
+      const chk = run(DB, `select l.blocks from academy_lessons l join academy_modules m on m.id = l.module_id where m.version_id = '${V2}' and l.title = 'Lesson one'`);
+      const ids = JSON.parse(chk).find(b => b.kind === 'check').question_ids;
+      assert.strictEqual(run(DB, `select count(*) from academy_questions where id = any (array['${ids.join("','")}']::uuid[]) and version_id = '${V2}' and use = 'practice'`), String(ids.length), 'checks point at the COPIED practice questions');
+      const r2 = await admin('pres', { action: 'copy_version_continue', from_version_id: V, to_version_id: V2 }); assert.strictEqual(r2.body.done, true);
+      assert.deepStrictEqual(r2.body.made, { modules: 0, lessons: 0, questions: 0, screens: 0, fact_links: 0 }, 'running it again adds nothing');
+      assert.strictEqual(run(DB, `select md5(string_agg(l.title || l.blocks::text, '|' order by m.position, l.position)) from academy_lessons l join academy_modules m on m.id = l.module_id where m.version_id = '${V}'`), srcBefore, 'v1 unchanged');
+      assert.strictEqual(run(DB, `select status from academy_course_versions where id = '${V}'`), 'published');
+      // the copy is a normal draft: editable, and publishing it retires v1 (M4)
+      const lid = run(DB, `select l.id from academy_lessons l join academy_modules m on m.id = l.module_id where m.version_id = '${V2}' and l.title = 'Lesson two'`);
+      run(DB, `select academy_author_op_set_blocks(${PRES}, '${lid}', ${J([{ kind: 'text', heading: 'Two (edited)', body: 'Changed in v2.' }])})`);
+      run(DB, `select academy_content_op_move_version(${PRES}, '${V2}', 'in_review')`); run(DB, `select academy_publish_op_publish_version(${PRES}, '${V2}', null)`);
+      assert.strictEqual(run(DB, `select string_agg(version || ':' || status, ',' order by version) from academy_course_versions where course_id = '${C}'`), '1:retired,2:published');
+      assert.strictEqual((await admin('pres', { action: 'copy_version_continue', from_version_id: V, to_version_id: V2 })).status, 409, 'a published target is never written');
+    });
   } finally {
     console.log(`\n${pass} passed, ${fail} failed`);
     run('postgres', `drop database if exists ${DB} with (force)`);

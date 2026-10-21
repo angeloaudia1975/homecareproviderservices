@@ -3236,6 +3236,14 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   `academy_author_exam_draw`, kept equal by `test/academy-student-view.pg.test.js`). The drawn exam carries no key; grading
   is server-side; NOTHING is written (no learner, enrollment, progress, attempt, certificate or audit row) — progress lives
   in that browser tab only. Desktop / tablet / phone widths.
+- **Editing a published course (Angelo, 21 Oct 2026: "I should be able to edit any course").** A published version still
+  never changes (learners' records stay as they took it). The President edits it with **"✎ Edit as a new version"** on the
+  version page: `copy_version_start` makes a new draft (refused while another draft / in-review version exists — it then
+  offers to finish that copy), `copy_version_continue` copies modules, lessons + screens (check question ids re-pointed),
+  active questions, question fact links and the exam distribution through the existing audited ops, in ~6.5 s steps,
+  idempotent (fills in only what is missing; a re-run adds nothing). Edit the draft in the builder; publishing it retires the
+  old version (M4); learners on the old version keep everything. Manufacturer programs get Publish / Retire buttons on their
+  course page (President). Course details (title, category, link) were already editable by the President.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

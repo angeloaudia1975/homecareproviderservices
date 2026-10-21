@@ -338,6 +338,134 @@ READ.publish_preview = async (staff, b) => {
     reason: v.status !== 'in_review' ? 'Submit the version for review first.' : blocking.length ? `${blocking.length} blocking item(s) must be resolved first.` : null };
 };
 
+/* ---------- Edit a published course = a new draft version copied from it (President; 21 Oct 2026) ----------
+   A published version never changes (A1/M1/M4). To edit it, the President copies it into a NEW DRAFT version — modules,
+   lessons and their screens, the question bank (active questions), question fact links and the exam distribution — edits
+   the draft in the Course Builder and publishes it; publishing retires the old version in the same transaction (M4).
+   Learners already on the old version keep their enrollment, progress, attempts and certificates.
+   Every write goes through the existing audited operations (M2 content, M3 author, M3.1 save). The copy runs in short
+   steps so no request outlasts the function time limit: copy_version_start makes the empty draft, copy_version_continue
+   fills in whatever is still missing (matched by position / question text) and answers done:false until finished — so an
+   interrupted copy is simply continued, never duplicated. */
+const COPY_BUDGET_MS = () => Number(process.env.ACADEMY_COPY_BUDGET_MS) || 6500;   // tests shorten it to prove a copy resumes
+async function copySource(id) {
+  const v = need(one(await A.sbGet(`academy_course_versions?id=eq.${enc(id)}&select=${VERSION_COLS}`)), 'Course version');
+  const c = need(one(await A.sbGet(`academy_courses?id=eq.${enc(v.course_id)}&select=${COURSE_COLS}`)), 'Course');
+  if (c.course_type === 'manufacturer_program') A.refuse(400, 'invalid', 'A manufacturer program has no HCPS versions.');
+  if (c.status === 'retired') A.refuse(409, 'locked', 'This course is retired.');
+  return { v, c };
+}
+async function versionTree(vid) {
+  const mods = await all(`academy_modules?version_id=eq.${enc(vid)}&select=id,position,title,objectives,exam_quota`, 'position.asc');
+  const lessons = mods.length ? await all(`academy_lessons?module_id=${idsIn(mods.map(m => m.id))}&select=id,module_id,position,title,est_minutes,blocks`, 'position.asc') : [];
+  const qs = await all(`academy_questions?version_id=eq.${enc(vid)}&select=id,module_id,kind,use,prompt,choices,answer_key,explanation,objective_tags,status`);
+  const refs = await all(`academy_content_refs?version_id=eq.${enc(vid)}&question_id=not.is.null&select=question_id,manufacturer_slug,model_code,field`);
+  return { mods, lessons, qs, refs };
+}
+WRITE.copy_version_start = async (staff, b) => {
+  requirePresident(staff);
+  const { v, c } = await copySource(A.uuid(b.from_version_id, 'version'));
+  const open = await A.sbGet(`academy_course_versions?course_id=eq.${enc(c.id)}&status=in.(draft,in_review)&select=id,version,status`);
+  if (open.length) return { ok: false, error: 'draft_exists', draft_id: open[0].id, draft_version: open[0].version, draft_status: open[0].status,
+    message: `Version ${open[0].version} of this course is already a ${open[0].status.replace('_', ' ')}. Open it and edit it there, or finish it, before starting another.` };
+  const settings = { pass_mark: v.pass_mark, exam_questions: v.exam_questions };
+  if (v.validity_months) settings.validity_months = v.validity_months;
+  const made = await A.contentOp('create_version', { p_actor: actor(staff), p_id: randomUUID(), p_course_id: c.id, p_settings: settings });
+  return { ok: true, audited: true, version: made, from_version: v.version };
+};
+WRITE.copy_version_continue = async (staff, b) => {
+  requirePresident(staff);
+  const t0 = Date.now();
+  const { v: src } = await copySource(A.uuid(b.from_version_id, 'version'));
+  const dst = need(one(await A.sbGet(`academy_course_versions?id=eq.${enc(A.uuid(b.to_version_id, 'version'))}&select=${VERSION_COLS}`)), 'Course version');
+  if (String(dst.course_id) !== String(src.course_id) || dst.status !== 'draft' || dst.version <= src.version) A.refuse(409, 'locked', 'The copy target must be a newer draft version of the same course.');
+  const S = await versionTree(src.id);
+  let T = await versionTree(dst.id);
+  const done = { modules: 0, lessons: 0, questions: 0, screens: 0, fact_links: 0 };
+  // every call makes progress (at least one write) before it may stop for time
+  const late = () => Object.values(done).some(n => n > 0) && Date.now() - t0 > COPY_BUDGET_MS();
+  const progress = finished => ({ ok: true, audited: true, done: finished, to_version_id: dst.id, made: done,
+    totals: { modules: S.mods.length, lessons: S.lessons.length, questions: S.qs.filter(q => q.status === 'active').length } });
+  // 1. modules, in order (the database gives the next position, so creating in order keeps positions equal)
+  for (const m of S.mods) {
+    if (T.mods.some(x => x.position === m.position)) continue;
+    if (late()) return progress(false);
+    await A.contentOp('create_module', { p_actor: actor(staff), p_id: randomUUID(), p_version_id: dst.id, p_module: { title: m.title, objectives: Array.isArray(m.objectives) ? m.objectives : [] } });
+    done.modules++;
+  }
+  if (done.modules) T = await versionTree(dst.id);
+  const modByPos = Object.fromEntries(T.mods.map(m => [m.position, m]));
+  const srcModPos = Object.fromEntries(S.mods.map(m => [String(m.id), m.position]));
+  // 2. lessons (empty), in order within each module; modules in parallel
+  await Promise.all(S.mods.map(async m => {
+    const tm = modByPos[m.position];
+    for (const l of S.lessons.filter(x => String(x.module_id) === String(m.id))) {
+      if (T.lessons.some(x => String(x.module_id) === String(tm.id) && x.position === l.position)) continue;
+      if (late()) return;
+      await A.contentOp('create_lesson', { p_actor: actor(staff), p_id: randomUUID(), p_module_id: tm.id, p_lesson: { title: l.title, est_minutes: l.est_minutes } });
+      done.lessons++;
+    }
+  }));
+  if (late()) return progress(false);
+  if (done.lessons) T = await versionTree(dst.id);
+  // 3. questions (active only), matched by module position + use + kind + prompt
+  const qKey = (q, posOf) => [posOf(q), q.use, q.kind, q.prompt].join('\u0001');
+  const srcPos = q => (q.module_id ? srcModPos[String(q.module_id)] : 0);
+  const dstModPos = Object.fromEntries(T.mods.map(m => [String(m.id), m.position]));
+  const dstPos = q => (q.module_id ? dstModPos[String(q.module_id)] : 0);
+  const have = {}; for (const q of T.qs) (have[qKey(q, dstPos)] = have[qKey(q, dstPos)] || []).push(q);
+  const missing = [];
+  const seen = {};
+  for (const q of S.qs.filter(x => x.status === 'active')) {
+    const k = qKey(q, srcPos); seen[k] = (seen[k] || 0) + 1;
+    if ((have[k] || []).length < seen[k]) missing.push(q);
+  }
+  for (let i = 0; i < missing.length; i += 8) {
+    if (late()) return progress(false);
+    await Promise.all(missing.slice(i, i + 8).map(q => A.authorOp('create_question', { p_actor: actor(staff), p_id: randomUUID(), p_version_id: dst.id,
+      p_question: { module_id: q.module_id ? modByPos[srcPos(q)].id : null, kind: q.kind, use: q.use, prompt: q.prompt, choices: q.choices, answer_key: q.answer_key,
+        explanation: q.explanation, objective_tags: q.objective_tags || [] } })));
+    done.questions += Math.min(8, missing.length - i);
+  }
+  if (done.questions) T = await versionTree(dst.id);
+  // source question id -> target question id (in order, so identical prompts pair up one to one)
+  const pool = {}; for (const q of T.qs) (pool[qKey(q, dstPos)] = pool[qKey(q, dstPos)] || []).push(q.id);
+  const qmap = {}; const used = {};
+  for (const q of S.qs.filter(x => x.status === 'active')) { const k = qKey(q, srcPos); const n = used[k] = (used[k] || 0); qmap[String(q.id)] = (pool[k] || [])[n] || null; used[k]++; }
+  // 4. lesson screens (question ids re-pointed to the copies; fact links follow from the screens, M3.1)
+  const jobs = [];
+  for (const l of S.lessons) {
+    const tm = modByPos[srcModPos[String(l.module_id)]];
+    const tl = T.lessons.find(x => String(x.module_id) === String(tm.id) && x.position === l.position);
+    const blocks = Array.isArray(l.blocks) ? l.blocks : [];
+    if (!tl || !blocks.length || (Array.isArray(tl.blocks) && tl.blocks.length)) continue;
+    const remapped = JSON.parse(JSON.stringify(blocks));
+    for (const bl of remapped) if (Array.isArray(bl.question_ids)) bl.question_ids = bl.question_ids.map(id => qmap[String(id)]).filter(Boolean);
+    jobs.push({ id: tl.id, blocks: remapped });
+  }
+  for (let i = 0; i < jobs.length; i += 5) {
+    if (late()) return progress(false);
+    await Promise.all(jobs.slice(i, i + 5).map(j => A.saveOp('lesson', { p_actor: actor(staff), p_lesson_id: j.id, p_base_blocks: [], p_blocks: j.blocks })));
+    done.screens += Math.min(5, jobs.length - i);
+  }
+  // 5. question fact links
+  const dstRefs = new Set(T.refs.map(r => [r.question_id, r.manufacturer_slug, r.model_code, r.field || ''].join('|')));
+  const links = S.refs.map(r => ({ question_id: qmap[String(r.question_id)], manufacturer_slug: r.manufacturer_slug, model_code: r.model_code, field: r.field }))
+    .filter(r => r.question_id && !dstRefs.has([r.question_id, r.manufacturer_slug, r.model_code, r.field || ''].join('|')));
+  for (let i = 0; i < links.length; i += 8) {
+    if (late()) return progress(false);
+    await Promise.all(links.slice(i, i + 8).map(r => { const link = { question_id: r.question_id, manufacturer_slug: r.manufacturer_slug, model_code: r.model_code };
+      if (r.field) link.field = r.field; return A.authorOp('link_fact', { p_actor: actor(staff), p_id: null, p_link: link }); }));
+    done.fact_links += Math.min(8, links.length - i);
+  }
+  // 6. exam distribution, if the source had one
+  if (S.mods.some(m => m.exam_quota != null) && !T.mods.some(m => m.exam_quota != null)) {
+    const q = {}; for (const m of S.mods) if (m.exam_quota != null) q[String(modByPos[m.position].id)] = m.exam_quota;
+    await A.authorOp('set_exam_distribution', { p_actor: actor(staff), p_version_id: dst.id, p_quotas: q });
+  }
+  return progress(true);
+};
+
 /* ---------- modules and lessons (draft versions only) ---------- */
 WRITE.create_module = async (staff, b) => {
   const version_id = A.uuid(b.version_id, 'version'); await draftVersion(version_id);
