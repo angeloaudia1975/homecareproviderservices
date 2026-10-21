@@ -30,7 +30,7 @@
         <div><span class="ta-badge live">{{ c.badge or "Available now" }}</span></div>
         <h3>{{ c.title }}</h3>{% if c.subtitle %}<p class="ta-subtitle">{{ c.subtitle }}</p>{% endif %}<p>{{ c.summary }}</p>{{ courseFacts(c) }}
         {% if c.price_note %}<p class="ta-price-note">{{ c.price_note }}</p>{% endif %}
-        {% if c.cta_label %}<div class="ta-actions"><a class="ta-btn primary" href="{{ c.cta_url or '/academy/' }}">{{ c.cta_label }}</a></div>{% endif %}
+        {% if c.cta_label %}<div class="ta-actions"><a class="ta-btn primary" href="{{ c.cta_url or '/academy/' }}"{% if c.cta_url and c.cta_url.indexOf('https://') == 0 %} target="_blank" rel="noopener"{% endif %}>{{ c.cta_label }}{% if c.cta_url and c.cta_url.indexOf('https://') == 0 %}<span class="ta-sr"> (opens in a new tab)</span>{% endif %}</a></div>{% endif %}
       </div>
     </article>
     {% endif %}{% endfor %}

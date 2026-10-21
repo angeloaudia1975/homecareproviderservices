@@ -441,6 +441,18 @@ async function hook(type, object) {
       } finally { run(DB, `drop trigger zz_slow on academy_enrollments; drop function pg_temp_slow()`); }
     });
 
+    await t('Golden technical certifications: only PUBLISHED manufacturer programs are listed to learners, with Golden\'s link; nothing recorded', async () => {
+      const mp = run(DB, `select id from academy_courses where slug = 'golden-external'`);
+      let r = await learner({ action: 'manufacturer_programs' }, OUT); assert.strictEqual(r.status, 200); assert.deepStrictEqual(r.body.programs, [], 'a draft program is not shown');
+      run(DB, `select academy_publish_op_publish_course(${PRES}, '${mp}')`);
+      r = await learner({ action: 'manufacturer_programs' }, OUT);
+      assert.strictEqual(r.body.programs.length, 1); assert.strictEqual(r.body.programs[0].url, 'https://www.goldentech.com/training');
+      assert.strictEqual(r.body.programs[0].manufacturer, 'Golden Technologies'); assert.strictEqual(r.body.programs[0].credential, null);
+      assert.strictEqual((await learner({ action: 'manufacturer_programs' }, null)).status, 401);
+      const g = await learner({ action: 'manufacturer_programs' }, OUT, { method: 'GET', query: { action: 'manufacturer_programs' } }); assert.strictEqual(g.status, 200, 'a read action');
+      assert.strictEqual(run(DB, `select count(*) from academy_external_certs`), '0');
+    });
+
     await t('records check: every F1 change is audited; no purchase row was made for any free enrollment', async () => {
       assert.strictEqual(run(DB, `select count(*) from academy_enrollments e where e.access_source = 'free' and not exists
                                    (select 1 from academy_events v where v.entity = 'academy_enrollments' and v.entity_id = e.id::text and v.action in ('free_enroll','free_re_enroll'))`), '0');

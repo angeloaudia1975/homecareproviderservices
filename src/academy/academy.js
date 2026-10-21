@@ -128,9 +128,31 @@
       var head = [el('h1', { text: 'Hello, ' + (ME.learner.full_name || 'there') }), el('p', { cls: 'ac-muted', text: dealers.join(' · ') })];
       var list = r.body.courses || [];
       var free = el('div', { id: 'freebox' });
-      if (!list.length) { show(head.concat(el('div', { cls: 'ac-card' }, [el('h2', { text: 'No courses yet' }), el('p', { text: 'Add a free course below, or your Training Manager or HCPS will enroll you in a course. It will appear here.' })]), free)); focusMain(); freeCourses(free); return; }
+      if (!list.length) { var mfr0 = el('div', { id: 'mfrbox' }); show(head.concat(el('div', { cls: 'ac-card' }, [el('h2', { text: 'No courses yet' }), el('p', { text: 'Add a free course below, or your Training Manager or HCPS will enroll you in a course. It will appear here.' })]), free, mfr0)); focusMain(); freeCourses(free); mfrPrograms(mfr0); return; }
       EXAMS_OPEN = !!r.body.exams_open;
-      show(head.concat(el('div', { cls: 'ac-courses' }, list.map(courseCard)), free)); focusMain(); freeCourses(free);
+      var mfr = el('div', { id: 'mfrbox' });
+      show(head.concat(el('div', { cls: 'ac-courses' }, list.map(courseCard)), free, mfr)); focusMain(); freeCourses(free); mfrPrograms(mfr);
+    });
+  }
+  /* Manufacturer technical certifications: taught, examined and issued by the manufacturer (e.g. Golden). HCPS only
+     links to them; a credential shows "verified" only after HCPS has checked the manufacturer's certificate. */
+  var CRED = { training_started: 'Started', training_completed: 'Training completed', exam_opened: 'Exam opened', exam_reported: 'Exam reported — awaiting the manufacturer',
+               awaiting_certificate: 'Awaiting the manufacturer’s certificate', certificate_uploaded: 'Certificate received — HCPS is checking it', verified: 'Verified', rejected: 'Not accepted — contact HCPS' };
+  function mfrPrograms(box) {
+    api({ action: 'manufacturer_programs' }).then(function (r) {
+      var list = (r.status === 200 && r.body.programs) || [];
+      if (!list.length) return;
+      var groups = {}; list.forEach(function (p) { (groups[p.manufacturer] = groups[p.manufacturer] || []).push(p); });
+      box.replaceChildren.apply(box, Object.keys(groups).map(function (m) {
+        return el('section', { cls: 'ac-card' }, [el('h2', { text: m + ' technical certifications' }),
+          el('p', { cls: 'ac-small ac-muted', text: 'Taught, examined and issued by ' + m + ' — not by HCPS. The training and exam open on ' + m + '’s own page. When you receive your ' + m + ' certificate, send it to HCPS so we can record it.' }),
+          el('ul', { cls: 'ac-stack' }, groups[m].map(function (p) {
+            var a = el('a', { cls: 'ac-btn pri', href: p.url, target: '_blank', rel: 'noopener noreferrer', text: 'Open ' + m + '’s training' });
+            a.setAttribute('aria-label', 'Open ' + p.title + ' on ' + m + '’s site (opens in a new tab)');
+            return el('li', { cls: 'ac-row' }, [el('span', null, [el('b', { text: p.title }),
+              p.credential ? el('span', { cls: 'ac-pill' + (p.credential.status === 'verified' ? ' ok' : ''), text: ' ' + (CRED[p.credential.status] || p.credential.status) }) : null]), a]);
+          }))]);
+      }));
     });
   }
   /* F1 free launch: published FREE courses the learner can add themselves (no card). Enrolling is idempotent. */

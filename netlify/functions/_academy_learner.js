@@ -294,6 +294,23 @@ LEARNER.my_certificates = async (event, learner) => {
   const certs = enr.length ? await certificatesFor(`learner_id=eq.${enc(learner.learner_id)}&enrollment_id=${idsIn(enr.map(e => e.id))}`) : [];
   return { ok: true, certificates: certs, issuing: await A.switchOn('academy_certificates') };
 };
+/* Manufacturer technical certifications (e.g. Golden's Lift Chair / Mobility Technical Service Certification). The
+   manufacturer teaches, examines and issues them; HCPS only lists them and links to the manufacturer's own training /
+   exam (published "manufacturer program" courses, President-only, M4). A learner's own manufacturer credentials are
+   shown as HCPS recorded them; opening a link never means passed (decision 37). Read only. */
+LEARNER.manufacturer_programs = async (event, learner) => {
+  const [courses, mfrs, mine] = await Promise.all([
+    A.sbGet(`academy_courses?course_type=eq.manufacturer_program&status=eq.published&select=id,slug,title,manufacturer_slug,external_url&order=title.asc`),
+    A.sbGet(`manufacturers?select=slug,name`),
+    A.sbGet(`academy_external_certs?learner_id=eq.${enc(learner.learner_id)}&select=course_id,status,verified_at,certificate_ref,expires_at`)]);
+  const name = Object.fromEntries(mfrs.map(m => [m.slug, m.name || m.slug]));
+  const by = Object.fromEntries(mine.map(x => [String(x.course_id), x]));
+  return { ok: true, programs: courses.filter(c => /^https:\/\//.test(String(c.external_url || '')) && !/^test-/.test(c.slug)).map(c => {
+    const x = by[String(c.id)];
+    return { id: c.id, title: c.title, manufacturer: name[c.manufacturer_slug] || c.manufacturer_slug, url: c.external_url,
+      credential: x ? { status: x.status, verified_at: x.verified_at || null, certificate_ref: x.status === 'verified' ? x.certificate_ref || null : null, expires_at: x.expires_at || null } : null };
+  }) };
+};
 LEARNER.claim_certificate = async (event, learner, b) => {
   if (!(await A.switchOn('academy_certificates'))) A.refuse(403, 'flag_off', CERT_WAIT.switched_off);
   const r = await A.accessOp('cert_op_claim', { p_actor: actorOf(learner), p_attempt_id: A.uuid(b.attempt_id, 'attempt') });
