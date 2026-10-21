@@ -363,7 +363,10 @@ async function viewCourse(id){
       ${isMfr?`<tr><td data-l="Link"><b>Manufacturer training</b></td><td><a class="lnk" href="${esc(safeUrl(c.external_url))}" target="_blank" rel="noopener noreferrer">${esc(c.external_url)}</a></td></tr>`:""}
     </tbody></table>
     <div class="bar" style="margin-top:10px"><button class="go ghost sm" id="editc">Edit details</button>${c.locked&&!WHO.may.publish?`<span class="muted small">Learners have seen this course: only the President can change its details.</span>`:""}</div></div>
-   ${isMfr?`<div class="card"><p class="muted">A manufacturer program is taught and examined by the manufacturer, so it has no HCPS versions, lessons or exam. Learners' manufacturer credentials appear under Certifications.</p></div>`:
+   ${isMfr?`<div class="card"><p class="muted">A manufacturer program is taught and examined by the manufacturer, so it has no HCPS versions, lessons or exam. Learners' manufacturer credentials appear under Certifications.</p>
+     <div class="bar" style="margin-top:10px">${!WHO.may.publish?`<span class="muted small">Publishing is reserved for the President.</span>`:
+       c.status==="published"?`<span class="pill p-on">Shown to learners</span><button class="go warn sm" id="mretire">Retire…</button>`:
+       c.status==="draft"?`<button class="go dk sm" id="mpub">Publish for learners…</button><span class="muted small">Learners then see it under “${esc(mname(c.manufacturer_slug))} technical certifications” with a button to the manufacturer’s link.</span>`:`<span class="muted small">Retired.</span>`}</div></div>`:
    `<div class="card"><div class="bar" style="margin-bottom:8px"><h2 class="grow" style="margin:0">Versions</h2><button class="go dk sm" id="newv">+ New draft version</button></div>
     <table class="stack"><thead><tr><th>Version</th><th>Status</th><th>Pass mark</th><th>Exam questions</th><th>Valid for</th><th>Published</th></tr></thead><tbody>
     ${vs.slice().reverse().map(v=>`<tr class="click" data-id="${esc(v.id)}"><td data-l="Version"><b>v${esc(v.version)}</b></td><td data-l="Status">${stPill(v.status)}</td><td data-l="Pass mark">${esc(v.pass_mark)}%</td>
@@ -375,6 +378,10 @@ async function viewCourse(id){
       <p class="muted small" style="margin-top:8px">The short name, type and issuer of a course never change.</p>`,"Save",async()=>{
       const b={action:"update_course",id:c.id,title:val("etitle"),category:val("ecat")}; if(isMfr)b.external_url=val("eurl");
       await change(b,"mmsg",()=>viewCourse(c.id)); });
+  const mp=$("#mpub"); if(mp)mp.onclick=()=>formModal("Publish "+c.title,`<p>Learners will see <b>${esc(c.title)}</b> in the HCPS Academy with a button that opens:</p><p class="mono small">${esc(c.external_url)}</p><p class="muted small">It stays ${esc(mname(c.manufacturer_slug))}-issued: HCPS never issues this credential. You can retire it later.</p>`,
+    "Publish",async()=>{ await change({action:"publish_course",id:c.id},"mmsg",()=>viewCourse(c.id)); },{intro:"The President's decision; recorded in the Academy audit history."});
+  const mr=$("#mretire"); if(mr)mr.onclick=()=>formModal("Retire "+c.title,`${area("mrreason","Reason (required)","")}<p class="muted small">Learners stop seeing it. Credentials already recorded are kept.</p>`,
+    "Retire",async()=>{ await change({action:"retire_course",id:c.id,reason:val("mrreason")},"mmsg",()=>viewCourse(c.id)); });
   if(!isMfr){
     $("#newv").onclick=()=>formModal("New draft version",`${field("vpass","Pass mark (%)",'type="number" min="1" max="100"',80)}${field("vq","Exam questions per attempt",'type="number" min="1" max="200"',25)}${field("vvalid","Certificate valid for (months; blank = no expiry)",'type="number" min="1" max="120"',12)}`,
       "Create draft",async()=>{ await change({action:"create_version",course_id:c.id,pass_mark:val("vpass"),exam_questions:val("vq"),validity_months:val("vvalid")},"mmsg",b=>viewVersion(b.version.id)); });
