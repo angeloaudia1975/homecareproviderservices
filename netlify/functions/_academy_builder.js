@@ -392,11 +392,26 @@ WRITE.approve_media = async (staff, b) => {
   if (rights === 'manufacturer_permitted') { media.manufacturer_slug = A.text(b.manufacturer_slug, 80, 'Manufacturer'); media.permission_ref = A.text(b.permission_ref, 300, 'Permission'); }
   return { ok: true, audited: true, media: await A.authorOp('create_media', { p_actor: actor(staff), p_id: crypto.randomUUID(), p_media: media }) };
 };
+/* YouTube / Vimeo addresses an author pastes (watch page, youtu.be, shorts, embed, vimeo.com/<id>) -> the privacy-enhanced
+   embed link the player allows. Anything else is returned unchanged and then refused by the allow-list. */
+function videoEmbedUrl(v) {
+  let u; try { u = new URL(String(v).trim()); } catch (e) { return String(v); }
+  if (u.protocol !== 'https:' || u.username || u.password) return String(v);
+  let id = null;
+  if (/^(www\.|m\.)?youtube\.com$/.test(u.hostname)) id = u.pathname === '/watch' ? u.searchParams.get('v') : (/^\/(embed|shorts|live)\/([A-Za-z0-9_-]{6,20})$/.exec(u.pathname) || [])[2];
+  else if (u.hostname === 'youtu.be') id = u.pathname.slice(1);
+  else if (u.hostname === 'www.youtube-nocookie.com') id = (/^\/embed\/([A-Za-z0-9_-]{6,20})$/.exec(u.pathname) || [])[1];
+  if (id && /^[A-Za-z0-9_-]{6,20}$/.test(id)) return 'https://www.youtube-nocookie.com/embed/' + id;
+  const vm = u.hostname === 'vimeo.com' && /^\/(\d{4,12})$/.exec(u.pathname);
+  if (vm) return 'https://player.vimeo.com/video/' + vm[1];
+  return String(v);
+}
 /* A video (YouTube no-cookie / Vimeo) or a document link: never stored by HCPS, so any administrator may add it. */
 WRITE.add_link_media = async (staff, b) => {
   const kind = A.oneOf(b.kind, ['video', 'link', 'pdf'], 'Kind');
   const media = { kind, external_url: A.text(b.url, 1000, 'Link'), rights: A.oneOf(b.rights || 'link_only', ['link_only', 'manufacturer_permitted'], 'Rights'), alt_text: A.text(b.title, 300, 'Title') };
-  if (kind === 'video' && !LESSON.VIDEO.test(media.external_url)) A.refuse(400, 'invalid', 'Videos are youtube-nocookie.com/embed/… or player.vimeo.com/video/… links (use the embed link, not the watch page).');
+  if (kind === 'video') media.external_url = videoEmbedUrl(media.external_url);   // a watch / share link is turned into the embed link
+  if (kind === 'video' && !LESSON.VIDEO.test(media.external_url)) A.refuse(400, 'invalid', 'Videos are YouTube or Vimeo links (youtube.com/watch?v=…, youtu.be/…, a youtube-nocookie.com/embed/… link or player.vimeo.com/video/…).');
   if (b.manufacturer_slug) media.manufacturer_slug = A.text(b.manufacturer_slug, 80, 'Manufacturer');
   if (media.rights === 'manufacturer_permitted') media.permission_ref = A.text(b.permission_ref, 300, 'Permission');
   return { ok: true, audited: true, media: await A.authorOp('create_media', { p_actor: actor(staff), p_id: crypto.randomUUID(), p_media: media }) };
@@ -424,4 +439,4 @@ WRITE.discard_upload = async (staff, b) => {
    (Angelo, 12 Oct 2026). academy-admin-api refuses these actions for every other administrator; reads stay open to them. */
 const PRESIDENT_ONLY_EDITING = ['create_course', 'update_course', 'create_version', 'update_version', 'submit_for_review', 'return_to_draft',
   'create_module', 'update_module', 'delete_module', 'create_lesson', 'update_lesson', 'delete_lesson'].concat(Object.keys(WRITE));
-module.exports = { PRESIDENT_ONLY_EDITING, READ, WRITE, readiness, estimateMinutes, blocksHash, canon, TYPES, MAX_UPLOAD, UPLOAD_BODY };
+module.exports = { PRESIDENT_ONLY_EDITING, READ, WRITE, readiness, estimateMinutes, blocksHash, canon, TYPES, MAX_UPLOAD, UPLOAD_BODY, videoEmbedUrl };

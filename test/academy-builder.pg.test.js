@@ -438,10 +438,14 @@ const one = q => JSON.parse(run(DB, `select coalesce(row_to_json(x), 'null') fro
       assert.strictEqual(ev.length, 1); assert.strictEqual(ev[0].actor, 'staff:admin@test.example'); assert.match(JSON.stringify(ev[0].after), /Duplicate of the side view/);
       assert.strictEqual((await call('pres', { action: 'discard_upload', storage_path: '../secret', reason: 'x' })).status, 400);
     });
-    await t('add_link_media: a YouTube no-cookie / Vimeo embed only; a watch page or another host is refused', async () => {
+    await t('add_link_media: a YouTube / Vimeo address becomes the privacy-enhanced embed link; another host or plain http is refused', async () => {
       const v = ok(await call('pres', { action: 'add_link_media', kind: 'video', url: 'https://www.youtube-nocookie.com/embed/abcdefgh12', title: 'AutoDrive overview', rights: 'link_only', manufacturer_slug: G })).media;
       assert.strictEqual(v.kind, 'video');
-      assert.strictEqual((await call('pres', { action: 'add_link_media', kind: 'video', url: 'https://www.youtube.com/watch?v=abcdefgh12', title: 'x video', rights: 'link_only' })).status, 400);
+      const w = ok(await call('pres', { action: 'add_link_media', kind: 'video', url: 'https://www.youtube.com/watch?v=abcdefgh13', title: 'watch-page video', rights: 'link_only' })).media;
+      assert.strictEqual(w.external_url, 'https://www.youtube-nocookie.com/embed/abcdefgh13', 'a pasted watch page is stored as the no-cookie embed');
+      assert.strictEqual(ok(await call('pres', { action: 'add_link_media', kind: 'video', url: 'https://youtu.be/abcdefgh14', title: 'share-link video', rights: 'link_only' })).media.external_url, 'https://www.youtube-nocookie.com/embed/abcdefgh14');
+      assert.strictEqual((await call('pres', { action: 'add_link_media', kind: 'video', url: 'https://evil.example/watch?v=abcdefgh12', title: 'x video', rights: 'link_only' })).status, 400);
+      assert.strictEqual((await call('pres', { action: 'add_link_media', kind: 'video', url: 'http://www.youtube.com/watch?v=abcdefgh12', title: 'x video', rights: 'link_only' })).status, 400);
       assert.strictEqual((await call('pres', { action: 'add_link_media', kind: 'link', url: 'javascript:alert(1)', title: 'bad link', rights: 'link_only' })).status, 400);
     });
 

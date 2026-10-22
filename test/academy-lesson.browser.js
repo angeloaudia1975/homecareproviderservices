@@ -53,6 +53,8 @@ function dbLesson(hostile) {
     { kind: 'text', heading: T('The AutoDrive control'), body: T('Read **this** first.') + '\n\n- ' + T('one') + '\n- two' },
     { kind: 'explorer', style: 'hotspots', title: T('Hand control parts'), media_id: u(81), items: [
       { title: T('Rise'), body: T('Raises the chair.'), x: 30, y: 20 }, { title: 'Recline', body: 'Reclines the chair.', x: 70, y: 20 }, { title: 'Presets', body: 'ZG, HOME, TV.', x: 50, y: 70 }] },
+    { kind: 'explorer', style: 'cards', title: T('Which control'), media_id: u(81), items: [
+      { title: T('Two-button'), body: T('Up and down.'), media_id: u(81) }, { title: 'AutoDrive', body: 'Presets.' }] },
     { kind: 'image', media_id: u(82), caption: T('A picture whose file is gone') },
     { kind: 'image', media_id: u(81), caption: 'The control, decorative copy' },
     { kind: 'video', media_id: u(83), caption: T('AutoDrive video') },
@@ -241,6 +243,9 @@ const WIDTHS = QUICK ? [1440, 390] : [1440, 1024, 820, 390, 360];
         const ph = await pg.$$eval('.hl-k-image .hl-ph', a => a.map(x => x.getAttribute('aria-label')));
         assert.deepStrictEqual(ph, ['Picture: A picture that will not load'], 'the broken file became a labelled placeholder');
         assert.strictEqual(await pg.$$eval('.hl-dot', d => d.length), 3);
+        // a tabs/cards explorer with a lesson picture shows it beside the cards (issue #33 visual explorer)
+        assert.strictEqual(await pg.$$eval('.hl-k-explorer .hl-visual .hl-visual-pic img', x => x.length), 1, 'explorer picture beside the cards');
+        assert.ok(await pg.$eval('.hl-k-explorer .hl-visual .hl-visual-pic img', x => x.complete && x.naturalWidth > 0), 'explorer picture loads');
         await pg.click('.hl-dot >> nth=1'); assert.strictEqual(await pg.textContent('.hl-k-explorer .hl-detail h3'), 'Recline');
         assert.ok(!(await pg.$('.hl-k-video iframe')), 'nothing loads before the tap');
         await pg.click('.hl-play'); await pg.waitForSelector('.hl-k-video iframe');

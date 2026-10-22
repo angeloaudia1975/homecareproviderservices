@@ -12,6 +12,8 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const BLD = 'netlify/functions/_academy_builder.js', API = 'netlify/functions/academy-admin-api.js';
 const MUTANTS = [
+  { f: BLD, from: "if (u.protocol !== 'https:' || u.username || u.password) return String(v);", to: "", why: 'a plain-http (or credentialed) YouTube link turned into an embed' },
+  { f: BLD, from: "if (/^(www\\.|m\\.)?youtube\\.com$/.test(u.hostname)) id =", to: "if (true) id =", why: 'any host with ?v= treated as YouTube' },
   { f: BLD, from: "if (!isPresident(staff)) A.refuse(403, 'president_only', 'Only the President copies", to: "if (false) A.refuse(403, 'president_only', 'Only the President copies", why: 'a non-President copies a manufacturer file in (held by the President-only editing gate)', db: true },
   { f: BLD, from: "if (!(IMPORT_HOSTS[folder] || []).some(re => re.test(url)) || url.includes('..'))", to: "if (false)", why: 'a file copied from any host' },
   { f: BLD, from: "|| url.includes('..')) A.refuse(400, 'invalid', \"That link", to: ") A.refuse(400, 'invalid', \"That link", why: 'a ../ path on the allowed host' },

@@ -303,7 +303,16 @@
         s.appendChild(wrap);
         s.appendChild(h('p', { cls: 'hl-source', text: 'Every cell comes from the product-facts layer with its source and date. ' + (b.rows && b.rows.some(function (r) { return r.cells.some(function (c) { return c.status === 'awaiting'; }); }) ? 'Amber marks a detail awaiting ' + mfr + ' confirmation.' : '') }));
       },
-      explorer: function (s, b, i) { (b.style === 'hotspots' ? hotspots : b.style === 'cards' ? cards : tabs)(s, b, i); },
+      explorer: function (s, b, i) {
+        if (b.style === 'hotspots') { hotspots(s, b, i); return; }
+        // tabs / cards with a lesson picture: the picture beside the interaction (stacked on narrow screens)
+        if (b.image && !b.image.missing && safeUrl(b.image.src)) {
+          var side = h('div', { cls: 'hl-visual' }), pic = h('div', { cls: 'hl-visual-pic' }, [picture(b.image)]), body = h('div', { cls: 'hl-visual-body' });
+          side.appendChild(pic); side.appendChild(body); s.appendChild(side);
+          (b.style === 'cards' ? cards : tabs)(body, b, i); return;
+        }
+        (b.style === 'cards' ? cards : tabs)(s, b, i);
+      },
       steps: function (s, b) {
         var ol = h('ol', { cls: 'hl-steps' }); (b.items || []).forEach(function (x) { ol.appendChild(h('li', { text: x })); }); s.appendChild(ol);
         if (b.source_label) s.appendChild(h('p', { cls: 'hl-source', text: 'Source: ' + b.source_label }));

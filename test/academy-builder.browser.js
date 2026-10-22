@@ -276,6 +276,28 @@ async function t(name, fn) { try { await fn(); pass++; console.log('  ok   ' + n
       await pg.context().close();
     });
 
+    await t('a video is added right on its screen from a pasted YouTube watch link: stored as the no-cookie embed, selected, saved; the picture picker can be searched', async () => {
+      const pg = await page(browser, origin, 1440);
+      await openB(pg, origin, 'lessons/' + W.lessonWel.id);
+      await pg.waitForSelector('text=This lesson has no screens yet');
+      await pg.click('button:has-text("+ Add a screen")'); await pg.click('.add-grid button:has(span:text-is("Video"))'); await pg.waitForSelector('.blk.sel .blk-b');
+      await pg.click('.blk.sel .blk-b button[role=radio]:has-text("Approved video")');
+      await pg.fill('.blk.sel .add-video input[type=url]', 'https://www.youtube.com/watch?v=QgRxpstOzzA');
+      await pg.fill('.blk.sel .add-video input[type=text]', 'Golden MaxiComfort Patented Positioning (Golden video)');
+      await pg.click('.blk.sel .add-video button:has-text("Add this video")');
+      await pg.waitForSelector('.blk.sel .pick button[aria-pressed="true"][aria-label^="Selected: Golden MaxiComfort"]');
+      assert.strictEqual(run(DB, "select external_url from academy_media where alt_text like 'Golden MaxiComfort Patented%'"), 'https://www.youtube-nocookie.com/embed/QgRxpstOzzA');
+      await saved(pg);
+      assert.match(run(DB, `select blocks::text from academy_lessons where id = '${W.lessonWel.id}'`), /"kind": "video"/);
+      // the picture picker gets a search box once the library is long enough; it hides what does not match
+      await pg.click('button:has-text("+ Add a screen")'); await pg.click('.add-grid button:has(span:text-is("Picture"))'); await pg.waitForSelector('.blk.sel .blk-b');
+      await pg.click('.blk.sel .blk-b button[role=radio]:has-text("Approved picture")');
+      const n = await pg.$$eval('.blk.sel .pick button[data-mid]', b => b.length);
+      if (n > 6) { await pg.fill('.blk.sel .pick-q', 'zzz-no-such-picture'); assert.strictEqual(await pg.$$eval('.blk.sel .pick button[data-mid]:not([hidden])', b => b.length), 0); }
+      assert.deepStrictEqual(pg.errors, []);
+      await pg.context().close();
+    });
+
     await t('reordering: drag a screen by its handle; ▲▼ by keyboard keeps focus on the moved screen; a lesson and a module moved in the outline are saved by the database', async () => {
       const pg = await page(browser, origin, 1440);
       await openB(pg, origin, 'lessons/' + W.lessonNew.id);
