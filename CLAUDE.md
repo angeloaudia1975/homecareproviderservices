@@ -3244,6 +3244,26 @@ Findings" (decisions 1–46, incl. "Golden Technologies confirmations", 10 Oct 2
   idempotent (fills in only what is missing; a re-run adds nothing). Edit the draft in the builder; publishing it retires the
   old version (M4); learners on the old version keep everything. Manufacturer programs get Publish / Retire buttons on their
   course page (President). Course details (title, category, link) were already editable by the President.
+- **Golden technical certifications = video, then Golden's quiz (issue #32; F2 installed by Angelo 22 Oct 2026, 5/5 checks).**
+  A manufacturer program page shows: Golden-issuer disclosure, the overview, the official Golden YouTube video (privacy-
+  enhanced embed, no autoplay, "Watch on YouTube instead" fallback), then a SEPARATE "Take Golden Technologies’ official quiz"
+  button (Golden's Google Form in a new tab — never embedded, copied or graded by HCPS), then the learner's self-reports
+  (watched → quiz submitted → upload Golden's emailed certificate → HCPS verifies). A self-report is never proof; only HCPS's
+  review of Golden's certificate verifies. The quiz note quotes Golden's own rules (perfect score, unlimited retakes,
+  certificate emailed within a few weeks). Video / quiz / page links are edited by the President or an HCPS admin in the
+  Command Center (`set_program`, audited); a YouTube watch link is stored as the youtube-nocookie embed. Certificate uploads
+  stay OFF (`academy_external_uploads`) until approved. Live values: Lift Chair video VApekZEFn8c + forms.gle/BsZRxeTDWitwRGfr5;
+  Mobility eI46MshrR3c + forms.gle/d7CXFRjeDFNiJnBg8. The staff Student view shows the same page and records nothing.
+- **Visual redesign (issue #33) is built in DRAFT version 2 of the lift chair course** (ff4a54f3-…, copied from v1 on 22 Oct
+  2026 after a fingerprint check: 11 modules / 17 lessons / 111 questions / 197 screens / 182 links identical, re-run added
+  nothing, v1 byte-identical afterwards). v1 stays published and untouched; learners stay on v1 until Angelo approves v2.
+  Owner-authored text is kept; redesign adds pictures, recovered videos and interaction around it. Original Thinkific
+  videos are re-linked from Golden's own YouTube uploads (same titles), never downloaded. Thinkific's slides and the owner's
+  40 narration clips are listed in `docs/academy/THINKIFIC_MEDIA_COVERAGE.md`; importing them needs the owner's files or
+  his go-ahead (narration also needs an audio decision — the Academy has no audio media kind).
+- **Lesson player:** a tabs/cards explorer with a picture shows the picture first, full width (max 760px), then the
+  interaction; item pictures show in the detail panel. **Builder:** a pasted YouTube watch/share/shorts or Vimeo link on a
+  video screen is stored as the privacy-enhanced embed and placed; pickers with more than 6 files get a search box.
 - **Never:** modify the original Thinkific course; change Golden ordering data from academy findings (discrepancies
   go to the Golden product data issue tracker and wait for approval); run academy migrations, deploy academy
   features or start a phase without explicit approval.

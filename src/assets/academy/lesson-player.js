@@ -305,7 +305,7 @@
       },
       explorer: function (s, b, i) {
         if (b.style === 'hotspots') { hotspots(s, b, i); return; }
-        // tabs / cards with a lesson picture: the picture beside the interaction (stacked on narrow screens)
+        // tabs / cards with a lesson picture: the picture first, full width, then the interaction
         if (b.image && !b.image.missing && safeUrl(b.image.src)) {
           var side = h('div', { cls: 'hl-visual' }), pic = h('div', { cls: 'hl-visual-pic' }, [picture(b.image)]), body = h('div', { cls: 'hl-visual-body' });
           side.appendChild(pic); side.appendChild(body); s.appendChild(side);

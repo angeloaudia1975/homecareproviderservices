@@ -123,8 +123,9 @@
 .hl-card[aria-expanded="true"]{border-color:var(--blue);background:#eaf3fa}
 .hl-card-title{font-weight:700;color:var(--navy)}
 .hl-hint{margin:0;color:var(--muted)}
-.hl-visual{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:16px;align-items:start}
-.hl-visual-pic .hl-media,.hl-visual-pic .hl-ph{position:sticky;top:8px}
+/* explorer with a lesson picture: the picture first, full width (diagrams and charts stay legible), then the interaction */
+.hl-visual{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.hl-visual-pic{max-width:760px;width:100%;justify-self:center}
 .hl-visual-body{min-width:0}
 .hl-hotspots{position:relative;margin-bottom:10px}
 .hl-dot{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:3px solid #fff;background:var(--orange);color:#fff;font-weight:800;box-shadow:0 2px 6px rgba(0,0,0,.3)}
@@ -164,7 +165,6 @@
 
 /* phone and narrow tablet: below 900px of PLAYER width */
 @container hl (max-width: 899px){
-  .hl-visual{grid-template-columns:1fr}
   .hl-shell{padding:0 14px 0}
   .hl-body{grid-template-columns:minmax(0,1fr);gap:0}
   .hl-outline{display:none}
@@ -185,7 +185,7 @@
 /* Browsers without container queries (iOS before 16): the same phone layout, decided by the screen width instead. */
 @supports not (container-type: inline-size){
   @media (max-width: 899px){
-    .hl-visual{grid-template-columns:1fr} .hl-shell{padding:0 14px 0} .hl-body{grid-template-columns:minmax(0,1fr);gap:0} .hl-outline{display:none}
+    .hl-shell{padding:0 14px 0} .hl-body{grid-template-columns:minmax(0,1fr);gap:0} .hl-outline{display:none}
     .hl-modules-btn{display:inline-flex;align-items:center} .hl-main{max-width:none}
     .hl-bar{position:sticky;bottom:0;z-index:5;margin:16px -14px 0;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid var(--line)}
     .hl-h{font-size:20px} .hl-tab{padding:0 12px}
