@@ -30,7 +30,7 @@
   var ORDER = { training_started: 0, training_completed: 1, exam_opened: 1, exam_reported: 2, awaiting_certificate: 2, certificate_uploaded: 3, verified: 4, rejected: 2 };
   function render(root, P, opts) {
     opts = opts || {};
-    var m = P.manufacturer || 'The manufacturer', cred = P.credential || null, level = cred ? (ORDER[cred.status] || 0) : 0;
+    var m = P.manufacturer || 'The manufacturer', ms = /s$/i.test(m) ? m + '’' : m + '’s', cred = P.credential || null, level = cred ? (ORDER[cred.status] || 0) : 0;
     var live = el('div', { cls: 'ac-pg-live', 'aria-live': 'polite' });
     var say = function (t, bad) { live.replaceChildren(el('div', { cls: 'ac-msg ' + (bad ? 'err' : 'ok'), role: bad ? 'alert' : 'status', text: t })); };
     var previewNote = function () { say('Staff preview: nothing is recorded here. A learner’s button records this step for them.'); };
@@ -56,7 +56,7 @@
           allow: 'encrypted-media; picture-in-picture; fullscreen', allowfullscreen: true, referrerpolicy: 'strict-origin-when-cross-origin' }))
       : el('div', { cls: 'ac-video ac-video-missing', role: 'img', 'aria-label': 'Video not added yet' }, el('span', { text: 'The official ' + m + ' training video has not been added to this program yet.' }));
     var s1 = el('li', { cls: 'ac-pg-step' + (level >= 1 ? ' done' : '') }, [
-      el('h2', null, [el('span', { cls: 'ac-pg-n', text: '1' }), ' Watch ' + m + '’s official training video']),
+      el('h2', null, [el('span', { cls: 'ac-pg-n', text: '1' }), ' Watch ' + ms + ' official training video']),
       videoBox,
       el('p', { cls: 'ac-small ac-muted' }, [watch ? el('a', { href: watch, target: '_blank', rel: 'noopener noreferrer', text: 'Watch on YouTube instead ↗' }) : null,
         watch ? ' · ' : null, 'Captions and full-screen are in the player’s controls.']),
@@ -65,11 +65,11 @@
     // 2. the manufacturer's own quiz
     var quiz = safe(P.quiz_url || P.url);
     var s2 = el('li', { cls: 'ac-pg-step' + (level >= 2 ? ' done' : '') }, [
-      el('h2', null, [el('span', { cls: 'ac-pg-n', text: '2' }), ' Take ' + m + '’s official quiz']),
+      el('h2', null, [el('span', { cls: 'ac-pg-n', text: '2' }), ' Take ' + ms + ' official quiz']),
       P.quiz_note ? el('p', { text: P.quiz_note }) : el('p', { text: m + ' grades the quiz and emails its certificate to you.' }),
-      quiz ? el('a', { cls: 'ac-btn pri ac-pg-quiz', href: quiz, target: '_blank', rel: 'noopener noreferrer', text: 'Take ' + m + '’s official quiz ↗',
-        'aria-label': 'Take ' + m + '’s official quiz (opens ' + m + '’s form in a new tab)' }) : el('p', { cls: 'ac-msg err', text: 'The quiz link has not been added yet.' }),
-      el('p', { cls: 'ac-small ac-muted', text: 'The quiz opens on ' + m + '’s own form. HCPS does not see your answers or your score.' }),
+      quiz ? el('a', { cls: 'ac-btn pri ac-pg-quiz', href: quiz, target: '_blank', rel: 'noopener noreferrer', text: 'Take ' + ms + ' official quiz ↗',
+        'aria-label': 'Take ' + ms + ' official quiz (opens ' + ms + ' form in a new tab)' }) : el('p', { cls: 'ac-msg err', text: 'The quiz link has not been added yet.' }),
+      el('p', { cls: 'ac-small ac-muted', text: 'The quiz opens on ' + ms + ' own form. HCPS does not see your answers or your score.' }),
       stepBtn('I submitted the quiz', 'quiz_submitted', level >= 1, level >= 2 ? 'You reported that you submitted the quiz. Your result comes from ' + m + ' by email.' : null)]);
 
     // 3. send HCPS the manufacturer's certificate
@@ -99,7 +99,7 @@
       level >= 4 ? el('p', { cls: 'ac-pg-done', text: '✓ Verified by HCPS' + (cred.verified_at ? ' on ' + new Date(cred.verified_at).toLocaleDateString() : '') + (cred.certificate_ref ? ' · certificate ' + cred.certificate_ref : '') + '.' })
                  : el('p', { text: 'HCPS checks the certificate ' + m + ' issued and records it on your Academy profile.' })]);
 
-    root.replaceChildren(
+    root.replaceChildren.apply(root, [
       el('p', { cls: 'ac-small' }, el('button', { type: 'button', cls: 'ac-btn sec', text: '← My courses', onclick: null })),
       el('h1', { text: P.title }),
       el('p', { cls: 'ac-pg-issuer', text: 'Issued by ' + m + ' — not by HCPS. ' + m + ' provides the training and the quiz and issues the certificate; HCPS links to them and records your credential.' }),
@@ -107,8 +107,8 @@
       cred ? el('p', { cls: 'ac-pg-status' }, [el('b', { text: 'Your status: ' }), cred.label || cred.status, cred.note ? el('span', { text: ' — ' + cred.note }) : null]) : null,
       el('ol', { cls: 'ac-pg-steps' }, [s1, s2, s3, s4]),
       live,
-      safe(P.manufacturer_page_url) ? el('p', { cls: 'ac-small ac-muted' }, ['About this certification on ' + m + '’s website: ',
-        el('a', { href: safe(P.manufacturer_page_url), target: '_blank', rel: 'noopener noreferrer', text: m + '’s certification page ↗' })]) : null);
+      safe(P.manufacturer_page_url) ? el('p', { cls: 'ac-small ac-muted' }, ['About this certification on ' + ms + ' website: ',
+        el('a', { href: safe(P.manufacturer_page_url), target: '_blank', rel: 'noopener noreferrer', text: ms + ' certification page ↗' })]) : null].filter(Boolean));  // replaceChildren(null) would print "null"
     var back = root.querySelector('button'); if (back && opts.back) back.addEventListener('click', opts.back);
   }
   window.HCPSProgram = { render: render };

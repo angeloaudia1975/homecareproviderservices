@@ -114,7 +114,7 @@ const COURSE = { ok: true, course: { id: 'c1', slug: 'golden-lift-chair-sales-ce
     for (const w of [390, 1280]) await t(`#32 ${w}px: learner catalog shows the published Golden program as learners see it; drafts badged NOT VISIBLE; unsafe links never become links`, async () => {
       const { ctx, page } = await open(w, '');
       const txt = await page.textContent('#view');
-      assert.match(txt, /Golden Technologies technical certifications/); assert.match(txt, /Taught, examined and issued by Golden Technologies — not by HCPS/); assert.match(txt, /Watch Golden Technologies’s official training video here/);
+      assert.match(txt, /Golden Technologies technical certifications/); assert.match(txt, /Taught, examined and issued by Golden Technologies — not by HCPS/); assert.match(txt, /Watch Golden Technologies’ official training video here/);
       const pub = await page.$$eval('#view section.ac-card:not(.sv-hidden) li', a => a.map(x => x.textContent));
       assert.deepStrictEqual(pub, ['Golden Lift Chair Technical Service CertificationStart the training']);
       assert.match(await page.textContent('#view .sv-hidden'), /Golden Mobility Technical Service Certification\s*DRAFT — NOT VISIBLE TO LEARNERS/);
@@ -134,7 +134,7 @@ const COURSE = { ok: true, course: { id: 'c1', slug: 'golden-lift-chair-sales-ce
       const f = await page.$eval('.ac-video iframe', x => ({ src: x.getAttribute('src'), title: x.title, allow: x.getAttribute('allow') }));
       assert.strictEqual(f.src, 'https://www.youtube-nocookie.com/embed/VApekZEFn8c?rel=0'); assert.ok(!/autoplay/.test(f.src + f.allow)); assert.match(f.title, /Lift Chair/);
       const quiz = await page.$eval('a.ac-pg-quiz', a => [a.getAttribute('href'), a.target, a.rel, a.textContent]);
-      assert.deepStrictEqual(quiz, ['https://forms.gle/BsZRxeTDWitwRGfr5', '_blank', 'noopener noreferrer', 'Take Golden Technologies’s official quiz ↗']);
+      assert.deepStrictEqual(quiz, ['https://forms.gle/BsZRxeTDWitwRGfr5', '_blank', 'noopener noreferrer', 'Take Golden Technologies’ official quiz ↗']); assert.doesNotMatch(await page.textContent('body'), /\bnull\b/, 'no stray null text');
       assert.strictEqual(await page.$eval('a[href^="https://www.youtube.com/watch"]', a => a.rel), 'noopener noreferrer');
       const txt = await page.textContent('#view'); assert.match(txt, /Issued by Golden Technologies — not by HCPS/); assert.match(txt, /<img src=x/);
       assert.strictEqual(await page.$('#view .ac-pg-steps img'), null);

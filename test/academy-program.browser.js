@@ -54,6 +54,7 @@ const ID = '00000000-0000-4000-8000-0000000000aa', XSS = '<img src=x onerror="wi
       assert.match(await page.textContent('#view'), /Golden Technologies technical certifications/);
       await page.click('text=Start the training'); await page.waitForSelector('.ac-pg-steps');
       assert.match(page.url(), /#program\?c=/);
+      assert.doesNotMatch(await page.textContent('#view'), /\bnull\b|’s’|s’s /, 'no stray "null" text and no doubled possessive');
       const f = await page.$eval('.ac-video iframe', x => x.getAttribute('src')); assert.strictEqual(f, 'https://www.youtube-nocookie.com/embed/VApekZEFn8c?rel=0');
       assert.deepStrictEqual(await page.$eval('a.ac-pg-quiz', a => [a.getAttribute('href'), a.target, a.rel]), ['https://forms.gle/BsZRxeTDWitwRGfr5', '_blank', 'noopener noreferrer']);
       assert.strictEqual(await page.$eval('button:has-text("I submitted the quiz")', b => b.disabled), true, 'quiz report waits for the video report');

@@ -145,7 +145,7 @@
       var groups = {}; list.forEach(function (p) { (groups[p.manufacturer] = groups[p.manufacturer] || []).push(p); });
       box.replaceChildren.apply(box, Object.keys(groups).map(function (m) {
         return el('section', { cls: 'ac-card' }, [el('h2', { text: m + ' technical certifications' }),
-          el('p', { cls: 'ac-small ac-muted', text: 'Taught, examined and issued by ' + m + ' — not by HCPS. Watch ' + m + '’s official training video here, then take ' + m + '’s official quiz.' }),
+          el('p', { cls: 'ac-small ac-muted', text: 'Taught, examined and issued by ' + m + ' — not by HCPS. Watch ' + (/s$/i.test(m) ? m + '’' : m + '’s') + ' official training video here, then take the official quiz.' }),
           el('ul', { cls: 'ac-stack' }, groups[m].map(function (p) {
             return el('li', { cls: 'ac-row' }, [el('span', null, [el('b', { text: p.title }),
               p.credential ? el('span', { cls: 'ac-pill' + (p.credential.status === 'verified' ? ' ok' : ''), text: ' ' + (p.credential.label || p.credential.status) }) : null]),

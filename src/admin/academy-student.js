@@ -85,7 +85,7 @@
     var groups = {}; shown.forEach(function (p) { (groups[p.manufacturer] = groups[p.manufacturer] || []).push(p); });
     var out = Object.keys(groups).map(function (m) {
       return el('section', { cls: 'ac-card' }, [el('h2', { text: m + ' technical certifications' }),
-        el('p', { cls: 'ac-small ac-muted', text: 'Taught, examined and issued by ' + m + ' — not by HCPS. Watch ' + m + '’s official training video here, then take ' + m + '’s official quiz.' }),
+        el('p', { cls: 'ac-small ac-muted', text: 'Taught, examined and issued by ' + m + ' — not by HCPS. Watch ' + (/s$/i.test(m) ? m + '’' : m + '’s') + ' official training video here, then take the official quiz.' }),
         el('ul', { cls: 'ac-stack' }, groups[m].map(function (p) { return programRow(p); }))]);
     });
     if (hidden.length) out.push(el('section', { cls: 'ac-card sv-hidden', 'aria-label': 'Staff only: programs learners cannot see' }, [
