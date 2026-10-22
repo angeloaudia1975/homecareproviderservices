@@ -72,7 +72,7 @@ const snapshot = () => run(DB, `select string_agg(t || '=' || n, ',' order by t)
 
 (async () => {
   try {
-    const before = snapshot();
+    let before = snapshot();
     await t('administrators only: a rep, a former admin and no sign-in are refused', async () => {
       for (const tok of ['rep', 'old', null]) {
         const r = await admin(tok, { action: 'student_course', version_id: V });
@@ -83,6 +83,31 @@ const snapshot = () => run(DB, `select string_agg(t || '=' || n, ',' order by t)
     await t('catalog lists every course version (drafts included), no manufacturer programs', async () => {
       const r = await admin('pres', { action: 'student_catalog' }); assert.strictEqual(r.status, 200);
       const c = r.body.courses.find(x => x.id === C); assert.deepStrictEqual(c.versions.map(v => v.status), ['draft']);
+    });
+    await t('#32 catalog: manufacturer programs listed — published ones as learners see them, drafts / retired / TEST marked not visible; links https only', async () => {
+      const mk = (slug, title, url) => op(`academy_content_op_create_course(${PRES}, null, ${J({ slug, title, course_type: 'manufacturer_program', manufacturer_slug: 'golden-technologies', external_url: url })})`).id;
+      const P1 = mk('golden-lift-chair-technical-service-certification', 'Golden Lift Chair Technical Service Certification', 'https://forms.gle/BsZRxeTDWitwRGfr5');
+      const P2 = mk('golden-mobility-technical-service-certification', 'Golden Mobility Technical Service Certification', 'https://forms.gle/d7CXFRjeDFNiJnBg8');
+      const P3 = mk('golden-old-program', 'Golden Old Program', 'https://www.goldentech.com/old');
+      const P4 = mk('test-golden-program', 'TEST Golden Program', 'https://www.goldentech.com/test');
+      run(DB, `select academy_publish_op_publish_course(${PRES}, '${P1}')`); run(DB, `select academy_publish_op_publish_course(${PRES}, '${P3}')`); run(DB, `select academy_publish_op_publish_course(${PRES}, '${P4}')`);
+      run(DB, `select academy_publish_op_retire_course(${PRES}, '${P3}', 'No longer offered by Golden')`);
+      before = snapshot();   // the test's own setup above is audited; from here on the Student view must write nothing
+      const r = await admin('pres', { action: 'student_catalog' }); assert.strictEqual(r.status, 200);
+      const by = Object.fromEntries(r.body.programs.map(p => [p.title, p]));
+      assert.strictEqual(by['Golden Lift Chair Technical Service Certification'].visible_to_learners, true);
+      assert.strictEqual(by['Golden Lift Chair Technical Service Certification'].url, 'https://forms.gle/BsZRxeTDWitwRGfr5');
+      assert.strictEqual(by['Golden Lift Chair Technical Service Certification'].manufacturer, 'Golden Technologies');
+      assert.strictEqual(by['Golden Lift Chair Technical Service Certification'].issuer, 'manufacturer');
+      assert.strictEqual(by['Golden Mobility Technical Service Certification'].visible_to_learners, false, 'draft');
+      assert.strictEqual(by['Golden Old Program'].visible_to_learners, false, 'retired'); assert.strictEqual(by['Golden Old Program'].status, 'retired');
+      assert.strictEqual(by['TEST Golden Program'].visible_to_learners, false, 'TEST');
+      assert.ok(!r.body.courses.some(c => /Golden .* Program|Technical Service/.test(c.title)), 'programs are never offered as HCPS lesson courses');
+      // the learner API agrees: exactly the visible ones
+      const L = require('../netlify/functions/_academy_learner.js');
+      const lp = await L.LEARNER.manufacturer_programs(null, { learner_id: '00000000-0000-0000-0000-000000000000' });
+      assert.deepStrictEqual(lp.programs.map(p => p.title).sort(), r.body.programs.filter(p => p.visible_to_learners).map(p => p.title).sort());
+      assert.strictEqual((await admin('rep', { action: 'student_catalog' })).status, 403);
     });
     await t('course page: outline in order, exam policy, readiness; a DRAFT can be walked', async () => {
       const r = await admin('pres', { action: 'student_course', version_id: V }); assert.strictEqual(r.status, 200, JSON.stringify(r.body));

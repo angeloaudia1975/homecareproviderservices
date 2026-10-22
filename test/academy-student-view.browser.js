@@ -46,7 +46,10 @@ const COURSE = { ok: true, course: { id: 'c1', slug: 'golden-lift-chair-sales-ce
       const b = JSON.parse(route.request().postData() || '{}'); calls.push(b);
       const send = j => { received.push(JSON.stringify(j)); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(j) }); };
       if (b.action === 'whoami') return send({ enabled: true, may: { administer: true, publish: true } });
-      if (b.action === 'student_catalog') return send({ ok: true, courses: [{ id: 'c1', title: COURSE.course.title, versions: [{ id: V, version: 2, status: 'draft' }, { id: '00000000-0000-4000-8000-000000000012', version: 1, status: 'published' }] }] });
+      if (b.action === 'student_catalog') return send({ ok: true, courses: [{ id: 'c1', title: COURSE.course.title, versions: [{ id: V, version: 2, status: 'draft' }, { id: '00000000-0000-4000-8000-000000000012', version: 1, status: 'published' }] }],
+        programs: [{ id: 'p1', title: 'Golden Lift Chair Technical Service Certification', status: 'published', manufacturer: 'Golden Technologies', url: 'https://forms.gle/BsZRxeTDWitwRGfr5', issuer: 'manufacturer', visible_to_learners: true },
+                   { id: 'p2', title: 'Golden Mobility Technical Service Certification', status: 'draft', manufacturer: 'Golden Technologies', url: 'https://forms.gle/d7CXFRjeDFNiJnBg8', issuer: 'manufacturer', visible_to_learners: false },
+                   { id: 'p3', title: 'Evil ' + XSS, status: 'published', manufacturer: 'Golden Technologies', url: 'javascript:window.__x=1', issuer: 'manufacturer', visible_to_learners: false }] });
       if (b.action === 'student_course') return send(COURSE);
       if (b.action === 'student_lesson') return send({ ok: true, lesson: lessonA, staff_warnings: ['Picture placeholder on screen 4 ' + XSS], prev_lesson_id: b.lesson_id === L2 ? L1 : null, next_lesson_id: b.lesson_id === L1 ? L2 : null });
       if (b.action === 'student_exam_draw') return send({ ok: true, pass_mark: 80, time_limit_minutes: 45, questions: Q });
@@ -104,9 +107,26 @@ const COURSE = { ok: true, course: { id: 'c1', slug: 'golden-lift-chair-sales-ce
       assert.strictEqual(await page.evaluate(() => window.__x), undefined);
       await ctx.close();
     });
+    for (const w of [390, 1280]) await t(`#32 ${w}px: learner catalog shows the published Golden program as learners see it; drafts badged NOT VISIBLE; unsafe links never become links`, async () => {
+      const { ctx, page } = await open(w, '');
+      const txt = await page.textContent('#view');
+      assert.match(txt, /Golden Technologies technical certifications/); assert.match(txt, /Taught, examined and issued by Golden Technologies — not by HCPS/);
+      const pub = await page.$$eval('#view section.ac-card:not(.sv-hidden) a.ac-btn', a => a.map(x => [x.getAttribute('href'), x.target, x.rel, x.textContent]));
+      assert.deepStrictEqual(pub, [['https://forms.gle/BsZRxeTDWitwRGfr5', '_blank', 'noopener noreferrer', 'Open Golden Technologies’s training']]);
+      assert.match(await page.textContent('#view .sv-hidden'), /Golden Mobility Technical Service Certification\s*DRAFT — NOT VISIBLE TO LEARNERS/);
+      assert.ok(!(await page.$$eval('#view a', a => a.map(x => x.getAttribute('href')))).some(h => /^javascript:/i.test(h || '')), 'no javascript: link');
+      assert.strictEqual(await page.$('#view .sv-hidden img'), null); assert.strictEqual(await page.evaluate(() => window.__x), undefined);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no horizontal scroll');
+      await ctx.close();
+    });
+    await t('#32: a course version page also lists the Golden technical certifications below the course card', async () => {
+      const { ctx, page } = await open(1280);
+      assert.match(await page.textContent('#view'), /Golden Lift Chair Technical Service Certification/);
+      await ctx.close();
+    });
     await t('no version chosen: the picker lists drafts and published versions and explains what to do', async () => {
       const { ctx, page } = await open(1280, '');
-      assert.match(await page.textContent('#view'), /Choose a course version/);
+      assert.match(await page.inputValue('#sv-course'), /^$/); assert.match(await page.textContent('#sv-notes'), /learner catalog/);
       const opts = await page.$$eval('#sv-course option', o => o.map(x => x.textContent));
       assert.ok(opts.some(x => /v2 \(draft\)/.test(x)) && opts.some(x => /v1 \(published\)/.test(x)), opts.join(' | '));
       await ctx.close();

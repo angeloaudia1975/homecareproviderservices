@@ -915,11 +915,19 @@ function drawExam(v, modules, pool) {
   const ids = new Set(first.map(q => String(q.id)));
   return { questions: shuffle(first.concat(shuffle(el.filter(q => !ids.has(String(q.id)))).slice(0, Math.max(0, want - first.length)))) };
 }
+const safeHttpsUrl = u => { try { const x = new URL(String(u || '')); return x.protocol === 'https:' && !x.username && !x.password ? x.toString() : null; } catch (e) { return null; } };
 READ.student_catalog = async () => {
-  const courses = (await all(`academy_courses?select=${COURSE_COLS}`, 'title.asc')).filter(c => c.course_type !== 'manufacturer_program');
+  const everything = await all(`academy_courses?select=${COURSE_COLS}`, 'title.asc');
+  const courses = everything.filter(c => c.course_type !== 'manufacturer_program');
   const versions = courses.length ? await all(`academy_course_versions?course_id=${idsIn(courses.map(c => c.id))}&select=id,course_id,version,status`, 'version.desc') : [];
+  const mfrs = Object.fromEntries((await all(`manufacturers?select=slug,name`, 'slug.asc')).map(m => [m.slug, m.name || m.slug]));
+  // manufacturer-hosted technical certifications (issue #32): exactly what learners are shown for a PUBLISHED one
+  // (academy-api manufacturer_programs), plus drafts / retired ones for staff, marked as not visible to learners
+  const programs = everything.filter(c => c.course_type === 'manufacturer_program').map(c => ({ id: c.id, title: c.title, status: c.status,
+    manufacturer: mfrs[c.manufacturer_slug] || c.manufacturer_slug || 'The manufacturer', url: safeHttpsUrl(c.external_url), is_test: isTest(c),
+    issuer: 'manufacturer', visible_to_learners: c.status === 'published' && !!safeHttpsUrl(c.external_url) && !isTest(c) }));
   return { ok: true, courses: courses.map(c => ({ id: c.id, title: c.title, is_test: isTest(c),
-    versions: versions.filter(v => String(v.course_id) === String(c.id)).map(v => ({ id: v.id, version: v.version, status: v.status })) })) };
+    versions: versions.filter(v => String(v.course_id) === String(c.id)).map(v => ({ id: v.id, version: v.version, status: v.status })) })), programs };
 };
 READ.student_course = async (staff, b) => {
   const v = await studentVersion(A.uuid(b.version_id, 'version'));

@@ -52,6 +52,40 @@
     try { var u = new URL(location.href); u.searchParams.set('width', k); history.replaceState(null, '', u); } catch (e) { /* ignore */ }
   }
 
+  /* ------------------------------------------------ manufacturer technical certifications (issue #32)
+     The PUBLISHED ones are drawn exactly as the learner page draws them (academy.js mfrPrograms): manufacturer-issued,
+     the training / exam open on the manufacturer's own page in a new tab. Drafts and retired ones follow in a separate,
+     staff-only block marked NOT VISIBLE TO LEARNERS. HCPS never issues these certificates. */
+  var PROGRAMS = [];
+  function safeHttps(u) { try { var x = new URL(String(u || '')); return x.protocol === 'https:' && !x.username && !x.password ? x.toString() : null; } catch (e) { return null; } }
+  function programRow(p, staffBadge) {
+    var url = safeHttps(p.url);
+    var link = url ? el('a', { cls: 'ac-btn pri', href: url, target: '_blank', rel: 'noopener noreferrer', text: 'Open ' + p.manufacturer + '’s training',
+      'aria-label': 'Open ' + p.title + ' on ' + p.manufacturer + '’s site (opens in a new tab)' }) : el('span', { cls: 'ac-pill', text: 'No valid https link' });
+    return el('li', { cls: 'ac-row' }, [el('span', null, [el('b', { text: p.title }),
+      staffBadge ? el('span', { cls: 'sv-badge', text: ' ' + staffBadge }) : null]), link]);
+  }
+  function programsSection() {
+    var shown = PROGRAMS.filter(function (p) { return p.visible_to_learners; });
+    var hidden = PROGRAMS.filter(function (p) { return !p.visible_to_learners; });
+    var groups = {}; shown.forEach(function (p) { (groups[p.manufacturer] = groups[p.manufacturer] || []).push(p); });
+    var out = Object.keys(groups).map(function (m) {
+      return el('section', { cls: 'ac-card' }, [el('h2', { text: m + ' technical certifications' }),
+        el('p', { cls: 'ac-small ac-muted', text: 'Taught, examined and issued by ' + m + ' — not by HCPS. The training and exam open on ' + m + '’s own page. When you receive your ' + m + ' certificate, send it to HCPS so we can record it.' }),
+        el('ul', { cls: 'ac-stack' }, groups[m].map(function (p) { return programRow(p); }))]);
+    });
+    if (hidden.length) out.push(el('section', { cls: 'ac-card sv-hidden', 'aria-label': 'Staff only: programs learners cannot see' }, [
+      el('h2', { text: 'Staff only — NOT VISIBLE TO LEARNERS' }),
+      el('p', { cls: 'ac-small ac-muted', text: 'Manufacturer programs that are a draft, retired, a TEST, or have no valid https link. Publish one in the Command Center to show it to learners.' }),
+      el('ul', { cls: 'ac-stack' }, hidden.map(function (p) { return programRow(p, p.is_test ? 'TEST' : p.status === 'draft' ? 'DRAFT — NOT VISIBLE TO LEARNERS' : p.status === 'retired' ? 'RETIRED — NOT VISIBLE TO LEARNERS' : 'NOT VISIBLE TO LEARNERS'); }))]));
+    return out;
+  }
+  function catalogHome() {
+    notes([staffNote('Staff only:', ['This is the learner catalog as of now: the HCPS courses a learner can be enrolled in, and the manufacturer technical certifications every signed-in learner sees. Choose an HCPS course version at the top to walk its lessons and sample exam.'])]);
+    show([el('h1', { text: 'Hello, Student' }), el('p', { cls: 'ac-muted', text: 'Your dealership' })].concat(programsSection().length ? programsSection()
+      : [el('section', { cls: 'ac-card' }, [el('p', { text: 'No manufacturer technical certifications exist yet.' })])]));
+  }
+
   /* ------------------------------------------------ My courses (one enrolled course, as the learner sees it) */
   function home() {
     var all = lessons(), done = all.filter(function (x) { return PROG[x.l.id] === 'completed'; }).length;
@@ -73,7 +107,7 @@
         el('p', { cls: 'ac-muted ac-small', text: 'Version ' + V.version }),
         el('div', { cls: 'ac-progress', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': 'Lessons completed' }, el('span', { style: 'width:' + pct + '%' })),
         el('p', { cls: 'ac-small', text: done + ' of ' + all.length + ' lessons complete' }),
-        el('div', { cls: 'ac-row' }, [cont, toggle, el('button', { type: 'button', cls: 'ac-btn sec', text: 'Final exam', onclick: exam })]), outline]))]);
+        el('div', { cls: 'ac-row' }, [cont, toggle, el('button', { type: 'button', cls: 'ac-btn sec', text: 'Final exam', onclick: exam })]), outline]))].concat(programsSection()));
   }
 
   /* ------------------------------------------------ a lesson, in the learner lesson player */
@@ -194,14 +228,14 @@
 
   /* ------------------------------------------------ boot */
   function pickVersion(list) {
-    var sel = $('#sv-course'); sel.replaceChildren(el('option', { value: '', text: 'Choose a course version…' }));
+    var sel = $('#sv-course'); sel.replaceChildren(el('option', { value: '', text: 'Learner catalog (all courses and certifications)' }));
     list.forEach(function (c) {
       (c.versions || []).forEach(function (v) {
         var o = el('option', { value: v.id, text: (c.is_test ? '[TEST] ' : '') + c.title + ' — v' + v.version + ' (' + String(v.status).replace('_', ' ') + ')' });
         if (v.id === VERSION) o.selected = true; sel.appendChild(o);
       });
     });
-    sel.onchange = function () { if (sel.value) { var u = new URL(location.href); u.searchParams.set('version', sel.value); location.href = u.toString(); } };
+    sel.onchange = function () { var u = new URL(location.href); if (sel.value) u.searchParams.set('version', sel.value); else u.searchParams.delete('version'); location.href = u.toString(); };
   }
   function load() {
     loadProg();
@@ -221,7 +255,7 @@
     if (booted) return; booted = true;
     WIDTHS.forEach(function (w) { $('#sv-widths').appendChild(el('button', { type: 'button', text: w[1], 'aria-pressed': 'false', onclick: function () { setWidth(w[0]); } })); });
     setWidth(width);
-    $('#sv-home').addEventListener('click', function () { if (C) { notes([]); home(); } });
+    $('#sv-home').addEventListener('click', function () { if (C) { notes([]); home(); } else catalogHome(); });
     $('#sv-reset').addEventListener('click', function () { PROG = {}; saveProg(); if (C) { notes([]); home(); } });
     api({ action: 'whoami' }).then(function (r) {
       var w = r.body || {};
@@ -229,8 +263,9 @@
       if (!w.enabled) { show(msg('The Academy Command Center is switched off.', true)); return; }
       api({ action: 'student_catalog' }).then(function (x) {
         var list = (x.body && x.body.courses) || [];
+        PROGRAMS = (x.body && x.body.programs) || [];
         pickVersion(list);
-        if (!VERSION) { show([el('h1', { text: 'Student view' }), el('p', { text: 'Choose a course version at the top to see it the way a learner does — drafts included.' })]); return; }
+        if (!VERSION) { catalogHome(); return; }
         load();
       });
     }).catch(function () { /* handled by api() */ });
