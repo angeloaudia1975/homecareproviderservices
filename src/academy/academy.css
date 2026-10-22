@@ -90,3 +90,22 @@ label.ac-field { display: grid; gap: 6px; font-weight: 600; font-size: 14px; }
   body { background: #fff; } .ac-top, .ac-foot, .ac-noprint, .skip { display: none !important; }
   main { padding: 0; } .ac-cert { break-inside: avoid; outline-color: #dde5ee; }
 }
+
+/* Manufacturer technical-certification program page (issue #32) — /assets/academy/program-page.js */
+.ac-pg-issuer { display: inline-block; background: #fff4e5; border: 1px solid #f4c27a; color: #6b3d00; border-radius: 10px; padding: 8px 12px; font-size: 14px; }
+.ac-pg-overview { max-width: 68ch; }
+.ac-pg-status { background: #eef3f8; border-radius: 10px; padding: 8px 12px; }
+.ac-pg-steps { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 14px; }
+.ac-pg-step { background: #fff; border: 1px solid #d8dee4; border-radius: 14px; padding: 16px; display: grid; gap: 10px; min-width: 0; }
+.ac-pg-step.done { border-color: #9fd3b4; background: #f7fcf9; }
+.ac-pg-step h2 { margin: 0; font-size: 19px; display: flex; gap: 10px; align-items: center; }
+.ac-pg-n { flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--ac-navy); color: #fff; display: inline-grid; place-items: center; font-size: 15px; }
+.ac-pg-step.done .ac-pg-n { background: #1b7a46; }
+.ac-pg-done { margin: 0; color: #14633a; font-weight: 700; }
+.ac-pg-quiz { justify-self: start; font-size: 17px; min-height: 52px; padding: 0 22px; }
+.ac-video { position: relative; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; background: #0b1f33; border-radius: 12px; overflow: hidden; }
+.ac-video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.ac-video-missing { display: grid; place-items: center; color: #fff; padding: 16px; text-align: center; }
+.ac-mfr-card { display: grid; grid-template-columns: 160px 1fr; gap: 14px; align-items: center; }
+.ac-mfr-thumb { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: #0b1f33; }
+@media (max-width: 560px) { .ac-mfr-card { grid-template-columns: 1fr; } .ac-pg-quiz { justify-self: stretch; text-align: center; } }

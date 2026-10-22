@@ -56,6 +56,10 @@ const COURSE = { ok: true, course: { id: 'c1', slug: 'golden-lift-chair-sales-ce
       if (b.action === 'student_exam_grade') return send({ ok: true, recorded: false, score: 66, passed: false, pass_mark: 80, right: 2, total: 3, study_topics: ['comfort-zones'],
         staff_review: [{ id: Q[0].id, prompt: 'Question 1', answered: true, correct: true, explanation: 'Because.' }, { id: Q[1].id, prompt: 'Question 2', answered: true, correct: true, explanation: '' }, { id: Q[2].id, prompt: 'Question 3', answered: false, correct: false, explanation: XSS }] });
       if (b.action === 'preview_check') return send({ ok: true, correct: true, explanation: 'Right.' });
+      if (b.action === 'student_program') return send({ ok: true, tracking_installed: true, uploads_open: false, program: { id: b.course_id, title: 'Golden Lift Chair Technical Service Certification', status: 'published',
+        manufacturer: 'Golden Technologies', quiz_url: 'https://forms.gle/BsZRxeTDWitwRGfr5', url: 'https://forms.gle/BsZRxeTDWitwRGfr5', visible_to_learners: true, credential: null,
+        video: { embed: 'https://www.youtube-nocookie.com/embed/VApekZEFn8c', title: 'Golden Technologies: Lift Chair Technical Service Certification', watch_url: 'https://www.youtube.com/watch?v=VApekZEFn8c' },
+        manufacturer_page_url: 'https://goldentech.com/lift-chair-certification/', overview: null, quiz_note: 'Golden requires a perfect score. ' + XSS } });
       return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
     });
     await page.goto(BASEURL + '/admin/academy-student.html' + (qs == null ? '?version=' + V : qs)); await page.waitForTimeout(300);
@@ -110,9 +114,9 @@ const COURSE = { ok: true, course: { id: 'c1', slug: 'golden-lift-chair-sales-ce
     for (const w of [390, 1280]) await t(`#32 ${w}px: learner catalog shows the published Golden program as learners see it; drafts badged NOT VISIBLE; unsafe links never become links`, async () => {
       const { ctx, page } = await open(w, '');
       const txt = await page.textContent('#view');
-      assert.match(txt, /Golden Technologies technical certifications/); assert.match(txt, /Taught, examined and issued by Golden Technologies — not by HCPS/);
-      const pub = await page.$$eval('#view section.ac-card:not(.sv-hidden) a.ac-btn', a => a.map(x => [x.getAttribute('href'), x.target, x.rel, x.textContent]));
-      assert.deepStrictEqual(pub, [['https://forms.gle/BsZRxeTDWitwRGfr5', '_blank', 'noopener noreferrer', 'Open Golden Technologies’s training']]);
+      assert.match(txt, /Golden Technologies technical certifications/); assert.match(txt, /Taught, examined and issued by Golden Technologies — not by HCPS/); assert.match(txt, /Watch Golden Technologies’s official training video here/);
+      const pub = await page.$$eval('#view section.ac-card:not(.sv-hidden) li', a => a.map(x => x.textContent));
+      assert.deepStrictEqual(pub, ['Golden Lift Chair Technical Service CertificationStart the training']);
       assert.match(await page.textContent('#view .sv-hidden'), /Golden Mobility Technical Service Certification\s*DRAFT — NOT VISIBLE TO LEARNERS/);
       assert.ok(!(await page.$$eval('#view a', a => a.map(x => x.getAttribute('href')))).some(h => /^javascript:/i.test(h || '')), 'no javascript: link');
       assert.strictEqual(await page.$('#view .sv-hidden img'), null); assert.strictEqual(await page.evaluate(() => window.__x), undefined);
@@ -122,6 +126,22 @@ const COURSE = { ok: true, course: { id: 'c1', slug: 'golden-lift-chair-sales-ce
     await t('#32: a course version page also lists the Golden technical certifications below the course card', async () => {
       const { ctx, page } = await open(1280);
       assert.match(await page.textContent('#view'), /Golden Lift Chair Technical Service Certification/);
+      await ctx.close();
+    });
+    for (const w of [390, 1280]) await t(`#32 ${w}px: program page — official video embedded (no autoplay, fallback link), then Golden's quiz in a new tab; preview records nothing`, async () => {
+      const { ctx, page, calls } = await open(w, '');
+      await page.click('#view section.ac-card:not(.sv-hidden) button.ac-btn.pri'); await page.waitForSelector('.ac-pg-steps');
+      const f = await page.$eval('.ac-video iframe', x => ({ src: x.getAttribute('src'), title: x.title, allow: x.getAttribute('allow') }));
+      assert.strictEqual(f.src, 'https://www.youtube-nocookie.com/embed/VApekZEFn8c?rel=0'); assert.ok(!/autoplay/.test(f.src + f.allow)); assert.match(f.title, /Lift Chair/);
+      const quiz = await page.$eval('a.ac-pg-quiz', a => [a.getAttribute('href'), a.target, a.rel, a.textContent]);
+      assert.deepStrictEqual(quiz, ['https://forms.gle/BsZRxeTDWitwRGfr5', '_blank', 'noopener noreferrer', 'Take Golden Technologies’s official quiz ↗']);
+      assert.strictEqual(await page.$eval('a[href^="https://www.youtube.com/watch"]', a => a.rel), 'noopener noreferrer');
+      const txt = await page.textContent('#view'); assert.match(txt, /Issued by Golden Technologies — not by HCPS/); assert.match(txt, /<img src=x/);
+      assert.strictEqual(await page.$('#view .ac-pg-steps img'), null);
+      await page.click('text=I watched the whole video'); assert.match(await page.textContent('.ac-pg-live'), /nothing is recorded/);
+      assert.ok(!calls.some(c => /program_step|program_certificate/.test(c.action)), 'no learner write from the staff view');
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no horizontal scroll');
+      const vw = await page.$eval('.ac-video', v => [v.clientWidth, v.clientHeight]); assert.ok(Math.abs(vw[0] * 9 / 16 - vw[1]) < 3, '16:9 video ' + vw);
       await ctx.close();
     });
     await t('no version chosen: the picker lists drafts and published versions and explains what to do', async () => {

@@ -59,11 +59,25 @@
   var PROGRAMS = [];
   function safeHttps(u) { try { var x = new URL(String(u || '')); return x.protocol === 'https:' && !x.username && !x.password ? x.toString() : null; } catch (e) { return null; } }
   function programRow(p, staffBadge) {
-    var url = safeHttps(p.url);
-    var link = url ? el('a', { cls: 'ac-btn pri', href: url, target: '_blank', rel: 'noopener noreferrer', text: 'Open ' + p.manufacturer + '’s training',
-      'aria-label': 'Open ' + p.title + ' on ' + p.manufacturer + '’s site (opens in a new tab)' }) : el('span', { cls: 'ac-pill', text: 'No valid https link' });
+    var open = el('button', { type: 'button', cls: 'ac-btn pri', text: 'Start the training', onclick: function () { programView(p.id, staffBadge); } });
     return el('li', { cls: 'ac-row' }, [el('span', null, [el('b', { text: p.title }),
-      staffBadge ? el('span', { cls: 'sv-badge', text: ' ' + staffBadge }) : null]), link]);
+      staffBadge ? el('span', { cls: 'sv-badge', text: ' ' + staffBadge }) : null]), open]);
+  }
+  /* the program page exactly as the learner page draws it (shared renderer), in preview mode: nothing is recorded */
+  function programView(id, staffBadge) {
+    show(el('p', { cls: 'ac-muted', text: 'Loading the program…' }));
+    api({ action: 'student_program', course_id: id }).then(function (r) {
+      if (r.status !== 200) { show(msg((r.body && r.body.message) || 'The program could not be loaded.', true)); return; }
+      var P = r.body.program, warn = [];
+      if (!P.visible_to_learners) warn.push((staffBadge || 'NOT VISIBLE TO LEARNERS') + ': learners do not see this program until it is published with a valid link.');
+      if (!P.video) warn.push('No official video is set yet: add it in Command Center → Courses → this program → Program page.');
+      if (!r.body.tracking_installed) warn.push('Step recording (F2) is not installed yet: learners would see the video and quiz, and their step buttons would answer “not available yet”.');
+      warn.push('Preview: the step buttons record nothing here. Certificate uploads are ' + (r.body.uploads_open ? 'ON' : 'OFF (learners are asked to email their certificate)') + '.');
+      notes([staffNote('Staff only:', warn)]);
+      var box = el('div', { cls: 'ac-program' }); show(box);
+      window.HCPSProgram.render(box, P, { preview: true, uploadsOpen: !!r.body.uploads_open, contact: 'info@homecareproviderservices.us',
+        back: function () { notes([]); if (C) home(); else catalogHome(); } });
+    });
   }
   function programsSection() {
     var shown = PROGRAMS.filter(function (p) { return p.visible_to_learners; });
@@ -71,7 +85,7 @@
     var groups = {}; shown.forEach(function (p) { (groups[p.manufacturer] = groups[p.manufacturer] || []).push(p); });
     var out = Object.keys(groups).map(function (m) {
       return el('section', { cls: 'ac-card' }, [el('h2', { text: m + ' technical certifications' }),
-        el('p', { cls: 'ac-small ac-muted', text: 'Taught, examined and issued by ' + m + ' — not by HCPS. The training and exam open on ' + m + '’s own page. When you receive your ' + m + ' certificate, send it to HCPS so we can record it.' }),
+        el('p', { cls: 'ac-small ac-muted', text: 'Taught, examined and issued by ' + m + ' — not by HCPS. Watch ' + m + '’s official training video here, then take ' + m + '’s official quiz.' }),
         el('ul', { cls: 'ac-stack' }, groups[m].map(function (p) { return programRow(p); }))]);
     });
     if (hidden.length) out.push(el('section', { cls: 'ac-card sv-hidden', 'aria-label': 'Staff only: programs learners cannot see' }, [

@@ -72,6 +72,7 @@
     if (name === 'certificates') { ROUTE = 'certificates'; drawNav(); return certificates(); }
     if (name === 'certificate' && params.get('c')) { ROUTE = 'certificate'; drawNav(); return certificate(params.get('c')); }
     if (name === 'take' && params.get('a')) { ROUTE = 'take'; drawNav(); return take(params.get('a'), params.get('e')); }
+    if (name === 'program' && params.get('c')) { ROUTE = 'program'; drawNav(); return program(params.get('c')); }
     ROUTE = 'courses'; drawNav(); courses();
   }
   window.addEventListener('hashchange', function () { if (ME) route(); });
@@ -134,10 +135,9 @@
       show(head.concat(el('div', { cls: 'ac-courses' }, list.map(courseCard)), free, mfr)); focusMain(); freeCourses(free); mfrPrograms(mfr);
     });
   }
-  /* Manufacturer technical certifications: taught, examined and issued by the manufacturer (e.g. Golden). HCPS only
-     links to them; a credential shows "verified" only after HCPS has checked the manufacturer's certificate. */
-  var CRED = { training_started: 'Started', training_completed: 'Training completed', exam_opened: 'Exam opened', exam_reported: 'Exam reported — awaiting the manufacturer',
-               awaiting_certificate: 'Awaiting the manufacturer’s certificate', certificate_uploaded: 'Certificate received — HCPS is checking it', verified: 'Verified', rejected: 'Not accepted — contact HCPS' };
+  /* Manufacturer technical certifications (issue #32): taught (official video), examined (official quiz) and issued by the
+     manufacturer. The card opens the program page (/assets/academy/program-page.js): video, then the manufacturer's quiz,
+     then the learner's own reports and HCPS's verification. */
   function mfrPrograms(box) {
     api({ action: 'manufacturer_programs' }).then(function (r) {
       var list = (r.status === 200 && r.body.programs) || [];
@@ -145,14 +145,34 @@
       var groups = {}; list.forEach(function (p) { (groups[p.manufacturer] = groups[p.manufacturer] || []).push(p); });
       box.replaceChildren.apply(box, Object.keys(groups).map(function (m) {
         return el('section', { cls: 'ac-card' }, [el('h2', { text: m + ' technical certifications' }),
-          el('p', { cls: 'ac-small ac-muted', text: 'Taught, examined and issued by ' + m + ' — not by HCPS. The training and exam open on ' + m + '’s own page. When you receive your ' + m + ' certificate, send it to HCPS so we can record it.' }),
+          el('p', { cls: 'ac-small ac-muted', text: 'Taught, examined and issued by ' + m + ' — not by HCPS. Watch ' + m + '’s official training video here, then take ' + m + '’s official quiz.' }),
           el('ul', { cls: 'ac-stack' }, groups[m].map(function (p) {
-            var a = el('a', { cls: 'ac-btn pri', href: p.url, target: '_blank', rel: 'noopener noreferrer', text: 'Open ' + m + '’s training' });
-            a.setAttribute('aria-label', 'Open ' + p.title + ' on ' + m + '’s site (opens in a new tab)');
             return el('li', { cls: 'ac-row' }, [el('span', null, [el('b', { text: p.title }),
-              p.credential ? el('span', { cls: 'ac-pill' + (p.credential.status === 'verified' ? ' ok' : ''), text: ' ' + (CRED[p.credential.status] || p.credential.status) }) : null]), a]);
+              p.credential ? el('span', { cls: 'ac-pill' + (p.credential.status === 'verified' ? ' ok' : ''), text: ' ' + (p.credential.label || p.credential.status) }) : null]),
+              el('button', { type: 'button', cls: 'ac-btn pri', text: p.credential ? 'Continue' : 'Start the training', onclick: function () { go('program', { c: p.id }); } })]);
           }))]);
       }));
+    });
+  }
+  function fileData(f) { return new Promise(function (ok, bad) { var r = new FileReader(); r.onload = function () { ok(String(r.result).split(',')[1] || ''); }; r.onerror = bad; r.readAsDataURL(f); }); }
+  function program(id) {
+    show(el('p', { cls: 'ac-muted', text: 'Loading the program…' }));
+    api({ action: 'program', course_id: id }).then(function (r) {
+      if (r.status !== 200) { show([msg(text(r, 'This program could not be loaded.'), true), el('button', { type: 'button', cls: 'ac-btn sec', text: '← My courses', onclick: function () { go('courses'); } })]); return; }
+      var box = el('div', { cls: 'ac-program' }); show(box);
+      window.HCPSProgram.render(box, r.body.program, {
+        uploadsOpen: !!r.body.uploads_open, contact: 'info@homecareproviderservices.us',
+        back: function () { go('courses'); }, reload: function () { program(id); },
+        step: function (step) { return api({ action: 'program_step', course_id: id, step: step }).then(function (x) { return x.status === 200 ? x.body : { ok: false, message: text(x) }; }); },
+        upload: function (f) {
+          return fileData(f).then(function (data) {
+            return fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', 'x-academy-request': '1', 'x-academy-upload': '1' },
+              body: JSON.stringify({ action: 'program_certificate', course_id: id, file_name: f.name, data: data }) })
+              .then(function (x) { return x.json().catch(function () { return {}; }).then(function (j) { return x.status === 200 ? j : { ok: false, message: j.message }; }); });
+          });
+        }
+      });
+      focusMain();
     });
   }
   /* F1 free launch: published FREE courses the learner can add themselves (no card). Enrolling is idempotent. */

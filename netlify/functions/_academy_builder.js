@@ -360,9 +360,11 @@ async function storeCandidate(name, bytes, manufacturerSlug) {
 }
 /* Candidates waiting for the President, and every approved record. */
 READ.media_library = async () => {
-  const [records, folders] = await Promise.all([all(`academy_media?select=${MEDIA_COLS}`, 'created_at.desc'), A.listPrivate('media/')]);
-  const named = new Set(records.map(r => r.storage_path).filter(Boolean)), files = [];
-  for (const f of folders.filter(x => !x.id && /^[a-z0-9-]{1,60}$/.test(x.name))) for (const x of (await A.listPrivate(`media/${f.name}/`)).filter(y => y.id)) {
+  // learners' uploaded manufacturer certificates (F2) are evidence for HCPS review, never lesson media: left out entirely
+  const [allRecords, folders] = await Promise.all([all(`academy_media?select=${MEDIA_COLS}`, 'created_at.desc'), A.listPrivate('media/')]);
+  const records = allRecords.filter(r => !/^media\/learner-evidence\//.test(String(r.storage_path || '')));
+  const named = new Set(allRecords.map(r => r.storage_path).filter(Boolean)), files = [];
+  for (const f of folders.filter(x => !x.id && /^[a-z0-9-]{1,60}$/.test(x.name) && x.name !== 'learner-evidence')) for (const x of (await A.listPrivate(`media/${f.name}/`)).filter(y => y.id)) {
     const path = `media/${f.name}/${x.name}`; if (named.has(path) || !A.MEDIA_PATH.test(path)) continue;
     files.push({ storage_path: path, folder: f.name, size: x.metadata && x.metadata.size, created_at: x.created_at, kind: /\.pdf$/.test(path) ? 'pdf' : 'image' });
   }

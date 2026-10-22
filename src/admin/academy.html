@@ -378,6 +378,7 @@ async function viewCourse(id){
       <p class="muted small" style="margin-top:8px">The short name, type and issuer of a course never change.</p>`,"Save",async()=>{
       const b={action:"update_course",id:c.id,title:val("etitle"),category:val("ecat")}; if(isMfr)b.external_url=val("eurl");
       await change(b,"mmsg",()=>viewCourse(c.id)); });
+  if(isMfr) programCard(c);
   const mp=$("#mpub"); if(mp)mp.onclick=()=>formModal("Publish "+c.title,`<p>Learners will see <b>${esc(c.title)}</b> in the HCPS Academy with a button that opens:</p><p class="mono small">${esc(c.external_url)}</p><p class="muted small">It stays ${esc(mname(c.manufacturer_slug))}-issued: HCPS never issues this credential. You can retire it later.</p>`,
     "Publish",async()=>{ await change({action:"publish_course",id:c.id},"mmsg",()=>viewCourse(c.id)); },{intro:"The President's decision; recorded in the Academy audit history."});
   const mr=$("#mretire"); if(mr)mr.onclick=()=>formModal("Retire "+c.title,`${area("mrreason","Reason (required)","")}<p class="muted small">Learners stop seeing it. Credentials already recorded are kept.</p>`,
@@ -387,6 +388,35 @@ async function viewCourse(id){
       "Create draft",async()=>{ await change({action:"create_version",course_id:c.id,pass_mark:val("vpass"),exam_questions:val("vq"),validity_months:val("vvalid")},"mmsg",b=>viewVersion(b.version.id)); });
     $("#view").querySelectorAll("tr.click").forEach(tr=>tr.onclick=()=>viewVersion(tr.dataset.id));
   }
+}
+/* Manufacturer program page (F2, issue #32): the official video + the manufacturer's quiz link + overview. Administrators. */
+async function programCard(c){
+  const box=document.createElement("div"); box.className="card"; box.id="progcard"; box.innerHTML=`<h2>Program page (what learners see)</h2><p class="muted">Loading…</p>`;
+  $("#view").appendChild(box);
+  const r=await api({action:"get_program",course_id:c.id});
+  if(r.status!==200){ box.innerHTML=`<h2>Program page</h2><div class="note warn">${esc(errText(r))}</div>`; return; }
+  if(!r.body.installed){ box.innerHTML=`<h2>Program page (what learners see)</h2><div class="note warn">The program-page database step (F2) is not installed yet. Until it is, learners see the quiz link only.</div>`; return; }
+  const d=r.body.details||{};
+  box.innerHTML=`<div class="bar"><h2 class="grow" style="margin:0">Program page (what learners see)</h2><a class="go ghost sm" href="/admin/academy-student.html" target="_blank" rel="noopener">👁 View as a student</a></div>
+    <p class="muted small" style="margin:6px 0 10px">Learners watch the official video inside the HCPS Academy, then take ${esc(mname(c.manufacturer_slug))}'s own quiz on its form. ${esc(mname(c.manufacturer_slug))} grades the quiz and issues the certificate; HCPS records it after checking the certificate (Certifications tab).</p>
+    <table class="stack"><tbody>
+      <tr><td><b>Official video</b></td><td>${d.video_url?`<a class="lnk" href="${esc(safeUrl("https://www.youtube.com/watch?v="+String(d.video_url).split("/").pop()))}" target="_blank" rel="noopener noreferrer">${esc(d.video_title||d.video_url)}</a>`:`<span class="muted">not set</span>`}</td></tr>
+      <tr><td><b>Official quiz</b></td><td>${d.quiz_url?`<a class="lnk" href="${esc(safeUrl(d.quiz_url))}" target="_blank" rel="noopener noreferrer">${esc(d.quiz_url)}</a>`:`<span class="muted">not set — the course link is used: ${esc(c.external_url||"none")}</span>`}</td></tr>
+      <tr><td><b>Manufacturer page</b></td><td>${d.manufacturer_page_url?esc(d.manufacturer_page_url):`<span class="muted">not set</span>`}</td></tr>
+      <tr><td><b>Overview</b></td><td>${esc(d.overview||"—")}</td></tr>
+      <tr><td><b>Quiz note</b></td><td>${esc(d.quiz_note||"—")}</td></tr>
+    </tbody></table>
+    <div class="bar" style="margin-top:10px"><button class="go dk sm" id="editprog">Edit program page</button>${d.updated_at?`<span class="muted small">Last changed ${day(d.updated_at)} by ${esc(String(d.updated_by||"").replace("staff:",""))}</span>`:""}</div>`;
+  $("#editprog").onclick=()=>formModal("Program page — "+c.title,`
+    ${field("pvid","Official video (YouTube link)",'maxlength="300" placeholder="https://www.youtube.com/watch?v=…"',d.video_url?("https://www.youtube.com/watch?v="+String(d.video_url).split("/").pop()):"")}
+    ${field("pvtitle","Video title",'maxlength="200"',d.video_title||"")}
+    ${field("pquiz","Official quiz link (https://)",'maxlength="500"',d.quiz_url||c.external_url||"")}
+    ${field("ppage","Manufacturer's certification page (https://)",'maxlength="500"',d.manufacturer_page_url||"")}
+    ${area("pover","Overview (shown above the steps)",d.overview||"")}
+    ${area("pnote","Quiz note (passing score, retakes, how the certificate arrives — as the manufacturer states it)",d.quiz_note||"")}
+    <p class="muted small" style="margin-top:8px">The video plays in YouTube's privacy-enhanced player, never autoplays, and always offers "Watch on YouTube". The quiz opens on the manufacturer's own form in a new tab; HCPS never copies or grades it.</p>`,
+    "Save",async()=>{ await change({action:"set_program",course_id:c.id,video_url:val("pvid"),video_title:val("pvtitle"),quiz_url:val("pquiz"),manufacturer_page_url:val("ppage"),overview:val("pover"),quiz_note:val("pnote")},"mmsg",()=>viewCourse(c.id)); },
+    {intro:"Recorded in the Academy audit history."});
 }
 async function viewVersion(id){
   loading(); const r=await api({action:"get_version",id}); if(r.status!==200)return failed(r);
@@ -589,7 +619,7 @@ async function viewCreds(){
     <table class="stack"><thead><tr><th>Learner</th><th>Program</th><th>Issued by</th><th>Status</th><th>Evidence</th><th></th></tr></thead><tbody>
     ${X.map(c=>`<tr><td data-l="Learner">${esc(c.learner||"")}<div class="muted small">${esc(c.learner_email||"")}</div></td><td data-l="Program">${esc(c.course||"")}</td><td data-l="Issued by">${esc(c.issued_by)}</td>
       <td data-l="Status"><span class="pill ${c.status==="verified"?"p-published":c.status==="rejected"?"p-off":"p-in_review"}">${esc(String(c.status||"").replace(/_/g," "))}</span>${c.awaiting_review?`<div class="muted small">needs review</div>`:""}</td>
-      <td data-l="Evidence">${c.evidence_type?esc(c.evidence_type.replace("_"," "))+(c.evidence_ref?" · "+esc(c.evidence_ref):""):(c.has_upload?"Certificate file uploaded — not yet checked":"—")}${c.verified_by?`<div class="muted small">checked by ${esc(String(c.verified_by).replace("staff:",""))} ${day(c.verified_at)}</div>`:""}${c.note?`<div class="muted small">${esc(c.note)}</div>`:""}</td>
+      <td data-l="Evidence">${c.evidence_type?esc(c.evidence_type.replace("_"," "))+(c.evidence_ref?" · "+esc(c.evidence_ref):""):(c.has_upload?"Certificate file uploaded — not yet checked":"—")}${c.evidence_url?`<div><a class="lnk" href="${esc(safeUrl(c.evidence_url))}" target="_blank" rel="noopener noreferrer">Open the uploaded certificate (private link, 10 min)</a></div>`:""}${c.exam_reported_at?`<div class="muted small">quiz submitted (learner's report) ${day(c.exam_reported_at)}</div>`:""}${c.verified_by?`<div class="muted small">checked by ${esc(String(c.verified_by).replace("staff:",""))} ${day(c.verified_at)}</div>`:""}${c.note?`<div class="muted small">${esc(c.note)}</div>`:""}</td>
       <td data-l="">${(c.status!=="verified"&&c.status!=="rejected")?`<button class="go ghost sm" data-rv="${esc(c.id)}">Review…</button>`:""}</td></tr>`).join("")
       ||`<tr><td colspan="6" class="muted">No manufacturer credentials are being tracked yet.</td></tr>`}</tbody></table></div>`;
   $("#view").querySelectorAll("[data-rk]").forEach(b=>b.onclick=()=>{

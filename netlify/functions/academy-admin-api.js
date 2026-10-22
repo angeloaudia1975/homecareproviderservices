@@ -28,7 +28,7 @@ const { randomUUID } = require('crypto');
 
 const ENTITIES = ['academy_courses', 'academy_course_versions', 'academy_modules', 'academy_lessons', 'academy_memberships',
                   'academy_external_certs', 'academy_certificates', 'academy_attempts', 'academy_enrollments', 'product_facts',
-                  'academy_learners', 'academy_invites'];
+                  'academy_learners', 'academy_invites', 'academy_program_details'];
 const SLUG = /^[a-z0-9-]+$/;
 const MODEL = /^[A-Z0-9][A-Z0-9._\/-]{0,39}$/;
 const FIELD = /^[a-z0-9_.]+$/;
@@ -323,6 +323,39 @@ WRITE.publish_course = async (staff, b) => {
   requirePresident(staff);
   const r = await A.publishOp('publish_course', { p_actor: A.actorLabel(staff), p_course_id: A.uuid(b.id, 'course') });
   return { ok: true, audited: true, course: r && r.course };
+};
+/* ---------- Manufacturer program pages (F2, issue #32) ----------
+   The video and quiz of a manufacturer-hosted technical certification. Administrators edit them; audited in the database
+   (academy_ext_op_set_program). A YouTube address is turned into its privacy-enhanced embed (youtube-nocookie.com, no
+   autoplay); anything else is refused. Links are https only. Not installed (F2 not run) = 503, never a silent write. */
+function youtubeEmbed(v) {
+  if (v == null || String(v).trim() === '') return null;
+  let u; try { u = new URL(String(v).trim()); } catch (e) { A.refuse(400, 'invalid', 'The video must be a YouTube link.'); }
+  let id = null;
+  if (u.protocol === 'https:' && /^(www\.|m\.)?youtube\.com$/.test(u.hostname)) id = u.pathname === '/watch' ? u.searchParams.get('v') : (/^\/(embed|shorts|live)\/([A-Za-z0-9_-]{6,20})$/.exec(u.pathname) || [])[2];
+  else if (u.protocol === 'https:' && u.hostname === 'youtu.be') id = u.pathname.slice(1);
+  else if (u.protocol === 'https:' && u.hostname === 'www.youtube-nocookie.com') id = (/^\/embed\/([A-Za-z0-9_-]{6,20})$/.exec(u.pathname) || [])[1];
+  if (!id || !/^[A-Za-z0-9_-]{6,20}$/.test(id)) A.refuse(400, 'invalid', 'The video must be a YouTube link (youtube.com/watch?v=…, youtu.be/… or an embed link).');
+  return 'https://www.youtube-nocookie.com/embed/' + id;
+}
+const optHttps = (v, name) => { if (v == null || String(v).trim() === '') return null; const x = safeHttpsUrl(String(v).trim()); if (!x || x.length > 500) A.refuse(400, 'invalid', `${name} must be an https:// link.`); return x; };
+READ.get_program = async (staff, b) => {
+  const id = A.uuid(b.course_id, 'course');
+  const c = need(one(await A.sbGet(`academy_courses?id=eq.${enc(id)}&select=${COURSE_COLS}`)), 'Course');
+  if (c.course_type !== 'manufacturer_program') A.refuse(400, 'invalid', 'Only a manufacturer program has a program page.');
+  try { return { ok: true, installed: true, details: one(await A.sbGet(`academy_program_details?course_id=eq.${enc(id)}&select=*`)) }; }
+  catch (e) { if (e && e.code === 'unreadable') return { ok: true, installed: false, details: null }; throw e; }
+};
+WRITE.set_program = async (staff, b) => {
+  const d = {};
+  if ('video_url' in b) d.video_url = youtubeEmbed(b.video_url);
+  if ('video_title' in b) d.video_title = b.video_title == null || String(b.video_title).trim() === '' ? null : A.text(b.video_title, 200, 'Video title');
+  if ('quiz_url' in b) d.quiz_url = optHttps(b.quiz_url, 'The quiz link');
+  if ('manufacturer_page_url' in b) d.manufacturer_page_url = optHttps(b.manufacturer_page_url, 'The manufacturer page');
+  if ('overview' in b) d.overview = b.overview == null || String(b.overview).trim() === '' ? null : A.text(b.overview, 1500, 'Overview');
+  if ('quiz_note' in b) d.quiz_note = b.quiz_note == null || String(b.quiz_note).trim() === '' ? null : A.text(b.quiz_note, 600, 'Quiz note');
+  if (!Object.keys(d).length) A.refuse(400, 'invalid', 'Nothing to save.');
+  return { ok: true, audited: true, details: await A.accessOp('ext_op_set_program', { p_actor: A.actorLabel(staff), p_course_id: A.uuid(b.course_id, 'course'), p_details: d }) };
 };
 /* What publishing this version would do, before anyone presses Publish (read only): its readiness, the version it would
    replace, and whether the database will accept it (in review, nothing blocking). */
@@ -722,8 +755,12 @@ READ.list_external_certs = async (staff, b) => {
     all(`manufacturers?select=slug,name`, 'slug.asc'),
   ]);
   const L = Object.fromEntries(ls.map(x => [String(x.id), x])), C = Object.fromEntries(cs.map(x => [String(x.id), x])), M = Object.fromEntries(ms.map(x => [x.slug, x.name]));
+  // F2: the certificate a learner uploaded, as a short-lived private link for the reviewing administrator only
+  const ev = await byIds('academy_media', rows.map(r => r.upload_media_id), 'id,storage_path');
+  const evUrl = {}; for (const m of ev) evUrl[String(m.id)] = /^media\/learner-evidence\//.test(String(m.storage_path || '')) ? await A.signPrivate(m.storage_path, 600) : null;
   return { ok: true, issuer: CREDENTIAL.manufacturer, credentials: rows.map(r => Object.assign({}, r, {
     issuer: 'manufacturer', issued_by: M[r.manufacturer_slug] || r.manufacturer_slug, upload_media_id: undefined, has_upload: !!r.upload_media_id,
+    evidence_url: r.upload_media_id ? evUrl[String(r.upload_media_id)] || null : null,
     learner: (L[String(r.learner_id)] || {}).full_name || null, learner_email: (L[String(r.learner_id)] || {}).email || null,
     course: (C[String(r.course_id)] || {}).title || null, awaiting_review: ['exam_reported', 'awaiting_certificate', 'certificate_uploaded'].includes(r.status) })) };
 };
@@ -928,6 +965,22 @@ READ.student_catalog = async () => {
     issuer: 'manufacturer', visible_to_learners: c.status === 'published' && !!safeHttpsUrl(c.external_url) && !isTest(c) }));
   return { ok: true, courses: courses.map(c => ({ id: c.id, title: c.title, is_test: isTest(c),
     versions: versions.filter(v => String(v.course_id) === String(c.id)).map(v => ({ id: v.id, version: v.version, status: v.status })) })), programs };
+};
+/* One manufacturer program page exactly as the learner page draws it (any status, for staff review; nothing recorded). */
+READ.student_program = async (staff, b) => {
+  const id = A.uuid(b.course_id, 'program');
+  const c = need(one(await A.sbGet(`academy_courses?id=eq.${enc(id)}&select=${COURSE_COLS}`)), 'Program');
+  if (c.course_type !== 'manufacturer_program') A.refuse(400, 'invalid', 'This is not a manufacturer program.');
+  const m = one(await A.sbGet(`manufacturers?slug=eq.${enc(c.manufacturer_slug || '')}&select=slug,name`));
+  let d = null, installed = true;
+  try { d = one(await A.sbGet(`academy_program_details?course_id=eq.${enc(id)}&select=*`)); } catch (e) { if (e && e.code === 'unreadable') installed = false; else throw e; }
+  const quiz = safeHttpsUrl((d && d.quiz_url) || c.external_url);
+  const embed = d && /^https:\/\/www\.youtube-nocookie\.com\/embed\/[A-Za-z0-9_-]{6,20}$/.test(String(d.video_url || '')) ? d.video_url : null;
+  return { ok: true, tracking_installed: installed, uploads_open: await A.switchOn('academy_external_uploads'),
+    program: { id: c.id, title: c.title, status: c.status, manufacturer: (m && m.name) || c.manufacturer_slug, quiz_url: quiz, url: quiz,
+      video: embed ? { embed, title: (d && d.video_title) || c.title, watch_url: 'https://www.youtube.com/watch?v=' + embed.split('/').pop() } : null,
+      manufacturer_page_url: d ? safeHttpsUrl(d.manufacturer_page_url) : null, overview: (d && d.overview) || null, quiz_note: (d && d.quiz_note) || null,
+      visible_to_learners: c.status === 'published' && !!(quiz || embed) && !isTest(c), credential: null } };
 };
 READ.student_course = async (staff, b) => {
   const v = await studentVersion(A.uuid(b.version_id, 'version'));

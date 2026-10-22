@@ -83,7 +83,7 @@ async function publishConsistency() { return rpc('academy_publish_consistency', 
    progress. Same contract: one database call = the change and its audit row, or neither; not installed = 503.
    A2E / M6 exams (exam_op_*) and A2F / M7 HCPS certificates (cert_op_*) use the same door. */
 async function accessOp(name, args) {
-  if (!/^(access|enroll|progress|exam|cert)_op_[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
+  if (!/^(access|enroll|progress|exam|cert|ext)_op_[a-z_]+$/.test(name)) refuse(500, 'internal', 'Unknown operation.');
   return rpc('academy_' + name, args);
 }
 /* Phase 2 / M8 paid access (academy_purchase_op_*): prices, eligibility overrides, checkout and verified Stripe events.

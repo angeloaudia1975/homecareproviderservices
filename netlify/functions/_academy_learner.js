@@ -294,22 +294,78 @@ LEARNER.my_certificates = async (event, learner) => {
   const certs = enr.length ? await certificatesFor(`learner_id=eq.${enc(learner.learner_id)}&enrollment_id=${idsIn(enr.map(e => e.id))}`) : [];
   return { ok: true, certificates: certs, issuing: await A.switchOn('academy_certificates') };
 };
-/* Manufacturer technical certifications (e.g. Golden's Lift Chair / Mobility Technical Service Certification). The
-   manufacturer teaches, examines and issues them; HCPS only lists them and links to the manufacturer's own training /
-   exam (published "manufacturer program" courses, President-only, M4). A learner's own manufacturer credentials are
-   shown as HCPS recorded them; opening a link never means passed (decision 37). Read only. */
+/* Manufacturer technical certifications (e.g. Golden's Lift Chair / Mobility Technical Service Certification; issue #32).
+   The manufacturer teaches (its official video), examines (its own quiz) and issues them. HCPS shows a program page —
+   overview, the embedded official video, "Take <manufacturer>'s official quiz" — and records the learner's OWN reports
+   (watched, quiz submitted, certificate uploaded) through the audited F2 operations. A report is never a result: only
+   HCPS's review of the manufacturer's certificate makes a credential "verified" (M1 review_external_cert). */
+const EXT_STATUS = { training_started: 'Started', training_completed: 'Training watched (your report)', exam_opened: 'Quiz opened',
+  exam_reported: 'Quiz submitted (your report) — waiting for the manufacturer’s certificate', awaiting_certificate: 'Waiting for the manufacturer’s certificate',
+  certificate_uploaded: 'Certificate received — HCPS is checking it', verified: 'Verified by HCPS', rejected: 'Not accepted — see the note and try again' };
+const EMBED = /^https:\/\/www\.youtube-nocookie\.com\/embed\/[A-Za-z0-9_-]{6,20}$/;
+const httpsOk = u => { try { const x = new URL(String(u || '')); return x.protocol === 'https:' && !x.username && !x.password ? x.toString() : null; } catch (e) { return null; } };
+async function programDetails(ids) {   // before F2 is installed: no program pages (the quiz link is the course's own link)
+  if (!ids.length) return {};
+  try { return Object.fromEntries((await A.sbGet(`academy_program_details?course_id=${idsIn(ids)}&select=*`)).map(d => [String(d.course_id), d])); }
+  catch (e) { if (e && e.code === 'unreadable') return null; throw e; }
+}
+function programOut(c, mfrName, d, x) {
+  const quiz = httpsOk((d && d.quiz_url) || c.external_url);
+  return { id: c.id, title: c.title, manufacturer: mfrName, quiz_url: quiz, url: quiz,
+    video: d && EMBED.test(String(d.video_url || '')) ? { embed: d.video_url, title: d.video_title || c.title, watch_url: 'https://www.youtube.com/watch?v=' + d.video_url.split('/').pop() } : null,
+    manufacturer_page_url: d ? httpsOk(d.manufacturer_page_url) : null, overview: (d && d.overview) || null, quiz_note: (d && d.quiz_note) || null,
+    credential: x ? { status: x.status, label: EXT_STATUS[x.status] || x.status, training_completed_at: x.training_completed_at || null, exam_reported_at: x.exam_reported_at || null,
+      certificate_uploaded_at: x.certificate_uploaded_at || null, verified_at: x.verified_at || null, note: x.status === 'rejected' ? (x.note || null) : null,
+      certificate_ref: x.status === 'verified' ? x.certificate_ref || null : null, expires_at: x.expires_at || null } : null };
+}
+const latestCred = rows => { const by = {}; for (const r of rows.slice().sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))) by[String(r.course_id)] = r; return by; };
+async function publishedPrograms(learner, onlyId) {
+  let q = `academy_courses?course_type=eq.manufacturer_program&status=eq.published&select=id,slug,title,manufacturer_slug,external_url&order=title.asc`;
+  if (onlyId) q += `&id=eq.${enc(onlyId)}`;
+  const [courses, mfrs, mine] = await Promise.all([A.sbGet(q), A.sbGet(`manufacturers?select=slug,name`),
+    A.sbGet(`academy_external_certs?learner_id=eq.${enc(learner.learner_id)}&select=course_id,status,note,training_completed_at,exam_reported_at,certificate_uploaded_at,verified_at,certificate_ref,expires_at,created_at`)]);
+  const live = courses.filter(c => !/^test-/.test(c.slug));
+  const det = await programDetails(live.map(c => c.id));
+  const name = Object.fromEntries(mfrs.map(m => [m.slug, m.name || m.slug])), by = latestCred(mine);
+  return { installed: det !== null, programs: live.map(c => programOut(c, name[c.manufacturer_slug] || c.manufacturer_slug, (det || {})[String(c.id)], by[String(c.id)])).filter(p => p.quiz_url || p.video) };
+}
 LEARNER.manufacturer_programs = async (event, learner) => {
-  const [courses, mfrs, mine] = await Promise.all([
-    A.sbGet(`academy_courses?course_type=eq.manufacturer_program&status=eq.published&select=id,slug,title,manufacturer_slug,external_url&order=title.asc`),
-    A.sbGet(`manufacturers?select=slug,name`),
-    A.sbGet(`academy_external_certs?learner_id=eq.${enc(learner.learner_id)}&select=course_id,status,verified_at,certificate_ref,expires_at`)]);
-  const name = Object.fromEntries(mfrs.map(m => [m.slug, m.name || m.slug]));
-  const by = Object.fromEntries(mine.map(x => [String(x.course_id), x]));
-  return { ok: true, programs: courses.filter(c => /^https:\/\//.test(String(c.external_url || '')) && !/^test-/.test(c.slug)).map(c => {
-    const x = by[String(c.id)];
-    return { id: c.id, title: c.title, manufacturer: name[c.manufacturer_slug] || c.manufacturer_slug, url: c.external_url,
-      credential: x ? { status: x.status, verified_at: x.verified_at || null, certificate_ref: x.status === 'verified' ? x.certificate_ref || null : null, expires_at: x.expires_at || null } : null };
-  }) };
+  const r = await publishedPrograms(learner);
+  return { ok: true, programs: r.programs, uploads_open: await A.switchOn('academy_external_uploads') };
+};
+LEARNER.program = async (event, learner, b) => {
+  const r = await publishedPrograms(learner, A.uuid(b.course_id, 'program'));
+  if (!r.programs.length) A.refuse(404, 'not_found', 'This program is not available.');
+  return { ok: true, program: r.programs[0], tracking: r.installed, uploads_open: await A.switchOn('academy_external_uploads') };
+};
+const STEP_WAIT = { watch_first: 'Watch the training video first, then confirm it here.', quiz_first: 'Confirm that you submitted the quiz first.' };
+LEARNER.program_step = async (event, learner, b) => {
+  const step = A.oneOf(b.step, ['watched', 'quiz_submitted'], 'Step');
+  const r = await A.accessOp('ext_op_step', { p_actor: actorOf(learner), p_course_id: A.uuid(b.course_id, 'program'), p_step: step });
+  if (!r || !r.ok) return A.respond(event, 409, { error: (r && r.reason) || 'refused', message: STEP_WAIT[r && r.reason] || 'That step cannot be recorded just now.' });
+  return { ok: true, status: r.status, label: EXT_STATUS[r.status] || r.status };
+};
+const EVIDENCE_MAX = 3 * 1024 * 1024;
+function evidenceType(buf) {
+  if (buf.length > 4 && buf.slice(0, 4).toString('latin1') === '%PDF') return { ext: 'pdf', kind: 'pdf' };
+  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return { ext: 'jpg', kind: 'image' };
+  if (buf.length > 8 && buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { ext: 'png', kind: 'image' };
+  if (buf.length > 12 && buf.slice(0, 4).toString('latin1') === 'RIFF' && buf.slice(8, 12).toString('latin1') === 'WEBP') return { ext: 'webp', kind: 'image' };
+  return null;
+}
+LEARNER.program_certificate = async (event, learner, b) => {
+  if (!(await A.switchOn('academy_external_uploads'))) A.refuse(403, 'flag_off', 'Certificate uploads are not open yet. Email your certificate to HCPS instead.');
+  const course = A.uuid(b.course_id, 'program');
+  if (typeof b.data !== 'string' || !/^[A-Za-z0-9+/=]+$/.test(b.data)) A.refuse(400, 'invalid', 'The file could not be read.');
+  const buf = Buffer.from(b.data, 'base64');
+  if (!buf.length || buf.length > EVIDENCE_MAX) A.refuse(413, 'too_large', 'The file must be a PDF or picture of at most 3 MB.');
+  const t = evidenceType(buf); if (!t) A.refuse(400, 'invalid', 'Upload the certificate as a PDF, JPG, PNG or WEBP file.');
+  const sha = crypto.createHash('sha256').update(buf).digest('hex');
+  const path = `media/learner-evidence/${String(learner.learner_id).toLowerCase()}-${sha.slice(0, 32)}.${t.ext}`;
+  await A.putPrivate(path, buf, t.kind === 'pdf' ? 'application/pdf' : 'image/' + (t.ext === 'jpg' ? 'jpeg' : t.ext));
+  const r = await A.accessOp('ext_op_certificate', { p_actor: actorOf(learner), p_course_id: course, p_storage_path: path, p_kind: t.kind });
+  if (!r || !r.ok) return A.respond(event, 409, { error: (r && r.reason) || 'refused', message: STEP_WAIT[r && r.reason] || 'The certificate cannot be recorded just now.' });
+  return { ok: true, status: r.status, label: EXT_STATUS[r.status] || r.status };
 };
 LEARNER.claim_certificate = async (event, learner, b) => {
   if (!(await A.switchOn('academy_certificates'))) A.refuse(403, 'flag_off', CERT_WAIT.switched_off);
