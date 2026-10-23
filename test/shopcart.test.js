@@ -54,7 +54,7 @@ function env(opts){
       return {ok:r.statusCode<300,status:r.statusCode,json:async()=>JSON.parse(r.body)}; }
     if(u.startsWith(M.BASE+'/auth/v1/user')) return String((o.headers||{}).Authorization||'')==='Bearer jwt'
       ?{ok:true,status:200,json:async()=>({id:'u1',email:'d@x.com'})}:{ok:false,status:401,json:async()=>({})};
-    if(u.startsWith(OB+'/data/')){ const content=u.includes('/data/content/');
+    if(u===OB+'/data/manufacturers.json') return {ok:true,status:200,json:async()=>(W.db.manufacturers||[]).map(m=>({slug:m.slug,name:m.name}))}; if(u.startsWith(OB+'/data/')){ const content=u.includes('/data/content/');
       const slug=decodeURIComponent(u.slice((OB+(content?'/data/content/':'/data/')).length).replace(/\.json.*$/,''));
       if(content||!(slug in FILE)) return {ok:false,status:404,json:async()=>null};
       return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(FILE[slug]))}; }
