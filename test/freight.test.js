@@ -21,7 +21,7 @@ const ROWS=[['1003AB','Wheelchairs',527],['1017','Wheelchairs',536],['ES0001','W
 function world(){
   const W=M.createWorld({ tokens:{dealer:'d@x.com'}, tables:{ app_settings:[{key:'platform_state',value:{mode:'live'}}],
     manufacturers:[{slug:SB,name:'Strongback Mobility'}], manufacturer_meta:[{slug:SB}],
-    dealers:[{id:'d1',parent_id:null,is_test:false}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}],
+    dealers:[{id:'d1',parent_id:null,is_test:false}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}], dealer_manufacturers:require('./p0-entitle.js')('d1'),
     dealer_contract_prices:[], product_overrides:[{manufacturer:SB,code:'RC100',patch:{active:false,disposition:'not_offered'}}], product_images:[], product_links:[], product_media:[], product_content:[], product_skus:[],
     custom_products:ROWS.map(([code,category,b])=>({manufacturer:SB,code,name:code,category,base_price:b,active:true})).concat([{manufacturer:SB,code:'RC100',name:'RC100',category:'Accessories',base_price:5,active:false}]),
     orders:[], order_items:[], tracking_requests:[], email_sends:[], intent_events:[], email_attribution:[] }});

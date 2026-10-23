@@ -44,7 +44,7 @@ await t('Products: 9 active SKUs become 7 proposed pages — shapes and colours 
   eq(JSON.stringify(W.db),before,'a plan writes nothing');
 });
 await t('page grouping is presentation only: the shared page creates no pricing family and changes no commercial field',async()=>{
-  const p=E.planPages({records:W.db.product_skus.filter(r=>r.manufacturer===S.REAL),catalog:require(path.join(__dirname,'..','..','homecareproviderservicesordering','public','data','bemis.json')),custom:[],overrides:[],pages:[]});
+  const p=E.planPages({records:W.db.product_skus.filter(r=>r.manufacturer===S.REAL),catalog:require('./p0-fullfile.js').fullFile('bemis'),custom:[],overrides:[],pages:[]});
   const seat=p.pages.find(x=>x.skus.length===2&&x.options.Shape);
   ok(!('tiers' in seat) && !('pool' in seat) && !('base_price' in seat.skus[0]) && !('msrp' in seat.skus[0]),'no commercial field on a proposed page');
 });

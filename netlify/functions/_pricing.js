@@ -11,6 +11,7 @@
    Every read is strict: a layer that cannot be read stops the pricing. An order is never priced
    from a partial catalog. */
 const ENGINE = require("./_shop_engine.js");
+const CC = require("./_catalog_commercial.js");
 
 const GOLDEN = new Set(["golden-technologies", "golden"]);
 const isGolden = s => GOLDEN.has(String(s || ""));
@@ -77,13 +78,37 @@ async function contractPrices(sb, dealerId) {
   return prices;
 }
 
+/* P0 (2026-10-23, issue #2): the public catalog file no longer carries prices; their commercial half
+   lives in the private table catalog_file_commercial (one row per line). The full file is the public
+   file with that row restored onto it — the storefront's own restoreCatalogFile, via the shared module.
+   No row:  a public file that still carries commercial fields (before the strip; test fixtures) is used
+            as it is; a public file WITHOUT them is a line whose pricing is unavailable — refused, never
+            priced from nothing. A row that does not match the file is refused too (strict). */
+function fullCatalogFile(file, rec, slug) {
+  const rows = Array.isArray(file) ? file : [];
+  const row = Array.isArray(rec) && rec[0];
+  if (row) return CC.restoreCatalogFile(rows, row.rows);
+  if (rows.length && !CC.commercialKeysIn(rows).length)
+    throw new Error(`pricing_unavailable: ${slug} has no commercial record (catalog_file_commercial) for its public catalog file`);
+  return rows;
+}
+const COMMERCIAL_SELECT = "manufacturer,rows";
+/* The columns catalog-layers.js reads (homecareproviderservicesordering) — test/pricing-parity.test.js
+   holds the two to the same text. */
+const LAYER_SELECT = {
+  custom_products: "code,name,category,base_price,msrp,map,image,description,active,tiers,price_note",
+  product_overrides: "code,patch",
+};
+
 /* One line's products, built by the shop's own mergeCatalogEdits with the server answering its
    reads. Returns { products, engine } — engine.unitPrice prices against the CART map given. */
 async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart, freightCfg, freightOverride }) {
-  const [file, metaRows] = await Promise.all([
+  const [publicFile, metaRows, commercialRec] = await Promise.all([
     catalogFile(slug),
     sb("GET", `manufacturer_meta?slug=eq.${enc(slug)}&select=slug,enriched_only,category_map,record_authoritative,record_resync_error,freight_terms`),
+    sb("GET", `catalog_file_commercial?manufacturer=eq.${enc(slug)}&select=${COMMERCIAL_SELECT}`),
   ]);
+  const file = fullCatalogFile(publicFile, commercialRec, slug);
   const meta = (metaRows && metaRows[0]) || {};
   const failures = [];
   const shimFetch = async (url) => {
@@ -103,6 +128,17 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart
           catch (e) { return { ok: false, status: 400, json: async () => ({ message: "card_image not available" }) }; }
         } else rows = await sb("GET", path);
         return { ok: true, status: 200, json: async () => rows || [] };
+      }
+      /* P0: the shop reads a line's commercial layers ONLY from catalog-layers (the signed-in dealer's
+         entitlement is checked there). The server answers the same question from the same tables:
+         the file's commercial overlay (from the full file read above) and the two layer tables. */
+      if (u.startsWith("/.netlify/functions/catalog-layers")) {
+        const [custom, overrides] = await Promise.all([
+          sb("GET", `custom_products?manufacturer=eq.${enc(slug)}&select=${LAYER_SELECT.custom_products}`),
+          sb("GET", `product_overrides?manufacturer=eq.${enc(slug)}&select=${LAYER_SELECT.product_overrides}`),
+        ]);
+        return { ok: true, status: 200, json: async () => ({ ok: true, manufacturer: slug,
+          file_overlay: CC.splitCatalogFile(file || []).overlay, custom_products: custom || [], product_overrides: overrides || [] }) };
       }
       if (u.startsWith("/.netlify/functions/catalog-feed")) {
         const any = await sb("GET", `product_skus?manufacturer=eq.${enc(slug)}&select=code&limit=1`);
@@ -249,4 +285,4 @@ function remoteFiles(base) {
   };
 }
 
-module.exports = { priceOrders, lineProducts, contractPrices, feedRows, recordAuthority, isGolden, remoteFiles };
+module.exports = { priceOrders, lineProducts, contractPrices, feedRows, recordAuthority, isGolden, remoteFiles, fullCatalogFile, LAYER_SELECT };

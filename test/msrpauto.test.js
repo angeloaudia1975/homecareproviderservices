@@ -14,7 +14,7 @@ function world({file,tables}){
   const W=M.createWorld({ tokens:{dealer:'d@x.com'},
     tables:Object.assign({ app_settings:[{key:'platform_state',value:{mode:'development'}}],
       manufacturers:[{slug:LINE,name:'Ovation Medical'}], manufacturer_meta:[{slug:LINE}],
-      dealers:[{id:'d1',parent_id:null}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}],
+      dealers:[{id:'d1',parent_id:null}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}], dealer_manufacturers:require('./p0-entitle.js')('d1'),
       dealer_contract_prices:[], product_overrides:[], custom_products:[], product_images:[], product_links:[], product_media:[],
       product_content:[], product_skus:[], orders:[], order_items:[] }, tables||{})});
   const inner=W.fetch;

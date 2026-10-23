@@ -30,10 +30,10 @@ function world(){
   const skus=clone(L.bemis_records).map(r=>Object.assign({manufacturer:'bemis',updated_at:'2026-10-10T19:00:00Z'},r)).concat(...LEGACY.map(s=>legacyRecords(s).map(r=>Object.assign({updated_at:'2026-10-10T19:00:00Z'},r))));
   const sources=[].concat(...Object.entries(L.sources).map(([slug,a])=>a.map(s=>Object.assign({manufacturer:slug},clone(s)))));
   const W=M.createWorld({ tables:{ manufacturer_meta:clone(META), product_skus:skus, mfr_sources:sources, mfr_decisions:[].concat(...Object.values(clone(L.decisions))),
-    price_imports:clone(ROWS), custom_products:[], product_overrides:[], product_content:[], product_links:[], product_media:[], product_images:[], mfr_verification_runs:[] }});
+    price_imports:clone(ROWS), custom_products:[], product_overrides:[], product_content:[], product_links:[], product_media:[], product_images:[], mfr_verification_runs:[], catalog_file_commercial:[] }});
   const inner=W.fetch;
   W.fetch=async(u,o)=>{ u=String(u);
-    const d=u.match(/^https:\/\/ordering\.test\/data\/([a-z0-9-]+)\.json/); if(d){ const f=path.join(SHOPD,d[1]+'.json'); if(fs.existsSync(f)){ const j=JSON.parse(fs.readFileSync(f,'utf8')); return {ok:true,status:200,json:async()=>j,text:async()=>JSON.stringify(j)}; } return {ok:false,status:404,json:async()=>null,text:async()=>''}; }
+    const d=u.match(/^https:\/\/ordering\.test\/data\/([a-z0-9-]+)\.json/); if(d){ const f=path.join(SHOPD,d[1]+'.json'); if(fs.existsSync(f)){ const j=require('./p0-fullfile.js').fullFile(d[1]);   /* P0: full file, as the server restores it */ return {ok:true,status:200,json:async()=>j,text:async()=>JSON.stringify(j)}; } return {ok:false,status:404,json:async()=>null,text:async()=>''}; }
     (W.db.product_skus||[]).forEach(r=>{ r.code_norm=norm(r.code); }); return inner(u,o); };
   return W; }
 const mod=W=>M.load('catalog-api.js',W,{ANALYTICS_TOKEN:'pass',ORDERING_BASE:'https://ordering.test'},ROOT);

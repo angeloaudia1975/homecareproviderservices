@@ -27,7 +27,7 @@ function world({files, tables, failRead, failWrite, fileStatus}){
       manufacturers:[{slug:LINE,name:'Ovation Medical'},{slug:'golden-technologies',name:'Golden'}],
       manufacturer_meta:[{slug:LINE}],
       dealers:[{id:'d1',parent_id:'m1',is_test:true},{id:'m1',parent_id:null}],
-      dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}],
+      dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}], dealer_manufacturers:require('./p0-entitle.js')('d1'),
       dealer_contract_prices:[
         {dealer_id:'m1',manufacturer:LINE,code:'C1',price:18,active:true},
         {dealer_id:'d1',manufacturer:LINE,code:'C1',price:17,active:true},

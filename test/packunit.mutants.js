@@ -2,7 +2,7 @@ const fs=require('fs'),path=require('path'),os=require('os'),{execFileSync}=requ
 const DIR=path.join(__dirname,'..','netlify','functions');
 const SHOPD=path.join(__dirname,'..','..','homecareproviderservicesordering');
 const ex=require('./extract-engine.js');
-const files={bemis:path.join(SHOPD,'public','data','bemis.json'),shop:path.join(SHOPD,'public','index.html'),submit:path.join(SHOPD,'netlify','functions','submit-order.js'),orders:path.join(DIR,'orders-api.js'),pricing:path.join(DIR,'_pricing.js')};
+const files={bemis:require('./p0-fullfile.js').fullFilePath('bemis'),shop:path.join(SHOPD,'public','index.html'),submit:path.join(SHOPD,'netlify','functions','submit-order.js'),orders:path.join(DIR,'orders-api.js'),pricing:path.join(DIR,'_pricing.js')};
 const M=[
  ['shop','record unit not copied','    if(authoritative){ if(m.uom != null && m.uom !== "") p.uom = m.uom; if(m.case_qty != null) p.case_qty = Number(m.case_qty); }','    '],
  ['shop','MAP not labelled each','MAP ${money(mapv)}${mapIsEach(p)?" each":""}','MAP ${money(mapv)}'],
@@ -13,9 +13,9 @@ const M=[
  ['shop','MSRP never labelled each','${msrpEach?" each":""}</div>','</div>'],
  ['shop','every pack MSRP called each',"? b==='each' : p.msrp_each===true; }","? b==='each' : true; }"],
  ['shop','per-piece MSRP weighed against the case price','const msrpFloor=msrpEach ? Number(p.base_price)/msrpPack.n : Number(p.base_price);','const msrpFloor=Number(p.base_price);'],
- ['bemis','Steadfast unit blanked','"uom": "Each",\r\n    "base_price": 54.99','"uom": "",\r\n    "base_price": 54.99'],
+ ['bemis','Steadfast unit blanked','"uom": "Each",\n    "base_price": 54.99','"uom": "",\n    "base_price": 54.99'],
  ['bemis','case qty back to "3/CS"','"case_qty": 3,','"case_qty": "3/CS",'],
- ['bemis','derived unit cost returns','"code": "7YA0AS100",','"code": "7YA0AS100",\r\n    "unit_cost": 49.99,'],
+ ['bemis','derived unit cost returns','"code": "7YA0AS100",','"code": "7YA0AS100",\n    "unit_cost": 49.99,'],
  ['bemis','old case price returns','"base_price": 99.98,','"base_price": 99.99,'],
  ['pricing','server forgets the unit','    if (Number(l.p.case_qty) > 1) unitBits.case_qty = Number(l.p.case_qty);','    '],
 ];
