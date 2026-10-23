@@ -5,5 +5,5 @@ const fs = require('fs'), path = require('path');
 const ORD = process.env.ORDER_REPO || path.join(__dirname, '..', '..', 'homecareproviderservicesordering');
 let shop = [];
 try { shop = JSON.parse(fs.readFileSync(path.join(ORD, 'public', 'data', 'manufacturers.json'), 'utf8')).map(m => m.slug); } catch (e) {}
-const LINES = [...new Set(shop.concat(['ovation-medical', 'bemis', 'strongback-mobility', 'climbing-steps', 'bemis-copy', 'ohio-medical', 'gce', 'other-line']))];
+const LINES = [...new Set(shop.concat(['ovation-medical', 'bemis', 'strongback-mobility', 'climbing-steps', 'bemis-copy', 'ohio-medical', 'gce', 'other-line', 'complete-medical-supplies']))];
 module.exports = (dealerId, lines) => (lines || LINES).map(manufacturer => ({ dealer_id: dealerId, manufacturer, active: true }));

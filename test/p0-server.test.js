@@ -45,6 +45,9 @@ function world({ file, commercial, extra }) {
     if (u.startsWith(M.BASE + '/auth/v1/user')) { const tok = String(((opts && opts.headers) || {}).Authorization || '').replace(/^Bearer\s+/i, '');
       return tok === 'dealer' ? { ok: true, status: 200, json: async () => ({ id: 'u1', email: 'd@x.com' }) } : { ok: false, status: 401, json: async () => ({}) }; }
     if (u.startsWith(OB + '/data/content/')) return { ok: false, status: 404, json: async () => null, text: async () => '' };
+    /* The storefront's line list (admin#37: a line it does not list is never priced). */
+    if (u.startsWith(OB + '/data/manufacturers.json')) { const L = [LINE, 'bemis', 'other-line', 'strongback-mobility'].map(slug => ({ slug, name: slug }));
+      return { ok: true, status: 200, json: async () => copy(L), text: async () => JSON.stringify(L) }; }
     if (u.startsWith(OB + '/data/')) return { ok: true, status: 200, json: async () => copy(file), text: async () => JSON.stringify(file) };
     if (u.startsWith('https://api.resend.com')) return { ok: true, status: 200, json: async () => ({ id: 'm' }) };
     return inner(url, opts);
