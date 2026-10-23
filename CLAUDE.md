@@ -1603,6 +1603,18 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   → re-verify (feed uses the record, 21 prices / cart / server / categories / images unchanged,
   ordering works) → report PASS/FAIL and stop before Strongback activation. No Bemis yet.
 
+- **P0 dealer-price lock-down (issue ordering#2; PRs ordering#3 + admin#36, NOT merged / deployed, no SQL run).** No
+  commercial field (price, breaks, MAP, MSRP, price notes, dealer/tier prices, unit cost, per-item shipping) is ever in a
+  public file or readable with the public key: the static catalog files are split; their commercial half lives in the
+  private `catalog_file_commercial` (one row per line AND public-file version, `identity_sha256`; RLS on, no policies).
+  A commercial row is applied ONLY to the exact public row it was made for (per-row fingerprint `h`) and only the
+  version whose identity equals the public file actually read — never a positional match, never the nearest version;
+  any mismatch fails closed (503 / "Pricing could not be loaded"). A dealer prices and orders only its active
+  `dealer_manufacturers` lines; browsing other lines shows no commercial field. An edit to a legacy static catalog file
+  is a new version: re-seed it (`--reseed`, by fingerprint) BEFORE deploying the storefront, prune after. A line not in
+  `manufacturers.json` (retired) is never seeded or priced. Rolling the storefront back re-publishes prices — a
+  TEMPORARY EMERGENCY EXPOSURE. Runbook: ordering `docs/security/P0_PRICE_EXPOSURE.md`.
+
 ## 18. Manufacturer report imports — MI-1a transaction identity & safe replacement (RULE, agreed 2026-10-09/10)
 
 Project MI (Manufacturer Reporting & Intelligence) extends the EXISTING Sales Report Import and Commission
