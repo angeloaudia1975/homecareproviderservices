@@ -54,7 +54,8 @@ function world({ file, commercial, extra }) {
 const orders = W => M.load('orders-api.js', W, { ORDERING_BASE: OB }, ROOT);
 const call = (C, body) => M.call(C, body, { headers: { authorization: 'Bearer dealer' } });
 const order = items => ({ manufacturer_slug: LINE, manufacturer_name: 'Ovation Medical', po: 'PO1', items });
-const row = (slug, rows) => ({ manufacturer: slug, rows });
+/* A stored record = one version: its rows and the identity of the public file it was made for. */
+const row = (slug, rows, pub) => ({ manufacturer: slug, identity_sha256: pub ? CC.catalogIdentity(pub) : CC.catalogSha256((rows || []).map(o => o.h).join('\n')), rows });
 
 (async () => {
   const CART = [{ code: 'A1', qty: 1, unit: 50 }, { code: 'B1', qty: 2, unit: 40 }, { code: 'B2', qty: 1, unit: 40 }, { code: 'X9', qty: 1, unit: 30 }];
@@ -76,7 +77,9 @@ const row = (slug, rows) => ({ manufacturer: slug, rows });
   });
   await t('a commercial row out of step with the public file is refused (503)', async () => {
     const r = await call(orders(world({ file: SPLIT.public, commercial: [row(LINE, SPLIT.overlay.slice(1))] })), { action: 'price_check', orders: [order(copy(CART))] });
-    eq(r.status, 503); ok(/catalog_file_mismatch/.test(r.body.error), r.body.error);
+    eq(r.status, 503); ok(/catalog_version_not_seeded/.test(r.body.error), r.body.error);
+    const r2 = await call(orders(world({ file: SPLIT.public, commercial: [row(LINE, SPLIT.overlay.slice(1), SPLIT.public)] })), { action: 'price_check', orders: [order(copy(CART))] });
+    eq(r2.status, 503, 'a record claiming this file\'s identity but holding other rows'); ok(/malformed|catalog_file_mismatch/.test(r2.body.error), r2.body.error);
   });
   await t('an unreadable commercial table is refused (503), nothing stored', async () => {
     const W = world({ file: SPLIT.public, commercial: [row(LINE, SPLIT.overlay)] });
@@ -141,6 +144,60 @@ const row = (slug, rows) => ({ manufacturer: slug, rows });
     const b = await call(orders(mk(s.public, [row('bemis', s.overlay)])), { action: 'price_check', orders: o(copy(cart)) });
     eq(a.status, 200); eq(b.status, 200); eq(b.body.orders, a.body.orders, 'priced orders');
     ok(a.body.orders[0].items.some(i => i.contract === 1.23), 'contract price exercised');
+  });
+  /* P0 review — version integrity on the server (the shop's own rule, applied before pricing). */
+  await t('two stored versions side by side: each public file is priced from ITS version only', async () => {
+    const v2full = copy(FULL); v2full[0].name = 'Standard item v2'; v2full[0].base_price = 55; const S2 = CC.splitCatalogFile(v2full);
+    const recs = [row(LINE, SPLIT.overlay, SPLIT.public), row(LINE, S2.overlay, S2.public)];
+    const a = await call(orders(world({ file: SPLIT.public, commercial: copy(recs) })), { action: 'price_check', orders: [order([{ code: 'A1', qty: 1, unit: 50 }])] });
+    const b = await call(orders(world({ file: S2.public, commercial: copy(recs) })), { action: 'price_check', orders: [order([{ code: 'A1', qty: 1, unit: 55 }])] });
+    eq(a.body.orders[0].items[0].unit, 50, 'old file → old version'); eq(b.body.orders[0].items[0].unit, 55, 'new file → new version');
+  });
+  await t('swapped duplicate-code rows in the deployed public file: refused (503), nothing stored', async () => {
+    const full = [{ manufacturer: LINE, code: 'SR3', name: 'Ramp', family: 'solo', base_price: 50 }, { manufacturer: LINE, code: 'SR3', name: 'Ramp', family: 'kit', base_price: 70 }];
+    const s = CC.splitCatalogFile(full); const W = world({ file: [s.public[1], s.public[0]], commercial: [row(LINE, s.overlay, s.public)] }); const C = orders(W);
+    const r = await call(C, { action: 'price_check', orders: [order([{ code: 'SR3', qty: 1, unit: 50 }])] }); eq(r.status, 503);
+    const c = await call(C, { action: 'create', orders: [order([{ code: 'SR3', qty: 1, unit: 50 }])], dealer: {} }); eq(c.status, 503); eq(W.db.orders.length, 0);
+  });
+  await t('a stored record without row fingerprints (legacy shape) is refused (503)', async () => {
+    const legacy = { manufacturer: LINE, identity_sha256: CC.catalogIdentity(SPLIT.public), rows: SPLIT.overlay.map(o => ({ k: o.k, order: o.order, f: o.f })) };
+    const r = await call(orders(world({ file: SPLIT.public, commercial: [legacy] })), { action: 'price_check', orders: [order([{ code: 'A1', qty: 1, unit: 50 }])] });
+    eq(r.status, 503); ok(/malformed/.test(r.body.error), r.body.error);
+  });
+  await t('the engine\'s catalog-layers read for another version of the file is refused in-process', async () => {
+    const P = require(path.join(ROOT, '_pricing.js'));
+    const c = P.commercialFor(SPLIT.public, [row(LINE, SPLIT.overlay, SPLIT.public)], LINE);
+    eq(c.identity, CC.catalogIdentity(SPLIT.public)); eq(c.overlay, SPLIT.overlay);
+    let e = null; try { P.commercialFor(SPLIT.public.slice(1), [row(LINE, SPLIT.overlay, SPLIT.public)], LINE); } catch (x) { e = x; }
+    ok(e && /catalog_version_not_seeded/.test(e.message), 'older/newer file priced');
+  });
+  /* Entitlement (review item 2): browse ≠ buy. */
+  await t('orders-api: a staff login or a preview token is not a dealer — no price, nothing stored', async () => {
+    const W = world({ file: SPLIT.public, commercial: [row(LINE, SPLIT.overlay, SPLIT.public)] }); const C = orders(W);
+    for (const h of [{ authorization: 'Bearer staff-jwt' }, { 'x-hcps-preview': 'pv-1' }, {}]) {
+      const r = await M.call(C, { action: 'price_check', orders: [order([{ code: 'A1', qty: 1, unit: 50 }])] }, { headers: h });
+      eq(r.body.status, 'unauthorized', JSON.stringify(h)); ok(!/base_price|tiers|msrp|"unit"|commercial/.test(JSON.stringify(r.body)), 'commercial leaked');
+      const c = await M.call(C, { action: 'create', orders: [order([{ code: 'A1', qty: 1, unit: 50 }])], dealer: {} }, { headers: h });
+      eq(c.body.status, 'unauthorized');
+    }
+    eq(W.db.orders.length + W.db.order_items.length, 0, 'stored');
+  });
+  await t('orders-api: an approved dealer with NO active line can price and order nothing (403), nothing stored', async () => {
+    const W = world({ file: SPLIT.public, commercial: [row(LINE, SPLIT.overlay, SPLIT.public)], extra: { dealer_manufacturers: [{ dealer_id: 'd1', manufacturer: LINE, active: false }] } }); const C = orders(W);
+    const r = await call(C, { action: 'price_check', orders: [order([{ code: 'A1', qty: 1, unit: 50 }])] });
+    eq(r.status, 403); eq(r.body.lines, [LINE]); ok(!/base_price|tiers|msrp|"unit"/.test(JSON.stringify(r.body)), 'commercial leaked');
+    const c = await call(C, { action: 'create', orders: [order([{ code: 'A1', qty: 1, unit: 50 }])], dealer: {} }); eq(c.status, 403); eq(W.db.orders.length, 0);
+  });
+  await t('orders-api: one dealer crossing two CARRIED lines in one cart prices both; adding a non-carried line refuses all', async () => {
+    const BE = [{ manufacturer: 'bemis', code: 'Q1', name: 'Seat', base_price: 7 }], SB = CC.splitCatalogFile(BE);
+    const W = world({ file: SPLIT.public, commercial: [row(LINE, SPLIT.overlay, SPLIT.public), row('bemis', SB.overlay, SB.public)], extra: { manufacturers: [{ slug: LINE, name: 'Ovation Medical' }, { slug: 'bemis', name: 'Bemis' }] } });
+    const inner = W.fetch; W.fetch = async (u, o) => String(u).startsWith(OB + '/data/bemis.json') ? { ok: true, status: 200, json: async () => copy(SB.public), text: async () => JSON.stringify(SB.public) } : inner(u, o);
+    const C = orders(W);
+    const both = [order([{ code: 'A1', qty: 1, unit: 50 }]), { manufacturer_slug: 'bemis', manufacturer_name: 'Bemis', po: 'P2', items: [{ code: 'Q1', qty: 1, unit: 7 }] }];
+    const r = await call(C, { action: 'price_check', orders: copy(both) });
+    eq(r.status, 200, JSON.stringify(r.body).slice(0, 200)); eq(r.body.orders.map(o => o.items[0].unit), [50, 7]);
+    const x = await call(C, { action: 'price_check', orders: copy(both).concat([{ manufacturer_slug: 'strongback-mobility', items: [{ code: 'SB100', qty: 1, unit: 1 }] }]) });
+    eq(x.status, 403); eq(x.body.lines, ['strongback-mobility']); ok(!/"unit"|base_price/.test(JSON.stringify(x.body)), 'carried lines\' prices leaked in the refusal');
   });
   console.log(`\np0 server: ${pass} passed, ${fail} failed`); process.exitCode = fail ? 1 : 0;
 })();

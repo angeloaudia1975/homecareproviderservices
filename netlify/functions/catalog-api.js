@@ -99,8 +99,9 @@ async function catalogFile(mfr){
   if(!Array.isArray(j)) throw new Error(`catalog file for ${mfr} is not a list`);
   /* P0 (2026-10-23, issue #2): the deployed file is now the PUBLIC half only; its prices come back from
      the private catalog_file_commercial row, read strictly with the service role (_pricing.js, one rule). */
-  const rec=await sb("GET",`catalog_file_commercial?manufacturer=eq.${encodeURIComponent(mfr)}&select=manufacturer,rows`);
-  return require("./_pricing.js").fullCatalogFile(j, rec, mfr);
+  const P=require("./_pricing.js");
+  const rec=await sb("GET",`catalog_file_commercial?manufacturer=eq.${encodeURIComponent(mfr)}&select=${P.COMMERCIAL_SELECT}`);
+  return P.fullCatalogFile(j, rec, mfr);   // the version of THIS public file only (identity), strict
 }
 async function fetchJson(url){ const r=await fetch(url,{headers:{"cache-control":"no-cache"}}); if(!r.ok) throw new Error(`${url} ${r.status}`); return r.json(); }
 const num=v=>{ if(v===""||v==null) return null; const n=Number(v); return isFinite(n)?n:null; };
