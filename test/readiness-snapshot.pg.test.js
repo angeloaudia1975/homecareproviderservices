@@ -34,7 +34,7 @@ try {
   q(`insert into product_skus(manufacturer, code, base_price, msrp, map, status) values
        ('zz-test','P1',123.45,200,180,'active'),('zz-test','P2',null,null,null,'active'),('zz-test','OLD',9.99,null,null,'discontinued'),
        ('golden','G1',500,null,null,'active') on conflict do nothing`);
-  q(`insert into product_content(manufacturer, page_key, status, skus) values ('zz-test','p1','published','[{"sku":"P1"}]'::jsonb)`);
+  q(`insert into product_content(manufacturer, page_key, status, skus) values ('zz-test','p1','published','[{"sku":"P1","name":"Secret name","image":"https://x/y.jpg","price":99}]'::jsonb)`);
   q(`insert into mfr_verification_runs(manufacturer, phase, result, checks, fingerprint, run_at, run_by) values ('zz-test','post','pass','{}'::jsonb,'abc', now(), 'test')`);
 
   let snap;
@@ -51,6 +51,10 @@ try {
     assert.deepStrictEqual(z.map(s => s.base_price).sort(), [1, 1, null].sort());
     assert.ok(!JSON.stringify(snap).includes('123.45'), 'a dealer price leaked');
     assert.ok(z.every(s => !('msrp' in s) && !('map' in s)), 'MSRP/MAP values leaked');
+  });
+  t('page SKU entries carry only part number, status and off flag', () => {
+    const p = snap.pages.find(x => x.manufacturer === 'zz-test');
+    assert.deepStrictEqual(p.skus, [{ sku: 'P1', status: null, disabled: false }]);
   });
   t('Golden is excluded', () => assert.ok(!snap.skus.some(s => s.manufacturer === 'golden')));
   t('its output feeds the readiness matrix', () => {

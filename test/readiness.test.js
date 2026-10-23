@@ -48,7 +48,7 @@ function run(src){
   });
   t('rows that are not listed are unreachable — blocker', () => {
     const r = R.lineReadiness(full({ listing: null }));
-    eq(sev(r, 'not_listed'), 'blocker', 'sev'); eq(r.stages.visible, 0, 'visible');
+    eq(sev(r, 'not_listed'), 'blocker', 'sev'); eq(r.stages.listed, 0, 'listed');
   });
   t('an active SKU with no price is a blocker', () => {
     const r = R.lineReadiness(full({ skus: [sku({ base_price: null })] }));
@@ -80,9 +80,22 @@ function run(src){
   });
   t('undeferred missing pages warn', () => { eq(sev(R.lineReadiness(full({ pages: [] })), 'active_skus_without_visible_page'), 'warn', 'sev'); });
   t('duplicate catalog codes warn', () => { eq(sev(R.lineReadiness(full({ catalog: [row(), row()] })), 'catalog_duplicate_codes'), 'warn', 'sev'); });
-  t('unpriced catalog rows lower the catalog stage', () => {
-    const r = R.lineReadiness(full({ catalog: [row(), row({ code: 'B', base_price: 0 })], skus: [sku(), sku({ code: 'B' })], pages: [page(['A1', 'B'])] }));
-    eq(r.stages.catalog, 50, 'catalog'); eq(has(r, 'catalog_unpriced_rows'), true, 'flag');
+  t('public catalog-file prices are never read: removing them does not lower any score', () => {
+    const withPrices = R.lineReadiness(full({ catalog: [row(), row({ code: 'B' })], skus: [sku(), sku({ code: 'B' })], pages: [page(['A1', 'B'])] }));
+    const noPrices = R.lineReadiness(full({ catalog: [row({ base_price: undefined }), row({ code: 'B', base_price: undefined })], skus: [sku(), sku({ code: 'B' })], pages: [page(['A1', 'B'])] }));
+    eq(noPrices.stages, withPrices.stages, 'stages'); eq(noPrices.completion, withPrices.completion, 'completion'); eq(noPrices.exceptions, withPrices.exceptions, 'exceptions');
+  });
+  t('rows without a part number lower the catalog stage', () => {
+    const r = R.lineReadiness(full({ catalog: [row(), row({ code: '' })] }));
+    eq(r.stages.catalog, 50, 'catalog'); eq(has(r, 'catalog_rows_without_code'), true, 'flag');
+  });
+  t('a Gold Standard line is NOT launch_ready until dealer checkout is verified', () => {
+    const r = R.lineReadiness(full()); eq(r.completion, 100, 'completion'); eq(r.launch_ready, false, 'ready'); eq(/checkout not verified/.test(r.launch_ready_reason), true, 'reason');
+    eq(R.lineReadiness(full({ order_verified: true })).launch_ready, true, 'verified');
+  });
+  t('order_verified never makes a non-Gold-Standard line launch_ready', () => {
+    eq(R.lineReadiness(full({ gold_standard: null, order_verified: true })).launch_ready, false, 'no GS');
+    eq(R.lineReadiness(full({ listing: null, order_verified: true })).launch_ready, false, 'blocked');
   });
   t('a missing image file is a blocker (zero broken images)', () => {
     eq(sev(R.lineReadiness(full({ missing_image_files: ['A1'] })), 'image_file_missing'), 'blocker', 'sev');
@@ -110,13 +123,13 @@ function run(src){
   });
   t('gold standard comes from lines[slug]', () => {
     const m = R.launchMatrix({ manufacturers: [listing()], catalogs: { m: [row()] }, skus: [sku()], pages: [page(['A1'])],
-      meta: [{ slug: 'm', record_authoritative: true }], lines: { m: { gold_standard: GS } } });
-    eq(m.lines[0].status, 'gold_standard', 'status'); eq(m.summary.gold_standard, 1, 'summary');
+      meta: [{ slug: 'm', record_authoritative: true }], lines: { m: { gold_standard: GS, order_verified: true } } });
+    eq(m.lines[0].status, 'gold_standard', 'status'); eq(m.summary.gold_standard, 1, 'summary'); eq(m.summary.launch_ready, 1, 'order_verified carried');
   });
   t('platform completion averages only lines with data', () => {
     const m = R.launchMatrix({ manufacturers: [listing(), listing({ slug: 'e', hasData: false })], catalogs: { m: [row()] }, skus: [sku()], pages: [page(['A1'])],
       meta: [{ slug: 'm', record_authoritative: true }], lines: { m: { gold_standard: GS } } });
-    eq(m.summary.no_data, 1, 'no_data'); eq(m.summary.platform_completion, 100, 'platform');
+    eq(m.summary.no_data, 1, 'no_data'); eq(m.summary.average_stage_completion, 100, 'average'); eq(m.summary.average_over_lines, 1, 'denominator'); eq(m.summary.excluded_no_data, ['e'], 'excluded'); eq(m.summary.launch_ready, 0, 'launch ready'); eq(m.summary.launch_ready_of, 2, 'of');
   });
   t('exclude drops a line (Golden has its own portal)', () => {
     eq(R.launchMatrix({ manufacturers: [listing(), listing({ slug: 'golden' })], exclude: ['golden'] }).lines.map(l => l.slug), ['m'], 'slugs');
@@ -135,7 +148,7 @@ function run(src){
   });
   t('platform % is not claimed when a line is partial', () => {
     const m = R.launchMatrix({ manufacturers: [listing()], catalogs: { m: [row()] }, pages: [page(['A1'])], measured: { master: false, runs: false } });
-    eq(m.summary.platform_completion, null, 'platform'); eq(m.summary.partial_measurement, 1, 'count');
+    eq(m.summary.average_stage_completion, null, 'average'); eq(m.summary.partial_measurement, 1, 'count');
   });
   t('null input does not throw', () => { eq(R.launchMatrix(null).lines.length, 0, 'empty'); eq(R.lineReadiness(null).status, 'no_data', 'line'); });
 

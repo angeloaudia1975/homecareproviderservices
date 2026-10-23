@@ -59,9 +59,11 @@ function markdown(m, meta) {
   const L = [];
   L.push('# Partner 360 — manufacturer launch readiness', '', `Generated ${meta.generated} · sources: ${meta.sources.join(', ')}`, '');
   const s = m.summary;
-  L.push(`**Platform completion ${s.platform_completion == null ? 'not claimed (partial measurement)' : s.platform_completion + '%'}** across ${s.with_data} lines with data · Gold Standard ${s.gold_standard} · blocked ${s.blocked} · in progress ${s.in_progress} · no data ${s.no_data}`, '');
-  L.push('| Line | Status | Done | Catalog | Master | Enriched | Visible | Verified | Rows | Master active | Blockers |', '|---|---|---|---|---|---|---|---|---|---|---|');
-  for (const l of m.lines) L.push(`| ${l.name} | ${l.status} | ${l.completion == null ? 'partial' : l.completion + '%'} | ${['catalog','master','enriched','visible','verified'].map(k => l.stages[k] == null ? '—' : l.stages[k] + '%').join(' | ')} | ${l.counts.catalog_rows} | ${l.counts.master_active} | ${l.blockers} |`);
+  L.push(`**Launch-ready: ${s.launch_ready} of ${s.launch_ready_of} lines** (Gold Standard + no blocker + dealer checkout verified).`, '');
+  L.push(`Average stage completion ${s.average_stage_completion == null ? 'not claimed (partial measurement)' : s.average_stage_completion + '%'} — an equal-weight average of the five stage percentages over the ${s.average_over_lines} lines with data${s.excluded_no_data.length ? ' (excluded, no data: ' + s.excluded_no_data.join(', ') + ')' : ''}. It is NOT a launch-ready percentage. Gold Standard ${s.gold_standard} · blocked ${s.blocked} · in progress ${s.in_progress} · no data ${s.no_data}.`, '');
+  L.push('"Listed" means present in manufacturers.json with rows — not that an approved dealer sees prices or can order.', '');
+  L.push('| Line | Status | Launch-ready | Stage avg | Catalog | Master | Enriched | Listed | Verified | Rows | Master active | Blockers |', '|---|---|---|---|---|---|---|---|---|---|---|---|');
+  for (const l of m.lines) L.push(`| ${l.name} | ${l.status} | ${l.launch_ready ? 'yes' : 'no'} | ${l.completion == null ? 'partial' : l.completion + '%'} | ${['catalog','master','enriched','listed','verified'].map(k => l.stages[k] == null ? '—' : l.stages[k] + '%').join(' | ')} | ${l.counts.catalog_rows} | ${l.counts.master_active} | ${l.blockers} |`);
   L.push('', '## Exceptions', '');
   for (const l of m.lines) {
     if (!l.exceptions.length) continue;
@@ -102,6 +104,6 @@ async function main() {
   fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, 'launch-readiness.json'), JSON.stringify(Object.assign({ meta }, m), null, 2));
   fs.writeFileSync(path.join(out, 'launch-readiness.md'), markdown(m, meta));
-  console.log(`platform ${m.summary.platform_completion ?? 'partial'}% · ${m.lines.length} lines · blocked ${m.summary.blocked} → ${path.join(out, 'launch-readiness.md')}`);
+  console.log(`launch-ready ${m.summary.launch_ready}/${m.summary.launch_ready_of} · stage avg ${m.summary.average_stage_completion ?? 'partial'}% over ${m.summary.average_over_lines} · ${m.lines.length} lines · blocked ${m.summary.blocked} → ${path.join(out, 'launch-readiness.md')}`);
 }
 main().catch(e => { console.error('readiness failed: ' + e.message); process.exit(1); });

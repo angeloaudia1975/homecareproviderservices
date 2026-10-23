@@ -1608,10 +1608,18 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     decisions, never use enrichment window #907 for it, never finalize without Angelo's explicit approval of the
     re-derived dry run (hash must still match; any change = new dry run, new approval).
   · **Launch readiness (go-live matrix).** `netlify/functions/_readiness.js` (pure) scores each line on five measured
-    stages — catalog file · master record · visible enrichment · dealer-visible · Gold Standard — and lists
+    stages — catalog file · master record · visible enrichment · listed · Gold Standard — and lists
     blocker / warn / info exceptions. An unmeasured layer is reported "unmeasured", never empty or 0%; completion
-    and the platform % are claimed only over a full measurement. Slug aliases (gce → ohio-medical) apply only when
-    passed and are always reported. Runner: `scripts/catalog-readiness.js --shop <ordering repo> [--snapshot f]
+    and the average are claimed only over a full measurement. Slug aliases (gce → ohio-medical) apply only when
+    passed and are always reported. **Owner review PR #34 (2026-10-23):** (1) "listed" ≠ dealer-visible — it never
+    proves entitlement, authenticated prices, cart / freight, order record, emails or My Orders; (2) the average is an
+    equal-weight stage average over the lines WITH data, always shown with its denominator and the excluded no-data
+    lines, never as a launch-ready %; `launch_ready` is a separate yes/no = Gold Standard + no blocker + a passing
+    dealer checkout verification (`order_verified`, from the dealer launch suite — none yet, so 0 lines); (3) public
+    catalog-file prices are never read by the score, so removing the exposed prices cannot lower it; (4) the public
+    /data prices and the open SELECT on custom_products / product_overrides are P0, fixed with verified anonymous-denial
+    tests and unchanged authorized dealer prices; (5) the snapshot exports page SKU entries as part number / status /
+    off flag only, and its output is reviewed before sharing. Runner: `scripts/catalog-readiness.js --shop <ordering repo> [--snapshot f]
     [--public]`; the snapshot comes from the read-only `supabase/readiness_snapshot.sql` (no wholesale prices in its
     output — base_price reduced to priced/unpriced). Tests: test/readiness.test.js, test/readiness.mutants.js,
     test/readiness-snapshot.pg.test.js.

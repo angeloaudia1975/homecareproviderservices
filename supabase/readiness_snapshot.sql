@@ -1,8 +1,8 @@
 -- Launch readiness snapshot (2026-10-23, master assignment homecareproviderservicesordering#1, workstream A).
 -- READ-ONLY: one SELECT, no writes, no functions called. Run in the Supabase SQL editor; copy the single JSON
 -- value it returns into a file and pass it to:  node scripts/catalog-readiness.js --shop <ordering repo> --snapshot <file>
--- Deliberately carries NO wholesale prices: base_price is reduced to 1 (priced) or null (unpriced), so the file
--- is safe to keep in a working folder. Golden is excluded (separate portal).
+-- Deliberately carries NO wholesale prices: base_price is reduced to 1 (priced) or null (unpriced); page SKU entries
+-- carry only part number / status / off flag. Review the output before sharing it anyway. Golden is excluded (separate portal).
 select json_build_object(
   'taken_at', now(),
   'skus', coalesce((select json_agg(json_build_object(
@@ -14,7 +14,12 @@ select json_build_object(
     from public.product_skus where manufacturer <> 'golden'), '[]'::json),
   'pages', coalesce((select json_agg(json_build_object(
       'manufacturer', manufacturer, 'page_key', page_key, 'status', status, 'disabled', disabled,
-      'skus', skus, 'published_at', published_at) order by manufacturer, page_key)
+      -- Only what the readiness check reads from each SKU entry (owner review PR #34): part number, status, off flag.
+      -- Names, sizes, photo links and anything else on the entry stay out of the export.
+      'skus', (select coalesce(json_agg(json_build_object(
+                  'sku', coalesce(e->>'sku', e->>'code'), 'status', e->>'status', 'disabled', coalesce((e->>'disabled') = 'true', false))), '[]'::json)
+               from jsonb_array_elements(case when jsonb_typeof(skus::jsonb) = 'array' then skus::jsonb else '[]'::jsonb end) e),
+      'published_at', published_at) order by manufacturer, page_key)
     from public.product_content where manufacturer <> 'golden'), '[]'::json),
   'meta', coalesce((select json_agg(json_build_object(
       'slug', slug, 'record_authoritative', record_authoritative, 'record_resync_error', record_resync_error,

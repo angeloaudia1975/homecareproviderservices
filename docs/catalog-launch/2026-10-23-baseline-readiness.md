@@ -1,23 +1,27 @@
 # Partner 360 — manufacturer launch readiness
 
-Generated 2026-10-23T17:53:39.001Z · sources: shop repo homecareproviderservicesordering@4b1bad3, read-only snapshot taken 2026-10-23 17:53 UTC (run by Angelo)
+Generated 2026-10-23T17:58:34.081Z · sources: shop repo homecareproviderservicesordering@4b1bad3, read-only snapshot taken 2026-10-23 17:53 UTC (run by Angelo)
 
-**Platform completion 60%** across 10 lines with data · Gold Standard 4 · blocked 6 · in progress 0 · no data 2
+**Launch-ready: 0 of 12 lines** (Gold Standard + no blocker + dealer checkout verified).
 
-| Line | Status | Done | Catalog | Master | Enriched | Visible | Verified | Rows | Master active | Blockers |
-|---|---|---|---|---|---|---|---|---|---|---|
-| ABM Respiratory Care | no_data | 0% | 0% | 0% | 0% | 0% | 0% | 0 | 0 | 0 |
-| Access4U | blocked | 40% | 100% | 0% | 0% | 100% | 0% | 230 | 0 | 1 |
-| AIRAVANT / BongoRx | blocked | 40% | 100% | 0% | 0% | 100% | 0% | 12 | 0 | 1 |
-| BEMIS Assurance | gold_standard | 89% | 100% | 100% | 44% | 100% | 100% | 9 | 9 | 0 |
-| Climbing Steps | gold_standard | 100% | 100% | 100% | 100% | 100% | 100% | 23 | 21 | 0 |
-| complete-medical-supplies | blocked | 20% | 100% | 0% | 0% | 0% | 0% | 473 | 0 | 3 |
-| Corsicana Healthcare | blocked | 40% | 100% | 0% | 0% | 100% | 0% | 14 | 0 | 1 |
-| Dalton Medical | no_data | 0% | 0% | 0% | 0% | 0% | 0% | 0 | 0 | 1 |
-| Ohio Medical / GCE | blocked | 40% | 100% | 0% | 0% | 100% | 0% | 29 | 0 | 1 |
-| Ovation Medical | gold_standard | 100% | 100% | 100% | 100% | 100% | 100% | 276 | 303 | 0 |
-| PediFix | blocked | 40% | 100% | 0% | 0% | 100% | 0% | 515 | 0 | 1 |
-| Strongback Mobility | gold_standard | 92% | 100% | 58% | 100% | 100% | 100% | 12 | 14 | 0 |
+Average stage completion 60% — an equal-weight average of the five stage percentages over the 10 lines with data (excluded, no data: abm-respiratory-care, dalton). It is NOT a launch-ready percentage. Gold Standard 4 · blocked 6 · in progress 0 · no data 2.
+
+"Listed" means present in manufacturers.json with rows — not that an approved dealer sees prices or can order.
+
+| Line | Status | Launch-ready | Stage avg | Catalog | Master | Enriched | Listed | Verified | Rows | Master active | Blockers |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| ABM Respiratory Care | no_data | no | 0% | 0% | 0% | 0% | 0% | 0% | 0 | 0 | 0 |
+| Access4U | blocked | no | 40% | 100% | 0% | 0% | 100% | 0% | 230 | 0 | 1 |
+| AIRAVANT / BongoRx | blocked | no | 40% | 100% | 0% | 0% | 100% | 0% | 12 | 0 | 1 |
+| BEMIS Assurance | gold_standard | no | 89% | 100% | 100% | 44% | 100% | 100% | 9 | 9 | 0 |
+| Climbing Steps | gold_standard | no | 100% | 100% | 100% | 100% | 100% | 100% | 23 | 21 | 0 |
+| complete-medical-supplies | blocked | no | 20% | 100% | 0% | 0% | 0% | 0% | 473 | 0 | 3 |
+| Corsicana Healthcare | blocked | no | 40% | 100% | 0% | 0% | 100% | 0% | 14 | 0 | 1 |
+| Dalton Medical | no_data | no | 0% | 0% | 0% | 0% | 0% | 0% | 0 | 0 | 1 |
+| Ohio Medical / GCE | blocked | no | 40% | 100% | 0% | 0% | 100% | 0% | 29 | 0 | 1 |
+| Ovation Medical | gold_standard | no | 100% | 100% | 100% | 100% | 100% | 100% | 276 | 303 | 0 |
+| PediFix | blocked | no | 40% | 100% | 0% | 0% | 100% | 0% | 515 | 0 | 1 |
+| Strongback Mobility | gold_standard | no | 92% | 100% | 58% | 100% | 100% | 100% | 12 | 14 | 0 |
 
 ## Exceptions
 

@@ -7,13 +7,19 @@
 
    Five stages, each a measured fraction 0..1 (issue #1 A.4 — "existing in JSON / master migrated / enriched /
    dealer-visible / order-verified"):
-     1 catalog   — rows in the catalog file (public/data/<slug>.json) that carry a dealer price
-     2 master    — catalog codes that have an ACTIVE product_skus row; record_authoritative is reported, not scored
+     1 catalog   — rows in the catalog file (public/data/<slug>.json) that carry a part number. PRICES IN THAT FILE
+                   ARE NEVER READ (owner review PR #34, 2026-10-23): the public file is legacy and its prices are due to
+                   be removed, so removing them must not lower this score. Dealer prices are judged on the master record.
+     2 master    — catalog codes that have a product_skus row; record_authoritative is reported, not scored
      3 enriched  — active SKUs claimed by a VISIBLE enrichment page (published / active / discontinued, not disabled)
-     4 visible   — listed in manufacturers.json, hasData, not hidden, and at least one row to show
+     4 listed    — in manufacturers.json, hasData, not hidden, and at least one row. LISTED ONLY: it does not prove an
+                   approved dealer sees prices, can check out, or that orders and My Orders work — that is launch_ready.
      5 verified  — a current Gold Standard (newest passing baseline/post run with a fingerprint — _mc.js goldStandardOf)
    completion = the mean of the five, rounded to a whole percent. A line with no catalog rows and no master rows
    is "no_data", never 0%-of-something-real and never "empty" when legacy rows exist somewhere else.
+   launch_ready is a SEPARATE yes/no, never derived from the percentage: Gold Standard, no blocker, AND a passing dealer
+   checkout verification for the line (`order_verified`, supplied by the dealer launch suite). Until that suite exists
+   no line is launch_ready, whatever its percentage.
 
    Slugs: an alias (gce → ohio-medical) is applied ONLY when the caller passes it in `aliases`, and every alias
    applied is reported as an exception so a split / merge is never silent (issue #1 A — "plan explicit
@@ -65,10 +71,10 @@ function lineReadiness(input) {
   // ---- stage 1: catalog file
   const fileCodes = new Map();
   for (const r of rows) { const c = normCode(r && r.code); if (c) fileCodes.set(c, (fileCodes.get(c) || 0) + 1); }
-  const priced = rows.filter(r => Number(r && r.base_price) > 0).length;
+  const coded = rows.filter(r => normCode(r && r.code)).length;
   const dup = [...fileCodes].filter(([, n]) => n > 1).map(([c]) => c);
   if (dup.length) add("warn", "catalog_duplicate_codes", "the same part number appears more than once in the catalog file", dup);
-  if (catalog && rows.length && priced < rows.length) add("warn", "catalog_unpriced_rows", (rows.length - priced) + " catalog row(s) carry no dealer price");
+  if (catalog && rows.length && coded < rows.length) add("warn", "catalog_rows_without_code", (rows.length - coded) + " catalog row(s) carry no part number");
   if (!catalog) add("info", "no_catalog_file", "no public/data catalog file for this line");
 
   // ---- stage 2: master record
@@ -98,7 +104,7 @@ function lineReadiness(input) {
   if (noImage.length) add("warn", "catalog_rows_without_image", "rows with no image (the shop shows the placeholder)", noImage);
   if (Array.isArray(i.missing_image_files) && i.missing_image_files.length) add("blocker", "image_file_missing", "image path set but the file does not exist — a broken image", i.missing_image_files);
 
-  // ---- stage 4: dealer visibility
+  // ---- stage 4: listed (NOT dealer visibility — see launch_ready)
   const listed = !!listing && listing.hidden !== true;
   if (!listing) add(rows.length || skus.length ? "blocker" : "info", "not_listed", "not in manufacturers.json — dealers cannot reach it");
   else if (listing.hidden === true) add("info", "hidden", "listed but hidden");
@@ -114,10 +120,10 @@ function lineReadiness(input) {
 
   const base = rows.length || skus.length;
   const stages = {
-    catalog: base ? pct(priced, rows.length || 0) : 0,
+    catalog: base ? pct(coded, rows.length || 0) : 0,
     master: !measured.master ? null : rows.length ? pct(migrated.length, fileCodeSet.size) : (skus.length ? 1 : 0),
     enriched: !measured.pages ? null : shouldHavePage.length ? pct(shouldHavePage.length - unclaimed.length, shouldHavePage.length) : 0,
-    visible: listed && listing.hasData !== false && base ? 1 : 0,
+    listed: listed && listing.hasData !== false && base ? 1 : 0,
     verified: !measured.runs ? null : gs ? 1 : 0,
   };
   const order = { blocker: 0, warn: 1, info: 2 };
@@ -126,13 +132,18 @@ function lineReadiness(input) {
   const vals = Object.values(stages).filter(v => v != null);
   const blocked = ex.some(e => e.severity === "blocker");
   const status = !base ? "no_data" : blocked ? "blocked" : unmeasured.length ? "partial_measurement" : gs ? "gold_standard" : "in_progress";
+  const ov = i.order_verified === true;
+  const launch_ready = status === "gold_standard" && ov;
+  const launch_ready_reason = launch_ready ? "Gold Standard, no blocker, dealer checkout verified"
+    : status !== "gold_standard" ? "not Gold Standard (" + status + ")"
+    : "dealer checkout not verified (entitlement, authenticated prices, cart / freight, order record, emails, My Orders)";
   return {
-    slug, name: (listing && listing.name) || slug, status,
+    slug, name: (listing && listing.name) || slug, status, launch_ready, launch_ready_reason,
     // Completion is claimed only over a full measurement; a partial run reports the measured stages and says so.
     completion: base && !unmeasured.length ? round(vals.reduce((n, v) => n + v, 0) / 5) : (base ? null : 0),
     unmeasured,
     stages: Object.fromEntries(Object.entries(stages).map(([k, v]) => [k, v == null ? null : round(v)])),
-    counts: { catalog_rows: rows.length, catalog_priced: priced, master_rows: skus.length, master_active: active.length,
+    counts: { catalog_rows: rows.length, master_rows: skus.length, master_active: active.length,
       record_authoritative: meta.record_authoritative === true, frozen: meta.frozen === true,
       visible_page_skus: shouldHavePage.length - unclaimed.length, pages: (i.pages || []).length },
     gold_standard: gs ? { id: gs.id, run_at: gs.run_at, fingerprint: gs.fingerprint, later_failed: gs.later_failed || 0 } : null,
@@ -160,7 +171,8 @@ function launchMatrix(input) {
     slug: s, listing: listings.get(s) || null, catalog: files[s] || null, skus: skus[s] || [], pages: pages[s] || [],
     meta: meta[s] || {}, gold_standard: (lines[s] || {}).gold_standard || null,
     open_regression_fixes: (lines[s] || {}).open_regression_fixes || 0,
-    missing_image_files: (i.missing_images || {})[s] || [], alias_from: aliasFrom[s] || null, measured: i.measured }));
+    missing_image_files: (i.missing_images || {})[s] || [], alias_from: aliasFrom[s] || null, measured: i.measured,
+    order_verified: (lines[s] || {}).order_verified === true }));
   const withData = out.filter(l => l.status !== "no_data");
   return {
     lines: out,
@@ -171,8 +183,14 @@ function launchMatrix(input) {
       in_progress: out.filter(l => l.status === "in_progress").length,
       partial_measurement: out.filter(l => l.status === "partial_measurement").length,
       no_data: out.filter(l => l.status === "no_data").length,
-      platform_completion: withData.length && withData.every(l => l.completion != null)
+      // An equal-weight average of the stage percentages over the lines WITH data — always shown with its
+      // denominator, never as "the platform is N% launch-ready" (owner review PR #34).
+      average_stage_completion: withData.length && withData.every(l => l.completion != null)
         ? Math.round(withData.reduce((n, l) => n + l.completion, 0) / withData.length) : null,
+      average_over_lines: withData.length,
+      excluded_no_data: out.filter(l => l.status === "no_data").map(l => l.slug),
+      launch_ready: out.filter(l => l.launch_ready).length,
+      launch_ready_of: out.length,
     },
   };
 }
