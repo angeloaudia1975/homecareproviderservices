@@ -1592,6 +1592,29 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   checkout parity, category consistency, no parity drift) → only then `record_authoritative=true`
   → re-verify (feed uses the record, 21 prices / cart / server / categories / images unchanged,
   ordering works) → report PASS/FAIL and stop before Strongback activation. No Bemis yet.
+- **Catalog Completion & Launch project (Angelo, 2026-10-23; umbrella homecareproviderservicesordering#1).** Angelo
+  has now said to proceed past the four frozen lines: complete every non-Golden manufacturer through ONE reusable
+  pipeline (inventory → source import → reconcile → enrich → QA → staged activation in batches) instead of
+  one-line-at-a-time manual work. Golden stays on its own portal. For THIS project, code goes through normal branches
+  and pull requests (his explicit instruction; overrides the §7 direct-to-main default for this work only). Unchanged:
+  the frozen lines (Climbing Steps, Strongback, Ovation, Bemis) are regression fixtures — no commercial, content,
+  image or wording change except through their existing gates; production SQL, publication, authority switches,
+  dealer price / freight / UOM changes and activations each still need his explicit approval; nothing is entered
+  product-by-product by Angelo.
+  · **Bemis Assurance correction (protected, NOT published as of 2026-10-23).** regression_fix #908 scoped to page
+    `assurance-raised-toilet-seat-with-clean-shield-3-in`, areas description #909 · features #910 · specs #911, dry-run
+    plan hash beginning `0da21cc8b2b854a3`. Live page still shows the 1000 lb / Stay·Tite wording (public read
+    2026-10-23). Current Gold Standard = run #20 PASS; failed runs #16–#19 stay in history. Never regenerate these
+    decisions, never use enrichment window #907 for it, never finalize without Angelo's explicit approval of the
+    re-derived dry run (hash must still match; any change = new dry run, new approval).
+  · **Launch readiness (go-live matrix).** `netlify/functions/_readiness.js` (pure) scores each line on five measured
+    stages — catalog file · master record · visible enrichment · dealer-visible · Gold Standard — and lists
+    blocker / warn / info exceptions. An unmeasured layer is reported "unmeasured", never empty or 0%; completion
+    and the platform % are claimed only over a full measurement. Slug aliases (gce → ohio-medical) apply only when
+    passed and are always reported. Runner: `scripts/catalog-readiness.js --shop <ordering repo> [--snapshot f]
+    [--public]`; the snapshot comes from the read-only `supabase/readiness_snapshot.sql` (no wholesale prices in its
+    output — base_price reduced to priced/unpriced). Tests: test/readiness.test.js, test/readiness.mutants.js,
+    test/readiness-snapshot.pg.test.js.
 
 ## 18. Manufacturer report imports — MI-1a transaction identity & safe replacement (RULE, agreed 2026-10-09/10)
 
