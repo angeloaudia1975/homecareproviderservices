@@ -20,7 +20,7 @@ function world({file,tables}){
   const inner=W.fetch;
   W.fetch=async(url,opts)=>{ const u=String(url);
     if(u.startsWith(M.BASE+'/auth/v1/user')) return {ok:true,status:200,json:async()=>({id:'u1',email:'d@x.com'})};
-    if(u.startsWith(OB+'/data/')){ const content=u.includes('/data/content/'); if(content) return {ok:false,status:404,json:async()=>null,text:async()=>''};
+    if(u===OB+'/data/manufacturers.json') return {ok:true,status:200,json:async()=>(W.db.manufacturers||[]).map(m=>({slug:m.slug,name:m.name}))}; if(u.startsWith(OB+'/data/')){ const content=u.includes('/data/content/'); if(content) return {ok:false,status:404,json:async()=>null,text:async()=>''};
       return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(file)),text:async()=>JSON.stringify(file)}; }
     (W.db.product_skus||[]).forEach(r=>{ r.code_norm=norm(r.code); });
     return inner(url,opts); };
@@ -79,7 +79,7 @@ await t('a record that merely lacks an MSRP (msrp_auto true) keeps the derived o
 });
 // ---- admin parity: the same rule, so authority is never granted over a fabricated MSRP ----
 const parity=async(tables,file)=>{ const W=M.createWorld({tables:Object.assign({manufacturer_meta:[{slug:LINE}],product_overrides:[],custom_products:[],product_content:[],product_skus:[]},tables)});
-  const inner=W.fetch; W.fetch=async(u,o)=>{ u=String(u); if(u.startsWith(OB+'/data/')) return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(file)),text:async()=>JSON.stringify(file)}; (W.db.product_skus||[]).forEach(r=>{r.code_norm=norm(r.code);}); return inner(u,o); };
+  const inner=W.fetch; W.fetch=async(u,o)=>{ u=String(u); if(u===OB+'/data/manufacturers.json') return {ok:true,status:200,json:async()=>(W.db.manufacturers||[]).map(m=>({slug:m.slug,name:m.name}))}; if(u.startsWith(OB+'/data/')) return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(file)),text:async()=>JSON.stringify(file)}; (W.db.product_skus||[]).forEach(r=>{r.code_norm=norm(r.code);}); return inner(u,o); };
   const C=M.load('catalog-api.js',W,{ANALYTICS_TOKEN:'pass',ORDERING_BASE:OB},ROOT);
   const r=await M.call(C,{action:'reconcile',manufacturer:LINE},{headers:{'x-analytics-token':'pass'}}); return r.body.parity; };
 await t('parity: a storefront MSRP the record says does not exist is drift',async()=>{
