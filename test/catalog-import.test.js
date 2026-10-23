@@ -10,7 +10,9 @@ const ADP = path.join(__dirname, '..', 'netlify', 'functions', '_import_adapters
 function load(src) { const m = new Module(SRC, module); m.filename = SRC; m.paths = module.paths; m._compile(src, SRC); return m.exports; }
 
 let pass = 0, fail = 0; const out = [];
-function t(name, fn) { try { fn(); pass++; out.push('  ok   ' + name); } catch (e) { fail++; out.push('  FAIL ' + name + '\n         ' + e.message); } }
+const pending = [];
+function t(name, fn) { pending.push([name, fn]); }
+async function drain() { while (pending.length) { const [name, fn] = pending.shift(); try { await fn(); pass++; out.push('  ok   ' + name); } catch (e) { fail++; out.push('  FAIL ' + name + '\n         ' + e.message); } } }
 function eq(a, b, what) { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error((what || 'value') + ': got ' + JSON.stringify(a) + ', expected ' + JSON.stringify(b)); }
 const codes = (rows, level) => rows.flatMap(r => (r.flags || []).filter(f => !level || f.level === level).map(f => f.code));
 
@@ -19,7 +21,27 @@ function xlsxBuffer(aoa) {
   return X.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
 
-function run(src) {
+
+/* A minimal one-page PDF with text at fixed positions (synthetic Dalton-shaped list; no manufacturer data). */
+function daltonPdf() {
+  const T = [[300, 770, 'Effective November 1, 2099'], [300, 755, 'Revised: 3 listed items'], [40, 785, 'Dealers receive a 5% discount on orders over $10,000'],
+    [30, 720, 'ITEM #'], [30, 700, 'BEDS'], [215, 700, '2'], [30, 680, 'BED100'], [105, 680, 'Homecare Bed, 450LB Weight Capacity'], [260, 680, '$999.00'],
+    [30, 660, 'GL-10'], [105, 660, 'Exam Gloves 100/Box'], [260, 660, '$12.50'], [30, 630, 'TABLES'], [215, 630, '1'], [30, 610, 'OBT1'], [105, 610, 'Overbed Table'], [260, 610, '$89.99']];
+  const esc = s => s.replace(/[\\()]/g, m => '\\' + m);
+  const content = T.map(([x, y, s]) => `BT /F1 8 Tf ${x} ${y} Td (${esc(s)}) Tj ET`).join('\n');
+  const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`];
+  let pdf = '%PDF-1.4\n'; const off = [];
+  objs.forEach((o, i) => { off.push(Buffer.byteLength(pdf)); pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const x = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + off.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('') + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF\n`;
+  return Buffer.from(pdf, 'latin1');
+}
+
+function loadAdp(src) { const m = new Module(ADP, module); m.filename = ADP; m.paths = module.paths; m._compile(src, ADP); return m.exports; }
+async function run(src, adpSrc) {
+  pending.length = 0;
   const C = load(src || fs.readFileSync(SRC, 'utf8'));
   pass = 0; fail = 0; out.length = 0;
   const row = o => Object.assign({ code: 'A1', name: 'Thing', dealer_price: 10, tiers: [], msrp: null, msrp_source: null, map: null, map_source: null, locator: 'r1', flags: [] }, o || {});
@@ -104,7 +126,7 @@ function run(src) {
   });
 
   // ---- adapters (real adapter code, synthetic sources)
-  const A = require(ADP);
+  const A = adpSrc ? loadAdp(adpSrc) : require(ADP);
   t('workbook adapter (Ohio Medical shape): header found below a title, two breaks, bundle code kept', () => {
     const buf = xlsxBuffer([['Item Number', 'Description', 'Category', 'Package Contents', 'Product Weight', 'Oxygen Flow', 'Price Each', 'Price 5+', 'MSRP'],
       ['X-1 + X-2', 'Kit', 'Cat', 'Includes: thing', '1 LBS', '', '$100.00', '$90.00', '$250.00'], ['Y-9', 'Filter pk of 10', 'Cat', '', '', '', '$5.00', '', '$9.00']]);
@@ -143,7 +165,183 @@ function run(src) {
     eq([L.rows.length, L.rows[0].options], [1, [{ label: 'Picket', price_add: 40 }]]);
   });
 
+
+  // ================= PR #35 review: before/after, stop-on-blocker, exceptions queue, handoff, aliases =================
+  const okv = (c, w) => { if (!c) throw new Error(w); };
+  const srcLine = (rows, extra) => Object.assign({ manufacturer: 'm', source: { file: 'f.xlsx', sha256: 'abc', effective_date_status: 'not_stated', received_date: '2026-10-20' }, terms: [], rows }, extra || {});
+  const pkg = (rows, existing, ctx, extra) => { const V = C.validateLine(srcLine(rows, extra)); const ex = existing || { catalog: [], master: [] };
+    return C.buildPackage(V, C.compareLine(V, ex), Object.assign({ catalog: ex.catalog, master: ex.master, today: '2026-10-23' }, ctx || {})); };
+  const kinds = P => P.exceptions.map(x => x.kind + (x.blocking ? '!' : ''));
+
+  // ---- 1. deterministic per-SKU before/after
+  const baRows = () => [row({ code: 'B-2', name: 'Bee', dealer_price: 7, msrp: 12, msrp_source: 'stated', tiers: [{ min_qty: 1, price: 7 }, { min_qty: 5, price: 6.5, pool: 'p' }] }),
+    row({ code: 'A1', name: 'Ay', dealer_price: 10, uom: 'Case', case_qty: 4 }), row({ code: 'N9', name: 'New', dealer_price: 3, msrp: 4.5, msrp_source: 'source_rule' })];
+  const baCat = () => [{ code: 'OLD', name: 'Old', base_price: 2, image: '/assets/x.jpg' }, { code: 'a1', name: 'Ay', base_price: 10, msrp: 20, uom: 'Case', case_qty: 4 },
+    { code: 'B2', name: 'Bee', base_price: 6, tiers: [{ minQty: 1, price: 6 }] }];
+  const baMaster = () => [{ code: 'A1', status: 'active', uom: 'Case', case_qty: 4 }];
+  t('before/after: every field, before / after / change kind, for source SKUs and preserved SKUs', () => {
+    const V = C.validateLine(srcLine(baRows()));
+    const ba = C.beforeAfter(V, { catalog: baCat(), master: baMaster() });
+    eq(ba.fields, ['name', 'dealer_price', 'tiers', 'msrp', 'map', 'uom', 'case_qty', 'status']);
+    eq(ba.rows.map(r => r.code + ':' + r.row_kind), ['A1:unchanged', 'B-2:changed', 'N9:new', 'OLD:not_on_source_preserved'], 'stable sort by normalized code');
+    const f = c => ba.rows.find(r => r.code === c).fields;
+    eq(f('B-2').dealer_price, { before: 6, after: 7, change: 'changed' });
+    eq(f('B-2').tiers, { before: '1+:6', after: '1+:7 5+:6.5(p)', change: 'changed' });
+    eq(f('B-2').msrp, { before: null, after: 12, change: 'added' });
+    eq(f('A1').msrp, { before: 20, after: 20, change: 'not_stated' }, 'a field the source does not state is kept');
+    eq(f('A1').status, { before: 'active', after: 'active', change: 'not_stated' }, 'listing a SKU never changes its status');
+    eq(f('N9').msrp, { before: null, after: null, change: 'not_stated' }, 'a source-RULE MSRP is not a stated MSRP');
+    eq(f('N9').status, { before: null, after: 'active (new record)', change: 'added' });
+    eq(f('OLD').status, { before: 'listed (no master record)', after: 'listed (no master record)', change: 'not_on_source' }, 'preserved, status unchanged');
+    eq(ba.summary, { rows: 4, new: 1, changed: 1, unchanged: 1, not_on_source_preserved: 1 });
+  });
+  t('before/after: identical inputs give byte-identical JSON + CSV (hash), whatever the input order', () => {
+    const one = C.beforeAfter(C.validateLine(srcLine(baRows())), { catalog: baCat(), master: baMaster() });
+    const two = C.beforeAfter(C.validateLine(srcLine(baRows().reverse())), { catalog: baCat().reverse(), master: baMaster() });
+    eq(C.beforeAfterJson(two), C.beforeAfterJson(one), 'json'); eq(C.beforeAfterCsv(two), C.beforeAfterCsv(one), 'csv');
+    eq(C.beforeAfterHash(two), C.beforeAfterHash(one), 'hash');
+    okv(/^[0-9a-f]{64}:[0-9a-f]{64}$/.test(C.beforeAfterHash(one)), 'hash shape');
+    const rows = baRows(); rows[1].dealer_price = 10.01;
+    okv(C.beforeAfterHash(C.beforeAfter(C.validateLine(srcLine(rows)), { catalog: baCat(), master: baMaster() })) !== C.beforeAfterHash(one), 'one cent moves the hash');
+    const csv = C.beforeAfterCsv(one).split('\n');
+    eq(csv[0].split(',').slice(0, 5), ['code', 'row_kind', 'name_before', 'name_after', 'name_change']); eq(csv.length, 6, 'header + 4 rows + final newline');
+  });
+  t('before/after: legacy discount tiers are shown as history, never as the new tiers', () => {
+    const ba = C.beforeAfter(C.validateLine(srcLine([row({ code: 'R', dealer_price: 50 })])), { catalog: [{ code: 'R', base_price: 41.5, dealer_price: 50, tier_prices: { 17: 40.25, 15: 41.5 } }] });
+    eq(ba.rows[0].fields.tiers, { before: 'legacy 15:41.5 17:40.25', after: 'legacy 15:41.5 17:40.25', change: 'not_stated' });
+    eq(ba.rows[0].fields.dealer_price.change, 'unchanged', 'the list dealer price, not the discounted base');
+  });
+
+  // ---- 2. stop on blocker
+  t('stop-on-blocker: any blocking exception → not stageable and NO import rows at all', () => {
+    const P = pkg([row(), row({ code: 'B', dealer_price_scope: 'named_account' })]);
+    eq([P.stageable, P.handoff], [false, null]); okv(/blocking exception/.test(P.withheld_reason), 'reason');
+    eq(P.counts.blocking, 1); okv(P.before_after.rows.length === 2, 'the review is still produced');
+  });
+  t('stop-on-blocker: a clean line is stageable and carries the exact Manufacturer Center payloads', () => {
+    const P = pkg([row({ code: 'A1', msrp: 20, msrp_source: 'stated' })]);
+    eq(P.stageable, true, JSON.stringify(P.exceptions)); eq(P.handoff.mc_import_source_rows.action, 'mc_import_source_rows');
+    eq(P.handoff.stage_record_source.dry_run, true, 'staging always starts as a dry run');
+    eq([P.handoff.mc_import_source_rows.source_id, P.handoff.stage_record_source.source_id], [null, null], 'filled only after registration');
+    eq(P.handoff.register, { manufacturer: 'm', kind: 'price_list', file_name: 'f.xlsx', sha256: 'abc', received_date: '2026-10-20', manufacturer_effective_date: null, effective_date_status: 'pending' });
+  });
+  t('stop-on-blocker: no received date blocks (never invented)', () => {
+    const V = C.validateLine(srcLine([row()])); V.source.received_date = null;
+    const P = C.buildPackage(V, C.compareLine(V, {}), { today: '2026-10-23' });
+    eq([P.stageable, kinds(P)], [false, ['provenance_incomplete!']]);
+  });
+  t('stop-on-blocker: a recorded decision resolves an open exception; an incomplete decision does not', () => {
+    const P = pkg([row({ code: 'B', dealer_price_scope: 'named_account' })]); const id = P.exceptions[0].id;
+    eq(pkg([row({ code: 'B', dealer_price_scope: 'named_account' })], null, { decisions: { [id]: { status: 'resolved' } } }).stageable, false, 'no who / why');
+    const R = pkg([row({ code: 'B', dealer_price_scope: 'named_account' })], null, { decisions: { [id]: { status: 'resolved', decided_by: 'angelo', reason: 'general price confirmed in writing' } } });
+    eq([R.stageable, R.exceptions[0].status, R.exceptions[0].blocking], [true, 'resolved', false]);
+  });
+
+  // ---- 3. exceptions queue
+  t('exceptions: one record per item with a stable id, blockers first, machine-readable fields', () => {
+    const a = pkg([row({ code: 'B', dealer_price_scope: 'named_account' }), row({ code: 'W', name: 'Concentrator 3 Year Warranty' })]);
+    const b = pkg([row({ code: 'W', name: 'Concentrator 3 Year Warranty' }), row({ code: 'B', dealer_price_scope: 'named_account' })]);
+    eq(a.exceptions, b.exceptions, 'order and ids do not depend on input order');
+    eq(Object.keys(a.exceptions[0]).sort(), ['blocking', 'evidence', 'id', 'kind', 'manufacturer', 'required_decision', 'sku', 'source_ref', 'status'].sort());
+    eq(kinds(a), ['named_account_price!', 'warranty_conflict']); eq(a.exceptions[1].status, 'held');
+    eq(a.exceptions[0].id.split(':').slice(0, 3), ['named_account_price', 'm', 'B']);
+  });
+  t('exceptions: blocking items come first, whatever their kind', () => {
+    eq(kinds(pkg([row({ code: 'STP7M' })], { catalog: [{ code: 'STP7', base_price: 1, image: '/assets/a' }] })), ['uncertain_part_number!', 'legacy_not_on_source']);
+  });
+  t('exceptions: an older list is not_current_source (blocking) until the manufacturer confirms it in writing', () => {
+    const ex = { source: { file: 'PediFix_2025.xlsx', sha256: 'x', title: '2025 OTC Price List', effective_date: '2025-07-01', effective_date_status: 'stated', received_date: '2026-10-20' } };
+    eq(kinds(pkg([row()], null, null, ex)), ['not_current_source!']);
+    eq(pkg([row()], null, { confirmations: { current_source: true } }, ex).stageable, true, 'confirmed');
+    eq(pkg([row()], null, { today: '2025-12-01' }, ex).stageable, true, 'current in its own year');
+  });
+  t('exceptions: uncertain part numbers and proposed codes block; nothing is renamed or merged', () => {
+    const P = pkg([row({ code: 'STP7M' }), row({ code: 'STP2x48', flags: [C.flag('blocker', 'proposed_variant_code', 'proposed')] })], { catalog: [{ code: 'STP7', base_price: 10, image: '/assets/a' }] });
+    eq(kinds(P).filter(k => /!$/.test(k)).sort(), ['proposed_code!', 'uncertain_part_number!']); eq(P.stageable, false);
+  });
+  t('exceptions: legacy SKUs not on the source are PRESERVED (held, non-blocking), never retired by omission', () => {
+    const cat = [{ code: 'A1', base_price: 10, image: '/assets/a' }, { code: 'GONE', name: 'Old ramp', base_price: 5, image: '/assets/b' }];
+    const P = pkg([row({ code: 'A1' })], { catalog: cat, master: [{ code: 'GONE', status: 'active' }] });
+    eq([P.stageable, kinds(P)], [true, ['legacy_not_on_source']]); eq(P.exceptions[0].sku, 'GONE');
+    eq(P.handoff.stage_record_source.rows.map(r => r.code), ['A1'], 'an omitted SKU is not in the stage rows');
+    okv(P.handoff.stage_record_source.rows.every(r => !('status' in r)), 'status is never sent');
+    eq(P.before_after.rows.find(r => r.code === 'GONE').fields.status, { before: 'active', after: 'active', change: 'not_on_source' });
+  });
+  t('exceptions: an old discount structure is discount_unverified (history only), capacity and image questions are held', () => {
+    const cat = [{ code: 'R', name: 'Bed, 450LB Weight Capacity', dealer_price: 50, base_price: 41.5, tier_prices: { 15: 41.5 }, image: 'https://cdn.example.com/r.jpg' }];
+    const P = pkg([row({ code: 'R', name: 'Bed, 600LB Weight Capacity', dealer_price: 50 })], { catalog: cat });
+    eq(kinds(P), ['capacity_conflict', 'discount_unverified', 'image_rights']); eq(P.stageable, true, 'held items never block price import');
+  });
+  t('exceptions: pack text and an unverified case quantity block; OTC / medical claims and TBD freight are held', () => {
+    const P = pkg([row({ code: 'G', flags: [C.flag('warn', 'pack_in_text', '100/Box')] }), row({ code: 'K', flags: [C.flag('blocker', 'case_qty_unverified', 'Case of 10')] }),
+      row({ code: 'F', name: 'Antifungal solution', flags: [C.flag('warn', 'freight_tbd', 'TBD')] }), row({ code: 'H', name: 'Hospital bed mattress' })]);
+    eq(kinds(P), ['case_qty_unverified!', 'pack_qty_check!', 'unsupported_claim', 'unsupported_claim', 'unsupported_claim']);
+  });
+  t('exceptions: reviewer holds come in as data and stay held', () => {
+    const P = pkg([row()], null, { holds: [{ manufacturer: 'm', kind: 'capacity_conflict', evidence: 'beds differ' }, { manufacturer: 'other', kind: 'x', evidence: 'y' }] });
+    eq([kinds(P), P.exceptions[0].status, P.stageable], [['capacity_conflict'], 'held', true]);
+  });
+  t('refused lines: the four frozen Gold Standard lines and Complete Medical Supplies are never staged', () => {
+    for (const s of ['bemis', 'climbing-steps', 'ovation-medical', 'strongback-mobility', 'complete-medical-supplies', 'complete-medical']) {
+      const P = pkg([row()], null, null, { manufacturer: s }); const k = s.startsWith('complete') ? 'activation_hold!' : 'line_frozen!';
+      eq([P.stageable, P.handoff, kinds(P)], [false, null, [k]], s);
+      const id = P.exceptions[0].id;
+      eq(pkg([row()], null, { decisions: { [id]: { status: 'resolved', decided_by: 'x', reason: 'y' } } }, { manufacturer: s }).stageable, false, s + ' cannot be resolved here');
+    }
+    eq(pkg([row()], null, { frozen: ['new-gold'] }, { manufacturer: 'new-gold' }).stageable, false, 'a line frozen in the snapshot meta');
+    eq(C.lineRefusal('corsicana'), null);
+  });
+
+  // ---- 4. Dalton exactly as printed
+  t('as printed: a dealer price that is not the printed figure blocks (no discount, markup or rounding)', () => {
+    const V = C.validateLine(srcLine([row({ code: 'D1', dealer_price: 94.43, raw: { printed_price: '$99.40' } }), row({ code: 'D2', dealer_price: 99.4, raw: { printed_price: '$99.40' } })]));
+    eq(codes(V.rows, 'blocker'), ['price_not_as_printed']); eq(V.rows[0].flags[0].code, 'price_not_as_printed');
+  });
+
+  // ---- 5. handoff shape (the real catalog-api is exercised in catalog-import.handoff.test.js)
+  t('handoff: every import row carries the source provenance; effective date null when not stated', () => {
+    const P = pkg([row({ code: 'A1', case_qty: 4, uom: 'Case' }), row({ code: 'B1', msrp: 9, msrp_source: 'source_rule', map: 6.3, map_source: 'source_rule' })]);
+    for (const r of P.handoff.mc_import_source_rows.rows) eq(r.raw._provenance, { file: 'f.xlsx', sha256: 'abc', received_date: '2026-10-20', effective_date: null, effective_date_status: 'not_stated' });
+    for (const r of P.handoff.stage_record_source.rows) eq(r._provenance.sha256, 'abc');
+    eq(P.handoff.mc_import_source_rows.rows[0].case_qty_text, '4', 'the field mc_import_source_rows parses');
+    eq(P.handoff.stage_record_source.rows[1], { code: 'B1', base_price: 10, _provenance: P.handoff.stage_record_source.rows[1]._provenance }, 'no unstated field is sent, not even as null');
+    const st = C.buildPackage(C.validateLine(srcLine([row()], { source: { file: 'f', sha256: 's', effective_date: '2026-11-01', effective_date_status: 'stated', received_date: '2026-10-20' } })), null, { today: '2026-10-23' });
+    eq([st.handoff.register.manufacturer_effective_date, st.handoff.register.effective_date_status, st.handoff.stage_record_source.rows[0]._provenance.effective_date], ['2026-11-01', 'stated', '2026-11-01']);
+  });
+
+  // ---- 6. Ohio Medical canonical slug, gce alias
+  t('Ohio Medical: canonical ohio-medical, gce accepted as an alias; the storefront file stays gce.json', () => {
+    eq([C.canonicalSlug('gce'), C.canonicalSlug(' GCE '), C.canonicalSlug('ohio-medical'), C.catalogFileSlug('gce'), C.catalogFileSlug('ohio-medical'), C.catalogFileSlug('dalton')],
+      ['ohio-medical', 'ohio-medical', 'ohio-medical', 'gce', 'gce', 'dalton']);
+    eq(C.slugAliases('gce'), ['ohio-medical', 'gce']);
+    eq(pkg([row()], null, null, { manufacturer: 'gce' }).manufacturer, 'ohio-medical');
+    eq(A.adapterFor('gce'), A.adapterFor('ohio-medical')); okv(A.adapterFor('gce'), 'adapter');
+    okv(A.ADAPTERS.gce === A.ADAPTERS['ohio-medical'], 'gce in the adapter table'); okv(A.adapterFor(' GCE ') === A.ADAPTERS['ohio-medical'], 'adapterFor canonicalizes'); eq(A.adapterFor('complete-medical-supplies'), null);
+  });
+
+  t('Dalton adapter (synthetic PDF): prices exactly as printed; a discount on the list is recorded, never applied', async () => {
+    const L = await A.ADAPTERS.dalton.fn(daltonPdf(), 'synthetic-dalton.pdf');
+    eq(L.rows.map(r => [r.code, r.dealer_price, r.raw.printed_price]), [['BED100', 999, '$999.00'], ['GL-10', 12.5, '$12.50'], ['OBT1', 89.99, '$89.99']]);
+    eq([L.source.effective_date, L.checks.stated_total, L.checks.rows_read], ['2099-11-01', 3, 3]);
+    okv(L.terms.some(x => x.kind === 'discount_text_not_applied' && /5%/.test(x.text)), 'discount text recorded');
+    const V = C.validateLine(L);
+    eq(codes(V.rows, 'blocker'), [], 'no price differs from the printed figure');
+    eq(C.priceImportRows(V).map(r => r.base_price), [999, 12.5, 89.99], 'import rows carry the printed prices');
+    eq(C.stageRows(V).map(r => r.base_price), [999, 12.5, 89.99], 'stage rows carry the printed prices');
+    for (const r of V.rows) okv(Math.abs(r.dealer_price - Math.round(r.dealer_price * 0.95 * 100) / 100) > 0.004, 'no 5% applied');
+    eq(V.rows[1].flags.map(f => f.code), ['pack_in_text'], 'pack text is a check');
+    const P = C.buildPackage(Object.assign(V, { source: Object.assign(V.source, { received_date: '2099-11-02' }) }), C.compareLine(V, {}), { today: '2099-11-03' });
+    eq([P.stageable, P.exceptions.filter(x => x.blocking).map(x => x.kind)], [false, ['pack_qty_check']]);
+  });
+  t('Corsicana adapter: "Case of N" from the description is case_qty_unverified (blocks)', () => {
+    const buf = xlsxBuffer([['', 'Item number', 'Name', 'Description', 'Standard Healthcare Price', 'MSRP', 'White Glove', 'UPS/FedEx- under', 'LTL- over'],
+      ['', 'C1', 'Protector', 'Case of 10', '$220.00', '$440.00', 'n/a', '$20.00', '$11.00']]);
+    const V = C.validateLine(A.ADAPTERS.corsicana.fn(buf, 'synthetic.xlsx'));
+    eq(codes(V.rows, 'blocker'), ['case_qty_unverified']); eq(V.rows[0].raw.printed_price, '$220.00');
+  });
+
+  await drain();
   return { pass, fail, report: out.join('\n') };
 }
-module.exports = { run, SRC };
-if (require.main === module) { const r = run(); console.log(r.report); console.log('\ncatalog-import: ' + r.pass + ' passed, ' + r.fail + ' failed'); process.exit(r.fail ? 1 : 0); }
+module.exports = { run, SRC, ADP };
+if (require.main === module) run().then(r => { console.log(r.report); console.log('\ncatalog-import: ' + r.pass + ' passed, ' + r.fail + ' failed'); process.exit(r.fail ? 1 : 0); });

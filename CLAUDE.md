@@ -1602,10 +1602,37 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   price — blocked for Angelo's decision. (5) **Dalton: the corrected November 1, 2026 list exactly as printed — never an
   extra 5% discount.** (6) Unverified research content is never published; enrichment uses manufacturer-official sources
   only. (7) Ohio Medical: `ohio-medical` canonical with a backward-compatible `gce` alias, tested before deploy.
-  (8) Complete Medical Supplies: in the inventory, broken-image fixes prepared, activation ON HOLD until the
-  representation is confirmed. (9) Real price lists and outputs carrying wholesale prices never go into git (both repos
+  (8) Complete Medical Supplies is NO LONGER an HCPS partner (Angelo, 2026-10-23; removal from ordering in ordering#4 /
+  admin#37): the importer refuses the slug (`activation_hold`, no rows parsed, no payload). (9) Real price lists and outputs carrying wholesale prices never go into git (both repos
   are public) — tests use synthetic sources. (10) Readiness: the five-stage score is not dealer launch readiness;
   launch readiness also needs authenticated pricing, entitlement, freight, checkout and order tests (PR #34).
+  **Review package rules (PR #35 review, 2026-10-23):** (11) Every run gives a DETERMINISTIC per-SKU before/after
+  (`before_after.json` + `.csv`: name, dealer price, tiers, MSRP, MAP, UOM, case qty, status — before / after / change
+  kind; a field the source does not state is "not_stated" and KEPT; stable sort; no clock; `before_after_sha256`
+  recorded) — identical inputs give byte-identical outputs. (12) **Stop on blocker:** a line with ANY blocking exception
+  is not stageable and gets NO import rows at all (no `price_import_rows.json` / `handoff.json` — safer than flagged
+  rows, which can still be pasted); the review is always produced. (13) **One exceptions queue per run**
+  (`exceptions.json` + `.csv`: id, manufacturer, sku, kind, evidence, source_ref, required_decision, status
+  open/held/resolved, blocking); one manufacturer blocked or failing never stops the others. Blocking: named_account_price,
+  not_current_source (a list dated before the current year — PediFix 2025 — until written manufacturer confirmation),
+  uncertain_part_number / proposed_code (nothing renamed, merged or invented), pack_qty_check (pack text, no unit
+  column — Dalton's 49), case_qty_unverified (a case quantity read from free text — Corsicana "Case of 10"),
+  price_not_as_printed, provenance_incomplete (no HCPS received date — never invented), line_frozen, activation_hold.
+  Held (never block price import): legacy_not_on_source (PRESERVED, status unchanged, never retired by omission —
+  Access4U's 152), discount_unverified (an old tier/discount structure is history only, never assumed for a new list),
+  capacity_conflict, warranty_conflict, unsupported_claim (TBD freight, OTC drug / medical-suitability wording),
+  image_rights, plus reviewer holds supplied as data (`--holds`). A person resolves an open exception only with a
+  recorded decision (who + reason, `--decisions`); a frozen or refused line can never be resolved by the importer.
+  (14) **Handoff = Manufacturer Center's own payloads**, proven through the real catalog-api dry runs: `mc_import_source_rows`
+  rows carry `raw._provenance` (file, sha256, received date, manufacturer effective date — null when not stated) and
+  `case_qty_text`; `stage_record_source` rows OMIT every field the source does not state (never null — that would be a
+  "would clear"), never carry `status`, and list only the source's SKUs. `source_id` is filled only after the file is
+  registered and accepted. (15) The importer refuses the frozen Gold Standard lines (Bemis, Climbing Steps, Ovation,
+  Strongback — and any line frozen in the snapshot meta). (16) Every adapter keeps the printed price (`raw.printed_price`)
+  and a dealer price that differs from it by a cent blocks; discount wording on a list is recorded
+  (`discount_text_not_applied`), never applied. (17) `gce` runs as `ohio-medical` (adapter + package); the storefront file
+  stays `public/data/gce.json` (`catalogFileSlug`). Tests: catalog-import (49) + mutants (64/64, core + adapters),
+  catalog-import.handoff (6).
 
 ## 18. Manufacturer report imports — MI-1a transaction identity & safe replacement (RULE, agreed 2026-10-09/10)
 

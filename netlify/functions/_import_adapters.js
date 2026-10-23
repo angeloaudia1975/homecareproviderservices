@@ -138,8 +138,11 @@ function corsicana(buf, file) {
     const row = { code, name: cell(r, H.map.name), description: cell(r, H.map.desc), dealer_price: money(cell(r, H.map.price)),
       msrp: money(cell(r, H.map.msrp)), msrp_source: money(cell(r, H.map.msrp)) != null ? "stated" : null, map: null, map_source: null,
       tiers: [], uom: null, case_qty: null, locator: `${name}!row ${i + 1}`, flags: [],
-      raw: { white_glove: cell(r, H.map.white), parcel: cell(r, H.map.parcel), ltl: cell(r, H.map.ltl) } };
-    if (/case of (\d+)/i.test(row.description)) { row.uom = "Case"; row.case_qty = Number(row.description.match(/case of (\d+)/i)[1]); }
+      raw: { printed_price: cell(r, H.map.price), white_glove: cell(r, H.map.white), parcel: cell(r, H.map.parcel), ltl: cell(r, H.map.ltl) } };
+    // "Case of N" in the description is read as the order unit, but a unit taken from free text is unverified until
+    // the manufacturer confirms the price is per case (reviewer, PR #35: SB10MATPRON1-TL case of 10).
+    if (/case of (\d+)/i.test(row.description)) { row.uom = "Case"; row.case_qty = Number(row.description.match(/case of (\d+)/i)[1]);
+      row.flags.push(flag("blocker", "case_qty_unverified", `"${row.description.match(/case of \d+/i)[0]}" is in the description only — confirm the case quantity and that the price is per case`)); }
     for (const k of ["white_glove", "parcel", "ltl"]) if (/^tbd$/i.test(row.raw[k])) row.flags.push(flag("warn", "freight_tbd", k + " freight is 'TBD' on the source"));
     L.rows.push(row);
   }
@@ -163,7 +166,7 @@ function ohioMedical(buf, file) {
       dealer_price: p1, tiers: p5 != null ? [{ min_qty: 1, price: p1 }, { min_qty: 5, price: p5 }] : [],
       msrp: money(cell(r, H.map.msrp)), msrp_source: money(cell(r, H.map.msrp)) != null ? "stated" : null, map: null, map_source: null,
       uom: null, case_qty: null, locator: `${name}!row ${i + 1}`, flags: [],
-      raw: { weight: cell(r, H.map.weight), oxygen_flow: cell(r, H.map.flow) } };
+      raw: { printed_price: cell(r, H.map.p1), weight: cell(r, H.map.weight), oxygen_flow: cell(r, H.map.flow) } };
     if (code.includes("+")) row.flags.push(flag("info", "bundle_code", "a bundle of two part numbers sold as one line"));
     const pk = (row.name + " " + row.description).match(/pack of (\d+)|pk of (\d+)/i);
     if (pk) row.flags.push(flag("info", "pack_in_text", "the description names a pack of " + (pk[1] || pk[2]) + " — the price list gives no unit column; confirm the order unit"));
@@ -192,7 +195,7 @@ function pedifix(buf, file) {
     const row = { code, name: cell(r, H.map.desc), size: cell(r, H.map.size), section, dealer_price: cost, tiers: [],
       msrp: money(cell(r, H.map.msrp)), msrp_source: money(cell(r, H.map.msrp)) != null ? "stated" : null, map: null, map_source: null,
       upc: cell(r, H.map.upc) || null, uom: pack > 1 ? `Pack of ${pack}` : null, case_qty: pack > 1 ? pack : (pack === 1 ? 1 : null),
-      locator: `${name}!row ${i + 1}`, flags: [] };
+      locator: `${name}!row ${i + 1}`, flags: [], raw: { printed_price: cell(r, H.map.cost) } };
     if (!(pack >= 1)) row.flags.push(flag("info", "no_pack_qty", "no 'QTY per pack' on the source row"));
     L.rows.push(row);
   }
@@ -220,7 +223,7 @@ async function airavant(buf, file) {
   for (const r of T.rows) {
     const sec = sectionOf(r, heads) || "";
     const row = { code: r.code, name: r.name || "", section: sec, dealer_price: money(r.p1), msrp: money(r.msrp), msrp_source: "stated",
-      map: money(r.msrp), map_source: "stated", tiers: [], uom: null, case_qty: null, locator: `p${r.page} y${r.anchor.y.toFixed(0)}`, flags: [] };
+      map: money(r.msrp), map_source: "stated", tiers: [], uom: null, case_qty: null, locator: `p${r.page} y${r.anchor.y.toFixed(0)}`, flags: [], raw: { printed_price: r.p1 || "" } };
     row._p10 = money(r.p10); row._p20 = money(r.p20);
     (secRows[sec] = secRows[sec] || []).push(row);
     L.rows.push(row);
@@ -269,7 +272,7 @@ async function abm(buf, file) {
   for (const r of T.rows) {
     const row = { code: r.code, name: (r.name || "").replace(/\s*®\s*/g, "® "), description: (r.desc || "").replace(/\s+®/g, "®"), section: sectionOf(r, heads) || sys + " system",
       dealer_price: money(r.price), dealer_price_scope: head.length ? "named_account" : "dealer", msrp: money(r.msrp), msrp_source: money(r.msrp) != null ? "stated" : null,
-      map: null, map_source: null, tiers: [], uom: null, case_qty: null, locator: `p${r.page} y${r.anchor.y.toFixed(0)}`, flags: [] };
+      map: null, map_source: null, tiers: [], uom: null, case_qty: null, locator: `p${r.page} y${r.anchor.y.toFixed(0)}`, flags: [], raw: { printed_price: r.price || "" } };
     const moq = row.description.match(/MOQ\s*=\s*(\d+)/i);
     if (moq) row.flags.push(flag("warn", "minimum_order_qty", "source states a minimum order quantity of " + moq[1] + " — the storefront has no MOQ rule"));
     const pk = row.description.match(/pack of (\d+)/i);
@@ -292,6 +295,9 @@ async function dalton(buf, file) {
   for (const t of txt) {
     if (/LTL Freight|\$0-\$999|\$2,000\+|Lift gate|Inside delivery/i.test(t)) L.terms.push({ kind: "freight", text: t });
     if (/listed items|Revised|exactly as supplied/i.test(t)) L.terms.push({ kind: "list_note", text: t });
+    // A discount mentioned anywhere on the list is recorded as text only — never applied (CLAUDE.md §17: the
+    // corrected November list exactly as printed, never an extra 5%).
+    if (/\d+\s*%|discount/i.test(t)) L.terms.push({ kind: "discount_text_not_applied", text: t });
   }
   const stated = (txt.join(" ").match(/(\d+) listed items/) || [])[1];
   const cols = [{ x0: 0, x1: 300, code: [28, 100], desc: [100, 255], price: [255, 300] }, { x0: 300, x1: 620, code: [308, 380], desc: [380, 535], price: [535, 620] }];
@@ -322,7 +328,7 @@ async function dalton(buf, file) {
     for (const h of heads) { if (h.key > f.key) break; if (topNames.has(h.name)) { if (!top || top !== h.name) sub = null; top = h.name; } else sub = h.name; }
     const r = f.r;
     L.rows.push({ code: r.code, name: r.desc || "", section: top || "", subsection: sub, dealer_price: money(r.price), msrp: null, msrp_source: null, map: null, map_source: null,
-      tiers: [], uom: null, case_qty: null, locator: `p${r.page} ${f.col ? "right" : "left"} y${r.anchor.y.toFixed(0)}`, flags: [], _k: f.key });
+      tiers: [], uom: null, case_qty: null, locator: `p${r.page} ${f.col ? "right" : "left"} y${r.anchor.y.toFixed(0)}`, flags: [], raw: { printed_price: r.price }, _k: f.key });
     const pk = (r.desc || "").match(/(\d+)\s*(?:Pcs|Pc|Ea|Each)?\s*\/\s*(Case|CS|Cs|Pk|PK|Box|BX|Bx|Bag|Pack)\b/);
     if (pk) L.rows[L.rows.length - 1].flags.push(flag("warn", "pack_in_text", `the description says ${pk[0]} — the list prints one price and no unit column; confirm whether the price is per ${pk[2]} before staging (no unit is inferred)`));
     const hc = (r.desc || "").match(/\b([A-EK]\d{4})\b/);
@@ -359,7 +365,7 @@ function access4u(transcription, buf, file) {
       const row = { code: v.code, name: t.description.replace(/x W$/, "x " + (v.width || "")).trim() + (t.widths && !/x W$/.test(t.description) && v.width ? ` x ${v.width}" Wide` : ""), section: t.section, dealer_price: price,
         msrp, msrp_source: msrp != null ? "source_rule" : null, map: msrp != null ? Math.round(msrp * 0.7 * 100) / 100 : null, map_source: msrp != null ? "source_rule" : null,
         tiers: [], uom: null, case_qty: null, options: (t.options || []).filter(o => o.price_add !== "X").map(o => ({ label: o.label, price_add: money(o.price_add) })),
-        locator: `p${t.page} ${t.section} "${t.code}"`, flags: [], raw: { length: t.length || null, width: v.width || t.width || null, rise: t.rise || null } };
+        locator: `p${t.page} ${t.section} "${t.code}"`, flags: [], raw: { printed_price: v.price == null ? null : String(v.price), length: t.length || null, width: v.width || t.width || null, rise: t.rise || null } };
       if (t.note) row.flags.push(flag("warn", "source_note", t.note));
       if (v.proposed) row.flags.push(flag("blocker", "proposed_variant_code", `the source prints one part number (${t.code}) for both widths; "${v.code}" is a proposed code for the ${v.width}" width — confirm with Access4U`));
       L.rows.push(row);
@@ -368,8 +374,12 @@ function access4u(transcription, buf, file) {
   return L;
 }
 
+/* Ohio Medical: canonical slug "ohio-medical"; the legacy slug "gce" is accepted as an alias and runs the same
+   adapter (the storefront file is still public/data/gce.json — _catalog_import.catalogFileSlug). */
 const ADAPTERS = { corsicana: { kind: "xlsx", fn: corsicana }, "ohio-medical": { kind: "xlsx", fn: ohioMedical }, pedifix: { kind: "xlsx", fn: pedifix },
   "airavant-bongorx": { kind: "pdf", fn: airavant }, "abm-respiratory-care": { kind: "pdf", fn: abm }, dalton: { kind: "pdf", fn: dalton },
   access4u: { kind: "transcription", fn: access4u } };
+ADAPTERS.gce = ADAPTERS["ohio-medical"];
+const adapterFor = slug => ADAPTERS[require("./_catalog_import.js").canonicalSlug(slug)] || null;
 
-module.exports = { ADAPTERS, sheetRows, headerMap, pdfItems, anchorTable, joinLine, sha256 };
+module.exports = { ADAPTERS, adapterFor, sheetRows, headerMap, pdfItems, anchorTable, joinLine, sha256 };
