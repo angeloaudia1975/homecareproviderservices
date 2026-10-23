@@ -1579,7 +1579,9 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
 - **Complete Medical Supplies is no longer an HCPS partner — removed from online ordering (Angelo, 2026-10-23).** It is
   not on the storefront's manufacturer list; its public catalog file (`public/data/complete-medical-supplies.json`) and
   product images are deleted from the ordering site; the order server never prices or records a line the storefront
-  does not list (`_pricing.js priceOrders`, whatever custom_products / product_overrides still hold); ordering access
+  does not list (`_pricing.js priceOrders`, whatever custom_products / product_overrides still hold) — and that list
+  FAILS CLOSED: a missing (404), empty, non-list or unreadable manufacturers.json stops every non-Golden price_check /
+  create (503 `pricing_unavailable`), never "everything is listed" (review on #37); ordering access
   already excludes it (`_access.js` / `territory-api` NOT_REPRESENTED, `dealers-api` RETIRED). Kept on purpose:
   historical orders, sales, commissions, dealer account numbers (`dealer_manufacturers` — do NOT run the old
   `retire_complete_medical.sql` delete without Angelo's decision, it would erase them) and its commission-report capture
