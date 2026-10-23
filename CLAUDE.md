@@ -1592,6 +1592,26 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   checkout parity, category consistency, no parity drift) → only then `record_authoritative=true`
   → re-verify (feed uses the record, 21 prices / cart / server / categories / images unchanged,
   ordering works) → report PASS/FAIL and stop before Strongback activation. No Bemis yet.
+- **Catalog Completion — manufacturer CONTENT review (2026-10-23; draft PR, branch `catalog/content-review`).** Researched
+  manufacturer content is reviewed BEFORE it reaches Product Enrichment, read-only: `netlify/functions/_content_review.js`
+  (pure; reuses `_enrich.js` neutralize / isPromoUrl / photoStem) + CLI `scripts/content-review.js --in <research dir>
+  --out <dir outside the repo> [--fetch-images]` → per-line JSON, `exceptions.json`, `images.json`, `content-review.xlsx`.
+  A CLI, not an admin action: researched copy is unverified and is never committed or stored in production; an accepted
+  source then goes through Manufacturer Center → Continue Product Enrichment (the one content path). Rules: official
+  hosts per line (`OFFICIAL`: site / cdn = images only / parent-or-successor = always reviewed; any other host REJECTED,
+  none of its words used); frozen lines refused; per SKU **Ready / Needs review / Held**. Holds: not_found (never
+  discontinued — `discontinued` is always false), non_official_source, capacity_conflict (catalog lb vs every lb the
+  manufacturer's capacity statements mention; two statements disagreeing on a one-SKU page; research CONFLICT notes —
+  a note naming a code holds that code, its siblings get capacity_by_model), spec_conflict, warranty_conflict (whole
+  family), unsupported_claim (warranty void as a medical bed; freight wording; Corsicana freight TBD as a line exception),
+  otc_drug_facts (Drug Facts verbatim), regulatory_check (CBD), image_rights (third-party brand / other maker's files),
+  sold_out_on_site / discontinued_on_site. Paraphrased / summarised copy and warranty are never draft text; retail
+  model / item / SKU / UPC rows are provenance aliases; images are candidates only (promo art never primary, duplicates
+  collapse to the largest, <300 px not primary, rights `pending`, never rehosted; `--fetch-images` GETs once in memory
+  for status / type / size / SHA-256 / pixels, bytes never saved). **Common exception schema** shared with the catalog
+  importer: `{manufacturer, sku, page_key, kind, level: hold|review|info, evidence, source_ref, decision_needed, status}`
+  (`fromImporterFlag` maps the importer's `{level: blocker|warn|info, code, detail, code_ref, locator}`). Tests:
+  test/content-review.test.js + test/content-review.mutants.js (clean control).
 
 ## 18. Manufacturer report imports — MI-1a transaction identity & safe replacement (RULE, agreed 2026-10-09/10)
 
