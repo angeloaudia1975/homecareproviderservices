@@ -18,7 +18,7 @@ const FILE=()=>({[LINE]:[
   {manufacturer:LINE,code:'B1',name:'Boot S',group:'Boot',base_price:50,tiers:TIERS},
   {manufacturer:LINE,code:'B2',name:'Boot M',group:'Boot',base_price:50,tiers:TIERS},
   {manufacturer:LINE,code:'C1',name:'Contract item',group:'',base_price:20},
-]});
+], manufacturers:[{slug:LINE,name:'Ovation Medical'}]});
 
 function world({files, tables, failRead, failWrite, fileStatus}){
   const W=M.createWorld({ tokens:{dealer:'d@x.com'}, failRead, failWrite,
@@ -129,7 +129,7 @@ await t('a layer that cannot be read stops the pricing (no order priced from a p
   eq(c.status,503,'create refuses'); eq(W.db.orders.length,0,'nothing saved');
 });
 await t('a catalog file that cannot be read stops the pricing; a missing content file does not',async()=>{
-  const W=world({fileStatus:u=>u.includes('/data/content/')?0:502}); const C=mod(W);
+  const W=world({fileStatus:u=>u.includes('/data/content/')||u.includes('/data/manufacturers.json')?0:502}); const C=mod(W);
   const r=await call(C,{action:'price_check',orders:[order([{code:'A1',qty:1,unit:50}])]});
   eq(r.status,503,'catalog file unreadable');
 });
@@ -161,7 +161,7 @@ await t('a disabled enrichment page is not read (the shop cannot see it either)'
   eq(item(r2,'A1').available,false,'a live page that switches the SKU off withdraws it');
 });
 await t('one code in two families is priced by the family the dealer chose, never guessed',async()=>{
-  const files={[LINE]:[{manufacturer:LINE,code:'SR3',family:'RS',base_price:100},{manufacturer:LINE,code:'SR3',family:'RR',base_price:200}]};
+  const files={[LINE]:[{manufacturer:LINE,code:'SR3',family:'RS',base_price:100},{manufacturer:LINE,code:'SR3',family:'RR',base_price:200}],manufacturers:[{slug:LINE}]};
   const W=world({files}); const C=mod(W);
   const r=await call(C,{action:'price_check',orders:[order([{code:'SR3',family:'RR',qty:1,unit:200}])]});
   eq(item(r,'SR3').unit,200,'RR family'); eq(r.body.changed,false,'unchanged');
@@ -194,6 +194,41 @@ await t('visible is not sellable: a discontinued page or SKU is refused, a hidde
   eq(['A1','B1','B2','C1'].map(c=>item(r,c).available),[false,false,false,true],'availability');
   const c=await call(C,{action:'create',orders:[order([{code:'A1',qty:1,unit:50}])],dealer:{}});
   eq([c.status,W.db.orders.length],[409,0],'a discontinued product cannot be ordered');
+});
+await t('a line the storefront no longer lists (retired partner) is never priced or ordered, whatever the layers hold',async()=>{
+  const RET='complete-medical-supplies';
+  const files=Object.assign(FILE(),{manufacturers:[{slug:LINE,name:'Ovation Medical'}],[RET]:[{manufacturer:RET,code:'BJ1',name:'Old item',group:'',base_price:10}]});
+  const W=world({files,tables:{manufacturers:[{slug:LINE,name:'Ovation Medical'},{slug:RET,name:'Complete Medical'}],
+    custom_products:[{manufacturer:RET,code:'BJ2',name:'Added',base_price:12,active:true}]}}); const C=mod(W);
+  const ret={manufacturer_slug:RET,manufacturer_name:'Complete Medical',po:'P',items:[{code:'BJ1',qty:1,unit:10},{code:'BJ2',qty:1,unit:12}]};
+  const r=await call(C,{action:'price_check',orders:[ret,order([{code:'A1',qty:1,unit:50}])]});
+  eq(r.body.orders[0].items.map(i=>i.available),[false,false],'retired line not available');
+  eq(r.body.orders[1].items[0].unit,50,'a listed line still prices');
+  const c=await call(C,{action:'create',orders:[ret],dealer:{}});
+  eq([c.status,W.db.orders.length],[409,0],'nothing recorded for the retired line');
+});
+await t('a missing, empty or broken manufacturer list fails CLOSED for HCPS lines (never "everything is listed")',async()=>{
+  const RET='complete-medical-supplies';
+  for(const [label,list] of [['404',undefined],['empty',[]],['not a list',{slug:LINE}]]){
+    const files=Object.assign(FILE(),{[RET]:[{manufacturer:RET,code:'BJ1',name:'Old item',group:'',base_price:10}]});
+    if(list===undefined) delete files.manufacturers; else files.manufacturers=list;
+    const W=world({files,tables:{custom_products:[{manufacturer:RET,code:'BJ2',name:'Lingering',base_price:12,active:true}]}}); const C=mod(W);
+    const ret={manufacturer_slug:RET,po:'P',items:[{code:'BJ2',qty:1,unit:12}]};
+    const r=await call(C,{action:'price_check',orders:[ret,order([{code:'A1',qty:1,unit:50}])]});
+    eq([r.status,r.body.status],[503,'pricing_unavailable'],label+': price_check refused');
+    const c=await call(C,{action:'create',orders:[ret],dealer:{}});
+    eq([c.status,W.db.orders.length],[503,0],label+': nothing recorded');
+  }
+});
+await t('an unreadable manufacturer list (5xx) stops HCPS pricing',async()=>{
+  const W=world({fileStatus:u=>u.includes('/data/manufacturers.json')?502:0}); const C=mod(W);
+  const r=await call(C,{action:'price_check',orders:[order([{code:'A1',qty:1,unit:50}])]});
+  eq([r.status,r.body.status],[503,'pricing_unavailable'],'refused, not priced');
+});
+await t('a Golden-only order is not blocked by the HCPS manufacturer list',async()=>{
+  const files=FILE(); delete files.manufacturers; const W=world({files}); const C=mod(W);
+  const r=await call(C,{action:'price_check',orders:[{manufacturer_slug:'golden-technologies',po:'G',items:[{code:'G1',qty:1,unit:5}]}]});
+  eq(r.status,200,'golden passes through');
 });
 await t('an unauthenticated caller gets nothing priced',async()=>{
   const W=world({}); const C=mod(W);

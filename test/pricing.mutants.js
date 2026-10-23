@@ -15,6 +15,8 @@ const M=[
  ['_pricing.js','unavailable line not a change', 'changed = true;\n      o.items.push({ code: l.code, qty: l.qty, available: false', 'o.items.push({ code: l.code, qty: l.qty, available: false'],
  ['_pricing.js','golden priced as HCPS', 'filter(s => s && !isGolden(s))', 'filter(s => s)'],
  ['_pricing.js','missing content file is an error', 'if (j == null) return { ok: false, status: 404, json: async () => null };', 'if (j == null) throw new Error("no content");'],
+ ['_pricing.js','unreadable/empty manufacturer list treated as listed', '  if (manufacturersFile && slugs.length && !Object.keys(freightCfg).length)', '  if (false)'],
+ ['_pricing.js','retired line priced', 'const listed = s => !freightCfg || Object.prototype.hasOwnProperty.call(freightCfg, s);', 'const listed = s => true;'],
  ['_pricing.js','catalog file 5xx read as empty', 'if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);', 'if (!r.ok) return empty;'],
  ['_pricing.js','contract prices not passed to engine', 'prices: contract || {} };', 'prices: {} };'],
  ['orders-api.js','create saves changed totals', 'if(priced.changed) return json(409', 'if(false) return json(409'],

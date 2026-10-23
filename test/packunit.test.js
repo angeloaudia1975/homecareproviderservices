@@ -22,6 +22,7 @@ function world(){
   const inner=W.fetch;
   W.fetch=async(url,opts)=>{ const u=String(url);
     if(u.startsWith(M.BASE+'/auth/v1/user')) return {ok:true,status:200,json:async()=>({id:'u1',email:'d@x.com'})};
+    if(u===OB+'/data/manufacturers.json') return {ok:true,status:200,json:async()=>[{slug:LINE,name:'Strongback Mobility'}]};
     if(u.startsWith(OB+'/data/')) return {ok:false,status:404,json:async()=>null,text:async()=>''};
     if(u.startsWith('https://api.resend.com')){ W.calls.push({url:u,method:'POST',body:JSON.parse(opts.body)}); return {ok:true,status:200,json:async()=>({id:'m'})}; }
     (W.db.product_skus||[]).forEach(r=>{ r.code_norm=norm(r.code); }); return inner(url,opts); };

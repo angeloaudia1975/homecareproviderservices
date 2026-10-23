@@ -29,7 +29,7 @@ function world(){
   const inner=W.fetch;
   W.fetch=async(url,opts)=>{ const u=String(url);
     if(u.startsWith(M.BASE+'/auth/v1/user')) return {ok:true,status:200,json:async()=>({id:'u1',email:'d@x.com'})};
-    if(u.startsWith(OB+'/data/')){ if(u.includes('/content/')) return {ok:false,status:404,json:async()=>null,text:async()=>''};
+    if(u===OB+'/data/manufacturers.json') return {ok:true,status:200,json:async()=>(W.db.manufacturers||[]).map(m=>({slug:m.slug,name:m.name}))}; if(u.startsWith(OB+'/data/')){ if(u.includes('/content/')) return {ok:false,status:404,json:async()=>null,text:async()=>''};
       const slug=decodeURIComponent(u.slice((OB+'/data/').length).replace(/\.json.*$/,''));
       if(slug===OV) return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(OVFILE)),text:async()=>JSON.stringify(OVFILE)};
       return {ok:false,status:404,json:async()=>null,text:async()=>''}; }
@@ -75,7 +75,7 @@ await t('the record feed carries the pool (catalog-feed and the server copy)',()
 // ---- every tier writer keeps the pool ----
 const catWorld=()=>{ const W=M.createWorld({tables:{manufacturer_meta:[{slug:SB}],product_overrides:[],custom_products:[{manufacturer:SB,code:'1003AB',name:'x',base_price:527,active:true}],product_content:[],
   product_skus:[Object.assign({code_norm:'1003AB'},RECORDS[0])]}});
-  const inner=W.fetch; W.fetch=async(u,o)=>{ u=String(u); if(u.startsWith(OB+'/data/')) return {ok:false,status:404,json:async()=>null,text:async()=>''};
+  const inner=W.fetch; W.fetch=async(u,o)=>{ u=String(u); if(u===OB+'/data/manufacturers.json') return {ok:true,status:200,json:async()=>(W.db.manufacturers||[]).map(m=>({slug:m.slug,name:m.name}))}; if(u.startsWith(OB+'/data/')) return {ok:false,status:404,json:async()=>null,text:async()=>''};
     (W.db.product_skus||[]).forEach(r=>{ r.code_norm=norm(r.code); }); return inner(u,o); }; return W; };
 const cat=W=>M.load('catalog-api.js',W,{ANALYTICS_TOKEN:'pass',ORDERING_BASE:OB},ROOT);
 const call=(C,b)=>M.call(C,b,{headers:{'x-analytics-token':'pass'}});
