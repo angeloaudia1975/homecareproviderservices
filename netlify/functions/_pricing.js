@@ -165,7 +165,13 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
   const cart = new Map();
   const bySlug = {};
   const slugs = [...new Set((orders || []).map(o => String(o.manufacturer_slug || o.manufacturer || "")).filter(s => s && !isGolden(s)))];
-  for (const slug of slugs) bySlug[slug] = await lineProducts({ slug, sb, catalogFile, contentFile, contract, cart, freightCfg });
+  /* A line the storefront does not list (manufacturers.json) is not sold: nothing on it is priced,
+     whatever catalog layers still hold rows for it (e.g. Complete Medical Supplies, no longer an
+     HCPS partner since 2026-10-23). With no manufacturers reader, or no list in it, every line is priced
+     as before. */
+  const listed = s => !freightCfg || !Object.keys(freightCfg).length || Object.prototype.hasOwnProperty.call(freightCfg, s);
+  for (const slug of slugs) bySlug[slug] = listed(slug)
+    ? await lineProducts({ slug, sb, catalogFile, contentFile, contract, cart, freightCfg }) : null;
   /* The family quantity is the shop's: every cart line, priced from its CURRENT product. */
   const lines = [];
   (orders || []).forEach((o, oi) => {

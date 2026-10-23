@@ -195,6 +195,18 @@ await t('visible is not sellable: a discontinued page or SKU is refused, a hidde
   const c=await call(C,{action:'create',orders:[order([{code:'A1',qty:1,unit:50}])],dealer:{}});
   eq([c.status,W.db.orders.length],[409,0],'a discontinued product cannot be ordered');
 });
+await t('a line the storefront no longer lists (retired partner) is never priced or ordered, whatever the layers hold',async()=>{
+  const RET='complete-medical-supplies';
+  const files=Object.assign(FILE(),{manufacturers:[{slug:LINE,name:'Ovation Medical'}],[RET]:[{manufacturer:RET,code:'BJ1',name:'Old item',group:'',base_price:10}]});
+  const W=world({files,tables:{manufacturers:[{slug:LINE,name:'Ovation Medical'},{slug:RET,name:'Complete Medical'}],
+    custom_products:[{manufacturer:RET,code:'BJ2',name:'Added',base_price:12,active:true}]}}); const C=mod(W);
+  const ret={manufacturer_slug:RET,manufacturer_name:'Complete Medical',po:'P',items:[{code:'BJ1',qty:1,unit:10},{code:'BJ2',qty:1,unit:12}]};
+  const r=await call(C,{action:'price_check',orders:[ret,order([{code:'A1',qty:1,unit:50}])]});
+  eq(r.body.orders[0].items.map(i=>i.available),[false,false],'retired line not available');
+  eq(r.body.orders[1].items[0].unit,50,'a listed line still prices');
+  const c=await call(C,{action:'create',orders:[ret],dealer:{}});
+  eq([c.status,W.db.orders.length],[409,0],'nothing recorded for the retired line');
+});
 await t('an unauthenticated caller gets nothing priced',async()=>{
   const W=world({}); const C=mod(W);
   const r=await M.call(C,{action:'price_check',orders:[order([{code:'A1',qty:1,unit:50}])]},{});

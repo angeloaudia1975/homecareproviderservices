@@ -1576,6 +1576,14 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   unspent; success spends the fix) → mc_publish_finalize (new Gold Standard; a correction never uses or spends the
   enrichment window). UI: Decisions → Correct a published page. No SQL change (the RPC also refreshes published_at and
   reviewed_by). Tests: test/mccorrection.test.js, test/mccorrection.ui.js, test/mccorrection.mutants.js.
+- **Complete Medical Supplies is no longer an HCPS partner — removed from online ordering (Angelo, 2026-10-23).** It is
+  not on the storefront's manufacturer list; its public catalog file (`public/data/complete-medical-supplies.json`) and
+  product images are deleted from the ordering site; the order server never prices or records a line the storefront
+  does not list (`_pricing.js priceOrders`, whatever custom_products / product_overrides still hold); ordering access
+  already excludes it (`_access.js` / `territory-api` NOT_REPRESENTED, `dealers-api` RETIRED). Kept on purpose:
+  historical orders, sales, commissions, dealer account numbers (`dealer_manufacturers` — do NOT run the old
+  `retire_complete_medical.sql` delete without Angelo's decision, it would erase them) and its commission-report capture
+  profile (final statements may still arrive). Never re-add it to ordering unless Angelo says it is represented again.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
