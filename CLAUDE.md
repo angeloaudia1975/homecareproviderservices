@@ -1614,6 +1614,14 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   is a new version: re-seed it (`--reseed`, by fingerprint) BEFORE deploying the storefront, prune after. A line not in
   `manufacturers.json` (retired) is never seeded or priced. Rolling the storefront back re-publishes prices — a
   TEMPORARY EMERGENCY EXPOSURE. Runbook: ordering `docs/security/P0_PRICE_EXPOSURE.md`.
+  **Owner decisions (Angelo, 2026-10-23 16:29 CT):** release order = private table → verified seed → admin deploy →
+  storefront deploy → lock legacy-table public access → protect old deploy links → final verification; the two P0 PRs
+  are never merged or deployed apart, nor before the private table is populated and every release check passes. Making
+  both repos private is RECOMMENDED but never done automatically — verify Netlify/GitHub integration first. Standard
+  dealer-facing shipping terms may stay public; negotiated or confidential pricing arrangements stay private. Dealers
+  may browse product information for lines they don't carry, never their wholesale prices or ordering. Escalate only
+  missing authoritative commercial information, material safety/security issues and real production release gates —
+  routine development needs no approval; unresolved manufacturer items go to the exceptions queue, never stop the others.
 
 ## 18. Manufacturer report imports — MI-1a transaction identity & safe replacement (RULE, agreed 2026-10-09/10)
 
