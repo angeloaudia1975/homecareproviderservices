@@ -1592,6 +1592,20 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   checkout parity, category consistency, no parity drift) → only then `record_authoritative=true`
   → re-verify (feed uses the record, 21 prices / cart / server / categories / images unchanged,
   ordering works) → report PASS/FAIL and stop before Strongback activation. No Bemis yet.
+- **Catalog Completion — importer & manufacturer source rules (Angelo, 2026-10-23; PR #35).** The reusable importer
+  (`_catalog_import.js`, `_import_adapters.js`, `scripts/catalog-import.js`) is READ-ONLY: it produces a review package
+  and Manufacturer Center `price_imports` rows; staging still goes through Manufacturer Center's two gates. Rules:
+  (1) A verified manufacturer price list wins; an outdated public catalog price is never substituted for it. (2) Never
+  invent a wholesale price — a manufacturer with no attached list is reported as a missing source. (3) Only MSRP / MAP
+  STATED on the source go into msrp / map; a stated rule (Access4U: MSRP = dealer × 1.5, MAP 30% below MSRP) stays in
+  raw for approval. (4) A price column quoted for one named account (ABM "Williams Bros Pharmacy") is never a base dealer
+  price — blocked for Angelo's decision. (5) **Dalton: the corrected November 1, 2026 list exactly as printed — never an
+  extra 5% discount.** (6) Unverified research content is never published; enrichment uses manufacturer-official sources
+  only. (7) Ohio Medical: `ohio-medical` canonical with a backward-compatible `gce` alias, tested before deploy.
+  (8) Complete Medical Supplies: in the inventory, broken-image fixes prepared, activation ON HOLD until the
+  representation is confirmed. (9) Real price lists and outputs carrying wholesale prices never go into git (both repos
+  are public) — tests use synthetic sources. (10) Readiness: the five-stage score is not dealer launch readiness;
+  launch readiness also needs authenticated pricing, entitlement, freight, checkout and order tests (PR #34).
 
 ## 18. Manufacturer report imports — MI-1a transaction identity & safe replacement (RULE, agreed 2026-10-09/10)
 
