@@ -1681,6 +1681,13 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   SHA-256, received 2026-10-09. Not matched (stay provenance_incomplete): Dalton REVa (the 20 Oct attachment is a
   different file), AIRAVANT / BongoRx, Corsicana (_rev), ABM, PediFix, Ohio Medical / GCE. PediFix's 2025 document is
   never treated as a current 2026 list; ABM stays blocked for general dealer pricing.
+  (19) **Two receipt bases, never mixed (PR #35 review, 2026-10-24):** `mailbox_attachment_match` (the manufacturer's
+  email; its attachment SHA-256 must equal the imported file's) or `hcps_intake_verified` (HCPS separately verified when
+  it received THIS file — who + how). `_catalog_import.js applyReceipt` / CLI `--received-evidence e.json` (batch
+  `received` object or `received_evidence`): a non-matching attachment (a corrected / re-saved PDF) never gives its date
+  — the date stays unassigned and the line blocks (`received_date_mismatch`); a bare `--received` date has no basis and
+  blocks (`received_unverified`). The basis + evidence (attachment name / hash, message id, who, how — never email
+  content) travel in `raw._provenance`. Tests: catalog-import 53, handoff 7, mutants 73/73.
 
 ## 18. Manufacturer report imports — MI-1a transaction identity & safe replacement (RULE, agreed 2026-10-09/10)
 

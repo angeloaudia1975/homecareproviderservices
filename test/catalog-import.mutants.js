@@ -64,6 +64,16 @@ const M = [
   ['effective date invented from received', 'effective_date: s.effective_date_status === "stated" ? s.effective_date || null : null,', 'effective_date: s.effective_date || s.received_date || null,'],
   ['case qty not passed as text', 'case_qty_text: r.case_qty > 1 ? String(r.case_qty) : null,', 'case_qty_text: null,'],
   ['gce alias dropped', 'const SLUG_ALIASES = { gce: "ohio-medical" };', 'const SLUG_ALIASES = {};'],
+  // PR #35 review follow-up: received date needs a basis; a non-matching attachment never gives its date
+  ['mismatched attachment date assigned', 'if (att && att !== String(s.sha256 || "").toLowerCase()) {', 'if (false) {'],
+  ['hash compared case-sensitively', 'const att = ev.attachment_sha256 ? String(ev.attachment_sha256).toLowerCase() : null;', 'const att = ev.attachment_sha256 ? String(ev.attachment_sha256) : null;'],
+  ['mismatch not a blocker', 'if (src.received_mismatch) add(', 'if (false) add('],
+  ['bare date stageable', 'else if (src.received_date && !RECEIPT_BASES.includes(src.received_basis)) add(', 'else if (false) add('],
+  ['mailbox basis without hash accepted', 'if (ev.basis === "mailbox_attachment_match" && !att) throw', 'if (false) throw'],
+  ['intake basis without who/how accepted', 'if (ev.basis === "hcps_intake_verified" && (!clean(ev.verified_by) || !clean(ev.note))) throw', 'if (false) throw'],
+  ['unknown basis accepted', 'if (!RECEIPT_BASES.includes(ev.basis)) throw', 'if (false) throw'],
+  ['bad date format accepted', 'if (!okDate(ev.date)) throw', 'if (false) throw'],
+  ['basis not in provenance', 'received_basis: s.received_date && RECEIPT_BASES.includes(s.received_basis) ? s.received_basis : null,', 'received_basis: null,'],
   ['gce storefront file lost', 'const CATALOG_FILE_SLUG = { "ohio-medical": "gce" };', 'const CATALOG_FILE_SLUG = {};'],
 ];
 // Adapter mutants (the adapters are compiled from the mutated text; the core stays real)

@@ -168,7 +168,8 @@ async function run(src, adpSrc) {
 
   // ================= PR #35 review: before/after, stop-on-blocker, exceptions queue, handoff, aliases =================
   const okv = (c, w) => { if (!c) throw new Error(w); };
-  const srcLine = (rows, extra) => Object.assign({ manufacturer: 'm', source: { file: 'f.xlsx', sha256: 'abc', effective_date_status: 'not_stated', received_date: '2026-10-20' }, terms: [], rows }, extra || {});
+  const IV = { basis: 'hcps_intake_verified', attachment_name: null, attachment_sha256: null, message_id: null, verified_by: 'test', note: 'synthetic' };
+  const srcLine = (rows, extra) => Object.assign({ manufacturer: 'm', source: { file: 'f.xlsx', sha256: 'abc', effective_date_status: 'not_stated', received_date: '2026-10-20', received_basis: 'hcps_intake_verified', received_evidence: IV }, terms: [], rows }, extra || {});
   const pkg = (rows, existing, ctx, extra) => { const V = C.validateLine(srcLine(rows, extra)); const ex = existing || { catalog: [], master: [] };
     return C.buildPackage(V, C.compareLine(V, ex), Object.assign({ catalog: ex.catalog, master: ex.master, today: '2026-10-23' }, ctx || {})); };
   const kinds = P => P.exceptions.map(x => x.kind + (x.blocking ? '!' : ''));
@@ -230,6 +231,39 @@ async function run(src, adpSrc) {
     const P = C.buildPackage(V, C.compareLine(V, {}), { today: '2026-10-23' });
     eq([P.stageable, kinds(P)], [false, ['provenance_incomplete!']]);
   });
+  const bare = () => { const V = C.validateLine(srcLine([row()])); V.source.received_date = null; V.source.received_basis = null; V.source.received_evidence = null; return V; };
+  const pkgOf = V => C.buildPackage(V, C.compareLine(V, {}), { today: '2026-10-23' });
+  t('receipt: a mailbox date is assigned only when the attachment SHA-256 equals the imported file', () => {
+    const V = C.applyReceipt(bare(), { date: '2026-10-09', basis: 'mailbox_attachment_match', attachment_name: 'Pricelist fall 2026.pdf', attachment_sha256: 'ABC', message_id: '<m1>' });
+    eq([V.source.received_date, V.source.received_basis], ['2026-10-09', 'mailbox_attachment_match']);
+    const P = pkgOf(V);
+    eq([P.stageable, kinds(P)], [true, []]);
+    eq(P.handoff.mc_import_source_rows.rows[0].raw._provenance.received_evidence.attachment_sha256, 'abc');
+  });
+  t('receipt: a non-matching attachment (corrected / re-saved PDF) never gives its date to the file', () => {
+    const V = C.applyReceipt(bare(), { date: '2026-10-20', basis: 'mailbox_attachment_match', attachment_name: 'NEW Dalton.pdf', attachment_sha256: 'def' });
+    eq([V.source.received_date, V.source.received_basis], [null, null]);
+    const P = pkgOf(V);
+    eq([P.stageable, kinds(P)], [false, ['provenance_incomplete!', 'received_date_mismatch!']]);
+    eq(P.handoff, null);
+    eq(/NOT assigned/.test(P.exceptions.find(x => x.kind === 'received_date_mismatch').evidence), true);
+  });
+  t('receipt: a separately verified HCPS intake is its own basis; a mismatched hash still refuses the date', () => {
+    const V = C.applyReceipt(bare(), { date: '2026-10-21', basis: 'hcps_intake_verified', verified_by: 'angelo', note: 'file handed over at the Oct 21 meeting' });
+    eq([V.source.received_basis, pkgOf(V).stageable], ['hcps_intake_verified', true]);
+    const W = C.applyReceipt(bare(), { date: '2026-10-21', basis: 'hcps_intake_verified', verified_by: 'angelo', note: 'x', attachment_sha256: 'zzz' });
+    eq([W.source.received_date, kinds(pkgOf(W)).includes('received_date_mismatch!')], [null, true]);
+    let threw = 0;
+    for (const e of [{ date: '2026-10-21', basis: 'hcps_intake_verified' }, { date: '2026-10-21', basis: 'mailbox_attachment_match' }, { date: '10/21/2026', basis: 'hcps_intake_verified', verified_by: 'a', note: 'b' }, { date: '2026-10-21', basis: 'guess' }])
+      try { C.applyReceipt(bare(), e); } catch (_) { threw++; }
+    eq(threw, 4, 'incomplete evidence is refused');
+  });
+  t('receipt: a bare date with no basis is kept but blocks (received_unverified); never the effective date', () => {
+    const V = C.applyReceipt(bare(), '2026-10-20');
+    const P = pkgOf(V);
+    eq([V.source.received_date, P.stageable, kinds(P)], ['2026-10-20', false, ['received_unverified!']]);
+    eq(C.provenanceOf(V).effective_date, null);
+  });
   t('stop-on-blocker: a recorded decision resolves an open exception; an incomplete decision does not', () => {
     const P = pkg([row({ code: 'B', dealer_price_scope: 'named_account' })]); const id = P.exceptions[0].id;
     eq(pkg([row({ code: 'B', dealer_price_scope: 'named_account' })], null, { decisions: { [id]: { status: 'resolved' } } }).stageable, false, 'no who / why');
@@ -250,7 +284,7 @@ async function run(src, adpSrc) {
     eq(kinds(pkg([row({ code: 'STP7M' })], { catalog: [{ code: 'STP7', base_price: 1, image: '/assets/a' }] })), ['uncertain_part_number!', 'legacy_not_on_source']);
   });
   t('exceptions: an older list is not_current_source (blocking) until the manufacturer confirms it in writing', () => {
-    const ex = { source: { file: 'PediFix_2025.xlsx', sha256: 'x', title: '2025 OTC Price List', effective_date: '2025-07-01', effective_date_status: 'stated', received_date: '2026-10-20' } };
+    const ex = { source: { file: 'PediFix_2025.xlsx', sha256: 'x', title: '2025 OTC Price List', effective_date: '2025-07-01', effective_date_status: 'stated', received_date: '2026-10-20', received_basis: 'hcps_intake_verified', received_evidence: IV } };
     eq(kinds(pkg([row()], null, null, ex)), ['not_current_source!']);
     eq(pkg([row()], null, { confirmations: { current_source: true } }, ex).stageable, true, 'confirmed');
     eq(pkg([row()], null, { today: '2025-12-01' }, ex).stageable, true, 'current in its own year');
@@ -301,11 +335,11 @@ async function run(src, adpSrc) {
   // ---- 5. handoff shape (the real catalog-api is exercised in catalog-import.handoff.test.js)
   t('handoff: every import row carries the source provenance; effective date null when not stated', () => {
     const P = pkg([row({ code: 'A1', case_qty: 4, uom: 'Case' }), row({ code: 'B1', msrp: 9, msrp_source: 'source_rule', map: 6.3, map_source: 'source_rule' })]);
-    for (const r of P.handoff.mc_import_source_rows.rows) eq(r.raw._provenance, { file: 'f.xlsx', sha256: 'abc', received_date: '2026-10-20', effective_date: null, effective_date_status: 'not_stated' });
+    for (const r of P.handoff.mc_import_source_rows.rows) eq(r.raw._provenance, { file: 'f.xlsx', sha256: 'abc', received_date: '2026-10-20', received_basis: 'hcps_intake_verified', received_evidence: IV, effective_date: null, effective_date_status: 'not_stated' });
     for (const r of P.handoff.stage_record_source.rows) eq(r._provenance.sha256, 'abc');
     eq(P.handoff.mc_import_source_rows.rows[0].case_qty_text, '4', 'the field mc_import_source_rows parses');
     eq(P.handoff.stage_record_source.rows[1], { code: 'B1', base_price: 10, _provenance: P.handoff.stage_record_source.rows[1]._provenance }, 'no unstated field is sent, not even as null');
-    const st = C.buildPackage(C.validateLine(srcLine([row()], { source: { file: 'f', sha256: 's', effective_date: '2026-11-01', effective_date_status: 'stated', received_date: '2026-10-20' } })), null, { today: '2026-10-23' });
+    const st = C.buildPackage(C.validateLine(srcLine([row()], { source: { file: 'f', sha256: 's', effective_date: '2026-11-01', effective_date_status: 'stated', received_date: '2026-10-20', received_basis: 'hcps_intake_verified', received_evidence: IV } })), null, { today: '2026-10-23' });
     eq([st.handoff.register.manufacturer_effective_date, st.handoff.register.effective_date_status, st.handoff.stage_record_source.rows[0]._provenance.effective_date], ['2026-11-01', 'stated', '2026-11-01']);
   });
 
@@ -330,7 +364,7 @@ async function run(src, adpSrc) {
     eq(C.stageRows(V).map(r => r.base_price), [999, 12.5, 89.99], 'stage rows carry the printed prices');
     for (const r of V.rows) okv(Math.abs(r.dealer_price - Math.round(r.dealer_price * 0.95 * 100) / 100) > 0.004, 'no 5% applied');
     eq(V.rows[1].flags.map(f => f.code), ['pack_in_text'], 'pack text is a check');
-    const P = C.buildPackage(Object.assign(V, { source: Object.assign(V.source, { received_date: '2099-11-02' }) }), C.compareLine(V, {}), { today: '2099-11-03' });
+    const P = C.buildPackage(Object.assign(V, { source: Object.assign(V.source, { received_date: '2099-11-02', received_basis: 'hcps_intake_verified', received_evidence: IV }) }), C.compareLine(V, {}), { today: '2099-11-03' });
     eq([P.stageable, P.exceptions.filter(x => x.blocking).map(x => x.kind)], [false, ['pack_qty_check']]);
   });
   t('Corsicana adapter: "Case of N" from the description is case_qty_unverified (blocks)', () => {
