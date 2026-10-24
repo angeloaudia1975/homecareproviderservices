@@ -35,7 +35,7 @@ function world() {
 const mod = W => M.load('catalog-api.js', W, { ANALYTICS_TOKEN: 'pass', ORDERING_BASE: OB }, ROOT);
 const call = (C, b) => M.call(C, b, { headers: { 'x-analytics-token': 'pass' } });
 const buildPkg = (slug, received) => {
-  const L = A.adapterFor(slug).fn(xlsx(SHEET), 'synthetic.xlsx'); L.source.received_date = received === undefined ? '2026-10-20' : received;
+  const L = A.adapterFor(slug).fn(xlsx(SHEET), 'synthetic.xlsx'); CI.applyReceipt(L, received === undefined ? { date: '2026-10-20', basis: 'mailbox_attachment_match', attachment_name: 'synthetic.xlsx', attachment_sha256: L.source.sha256, message_id: '<syn@x>' } : received);
   const V = CI.validateLine(L); return CI.buildPackage(V, CI.compareLine(V, {}), { today: '2026-10-23' });
 };
 
@@ -47,7 +47,9 @@ await t('handoff: the package is accepted by the real mc_import_source_rows (dry
   eq(r.status, 200, JSON.stringify(r.body)); eq(r.body.would_insert, 2);
   for (const x of r.body.rows) {
     eq([x.source_file, x.effective_date, x.source_id], ['synthetic.xlsx', null, 3], 'register provenance');
-    eq(x.raw._provenance, { file: 'synthetic.xlsx', sha256: P.handoff.register.sha256, received_date: '2026-10-20', effective_date: null, effective_date_status: 'not_stated' });
+    eq(x.raw._provenance, { file: 'synthetic.xlsx', sha256: P.handoff.register.sha256, received_date: '2026-10-20', received_basis: 'mailbox_attachment_match',
+      received_evidence: { basis: 'mailbox_attachment_match', attachment_name: 'synthetic.xlsx', attachment_sha256: P.handoff.register.sha256, message_id: '<syn@x>', verified_by: null, note: null },
+      effective_date: null, effective_date_status: 'not_stated' });
   }
   eq(r.body.rows.map(x => [x.code, x.base_price, x.msrp, (x.tiers || []).length]), [['SYN-1', 100, 250, 2], ['CAN-55', 5, null, 0]]);
   eq(W.writes.length, 0, 'a dry run writes nothing');
@@ -76,10 +78,13 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'catimp-'));
 const file = path.join(tmp, 'synthetic.xlsx'); fs.writeFileSync(file, xlsx(SHEET));
 const shop = path.join(tmp, 'shop'); fs.mkdirSync(path.join(shop, 'public', 'data'), { recursive: true });
 fs.writeFileSync(path.join(shop, 'public', 'data', 'gce.json'), JSON.stringify([{ code: 'SYN-1', name: 'Synthetic concentrator', base_price: 95, msrp: 240, image: '/assets/a.jpg' }, { code: 'OLD-1', name: 'Old', base_price: 3, image: '/assets/b.jpg' }]));
+const fileSha = CI.sha256(fs.readFileSync(file));
+const evMatch = path.join(tmp, 'ev-match.json'); fs.writeFileSync(evMatch, JSON.stringify({ date: '2026-10-20', basis: 'mailbox_attachment_match', attachment_name: 'synthetic.xlsx', attachment_sha256: fileSha }));
+const evOther = path.join(tmp, 'ev-other.json'); fs.writeFileSync(evOther, JSON.stringify({ date: '2026-10-20', basis: 'mailbox_attachment_match', attachment_name: 'corrected.xlsx', attachment_sha256: 'f'.repeat(64) }));
 const run = (args) => cp.spawnSync(process.execPath, [CLI].concat(args), { encoding: 'utf8' });
 const files = d => Object.fromEntries(fs.readdirSync(d).sort().map(f => [f, fs.readFileSync(path.join(d, f), 'utf8')]));
 await t('CLI: identical inputs give byte-identical outputs (every file)', async () => {
-  const base = ['--mfr', 'gce', '--file', file, '--received', '2026-10-20', '--shop', shop, '--today', '2026-10-23'];
+  const base = ['--mfr', 'gce', '--file', file, '--received-evidence', evMatch, '--shop', shop, '--today', '2026-10-23'];
   const a = run(base.concat(['--out', path.join(tmp, 'o1')])), b = run(base.concat(['--out', path.join(tmp, 'o2')]));
   eq([a.status, b.status], [0, 0], a.stderr + b.stderr);
   const A1 = files(path.join(tmp, 'o1')), B1 = files(path.join(tmp, 'o2'));
@@ -99,9 +104,19 @@ await t('CLI: a blocked line writes no import rows — and a re-run removes rows
   const pk = JSON.parse(fs.readFileSync(path.join(out, 'package.json'), 'utf8'));
   eq([pk.stageable, pk.handoff_file, pk.exceptions.filter(x => x.blocking).map(x => x.kind)], [false, null, ['provenance_incomplete']]);
 });
+await t('CLI: a non-matching attachment or a bare date never stages; the date is not given to the file', async () => {
+  const o3 = path.join(tmp, 'o3'), o4 = path.join(tmp, 'o4');
+  eq(run(['--mfr', 'ohio-medical', '--file', file, '--received-evidence', evOther, '--shop', shop, '--today', '2026-10-23', '--out', o3]).status, 0);
+  const p3 = JSON.parse(fs.readFileSync(path.join(o3, 'package.json'), 'utf8')), l3 = JSON.parse(fs.readFileSync(path.join(o3, 'line.json'), 'utf8'));
+  eq([p3.stageable, l3.source.received_date, p3.exceptions.filter(x => x.blocking).map(x => x.kind).sort()], [false, null, ['provenance_incomplete', 'received_date_mismatch']]);
+  ok(!fs.existsSync(path.join(o3, 'price_import_rows.json')), 'no rows');
+  eq(run(['--mfr', 'ohio-medical', '--file', file, '--received', '2026-10-20', '--shop', shop, '--today', '2026-10-23', '--out', o4]).status, 0);
+  const p4 = JSON.parse(fs.readFileSync(path.join(o4, 'package.json'), 'utf8'));
+  eq([p4.stageable, p4.exceptions.filter(x => x.blocking).map(x => x.kind)], [false, ['received_unverified']]);
+});
 await t('CLI batch: one exceptions queue per run; a failing or refused line never stops the others', async () => {
   const batch = path.join(tmp, 'batch.json'), out = path.join(tmp, 'b');
-  fs.writeFileSync(batch, JSON.stringify([{ mfr: 'gce', name: 'ohio', file, received: '2026-10-20' }, { mfr: 'dalton', file: path.join(tmp, 'missing.pdf') },
+  fs.writeFileSync(batch, JSON.stringify([{ mfr: 'gce', name: 'ohio', file, received_evidence: evMatch }, { mfr: 'dalton', file: path.join(tmp, 'missing.pdf') },
     { mfr: 'complete-medical-supplies', file }, { mfr: 'bemis', file }]));
   const r = run(['--batch', batch, '--shop', shop, '--today', '2026-10-23', '--out', out]);
   eq(r.status, 0, r.stderr);

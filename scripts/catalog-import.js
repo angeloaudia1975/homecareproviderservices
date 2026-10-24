@@ -2,11 +2,11 @@
 /* Catalog import — offline runner (read-only). One manufacturer source file → normalized line, validation,
    comparison with HCPS's existing rows, review report and the Manufacturer Center import rows.
 
-   node scripts/catalog-import.js --mfr <slug> --file <source> [--received YYYY-MM-DD] [--transcription t.json] [--ocr ocr.txt]
+   node scripts/catalog-import.js --mfr <slug> --file <source> [--received-evidence e.json | --received YYYY-MM-DD] [--transcription t.json] [--ocr ocr.txt]
         [--shop <ordering repo>] [--catalog-slug <file slug>] [--snapshot snap.json] [--decisions d.json] [--holds h.json]
         [--today YYYY-MM-DD] --out <dir>
    node scripts/catalog-import.js --batch batch.json [same shared options] --out <dir>
-        batch.json = [{ name?, mfr, file, received?, transcription?, ocr?, catalog_slug? }, …]
+        batch.json = [{ name?, mfr, file, received? (evidence object or bare date), received_evidence? (file), transcription?, ocr?, catalog_slug? }, …]
 
    Per line (in --out, or --out/<name> in a batch): line.json, report.json, review.csv, before_after.json,
    before_after.csv, exceptions.json, package.json — and price_import_rows.json + handoff.json ONLY when the line is
@@ -19,6 +19,13 @@ const path = require("path");
 const CI = require("../netlify/functions/_catalog_import.js");
 const { ADAPTERS, adapterFor } = require("../netlify/functions/_import_adapters.js");
 
+/* The received date and its basis: --received-evidence e.json (or a batch "received" object / "received_evidence" file)
+   = { date, basis: mailbox_attachment_match | hcps_intake_verified, attachment_sha256, attachment_name, message_id,
+   verified_by, note }. A bare --received date is recorded without a basis and keeps the line from staging. */
+function receiptOf(job) {
+  if (job.received_evidence) return readJson(job.received_evidence);
+  return job.received || null;
+}
 function args(argv) { const a = {}; for (let i = 2; i < argv.length; i++) if (argv[i].startsWith("--")) a[argv[i].slice(2)] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true; return a; }
 const csvCell = v => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
 
@@ -60,7 +67,8 @@ async function runOne(job, shared) {
   let line;
   if (refusal) {
     // A frozen or retired line is refused before any adapter runs: nothing is parsed into rows.
-    line = { manufacturer: slug, source: { file: fileName, sha256: CI.sha256(buf), title: null, effective_date: null, effective_date_status: "not_stated", received_date: job.received || null }, terms: [], rows: [] };
+    line = { manufacturer: slug, source: { file: fileName, sha256: CI.sha256(buf), title: null, effective_date: null, effective_date_status: "not_stated", received_date: null }, terms: [], rows: [] };
+    CI.applyReceipt(line, receiptOf(job));
   } else {
     const A = adapterFor(slug);
     if (!A) throw new Error("no adapter for " + job.mfr);
@@ -71,10 +79,7 @@ async function runOne(job, shared) {
       line = A.fn(t, buf, fileName);
       if (job.ocr) { ocrMissing = ocrCheck(t, String(job.ocr).split(",").map(f => fs.readFileSync(f, "utf8")).join("\n")); ocrTotal = ocrValues(t).length; }
     } else line = await A.fn(buf, fileName);
-    if (job.received) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(job.received)) throw new Error("--received must be YYYY-MM-DD");
-      line.source.received_date = job.received;
-    }
+    CI.applyReceipt(line, receiptOf(job));
     const pre = line.exceptions_pre || []; delete line.exceptions_pre;
     const checks = line.checks || null;
     const V = CI.validateLine(line);
@@ -130,7 +135,7 @@ async function main() {
     confirmations: a.confirmations ? readJson(a.confirmations) : {}, frozen: [] };
   if (a.snapshot) shared.frozen = (readJson(a.snapshot).meta || []).filter(m => m.frozen === true).map(m => m.slug);
   if (!a.batch) {
-    const r = await runOne({ mfr: a.mfr, file: a.file, received: a.received, transcription: a.transcription, ocr: a.ocr, catalog_slug: a["catalog-slug"], out: a.out }, shared);
+    const r = await runOne({ mfr: a.mfr, file: a.file, received: a.received, received_evidence: a["received-evidence"], transcription: a.transcription, ocr: a.ocr, catalog_slug: a["catalog-slug"], out: a.out }, shared);
     console.log(`${r.name}: ${r.rows} rows · new ${r.new} · changed ${r.changed} · unchanged ${r.unchanged} · preserved-not-on-source ${r.not_on_source_preserved} · blocking ${r.blocking} · exceptions ${r.exceptions} · stageable ${r.stageable ? "yes" : "no"}`);
     return;
   }

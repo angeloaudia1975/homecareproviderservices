@@ -160,9 +160,42 @@ function report(line, comparison) {
    manufacturer effective date — null when the source does not state one, never invented). The case quantity goes as
    case_qty_text, the field mc_import_source_rows parses (MC.parseCaseQty). Built for review — sending them is a
    separate, gated step, and only for a stageable package (buildPackage). */
+/* HCPS's received date for a source, with its basis (PR #35 review, 2026-10-24). Two bases, never mixed:
+   · mailbox_attachment_match — the date comes from the manufacturer's email; the attachment's SHA-256 MUST equal the
+     imported file's, otherwise the date is NOT assigned (a corrected / re-saved file is a different file);
+   · hcps_intake_verified — HCPS separately verified when it received THIS file (who + how); if an attachment hash is
+     given it must match too.
+   A bare date (legacy --received) is kept but has no basis, so the line is not stageable (received_unverified).
+   The received date is never the manufacturer's effective date. */
+const RECEIPT_BASES = ["mailbox_attachment_match", "hcps_intake_verified"];
+function applyReceipt(line, ev) {
+  if (ev == null || ev === "") return line;
+  const s = line.source = line.source || {};
+  const okDate = d => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ""));
+  if (typeof ev === "string") {
+    if (!okDate(ev)) throw new Error("received date must be YYYY-MM-DD");
+    s.received_date = ev; s.received_basis = null; s.received_evidence = null; return line;
+  }
+  if (!okDate(ev.date)) throw new Error("received evidence needs date YYYY-MM-DD");
+  if (!RECEIPT_BASES.includes(ev.basis)) throw new Error("received evidence basis must be one of " + RECEIPT_BASES.join(", "));
+  const att = ev.attachment_sha256 ? String(ev.attachment_sha256).toLowerCase() : null;
+  if (ev.basis === "mailbox_attachment_match" && !att) throw new Error("mailbox_attachment_match needs attachment_sha256");
+  if (ev.basis === "hcps_intake_verified" && (!clean(ev.verified_by) || !clean(ev.note))) throw new Error("hcps_intake_verified needs verified_by and note");
+  const evidence = { basis: ev.basis, attachment_name: clean(ev.attachment_name) || null, attachment_sha256: att,
+    message_id: clean(ev.message_id) || null, verified_by: clean(ev.verified_by) || null, note: clean(ev.note) || null };
+  if (att && att !== String(s.sha256 || "").toLowerCase()) {
+    s.received_date = null; s.received_basis = null; s.received_evidence = null;
+    s.received_mismatch = Object.assign({ date_not_assigned: ev.date, source_sha256: s.sha256 || null }, evidence);
+    return line;
+  }
+  s.received_date = ev.date; s.received_basis = ev.basis; s.received_evidence = evidence; delete s.received_mismatch;
+  return line;
+}
 function provenanceOf(line) {
   const s = line.source || {};
   return { file: s.file || null, sha256: s.sha256 || null, received_date: s.received_date || null,
+    received_basis: s.received_date && RECEIPT_BASES.includes(s.received_basis) ? s.received_basis : null,
+    received_evidence: s.received_date && RECEIPT_BASES.includes(s.received_basis) ? s.received_evidence || null : null,
     effective_date: s.effective_date_status === "stated" ? s.effective_date || null : null,
     effective_date_status: s.effective_date_status === "stated" ? "stated" : (s.effective_date_status === "pending" ? "pending" : "not_stated") };
 }
@@ -326,6 +359,12 @@ function exceptionsFor(line, comparison, ctx) {
   for (const e of line.exceptions || []) {
     if (e.level === "blocker") add(null, e.code, e.detail, sref, "Resolve before staging.", true);
   }
+  if (src.received_mismatch) add(null, "received_date_mismatch", `received date ${src.received_mismatch.date_not_assigned} NOT assigned: the email attachment ` +
+    `${src.received_mismatch.attachment_name || "(unnamed)"} (sha256 ${String(src.received_mismatch.attachment_sha256).slice(0, 12)}…) is not the imported file ` +
+    `(sha256 ${String(src.received_mismatch.source_sha256 || "").slice(0, 12)}…)`, sref,
+    "Find the email that carried THIS file (same SHA-256), or record a separately verified HCPS intake date for it.", true);
+  else if (src.received_date && !RECEIPT_BASES.includes(src.received_basis)) add(null, "received_unverified", `received date ${src.received_date} has no recorded basis`, sref,
+    "Record how the date is known: the email attachment's SHA-256 matching this file, or a separately verified HCPS intake (who + how).", true);
   if (!src.received_date) add(null, "provenance_incomplete", "no HCPS received date for the source file — Manufacturer Center registers a source only with its received date", sref, "Give the date HCPS received the file (the email's received time); never invented.", true);
   // A source that is not the current list is never staged as current without the manufacturer's written confirmation.
   const year = Number(ctx.today ? String(ctx.today).slice(0, 4) : new Date().getUTCFullYear());
@@ -420,4 +459,4 @@ function buildPackage(line, comparison, ctx) {
 
 module.exports = { normCode, money, clean, flag, validateLine, compareLine, report, priceImportRows, stageRows, provenanceOf, suggest,
   FROZEN_LINES, REFUSED_LINES, canonicalSlug, catalogFileSlug, slugAliases, lineRefusal, beforeAfter, beforeAfterCsv, beforeAfterJson, beforeAfterHash,
-  exceptionsFor, buildPackage, sha256 };
+  exceptionsFor, buildPackage, sha256, applyReceipt, RECEIPT_BASES };
