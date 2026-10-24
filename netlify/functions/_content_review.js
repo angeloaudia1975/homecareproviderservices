@@ -348,6 +348,61 @@ function promoReason(url){
   let p = ""; try{ p = decodeURIComponent(new URL(url).pathname.split("/").pop()); }catch(e){ p = String(url); }
   const m = p.match(PROMO_PATH); return m ? "path names promo art (" + m[1] + ")" : null;
 }
+/* Read-only image fetch for review (PR #38 review, 2026-10-24). Redirects are followed BY HAND (redirect:"manual"): every
+   hop's target must itself be a manufacturer-official host (checkSource), so an official URL that redirects to another
+   site is refused — the final host is checked, not only the first one. At most MAX_REDIRECTS hops. The size is capped
+   twice: a Content-Length above the cap is refused before the body is read, and the body is read in chunks and
+   abandoned the moment it passes the cap (a missing or lying Content-Length cannot get round it). Nothing is stored;
+   only the hash, size, type and dimensions are kept. fetchImpl is injectable for tests. */
+const IMAGE_MAX_BYTES = 8 * 1024 * 1024, MAX_REDIRECTS = 5;
+async function fetchImageSafe(slug, url, opts){
+  opts = opts || {};
+  const fetchImpl = opts.fetchImpl || fetch, max = opts.maxBytes || IMAGE_MAX_BYTES, timeout = opts.timeoutMs || 20000;
+  const out = { fetched_at: opts.now || new Date().toISOString(), redirects: [] };
+  const first = checkSource(slug, url);
+  if(!first.ok){ out.error = "not an official host (" + first.host + ")"; return out; }
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), timeout);
+  try{
+    let cur = String(url), r;
+    for(let hop = 0; ; hop++){
+      r = await fetchImpl(cur, { method: "GET", redirect: "manual", signal: ac.signal, headers: { "user-agent": "HCPS content review (read-only)" } });
+      if(r.status >= 300 && r.status < 400){
+        const loc = r.headers.get("location");
+        if(!loc){ out.http_status = r.status; out.error = "redirect without a location"; return out; }
+        if(hop >= MAX_REDIRECTS){ out.http_status = r.status; out.error = "too many redirects"; return out; }
+        const next = new URL(loc, cur).toString(), chk = checkSource(slug, next);
+        out.redirects.push({ status: r.status, to: next, host: chk.host });
+        if(!chk.ok){ out.http_status = r.status; out.error = "redirected off the official hosts (" + chk.host + ")"; out.final_url = next; out.final_host = chk.host; return out; }
+        if(!/^https:/i.test(next) && /^https:/i.test(cur)){ out.http_status = r.status; out.error = "redirected from https to http"; return out; }
+        try{ if(r.body && r.body.cancel) await r.body.cancel(); }catch(e){}
+        cur = next; continue;
+      }
+      break;
+    }
+    out.final_url = cur; out.final_host = checkSource(slug, cur).host;
+    out.http_status = r.status; out.content_type = (r.headers.get("content-type") || "").split(";")[0].trim();
+    if(!r.ok){ out.error = "HTTP " + r.status; return out; }
+    const declared = Number(r.headers.get("content-length"));
+    if(Number.isFinite(declared) && declared > max){ out.error = "larger than " + Math.round(max / 1048576) + " MB (declared)"; try{ if(r.body && r.body.cancel) await r.body.cancel(); }catch(e){} return out; }
+    const chunks = []; let total = 0;
+    if(r.body && r.body.getReader){
+      const rd = r.body.getReader();
+      for(;;){ const { done, value } = await rd.read(); if(done) break; total += value.length;
+        if(total > max){ try{ await rd.cancel(); }catch(e){} out.error = "larger than " + Math.round(max / 1048576) + " MB"; return out; }
+        chunks.push(Buffer.from(value)); }
+    } else {
+      const b = Buffer.from(await r.arrayBuffer()); total = b.length;
+      if(total > max){ out.error = "larger than " + Math.round(max / 1048576) + " MB"; return out; }
+      chunks.push(b);
+    }
+    const buf = Buffer.concat(chunks);
+    out.bytes = buf.length; out.sha256 = require("crypto").createHash("sha256").update(buf).digest("hex");
+    const d = imageSize(buf); if(d){ out.width = d.width; out.height = d.height; }
+    return out;
+  }catch(e){ out.error = e.name === "AbortError" ? "timeout" : String(e.message || e); return out; }
+  finally{ clearTimeout(t); }
+}
+
 /* fetched: optional map url → { http_status, content_type, bytes, sha256, width, height, fetched_at, error }. */
 function stageImages(line, fetched){
   const out = [], f = fetched || {}, rights = RIGHTS[line.manufacturer] || null;
@@ -361,7 +416,12 @@ function stageImages(line, fetched){
         fetch_note: !fr ? "not fetched" : fr.error ? "fetch failed: " + fr.error : "fetched (read-only, in memory)", fetched_at: fr && fr.fetched_at || null,
         http_status: fr ? fr.http_status || null : null, content_type: fr ? fr.content_type || null : null, bytes: fr ? fr.bytes || null : null,
         sha256: fr && !fr.error ? fr.sha256 || null : null, width: fr ? fr.width || null : null, height: fr ? fr.height || null : null, duplicate_of: null,
-        rights_status: rights ? "recorded" : "pending", rights_basis: rights, rehost: "not rehosted — needs approval" };
+        final_url: fr ? fr.final_url || null : null, final_host: fr ? fr.final_host || null : null, redirects: fr ? (fr.redirects || []).length : 0,
+        rights_status: rights ? "recorded" : "pending", rights_basis: rights,
+        rights_note: rights ? "rights recorded for this line" : "candidate only — rights pending, not licensed or approved for use",
+        rehost: "not rehosted — needs approval" };
+      if(fr && fr.final_url && !checkSource(line.manufacturer, fr.final_url).ok){ rec.classification = "rejected"; rec.fetched = false; rec.sha256 = null;
+        rec.fetch_note = "redirected off the official hosts (" + (fr.final_host || "?") + ")"; }
       if(rec.fetched && !/^image\//.test(rec.content_type || "")){ rec.classification = "rejected"; rec.fetch_note = "not an image (" + (rec.content_type || "no type") + ")"; }
       out.push(rec); page.image_ids.push(id);
     }
@@ -392,7 +452,7 @@ function stageImages(line, fetched){
   line.counts.images = { total: out.length, fetched: out.filter(r => r.fetched).length, not_fetched: out.filter(r => !r.fetched).length,
     primary_candidates: out.filter(r => r.classification === "primary_candidate").length, promo: out.filter(r => r.classification === "promo").length,
     duplicates: out.filter(r => r.classification === "duplicate").length, rejected: out.filter(r => r.classification === "rejected").length,
-    rights_pending: out.filter(r => r.rights_status === "pending").length };
+    rights_pending: out.filter(r => r.rights_status === "pending").length, rights_recorded: out.filter(r => r.rights_status === "recorded").length };
   return out;
 }
 
@@ -420,5 +480,5 @@ function imageSize(buf){
   return null;
 }
 
-module.exports = { FROZEN, OFFICIAL, RIGHTS, REASONS, STATUS_LABEL, LINE_EXCEPTIONS, checkSource, reviewLine, stageImages, imageSize,
+module.exports = { fetchImageSafe, IMAGE_MAX_BYTES, MAX_REDIRECTS, FROZEN, OFFICIAL, RIGHTS, REASONS, STATUS_LABEL, LINE_EXCEPTIONS, checkSource, reviewLine, stageImages, imageSize,
   fromImporterFlag, exceptionOf, statusOf, sourceCapacities, lbsIn, catalogWarrantyYears, promoReason, siteStatusMap };

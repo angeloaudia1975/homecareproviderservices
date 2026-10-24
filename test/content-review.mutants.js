@@ -55,6 +55,15 @@ const M = [
   { from: "rights_status: rights ? \"recorded\" : \"pending\"", to: "rights_status: \"recorded\"", why: "rights claimed without a record" },
   { from: "sha256: fr && !fr.error ? fr.sha256 || null : null", to: "sha256: fr ? fr.sha256 || \"unknown\" : \"unknown\"", why: "an unfetched hash invented" },
   { from: "    if(!pick && page.source.official) add(mine.some(r => r.classification === \"promo\") ? \"no_primary_image\" : \"no_image\");", to: "", why: "a page without a photo called Ready" },
+  { from: "        if(!chk.ok){ out.http_status = r.status; out.error = \"redirected off the official hosts", to: "        if(false){ out.http_status = r.status; out.error = \"redirected off the official hosts", why: "redirect target host not checked" },
+  { from: "redirect: \"manual\", signal: ac.signal", to: "redirect: \"follow\", signal: ac.signal", why: "redirects followed automatically (final host never seen)" },
+  { from: "  if(!first.ok){ out.error = \"not an official host", to: "  if(false){ out.error = \"not an official host", why: "first URL host not checked" },
+  { from: "        if(hop >= MAX_REDIRECTS){", to: "        if(hop >= 1e9){", why: "no redirect limit" },
+  { from: "        if(!/^https:/i.test(next) && /^https:/i.test(cur)){", to: "        if(false){", why: "https downgraded to http" },
+  { from: "    if(Number.isFinite(declared) && declared > max){", to: "    if(false){", why: "declared size not capped" },
+  { from: "        if(total > max){ try{ await rd.cancel(); }catch(e){}", to: "        if(false){ try{ await rd.cancel(); }catch(e){}", why: "streamed size not capped (lying Content-Length)" },
+  { from: "      if(fr && fr.final_url && !checkSource(line.manufacturer, fr.final_url).ok){", to: "      if(false){", why: "an off-host final URL still staged" },
+  { from: "rights_note: rights ? \"rights recorded for this line\" : \"candidate only — rights pending, not licensed or approved for use\",", to: "rights_note: \"licensed\",", why: "candidates described as licensed" },
 ];
 function run(dir){ try{ execFileSync("node", [TEST], { stdio: "pipe", env: Object.assign({}, process.env, dir ? { CAT_ROOT: dir } : {}), timeout: 120000 }); return true; }catch(e){ return false; } }
 if(!run(null)){ console.log("CONTROL FAILED: the suite does not pass on the clean tree"); process.exit(1); }

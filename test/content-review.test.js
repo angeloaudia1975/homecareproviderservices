@@ -192,5 +192,47 @@ t("CLI writes the review package outside the repo only", () => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
+/* Image fetch hardening (PR #38 review): every redirect hop's host is checked; size is capped by header AND by counting */
+async function ta(name, fn){ try{ await fn(); pass++; }catch(e){ fail++; console.log("FAIL", name, "—", e.message); } }
+const PNG = (() => { const b = Buffer.alloc(64); Buffer.from([0x89, 0x50, 0x4e, 0x47]).copy(b); b.writeUInt32BE(640, 16); b.writeUInt32BE(480, 20); return b; })();
+const fakeFetch = (routes, log) => async (u, o) => { (log || []).push([u, o && o.redirect]); const r = routes[u]; if(!r) return new Response("", { status: 404 }); return typeof r === "function" ? r() : r; };
+const redirect = to => new Response(null, { status: 302, headers: { location: to } });
+const imgRes = (buf, h) => new Response(buf, { status: 200, headers: Object.assign({ "content-type": "image/png" }, h || {}) });
+(async () => {
+await ta("fetch: an official URL that redirects to another site is refused (final host checked, manual redirects)", async () => {
+  const u = "https://daltonmedical.com/wp-content/uploads/a.png", log = [];
+  const r = await CR.fetchImageSafe("dalton", u, { fetchImpl: fakeFetch({ [u]: redirect("https://cdn.evil.example/a.png"), "https://cdn.evil.example/a.png": imgRes(PNG) }, log) });
+  ok(/redirected off the official hosts \(cdn\.evil\.example\)/.test(r.error), r.error); eq(r.sha256, undefined);
+  eq(log.map(x => x[0]), [u], "the off-site target is never requested"); eq(log[0][1], "manual");
+  const L = line([fam({ image_urls: [u] })]); const I = CR.stageImages(L, { [u]: r });
+  eq([I[0].classification, I[0].fetched], ["rejected", false]);
+});
+await ta("fetch: a redirect between official hosts is followed and recorded; https never downgraded; hop limit", async () => {
+  const u = "https://daltonmedical.com/wp-content/uploads/a.png", v = "https://www.daltonmedical.com/wp-content/uploads/a-1.png";
+  const r = await CR.fetchImageSafe("dalton", u, { fetchImpl: fakeFetch({ [u]: redirect(v), [v]: imgRes(PNG) }) });
+  eq([r.error, r.final_url, r.redirects.length, r.width, r.bytes], [undefined, v, 1, 640, 64]);
+  const h = await CR.fetchImageSafe("dalton", u, { fetchImpl: fakeFetch({ [u]: redirect("http://daltonmedical.com/a.png") }) });
+  ok(/https to http/.test(h.error), h.error);
+  const loop = await CR.fetchImageSafe("dalton", u, { fetchImpl: async () => redirect(u) });
+  ok(/too many redirects/.test(loop.error), loop.error);
+  const off = await CR.fetchImageSafe("dalton", "https://www.amazon.com/x.png", { fetchImpl: async () => { throw new Error("must not be called"); } });
+  ok(/not an official host/.test(off.error), off.error);
+});
+await ta("fetch: size capped by Content-Length and by counting the body (a missing or lying header can't get round it)", async () => {
+  const u = "https://daltonmedical.com/wp-content/uploads/big.png", big = Buffer.alloc(2048, 1);
+  const a = await CR.fetchImageSafe("dalton", u, { maxBytes: 1024, fetchImpl: fakeFetch({ [u]: imgRes(PNG, { "content-length": "999999" }) }) });
+  ok(/declared/.test(a.error), a.error);
+  const b = await CR.fetchImageSafe("dalton", u, { maxBytes: 1024, fetchImpl: fakeFetch({ [u]: () => imgRes(big) }) });
+  ok(/larger than/.test(b.error) && !b.sha256, b.error);
+  const c = await CR.fetchImageSafe("dalton", u, { maxBytes: 1024, fetchImpl: fakeFetch({ [u]: () => imgRes(big, { "content-length": "10" }) }) });
+  ok(/larger than/.test(c.error) && !c.sha256, "a lying Content-Length is caught while reading");
+  eq(CR.IMAGE_MAX_BYTES, 8 * 1024 * 1024);
+});
+await ta("rights: every candidate stays pending and is never described as licensed", async () => {
+  const L = line([fam()]); const I = CR.stageImages(L, {});
+  ok(I.every(i => i.rights_status === "pending" && /not licensed/.test(i.rights_note)));
+  eq([L.counts.images.rights_pending, L.counts.images.rights_recorded], [I.length, 0]);
+});
 console.log(`content-review: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
+})();

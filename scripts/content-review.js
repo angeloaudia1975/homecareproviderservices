@@ -43,24 +43,12 @@ function catalogFor(dir, slug){
   return { rows, files };
 }
 
-async function fetchImage(url){
-  const out = { fetched_at: new Date().toISOString() };
-  const ac = new AbortController(), t = setTimeout(() => ac.abort(), 20000);
-  try{
-    const r = await fetch(url, { method: "GET", redirect: "follow", signal: ac.signal, headers: { "user-agent": "HCPS content review (read-only)" } });
-    out.http_status = r.status; out.content_type = (r.headers.get("content-type") || "").split(";")[0].trim();
-    if(!r.ok){ out.error = "HTTP " + r.status; return out; }
-    const buf = Buffer.from(await r.arrayBuffer());
-    if(buf.length > 15 * 1024 * 1024){ out.error = "larger than 15 MB"; return out; }
-    out.bytes = buf.length; out.sha256 = crypto.createHash("sha256").update(buf).digest("hex");
-    const d = CR.imageSize(buf); if(d){ out.width = d.width; out.height = d.height; }
-    return out;
-  }catch(e){ out.error = e.name === "AbortError" ? "timeout" : String(e.message || e); return out; }
-  finally{ clearTimeout(t); }
-}
-async function fetchAll(urls, conc){
+/* The fetch itself lives in the core (CR.fetchImageSafe): redirects followed by hand with every hop's host checked,
+   size capped by Content-Length AND by counting the body. */
+const fetchImage = (slug, url) => CR.fetchImageSafe(slug, url);
+async function fetchAll(slug, urls, conc){
   const res = {}, list = [...new Set(urls)]; let i = 0;
-  await Promise.all(Array.from({ length: Math.max(1, conc || 6) }, async () => { while(i < list.length){ const u = list[i++]; res[u] = await fetchImage(u); } }));
+  await Promise.all(Array.from({ length: Math.max(1, conc || 6) }, async () => { while(i < list.length){ const u = list[i++]; res[u] = await fetchImage(slug, u); } }));
   return res;
 }
 
@@ -77,7 +65,7 @@ async function main(){
     const cat = catalogFor(a.in, m);
     const L = CR.reviewLine(m, research, cat.rows);
     const urls = a.fetch ? L.pages.flatMap(p => p.image_urls).filter(u => CR.checkSource(m, u).ok) : [];
-    const fetched = a.fetch ? await fetchAll(urls, a.conc) : {};
+    const fetched = a.fetch ? await fetchAll(m, urls, a.conc) : {};
     const images = CR.stageImages(L, fetched);
     L.inputs = { research_file: m + "-content.json", sku_files: cat.files, retrieved: research.retrieved || null, generated_at: new Date().toISOString(), fetched_images: a.fetch };
     fs.writeFileSync(path.join(a.out, m + "-review.json"), JSON.stringify({ line: L, images }, null, 1));
