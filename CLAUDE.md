@@ -1602,6 +1602,85 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   checkout parity, category consistency, no parity drift) → only then `record_authoritative=true`
   → re-verify (feed uses the record, 21 prices / cart / server / categories / images unchanged,
   ordering works) → report PASS/FAIL and stop before Strongback activation. No Bemis yet.
+- **Catalog Completion & Launch project (Angelo, 2026-10-23; umbrella homecareproviderservicesordering#1).** Angelo
+  has now said to proceed past the four frozen lines: complete every non-Golden manufacturer through ONE reusable
+  pipeline (inventory → source import → reconcile → enrich → QA → staged activation in batches) instead of
+  one-line-at-a-time manual work. Golden stays on its own portal. For THIS project, code goes through normal branches
+  and pull requests (his explicit instruction; overrides the §7 direct-to-main default for this work only). Unchanged:
+  the frozen lines (Climbing Steps, Strongback, Ovation, Bemis) are regression fixtures — no commercial, content,
+  image or wording change except through their existing gates; production SQL, publication, authority switches,
+  dealer price / freight / UOM changes and activations each still need his explicit approval; nothing is entered
+  product-by-product by Angelo.
+  · **Bemis Assurance correction (protected, NOT published as of 2026-10-23).** regression_fix #908 scoped to page
+    `assurance-raised-toilet-seat-with-clean-shield-3-in`, areas description #909 · features #910 · specs #911, dry-run
+    plan hash beginning `0da21cc8b2b854a3`. Live page still shows the 1000 lb / Stay·Tite wording (public read
+    2026-10-23). Current Gold Standard = run #20 PASS; failed runs #16–#19 stay in history. Never regenerate these
+    decisions, never use enrichment window #907 for it, never finalize without Angelo's explicit approval of the
+    re-derived dry run (hash must still match; any change = new dry run, new approval).
+  · **Launch readiness (go-live matrix).** `netlify/functions/_readiness.js` (pure) scores each line on five measured
+    stages — catalog file · master record · visible enrichment · listed · Gold Standard — and lists
+    blocker / warn / info exceptions. An unmeasured layer is reported "unmeasured", never empty or 0%; completion
+    and the average are claimed only over a full measurement. Slug aliases (gce → ohio-medical) apply only when
+    passed and are always reported. **Owner review PR #34 (2026-10-23):** (1) "listed" ≠ dealer-visible — it never
+    proves entitlement, authenticated prices, cart / freight, order record, emails or My Orders; (2) the average is an
+    equal-weight stage average over the lines WITH data, always shown with its denominator and the excluded no-data
+    lines, never as a launch-ready %; `launch_ready` is a separate yes/no = Gold Standard + no blocker + a passing
+    dealer checkout verification (`order_verified`, from the dealer launch suite — none yet, so 0 lines); (3) public
+    catalog-file prices are never read by the score, so removing the exposed prices cannot lower it; (4) the public
+    /data prices and the open SELECT on custom_products / product_overrides are P0, fixed with verified anonymous-denial
+    tests and unchanged authorized dealer prices; (5) the snapshot exports page SKU entries as part number / status /
+    off flag only, and its output is reviewed before sharing. Runner: `scripts/catalog-readiness.js --shop <ordering repo> [--snapshot f]
+    [--public]`; the snapshot comes from the read-only `supabase/readiness_snapshot.sql` (no wholesale prices in its
+    output — base_price reduced to priced/unpriced). Tests: test/readiness.test.js, test/readiness.mutants.js,
+    test/readiness-snapshot.pg.test.js.
+- **Catalog Completion — importer & manufacturer source rules (Angelo, 2026-10-23; PR #35).** The reusable importer
+  (`_catalog_import.js`, `_import_adapters.js`, `scripts/catalog-import.js`) is READ-ONLY: it produces a review package
+  and Manufacturer Center `price_imports` rows; staging still goes through Manufacturer Center's two gates. Rules:
+  (1) A verified manufacturer price list wins; an outdated public catalog price is never substituted for it. (2) Never
+  invent a wholesale price — a manufacturer with no attached list is reported as a missing source. (3) Only MSRP / MAP
+  STATED on the source go into msrp / map; a stated rule (Access4U: MSRP = dealer × 1.5, MAP 30% below MSRP) stays in
+  raw for approval. (4) A price column quoted for one named account (ABM "Williams Bros Pharmacy") is never a base dealer
+  price — blocked for Angelo's decision. (5) **Dalton: the corrected November 1, 2026 list exactly as printed — never an
+  extra 5% discount.** (6) Unverified research content is never published; enrichment uses manufacturer-official sources
+  only. (7) Ohio Medical: `ohio-medical` canonical with a backward-compatible `gce` alias, tested before deploy.
+  (8) Complete Medical Supplies is NO LONGER an HCPS partner (Angelo, 2026-10-23; removal from ordering in ordering#4 /
+  admin#37): the importer refuses the slug (`activation_hold`, no rows parsed, no payload). (9) Real price lists and outputs carrying wholesale prices never go into git (both repos
+  are public) — tests use synthetic sources. (10) Readiness: the five-stage score is not dealer launch readiness;
+  launch readiness also needs authenticated pricing, entitlement, freight, checkout and order tests (PR #34).
+  **Review package rules (PR #35 review, 2026-10-23):** (11) Every run gives a DETERMINISTIC per-SKU before/after
+  (`before_after.json` + `.csv`: name, dealer price, tiers, MSRP, MAP, UOM, case qty, status — before / after / change
+  kind; a field the source does not state is "not_stated" and KEPT; stable sort; no clock; `before_after_sha256`
+  recorded) — identical inputs give byte-identical outputs. (12) **Stop on blocker:** a line with ANY blocking exception
+  is not stageable and gets NO import rows at all (no `price_import_rows.json` / `handoff.json` — safer than flagged
+  rows, which can still be pasted); the review is always produced. (13) **One exceptions queue per run**
+  (`exceptions.json` + `.csv`: id, manufacturer, sku, kind, evidence, source_ref, required_decision, status
+  open/held/resolved, blocking); one manufacturer blocked or failing never stops the others. Blocking: named_account_price,
+  not_current_source (a list dated before the current year — PediFix 2025 — until written manufacturer confirmation),
+  uncertain_part_number / proposed_code (nothing renamed, merged or invented), pack_qty_check (pack text, no unit
+  column — Dalton's 49), case_qty_unverified (a case quantity read from free text — Corsicana "Case of 10"),
+  price_not_as_printed, provenance_incomplete (no HCPS received date — never invented), line_frozen, activation_hold.
+  Held (never block price import): legacy_not_on_source (PRESERVED, status unchanged, never retired by omission —
+  Access4U's 152), discount_unverified (an old tier/discount structure is history only, never assumed for a new list),
+  capacity_conflict, warranty_conflict, unsupported_claim (TBD freight, OTC drug / medical-suitability wording),
+  image_rights, plus reviewer holds supplied as data (`--holds`). A person resolves an open exception only with a
+  recorded decision (who + reason, `--decisions`); a frozen or refused line can never be resolved by the importer.
+  (14) **Handoff = Manufacturer Center's own payloads**, proven through the real catalog-api dry runs: `mc_import_source_rows`
+  rows carry `raw._provenance` (file, sha256, received date, manufacturer effective date — null when not stated) and
+  `case_qty_text`; `stage_record_source` rows OMIT every field the source does not state (never null — that would be a
+  "would clear"), never carry `status`, and list only the source's SKUs. `source_id` is filled only after the file is
+  registered and accepted. (15) The importer refuses the frozen Gold Standard lines (Bemis, Climbing Steps, Ovation,
+  Strongback — and any line frozen in the snapshot meta). (16) Every adapter keeps the printed price (`raw.printed_price`)
+  and a dealer price that differs from it by a cent blocks; discount wording on a list is recorded
+  (`discount_text_not_applied`), never applied. (17) `gce` runs as `ohio-medical` (adapter + package); the storefront file
+  stays `public/data/gce.json` (`catalogFileSlug`). Tests: catalog-import (49) + mutants (64/64, core + adapters),
+  catalog-import.handoff (6).
+  **Receipt dates (Angelo, 2026-10-23 17:19 CT):** (18) HCPS's received date is assigned to a source only after the
+  original email attachment is matched to the imported file by file name AND, wherever possible, SHA-256; a near name
+  or a contract email is not evidence. The received date is never the manufacturer effective date (Dalton keeps
+  2026-11-01 as effective). Matched so far: Access4U `Pricelist fall 2026.pdf` = the imported Access4U list by
+  SHA-256, received 2026-10-09. Not matched (stay provenance_incomplete): Dalton REVa (the 20 Oct attachment is a
+  different file), AIRAVANT / BongoRx, Corsicana (_rev), ABM, PediFix, Ohio Medical / GCE. PediFix's 2025 document is
+  never treated as a current 2026 list; ABM stays blocked for general dealer pricing.
 
 - **P0 dealer-price lock-down (issue ordering#2; PRs ordering#3 + admin#36, NOT merged / deployed, no SQL run).** No
   commercial field (price, breaks, MAP, MSRP, price notes, dealer/tier prices, unit cost, per-item shipping) is ever in a
