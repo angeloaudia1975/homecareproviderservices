@@ -13,6 +13,7 @@ let pass = 0, fail = 0; const out = [];
 const pending = [];
 function t(name, fn) { pending.push([name, fn]); }
 async function drain() { while (pending.length) { const [name, fn] = pending.shift(); try { await fn(); pass++; out.push('  ok   ' + name); } catch (e) { fail++; out.push('  FAIL ' + name + '\n         ' + e.message); } } }
+function ok(v, what) { if (!v) throw new Error(what || 'expected truthy'); }
 function eq(a, b, what) { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error((what || 'value') + ': got ' + JSON.stringify(a) + ', expected ' + JSON.stringify(b)); }
 const codes = (rows, level) => rows.flatMap(r => (r.flags || []).filter(f => !level || f.level === level).map(f => f.code));
 
@@ -233,33 +234,63 @@ async function run(src, adpSrc) {
   });
   const bare = () => { const V = C.validateLine(srcLine([row()])); V.source.received_date = null; V.source.received_basis = null; V.source.received_evidence = null; return V; };
   const pkgOf = V => C.buildPackage(V, C.compareLine(V, {}), { today: '2026-10-23' });
-  t('receipt: a mailbox date is assigned only when the attachment SHA-256 equals the imported file', () => {
-    const V = C.applyReceipt(bare(), { date: '2026-10-09', basis: 'mailbox_attachment_match', attachment_name: 'Pricelist fall 2026.pdf', attachment_sha256: 'ABC', message_id: '<m1>' });
-    eq([V.source.received_date, V.source.received_basis], ['2026-10-09', 'mailbox_attachment_match']);
+  const H = 'abc'.padEnd(64, '0'), OTHER = 'd'.repeat(64);
+  const bareH = () => { const V = bare(); V.source.sha256 = H; return V; };
+  const R = (V, ev) => C.applyReceipt(V, ev, { today: '2026-10-23' });
+  const MAIL = { date: '2026-10-09', basis: 'mailbox_attachment_match', mailbox: 'angelo@hcps.example', message_id: '<m1@mfr.example>',
+    attachment_name: 'Pricelist fall 2026.pdf', attachment_sha256: H.toUpperCase(), received_at: '2026-10-09T14:05:00Z',
+    evidence_ref: 'report_inventory 2026-10-23 run', captured_by: 'staff:angelo' };
+  const INTAKE = { date: '2026-10-21', basis: 'hcps_intake_verified', intake_ref: 'mfr_sources#12', intake_at: '2026-10-21T15:00:00-05:00', file_sha256: H, verified_by: 'staff:angelo' };
+  const throws = (ev, re) => { let m = null; try { R(bareH(), ev); } catch (e) { m = e.message; } ok(m && re.test(m), 'expected refusal ' + re + ', got ' + m); };
+  t('receipt: a mailbox date needs the exact message, mailbox, attachment, Outlook timestamp and capture — and a matching hash', () => {
+    const V = R(bareH(), MAIL);
+    eq([V.source.received_date, V.source.received_basis, V.source.received_evidence.attachment_sha256], ['2026-10-09', 'mailbox_attachment_match', H]);
     const P = pkgOf(V);
     eq([P.stageable, kinds(P)], [true, []]);
-    eq(P.handoff.mc_import_source_rows.rows[0].raw._provenance.received_evidence.attachment_sha256, 'abc');
+    eq(C.provenanceOf(V).received_verified, true);
+    for (const k of ['message_id', 'mailbox', 'attachment_name', 'attachment_sha256', 'received_at', 'evidence_ref', 'captured_by'])
+      throws(Object.assign({}, MAIL, { [k]: '' }), new RegExp('needs ' + k));
+    throws(Object.assign({}, MAIL, { message_id: 'm1' }), /internetMessageId/);
+    throws(Object.assign({}, MAIL, { mailbox: 'angelo' }), /mailbox must be an email/);
+    throws(Object.assign({}, MAIL, { received_at: '2026-10-09T14:05:00' }), /time zone/);
+    throws(Object.assign({}, MAIL, { attachment_sha256: 'abc' }), /SHA-256/);
+    throws(Object.assign({}, MAIL, { received_at: '2026-10-09' }), /ISO timestamp/);
+    throws(Object.assign({}, MAIL, { received_at: '2026-10-10T12:00:00Z' }), /not the stated date/);
+    eq(R(bareH(), Object.assign({}, MAIL, { received_at: '2026-10-10T03:00:00Z' })).source.received_date, '2026-10-09', 'Outlook UTC time read as the Chicago date');
   });
   t('receipt: a non-matching attachment (corrected / re-saved PDF) never gives its date to the file', () => {
-    const V = C.applyReceipt(bare(), { date: '2026-10-20', basis: 'mailbox_attachment_match', attachment_name: 'NEW Dalton.pdf', attachment_sha256: 'def' });
+    const V = R(bareH(), Object.assign({}, MAIL, { attachment_sha256: OTHER }));
     eq([V.source.received_date, V.source.received_basis], [null, null]);
     const P = pkgOf(V);
     eq([P.stageable, kinds(P)], [false, ['provenance_incomplete!', 'received_date_mismatch!']]);
     eq(P.handoff, null);
-    eq(/NOT assigned/.test(P.exceptions.find(x => x.kind === 'received_date_mismatch').evidence), true);
+    ok(/NOT assigned/.test(P.exceptions.find(x => x.kind === 'received_date_mismatch').evidence));
   });
-  t('receipt: a separately verified HCPS intake is its own basis; a mismatched hash still refuses the date', () => {
-    const V = C.applyReceipt(bare(), { date: '2026-10-21', basis: 'hcps_intake_verified', verified_by: 'angelo', note: 'file handed over at the Oct 21 meeting' });
-    eq([V.source.received_basis, pkgOf(V).stageable], ['hcps_intake_verified', true]);
-    const W = C.applyReceipt(bare(), { date: '2026-10-21', basis: 'hcps_intake_verified', verified_by: 'angelo', note: 'x', attachment_sha256: 'zzz' });
+  t('receipt: an HCPS intake is verified only with its record reference, timestamp, file hash and who', () => {
+    const V = R(bareH(), INTAKE);
+    eq([V.source.received_basis, pkgOf(V).stageable, C.provenanceOf(V).received_verified], ['hcps_intake_verified', true, true]);
+    for (const k of ['intake_ref', 'intake_at', 'file_sha256', 'verified_by']) throws(Object.assign({}, INTAKE, { [k]: '' }), new RegExp('needs ' + k));
+    const W = R(bareH(), Object.assign({}, INTAKE, { file_sha256: OTHER }));
     eq([W.source.received_date, kinds(pkgOf(W)).includes('received_date_mismatch!')], [null, true]);
-    let threw = 0;
-    for (const e of [{ date: '2026-10-21', basis: 'hcps_intake_verified' }, { date: '2026-10-21', basis: 'mailbox_attachment_match' }, { date: '10/21/2026', basis: 'hcps_intake_verified', verified_by: 'a', note: 'b' }, { date: '2026-10-21', basis: 'guess' }])
-      try { C.applyReceipt(bare(), e); } catch (_) { threw++; }
-    eq(threw, 4, 'incomplete evidence is refused');
+    throws(Object.assign({}, INTAKE, { basis: 'guess' }), /basis must be one of/);
   });
-  t('receipt: a bare date with no basis is kept but blocks (received_unverified); never the effective date', () => {
-    const V = C.applyReceipt(bare(), '2026-10-20');
+  t('receipt: a self-attested date is recorded as attested, not verified, and blocks until a recorded decision', () => {
+    const A = { date: '2026-10-21', basis: 'hcps_intake_attested', file_sha256: H, attested_by: 'staff:angelo', note: 'saved from a USB stick' };
+    const V = R(bareH(), A);
+    eq([V.source.received_basis, V.source.received_evidence.verified, C.provenanceOf(V).received_verified], ['hcps_intake_attested', false, false]);
+    const P = pkgOf(V);
+    eq([P.stageable, kinds(P)], [false, ['received_attested!']]);
+    const id = P.exceptions[0].id;
+    const Q = C.buildPackage(V, C.compareLine(V, {}), { today: '2026-10-23', decisions: { [id]: { status: 'resolved', decided_by: 'angelo', reason: 'accepted: no email exists' } } });
+    eq(Q.stageable, true);
+    throws(Object.assign({}, A, { note: '' }), /needs note/);
+  });
+  t('receipt: dates must be real calendar dates and never in the future; a bare date blocks; never the effective date', () => {
+    throws(Object.assign({}, INTAKE, { date: '2026-02-30', intake_at: '2026-02-28T12:00:00Z' }), /real calendar date/);
+    throws(Object.assign({}, INTAKE, { date: '10/21/2026' }), /real calendar date/);
+    throws(Object.assign({}, INTAKE, { date: '2026-10-24', intake_at: '2026-10-24T12:00:00Z' }), /future/);
+    let m = null; try { R(bareH(), '2026-13-01'); } catch (e) { m = e.message; } ok(/real calendar date/.test(m || ''));
+    const V = R(bareH(), '2026-10-20');
     const P = pkgOf(V);
     eq([V.source.received_date, P.stageable, kinds(P)], ['2026-10-20', false, ['received_unverified!']]);
     eq(C.provenanceOf(V).effective_date, null);
@@ -335,7 +366,7 @@ async function run(src, adpSrc) {
   // ---- 5. handoff shape (the real catalog-api is exercised in catalog-import.handoff.test.js)
   t('handoff: every import row carries the source provenance; effective date null when not stated', () => {
     const P = pkg([row({ code: 'A1', case_qty: 4, uom: 'Case' }), row({ code: 'B1', msrp: 9, msrp_source: 'source_rule', map: 6.3, map_source: 'source_rule' })]);
-    for (const r of P.handoff.mc_import_source_rows.rows) eq(r.raw._provenance, { file: 'f.xlsx', sha256: 'abc', received_date: '2026-10-20', received_basis: 'hcps_intake_verified', received_evidence: IV, effective_date: null, effective_date_status: 'not_stated' });
+    for (const r of P.handoff.mc_import_source_rows.rows) eq(r.raw._provenance, { file: 'f.xlsx', sha256: 'abc', received_date: '2026-10-20', received_basis: 'hcps_intake_verified', received_evidence: IV, received_verified: true, effective_date: null, effective_date_status: 'not_stated' });
     for (const r of P.handoff.stage_record_source.rows) eq(r._provenance.sha256, 'abc');
     eq(P.handoff.mc_import_source_rows.rows[0].case_qty_text, '4', 'the field mc_import_source_rows parses');
     eq(P.handoff.stage_record_source.rows[1], { code: 'B1', base_price: 10, _provenance: P.handoff.stage_record_source.rows[1]._provenance }, 'no unstated field is sent, not even as null');

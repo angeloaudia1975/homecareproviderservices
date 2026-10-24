@@ -68,7 +68,7 @@ async function runOne(job, shared) {
   if (refusal) {
     // A frozen or retired line is refused before any adapter runs: nothing is parsed into rows.
     line = { manufacturer: slug, source: { file: fileName, sha256: CI.sha256(buf), title: null, effective_date: null, effective_date_status: "not_stated", received_date: null }, terms: [], rows: [] };
-    CI.applyReceipt(line, receiptOf(job));
+    CI.applyReceipt(line, receiptOf(job), { today: shared.today });
   } else {
     const A = adapterFor(slug);
     if (!A) throw new Error("no adapter for " + job.mfr);
@@ -79,7 +79,7 @@ async function runOne(job, shared) {
       line = A.fn(t, buf, fileName);
       if (job.ocr) { ocrMissing = ocrCheck(t, String(job.ocr).split(",").map(f => fs.readFileSync(f, "utf8")).join("\n")); ocrTotal = ocrValues(t).length; }
     } else line = await A.fn(buf, fileName);
-    CI.applyReceipt(line, receiptOf(job));
+    CI.applyReceipt(line, receiptOf(job), { today: shared.today });
     const pre = line.exceptions_pre || []; delete line.exceptions_pre;
     const checks = line.checks || null;
     const V = CI.validateLine(line);

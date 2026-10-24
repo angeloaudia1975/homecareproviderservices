@@ -13,38 +13,33 @@ guessed. Two things kept getting mixed up:
 A corrected or re-saved PDF is a different file. The date of the email that carried the *original* attachment must
 never be given to it.
 
-## Two receipt bases — never mixed
+## Three receipt bases — never mixed (tightened on the PR #39 review)
 
-| Basis | What proves it | When the date is assigned |
+Every basis names the file's SHA-256, and it must equal the imported file's. If it doesn't, the date is **not
+assigned** and the line blocks with `received_date_mismatch`.
+
+| Basis | Verified? | Evidence required |
 |---|---|---|
-| `mailbox_attachment_match` | The email's attachment SHA-256, read with the read-only `email-sync-api report_inventory` action, **equals** the imported file's SHA-256 | Only on an exact hash match. Otherwise the date is **not assigned** and the line blocks with `received_date_mismatch`. |
-| `hcps_intake_verified` | A separate HCPS intake record for THIS file: who verified it (`verified_by`) and how (`note`, for example "handed over at the 21 Oct meeting") | When the record is complete. If an attachment hash is also given, it must match too. |
+| `mailbox_attachment_match` | yes | the email's `message_id` (internetMessageId `<…@…>`), the `mailbox` address, `attachment_name` (and `attachment_id` when known), `attachment_sha256`, Outlook's `received_at` timestamp with a time zone (its Chicago date must equal `date`), `evidence_ref` (the read-only capture that read it, e.g. the `report_inventory` run) and `captured_by` |
+| `hcps_intake_verified` | yes | `intake_ref` (the HCPS intake record, e.g. an `mfr_sources` or capture item id), `intake_at` timestamp with a time zone (Chicago date = `date`), `file_sha256`, `verified_by` |
+| `hcps_intake_attested` | **no** | `file_sha256`, `attested_by`, `note`. It is kept as a person's own statement and labelled "attested". The line stays blocked (`received_attested`) until a recorded decision (who + why) accepts it. |
 
-A bare date with no basis (the old `--received YYYY-MM-DD`) is kept for the record, but the line cannot be staged
-(`received_unverified`). The received date is **never** the manufacturer's effective date: effective dates come
-only from the source itself (Dalton: 2026-11-01).
+Other rules:
 
-## Evidence record
-This is passed as `--received-evidence e.json`, or as a batch `received` object / `received_evidence` file:
-
-```json
-{ "date": "2026-10-09", "basis": "mailbox_attachment_match",
-  "attachment_name": "Pricelist fall 2026.pdf", "attachment_sha256": "<64 hex>",
-  "message_id": "<internetMessageId>", "verified_by": null, "note": null }
-```
-
-It travels with every import row in `raw._provenance`:
-
-* `received_basis`
-* `received_evidence`: attachment name and hash, message id, who and how
-
-Email content is never stored there. The rows reach Manufacturer Center only through its two existing gates.
+* **Missing or malformed evidence is refused outright.** That covers a blank field, a message id that isn't an
+  internetMessageId, a mailbox that isn't an address, a hash that isn't 64 hex characters, and a timestamp without a time
+  zone or on another day.
+* **Dates must be real and not in the future.** `date` must be a real calendar date (no 2026-02-30) and not after today.
+  The CLI's `--today` sets "today", so runs are deterministic.
+* **A bare date has no basis.** The old `--received YYYY-MM-DD` is kept for the record but blocks (`received_unverified`).
+* **Received is not effective.** The received date is never the manufacturer's effective date (Dalton stays 2026-11-01).
+* **No message content.** Only references and hashes are kept, never a subject, body or other message content.
 
 ## Where each line stands (from the 23 Oct mailbox match)
 
 | Line | Status |
 |---|---|
-| Access4U | Matched by SHA-256 → `mailbox_attachment_match`, received 2026-10-09 |
+| Access4U | Hash-matched to "Pricelist fall 2026.pdf" (received 2026-10-09). Still needs its evidence record (message id, mailbox, Outlook timestamp, capture reference) before it counts as verified |
 | Dalton (corrected Nov 2026 list, REVa) | The 20 Oct email attachment is a **different** file. Needs the email that carried REVa, or an HCPS intake record. Effective date stays 2026-11-01 |
 | AIRAVANT / BongoRx, Corsicana (`_rev`), ABM, PediFix | No hash match yet. Each needs its matching attachment or an intake record |
 | Ohio Medical / GCE | No price-list email found. A contract email is not evidence |
@@ -53,10 +48,10 @@ These are open blockers, not failures. PediFix's 2025 document is still not a cu
 blocked for general dealer pricing whatever its receipt date.
 
 ## Code
-* `netlify/functions/_catalog_import.js`: `applyReceipt`, `RECEIPT_BASES`, the `received_date_mismatch` and
-  `received_unverified` blockers, and `provenanceOf`
+* `netlify/functions/_catalog_import.js`: `applyReceipt`, `RECEIPT_BASES` / `VERIFIED_BASES`, the `received_date_mismatch`,
+  `received_unverified` and `received_attested` blockers, and `provenanceOf`
 * `scripts/catalog-import.js`: `--received-evidence`
 * Tests:
-  * `test/catalog-import.test.js` (53)
+  * `test/catalog-import.test.js` (54)
   * `test/catalog-import.handoff.test.js` (7)
-  * `test/catalog-import.mutants.js` (73/73)
+  * `test/catalog-import.mutants.js` (81/81)

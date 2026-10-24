@@ -1681,13 +1681,16 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   SHA-256, received 2026-10-09. Not matched (stay provenance_incomplete): Dalton REVa (the 20 Oct attachment is a
   different file), AIRAVANT / BongoRx, Corsicana (_rev), ABM, PediFix, Ohio Medical / GCE. PediFix's 2025 document is
   never treated as a current 2026 list; ABM stays blocked for general dealer pricing.
-  (19) **Two receipt bases, never mixed (PR #35 review, 2026-10-24):** `mailbox_attachment_match` (the manufacturer's
-  email; its attachment SHA-256 must equal the imported file's) or `hcps_intake_verified` (HCPS separately verified when
-  it received THIS file — who + how). `_catalog_import.js applyReceipt` / CLI `--received-evidence e.json` (batch
-  `received` object or `received_evidence`): a non-matching attachment (a corrected / re-saved PDF) never gives its date
-  — the date stays unassigned and the line blocks (`received_date_mismatch`); a bare `--received` date has no basis and
-  blocks (`received_unverified`). The basis + evidence (attachment name / hash, message id, who, how — never email
-  content) travel in `raw._provenance`. Tests: catalog-import 53, handoff 7, mutants 73/73.
+  (19) **Receipt bases, never mixed (PR #35 review, tightened on the PR #39 review, 2026-10-24):** VERIFIED =
+  `mailbox_attachment_match` (internetMessageId, mailbox, attachment name, attachment SHA-256, Outlook received timestamp
+  whose Chicago date = the date, capture reference + who) or `hcps_intake_verified` (intake record reference, intake
+  timestamp, file SHA-256, who). NOT verified = `hcps_intake_attested` (who + note + file SHA-256): kept as an
+  attestation and blocks (`received_attested`) until a recorded decision accepts it. Every named hash must equal the
+  imported file's, else the date is not assigned (`received_date_mismatch`); missing / malformed evidence is refused;
+  dates are real calendar dates, never in the future; a bare `--received` date blocks (`received_unverified`).
+  `_catalog_import.js applyReceipt(line, ev, {today})`, CLI `--received-evidence e.json`; only references and hashes are
+  stored (`raw._provenance`, with `received_verified`), never message content. Tests: catalog-import 54, handoff 7,
+  mutants 81/81. Proposal: `docs/catalog/RECEIPT_PROVENANCE.md`.
 - **Catalog Completion — manufacturer CONTENT review (2026-10-23; draft PR, branch `catalog/content-review`).** Researched
   manufacturer content is reviewed BEFORE it reaches Product Enrichment, read-only: `netlify/functions/_content_review.js`
   (pure; reuses `_enrich.js` neutralize / isPromoUrl / photoStem) + CLI `scripts/content-review.js --in <research dir>

@@ -34,8 +34,11 @@ function world() {
 }
 const mod = W => M.load('catalog-api.js', W, { ANALYTICS_TOKEN: 'pass', ORDERING_BASE: OB }, ROOT);
 const call = (C, b) => M.call(C, b, { headers: { 'x-analytics-token': 'pass' } });
+const mailEv = (sha, extra) => Object.assign({ date: '2026-10-20', basis: 'mailbox_attachment_match', mailbox: 'angelo@hcps.example',
+  message_id: '<syn@mfr.example>', attachment_name: 'synthetic.xlsx', attachment_sha256: sha, received_at: '2026-10-20T15:00:00Z',
+  evidence_ref: 'synthetic capture', captured_by: 'staff:test' }, extra || {});
 const buildPkg = (slug, received) => {
-  const L = A.adapterFor(slug).fn(xlsx(SHEET), 'synthetic.xlsx'); CI.applyReceipt(L, received === undefined ? { date: '2026-10-20', basis: 'mailbox_attachment_match', attachment_name: 'synthetic.xlsx', attachment_sha256: L.source.sha256, message_id: '<syn@x>' } : received);
+  const L = A.adapterFor(slug).fn(xlsx(SHEET), 'synthetic.xlsx'); CI.applyReceipt(L, received === undefined ? mailEv(L.source.sha256) : received, { today: '2026-10-23' });
   const V = CI.validateLine(L); return CI.buildPackage(V, CI.compareLine(V, {}), { today: '2026-10-23' });
 };
 
@@ -48,8 +51,10 @@ await t('handoff: the package is accepted by the real mc_import_source_rows (dry
   for (const x of r.body.rows) {
     eq([x.source_file, x.effective_date, x.source_id], ['synthetic.xlsx', null, 3], 'register provenance');
     eq(x.raw._provenance, { file: 'synthetic.xlsx', sha256: P.handoff.register.sha256, received_date: '2026-10-20', received_basis: 'mailbox_attachment_match',
-      received_evidence: { basis: 'mailbox_attachment_match', attachment_name: 'synthetic.xlsx', attachment_sha256: P.handoff.register.sha256, message_id: '<syn@x>', verified_by: null, note: null },
-      effective_date: null, effective_date_status: 'not_stated' });
+      received_evidence: { basis: 'mailbox_attachment_match', verified: true, mailbox: 'angelo@hcps.example', message_id: '<syn@mfr.example>',
+        attachment_name: 'synthetic.xlsx', attachment_id: null, attachment_sha256: P.handoff.register.sha256, received_at: '2026-10-20T15:00:00Z',
+        evidence_ref: 'synthetic capture', captured_by: 'staff:test' },
+      received_verified: true, effective_date: null, effective_date_status: 'not_stated' });
   }
   eq(r.body.rows.map(x => [x.code, x.base_price, x.msrp, (x.tiers || []).length]), [['SYN-1', 100, 250, 2], ['CAN-55', 5, null, 0]]);
   eq(W.writes.length, 0, 'a dry run writes nothing');
@@ -79,8 +84,8 @@ const file = path.join(tmp, 'synthetic.xlsx'); fs.writeFileSync(file, xlsx(SHEET
 const shop = path.join(tmp, 'shop'); fs.mkdirSync(path.join(shop, 'public', 'data'), { recursive: true });
 fs.writeFileSync(path.join(shop, 'public', 'data', 'gce.json'), JSON.stringify([{ code: 'SYN-1', name: 'Synthetic concentrator', base_price: 95, msrp: 240, image: '/assets/a.jpg' }, { code: 'OLD-1', name: 'Old', base_price: 3, image: '/assets/b.jpg' }]));
 const fileSha = CI.sha256(fs.readFileSync(file));
-const evMatch = path.join(tmp, 'ev-match.json'); fs.writeFileSync(evMatch, JSON.stringify({ date: '2026-10-20', basis: 'mailbox_attachment_match', attachment_name: 'synthetic.xlsx', attachment_sha256: fileSha }));
-const evOther = path.join(tmp, 'ev-other.json'); fs.writeFileSync(evOther, JSON.stringify({ date: '2026-10-20', basis: 'mailbox_attachment_match', attachment_name: 'corrected.xlsx', attachment_sha256: 'f'.repeat(64) }));
+const evMatch = path.join(tmp, 'ev-match.json'); fs.writeFileSync(evMatch, JSON.stringify(mailEv(fileSha)));
+const evOther = path.join(tmp, 'ev-other.json'); fs.writeFileSync(evOther, JSON.stringify(mailEv('f'.repeat(64), { attachment_name: 'corrected.xlsx' })));
 const run = (args) => cp.spawnSync(process.execPath, [CLI].concat(args), { encoding: 'utf8' });
 const files = d => Object.fromEntries(fs.readdirSync(d).sort().map(f => [f, fs.readFileSync(path.join(d, f), 'utf8')]));
 await t('CLI: identical inputs give byte-identical outputs (every file)', async () => {
