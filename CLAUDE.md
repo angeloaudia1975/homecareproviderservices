@@ -1693,6 +1693,12 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   is a new version: re-seed it (`--reseed`, by fingerprint) BEFORE deploying the storefront, prune after. A line not in
   `manufacturers.json` (retired) is never seeded or priced. Rolling the storefront back re-publishes prices — a
   TEMPORARY EMERGENCY EXPOSURE. Runbook: ordering `docs/security/P0_PRICE_EXPOSURE.md`.
+  **Old Netlify deploys (verified 2026-10-24, ordering runbook §5.1):** the storefront's Deploy Preview visibility is
+  Private, so every superseded production permalink, preview and PR deploy-ID link answers 401 — only the current
+  production deploy is public. Never "Publish deploy" (roll back to) a pre-P0 storefront deploy: roll forward. The ADMIN
+  site's Deploy Preview visibility is Public: every old production permalink and preview runs its OLD functions with
+  today's environment variables (orders-api from before the Complete Medical guard / P0 check) — it must be set to
+  Private (owner action, a settings change) before the P0 release; production domains are unaffected.
   **Owner decisions (Angelo, 2026-10-23 16:29 CT):** release order = private table → verified seed → admin deploy →
   storefront deploy → lock legacy-table public access → protect old deploy links → final verification; the two P0 PRs
   are never merged or deployed apart, nor before the private table is populated and every release check passes. Making
