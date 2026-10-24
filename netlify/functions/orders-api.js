@@ -133,6 +133,23 @@ async function sendTrackingRequests(d, who, summaries){
   }
 }
 
+/* P0 (2026-10-23, homecareproviderservicesordering issue #2): a dealer prices and orders ONLY the lines it
+   carries — the same rule as dealer-auth (the lines the shop shows), catalog-feed and catalog-layers: its own
+   ACTIVE dealer_manufacturers rows. Before this, price_check answered any line's base price, MSRP, MAP and
+   breaks (`commercial`) to any approved dealer, and create accepted an order for a line the dealer does not
+   carry. Golden prices and takes its own orders and is left to Golden. Strict: an unreadable list is a 503. */
+async function linesNotCarried(orders, dealerId){
+  const rows=await sb("GET",`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(dealerId)}&active=eq.true&select=manufacturer`);
+  const carried=new Set((rows||[]).map(r=>String(r.manufacturer)));
+  return [...new Set((orders||[]).map(o=>String((o&&(o.manufacturer_slug||o.manufacturer))||"")).filter(s=>s&&!PRICING.isGolden(s)&&!carried.has(s)))];
+}
+async function entitlementGate(orders, dealerId){
+  let missing;
+  try{ missing=await linesNotCarried(orders, dealerId); }
+  catch(e){ return json(503,{ok:false,status:"pricing_unavailable",error:"the dealer's lines could not be read"}); }
+  return missing.length ? json(403,{ok:false,status:"not_entitled",lines:missing}) : null;
+}
+
 // Resolve the caller's JWT to an APPROVED dealer_id (or null).
 async function dealerFromToken(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -159,6 +176,7 @@ exports.handler = async (event)=>{
     if(b.action==="price_check"){
       const orders=Array.isArray(b.orders)?b.orders:[];
       if(!orders.length) return json(400,{error:"no orders"});
+      const denied=await entitlementGate(orders, who.dealer_id); if(denied) return denied;
       let priced;
       try{ priced=await serverPrice(orders, who.dealer_id); }
       catch(e){ console.error("price_check failed",e&&e.message); return json(503,{ok:false,status:"pricing_unavailable",error:String(e.message||e)}); }
@@ -168,6 +186,7 @@ exports.handler = async (event)=>{
     if(b.action==="create"){
       let orders=Array.isArray(b.orders)?b.orders:[];
       if(!orders.length) return json(400,{error:"no orders"});
+      const denied=await entitlementGate(orders, who.dealer_id); if(denied) return denied;
       /* Re-price before anything is written. A total the dealer has not seen is never saved. */
       let priced;
       try{ priced=await serverPrice(orders, who.dealer_id); }

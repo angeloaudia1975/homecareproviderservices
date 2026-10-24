@@ -11,6 +11,7 @@
    Every read is strict: a layer that cannot be read stops the pricing. An order is never priced
    from a partial catalog. */
 const ENGINE = require("./_shop_engine.js");
+const CC = require("./_catalog_commercial.js");
 
 const GOLDEN = new Set(["golden-technologies", "golden"]);
 const isGolden = s => GOLDEN.has(String(s || ""));
@@ -77,13 +78,52 @@ async function contractPrices(sb, dealerId) {
   return prices;
 }
 
+/* P0 (2026-10-23, issue #2): the public catalog file no longer carries prices; their commercial half
+   lives in the private table catalog_file_commercial — one record per line AND public-file version.
+   P0 review (version integrity): the record used is the one whose identity_sha256 equals the identity of
+   the public file THIS server just read (catalogIdentity, shared module); the record is checked internally
+   (validOverlayRecord) and every row is checked again against its own fingerprint as it is restored. Never
+   the nearest version, never a positional match:
+     · a matching record                         → the restored full file;
+     · records exist but none for this file       → refused (catalog_version_not_seeded): the public file is
+                                                    newer or older than every stored version;
+     · no record at all, stripped public file     → refused (no commercial record);
+     · no record at all, a public file that still carries its commercial fields (before the strip; test
+       fixtures)                                  → used as it is (the pre-P0 behaviour; nothing to restore). */
+function commercialFor(file, recs, slug) {
+  const rows = Array.isArray(file) ? file : [];
+  const list = Array.isArray(recs) ? recs : [];
+  const pick = CC.recordForFile(rows, list);
+  if (pick.record) {
+    if (!CC.validOverlayRecord(pick.record))
+      throw new Error(`pricing_unavailable: ${slug}: its commercial record ${pick.identity.slice(0, 16)} is malformed`);
+    return { file: CC.restoreCatalogFile(rows, pick.record.rows), overlay: pick.record.rows, identity: pick.identity };
+  }
+  if (list.length)
+    throw new Error(`pricing_unavailable: ${slug}: catalog_version_not_seeded — the public catalog file (version ${pick.identity.slice(0, 16)}) has no commercial record; stored: ${list.map(r => String(r && r.identity_sha256 || '?').slice(0, 16)).join(", ")}`);
+  if (rows.length && !CC.commercialKeysIn(rows).length)
+    throw new Error(`pricing_unavailable: ${slug} has no commercial record (catalog_file_commercial) for its public catalog file`);
+  return { file: rows, overlay: CC.splitCatalogFile(rows).overlay, identity: pick.identity };
+}
+function fullCatalogFile(file, recs, slug) { return commercialFor(file, recs, slug).file; }
+const COMMERCIAL_SELECT = "manufacturer,identity_sha256,rows";
+/* The columns catalog-layers.js reads (homecareproviderservicesordering) — test/pricing-parity.test.js
+   holds the two to the same text. */
+const LAYER_SELECT = {
+  custom_products: "code,name,category,base_price,msrp,map,image,description,active,tiers,price_note",
+  product_overrides: "code,patch",
+};
+
 /* One line's products, built by the shop's own mergeCatalogEdits with the server answering its
    reads. Returns { products, engine } — engine.unitPrice prices against the CART map given. */
 async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart, freightCfg, freightOverride }) {
-  const [file, metaRows] = await Promise.all([
+  const [publicFile, metaRows, commercialRec] = await Promise.all([
     catalogFile(slug),
     sb("GET", `manufacturer_meta?slug=eq.${enc(slug)}&select=slug,enriched_only,category_map,record_authoritative,record_resync_error,freight_terms`),
+    sb("GET", `catalog_file_commercial?manufacturer=eq.${enc(slug)}&select=${COMMERCIAL_SELECT}`),
   ]);
+  const commercial = commercialFor(publicFile, commercialRec, slug);
+  const file = commercial.file;
   const meta = (metaRows && metaRows[0]) || {};
   const failures = [];
   const shimFetch = async (url) => {
@@ -103,6 +143,20 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart
           catch (e) { return { ok: false, status: 400, json: async () => ({ message: "card_image not available" }) }; }
         } else rows = await sb("GET", path);
         return { ok: true, status: 200, json: async () => rows || [] };
+      }
+      /* P0: the shop reads a line's commercial layers ONLY from catalog-layers (the signed-in dealer's
+         entitlement is checked there). The server answers the same question from the same tables:
+         the file's commercial overlay (from the full file read above) and the two layer tables. */
+      if (u.startsWith("/.netlify/functions/catalog-layers")) {
+        /* The shop asks for the version of the file it holds; only that version is answered (as catalog-layers does). */
+        const asked = new URLSearchParams(u.split("?")[1] || "").get("identity");
+        if (asked !== commercial.identity) return { ok: false, status: 503, json: async () => ({ error: "pricing_unavailable", reason: "catalog_version_not_seeded" }) };
+        const [custom, overrides] = await Promise.all([
+          sb("GET", `custom_products?manufacturer=eq.${enc(slug)}&select=${LAYER_SELECT.custom_products}`),
+          sb("GET", `product_overrides?manufacturer=eq.${enc(slug)}&select=${LAYER_SELECT.product_overrides}`),
+        ]);
+        return { ok: true, status: 200, json: async () => ({ ok: true, manufacturer: slug, identity_sha256: commercial.identity,
+          file_overlay: JSON.parse(JSON.stringify(commercial.overlay)), custom_products: custom || [], product_overrides: overrides || [] }) };
       }
       if (u.startsWith("/.netlify/functions/catalog-feed")) {
         const any = await sb("GET", `product_skus?manufacturer=eq.${enc(slug)}&select=code&limit=1`);
@@ -259,4 +313,4 @@ function remoteFiles(base) {
   };
 }
 
-module.exports = { priceOrders, lineProducts, contractPrices, feedRows, recordAuthority, isGolden, remoteFiles };
+module.exports = { priceOrders, lineProducts, contractPrices, feedRows, recordAuthority, isGolden, remoteFiles, fullCatalogFile, commercialFor, LAYER_SELECT, COMMERCIAL_SELECT };

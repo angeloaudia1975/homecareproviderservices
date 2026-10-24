@@ -1682,6 +1682,32 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   different file), AIRAVANT / BongoRx, Corsicana (_rev), ABM, PediFix, Ohio Medical / GCE. PediFix's 2025 document is
   never treated as a current 2026 list; ABM stays blocked for general dealer pricing.
 
+- **P0 dealer-price lock-down (issue ordering#2; PRs ordering#3 + admin#36, NOT merged / deployed, no SQL run).** No
+  commercial field (price, breaks, MAP, MSRP, price notes, dealer/tier prices, unit cost, per-item shipping) is ever in a
+  public file or readable with the public key: the static catalog files are split; their commercial half lives in the
+  private `catalog_file_commercial` (one row per line AND public-file version, `identity_sha256`; RLS on, no policies).
+  A commercial row is applied ONLY to the exact public row it was made for (per-row fingerprint `h`) and only the
+  version whose identity equals the public file actually read — never a positional match, never the nearest version;
+  any mismatch fails closed (503 / "Pricing could not be loaded"). A dealer prices and orders only its active
+  `dealer_manufacturers` lines; browsing other lines shows no commercial field. An edit to a legacy static catalog file
+  is a new version: re-seed it (`--reseed`, by fingerprint) BEFORE deploying the storefront, prune after. A line not in
+  `manufacturers.json` (retired) is never seeded or priced. Rolling the storefront back re-publishes prices — a
+  TEMPORARY EMERGENCY EXPOSURE. Runbook: ordering `docs/security/P0_PRICE_EXPOSURE.md`.
+  **Old Netlify deploys (verified 2026-10-24, ordering runbook §5.1):** the storefront's Deploy Preview visibility is
+  Private, so every superseded production permalink, preview and PR deploy-ID link answers 401 — only the current
+  production deploy is public. Never "Publish deploy" (roll back to) a pre-P0 storefront deploy: roll forward. The ADMIN
+  site's Deploy Preview visibility is Public: every old production permalink and preview runs its OLD functions with
+  today's environment variables (orders-api from before the Complete Medical guard / P0 check) — it must be set to
+  Private (owner action, a settings change) before the P0 release; production domains are unaffected.
+  **Owner decisions (Angelo, 2026-10-23 16:29 CT):** release order = private table → verified seed → admin deploy →
+  storefront deploy → lock legacy-table public access → protect old deploy links → final verification; the two P0 PRs
+  are never merged or deployed apart, nor before the private table is populated and every release check passes. Making
+  both repos private is RECOMMENDED but never done automatically — verify Netlify/GitHub integration first. Standard
+  dealer-facing shipping terms may stay public; negotiated or confidential pricing arrangements stay private. Dealers
+  may browse product information for lines they don't carry, never their wholesale prices or ordering. Escalate only
+  missing authoritative commercial information, material safety/security issues and real production release gates —
+  routine development needs no approval; unresolved manufacturer items go to the exceptions queue, never stop the others.
+
 ## 18. Manufacturer report imports — MI-1a transaction identity & safe replacement (RULE, agreed 2026-10-09/10)
 
 Project MI (Manufacturer Reporting & Intelligence) extends the EXISTING Sales Report Import and Commission

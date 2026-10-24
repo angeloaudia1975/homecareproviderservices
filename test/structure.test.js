@@ -10,8 +10,11 @@ let fail=0,pass=0; async function t(n,f){ try{ await f(); pass++; console.log('o
 const eq=(a,b,w)=>{ if(JSON.stringify(a)!==JSON.stringify(b)) throw new Error((w||'')+' got '+JSON.stringify(a)+' expected '+JSON.stringify(b)); };
 const ok=(c,w)=>{ if(!c) throw new Error(w); };
 function run(tables, file){
-  const W=M.createWorld({tables:Object.assign({product_content:[],product_related:[],custom_products:[],product_overrides:[],manufacturer_meta:[{slug:L,enriched_only:true}]},tables)});
-  const inner=W.fetch; W.fetch=async(u,o)=>String(u).startsWith(OB)?{ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(file)),text:async()=>''}:inner(u,o);
+  /* P0: the deployed file is the public half; its commercial row lives in catalog_file_commercial. */
+  /* The private row is one VERSION: its fingerprinted rows + the identity of the exact public file it was made for. */
+  const CC=require('../netlify/functions/_catalog_commercial.js'), split=CC.splitCatalogFile(file);
+  const W=M.createWorld({tables:Object.assign({product_content:[],product_related:[],custom_products:[],product_overrides:[],manufacturer_meta:[{slug:L,enriched_only:true}],catalog_file_commercial:[{manufacturer:L,identity_sha256:CC.catalogIdentity(split.public),rows:split.overlay}]},tables)});
+  const inner=W.fetch; W.fetch=async(u,o)=>String(u).startsWith(OB)?{ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(split.public)),text:async()=>''}:inner(u,o);
   const C=M.load('catalog-api.js',W,{ANALYTICS_TOKEN:'pass',ORDERING_BASE:OB},ROOT);
   return M.call(C,{action:'structure_audit',manufacturer:L},{headers:{'x-analytics-token':'pass'}});
 }

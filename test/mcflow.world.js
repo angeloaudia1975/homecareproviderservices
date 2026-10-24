@@ -20,7 +20,7 @@ fx.expectedFingerprint=FIXTURE_HOST?fx.real.fingerprint:fx.real.fingerprint_offl
 const norm=c=>String(c||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const clone=v=>JSON.parse(JSON.stringify(v));
 const html=fs.readFileSync(SHOP,'utf8');
-const bemisFile=JSON.parse(fs.readFileSync(path.join(SHOPD,'public','data','bemis.json'),'utf8'));
+const bemisFile=require('./p0-fullfile.js').fullFile('bemis');   // P0: the public file has no prices; the full file as the server restores it
 const OB='https://ordering.test', COPY='bemis-copy', REAL='bemis';
 const MFRS=JSON.parse(fs.readFileSync(path.join(SHOPD,'public','data','manufacturers.json'),'utf8'))
   .concat([{slug:COPY,name:'Bemis (walkthrough copy)',hasData:true}]);           // a new line: no freight in the file — it will come from the record
@@ -35,6 +35,7 @@ const layers=slug=>({ custom:fx.custom.map(c=>Object.assign({manufacturer:slug},
 function world(){
   const Lc=layers(COPY), Lr=layers(REAL);
   const W=M.createWorld({ serialIds:GATES.SERIAL, tables:{
+    catalog_file_commercial:[],   // P0: the private commercial table (empty here: the world serves full files)
     manufacturer_meta:[{slug:COPY,record_authoritative:false,frozen:false,deferrals:[],freight_terms:null},
       {slug:REAL,record_authoritative:true,frozen:true,frozen_at:'2026-10-10T20:13:00Z',frozen_reason:'Gold Standard COMPLETE (2026-10-10)',deferrals:[{item:'enrichment_pages',note:'approved deferral'}],
        freight_terms:Object.assign(clone(fx.freight),{trace:{source_id:6,decision_id:9}})}],

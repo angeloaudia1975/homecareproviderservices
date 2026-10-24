@@ -29,4 +29,15 @@ t('contract prices are read exactly as dealer-auth builds them',()=>{
                      '(a.dealer_id===dealer_id?1:0)-(b.dealer_id===dealer_id?1:0)','prices[`${r.manufacturer}::${r.code}`]=Number(r.price)'])
     if(!src.includes(frag)) throw new Error('dealer-auth contract-price logic changed: '+frag);
 });
+/* P0 (2026-10-23, issue #2): the commercial split/restore is one rule in both repositories, and the
+   server answers catalog-layers from exactly the columns the storefront function reads. */
+t('_catalog_commercial.js is the storefront repository\'s module (only the "admin copy" note differs)',()=>{
+  const strip=x=>x.replace(/\n   THIS FILE is the admin site's copy[\s\S]*?anywhere but this paragraph\./,'');
+  const mine=fs.readFileSync(path.join(ROOT,'_catalog_commercial.js'),'utf8'), theirs=fs.readFileSync(path.join(ORD,'netlify','functions','_catalog_commercial.js'),'utf8');
+  if(strip(mine)!==theirs) throw new Error('_catalog_commercial.js has drifted from homecareproviderservicesordering — copy it again');
+});
+t('the server answers catalog-layers with the same columns as the storefront function',()=>{
+  const L=require(path.join(ORD,'netlify','functions','catalog-layers.js'));
+  eq(P.LAYER_SELECT,L.LAYER_SELECT,'LAYER_SELECT');
+});
 console.log(`\npricing parity: ${pass} passed, ${fail} failed`); process.exitCode=fail?1:0;

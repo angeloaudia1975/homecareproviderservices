@@ -14,7 +14,7 @@ const ok=(c,w)=>{ if(!c) throw new Error(w); };
 function world(){
   const W=M.createWorld({ tokens:{dealer:'d@x.com'}, tables:{ app_settings:[{key:'platform_state',value:{mode:'live'}}],
     manufacturers:[{slug:LINE,name:'Strongback Mobility'}], manufacturer_meta:[{slug:LINE,record_authoritative:true}],
-    dealers:[{id:'d1',parent_id:null,is_test:false}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}],
+    dealers:[{id:'d1',parent_id:null,is_test:false}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}], dealer_manufacturers:require('./p0-entitle.js')('d1'),
     dealer_contract_prices:[], product_overrides:[], product_images:[], product_links:[], product_media:[], product_content:[],
     custom_products:[{manufacturer:LINE,code:'A1005',name:'Strongback Cane Holder 4/Pk',base_price:50,msrp:24.95,active:true}],
     product_skus:[{manufacturer:LINE,code:'A1005',base_price:50,map:24.95,msrp:null,msrp_auto:false,uom:'4-pack',case_qty:4,status:'active'}],
@@ -65,7 +65,8 @@ await t('Partner 360 card: "$50.00 per 4-pack", "Dealer order unit = 1 4-pack (4
   ok(!/Dealer order unit|per Each|each/.test(each),'a single unit is not a pack: '+each);
   ok(/\$\{qty\} × \$\{esc\(packOf\(p\)\.label\)\} = \$\{qty\*packOf\(p\)\.n\} each/.test(h),'cart line counts packs');
 });
-const BEMIS=process.env.BEMIS_JSON||path.join(__dirname,'..','..','homecareproviderservicesordering','public','data','bemis.json');
+/* P0: the public bemis.json carries no prices; the full file (public half + its commercial half) is checked. */
+const BEMIS=process.env.BEMIS_JSON||require('./p0-fullfile.js').fullFilePath('bemis');
 function card(){ const h=fs.readFileSync(SHOP,'utf8');
   const grab=(a,b)=>h.slice(h.indexOf(a),h.indexOf(b,h.indexOf(a)));
   const code=grab('function packOf(p){','function priceHtml(p){')+grab('function priceHtml(p){','\n}\n')+'\n}';
