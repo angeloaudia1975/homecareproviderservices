@@ -1745,6 +1745,11 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   Preview visibility was still Public — the change through Chrome was refused by the session's permission control, so
   it stays an owner click. The real seed needs `--apply` with SUPABASE_URL / SUPABASE_SERVICE_ROLE in the environment of
   whoever runs it (owner). Admin #36 merged with main 9480d4e → 60a3929; storefront #3 already contains main.
+  **Admin Deploy Preview visibility set to PRIVATE (previews only) by Claude through Angelo's Chrome on 2026-10-25
+  (~11:10 CT, his re-sent authorization).** Verified outside: deploy previews 36/38/39 → 401; every superseded admin
+  production permalink (6adc391b…, 6adc32f3…, 6adbe8f5…, 6adbdc11…, 6ada1d04…) → 401 for pages AND functions; the current
+  production deploy (6add2581…, main@9480d4e) and www / netlify.app / Academy / Connect 360 → 200. No deploy deleted
+  (not needed). Old-deploy exposure closed on both sites.
   **Owner decisions (Angelo, 2026-10-23 16:29 CT):** release order = private table → verified seed → admin deploy →
   storefront deploy → lock legacy-table public access → protect old deploy links → final verification; the two P0 PRs
   are never merged or deployed apart, nor before the private table is populated and every release check passes. Making
