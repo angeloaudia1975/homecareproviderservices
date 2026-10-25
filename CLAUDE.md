@@ -1750,6 +1750,13 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   production permalink (6adc391b…, 6adc32f3…, 6adbe8f5…, 6adbdc11…, 6ada1d04…) → 401 for pages AND functions; the current
   production deploy (6add2581…, main@9480d4e) and www / netlify.app / Academy / Connect 360 → 200. No deploy deleted
   (not needed). Old-deploy exposure closed on both sites.
+  **Seed without a service key (2026-10-25):** ChatGPT stored 5 of 10 records (bemis, dalton, airavant-bongorx,
+  corsicana, climbing-steps = 58 rows). The remaining five go in through `p0-seed-catalog-commercial.js --ref 4b1bad3
+  --export-sql <path outside every git repo>` (ordering #3, 52da4ea): one idempotent, fail-closed transaction that keeps
+  exactly-matching stored records, adds the missing ones and requires 10 / 1,120 at the end; Angelo pastes it into the
+  Supabase SQL editor (the file holds prices: never committed, posted or given to ChatGPT). jsonb reorders keys inside
+  nested objects (tiers, shipping) — values unchanged, consumers validate by fingerprints, the --apply read-back now
+  compares canonically.
   **Owner decisions (Angelo, 2026-10-23 16:29 CT):** release order = private table → verified seed → admin deploy →
   storefront deploy → lock legacy-table public access → protect old deploy links → final verification; the two P0 PRs
   are never merged or deployed apart, nor before the private table is populated and every release check passes. Making
