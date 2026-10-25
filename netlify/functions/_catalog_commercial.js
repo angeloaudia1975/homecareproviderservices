@@ -78,6 +78,23 @@ function catalogRowPrint(r){
 function catalogIdentity(rows){
   return catalogSha256((Array.isArray(rows)?rows:[]).map(catalogRowPrint).join('\n'));
 }
+/* Key order inside nested commercial objects (2026-10-25). A record read back from Postgres jsonb keeps
+   every value but reorders the keys of nested objects (a tier {minQty, price} comes back {price, minQty};
+   Corsicana's shipping {white_glove, ups, ltl} comes back {ltl, ups, white_glove}). Values are unchanged, but
+   anything that compares text — the Gold Standard fingerprint — would see a change no dealer can. Every
+   priced catalog file uses one key order per nested object (verified on 4b1bad3: tiers always minQty, price;
+   shipping always white_glove, ups, ltl), so restore puts those keys back in that order, then any other key in
+   its stored order. Only key order changes, never a value; a restore from an in-memory overlay is unchanged. */
+const NESTED_KEY_ORDER=['minQty','min_qty','price','pool','white_glove','ups','ltl'];
+function nestedOrder(v){
+  if(Array.isArray(v)) return v.map(nestedOrder);
+  if(!v || typeof v!=='object') return v;
+  const out={};
+  NESTED_KEY_ORDER.forEach(k=>{ if(Object.prototype.hasOwnProperty.call(v,k)) out[k]=nestedOrder(v[k]); });
+  Object.keys(v).forEach(k=>{ if(!Object.prototype.hasOwnProperty.call(out,k)) out[k]=nestedOrder(v[k]); });
+  return out;
+}
+
 function restoreCatalogFile(rows, overlay){
   if(!Array.isArray(rows)) throw new Error('catalog_file_mismatch: the public catalog file is not a list');
   if(!Array.isArray(overlay) || overlay.length!==rows.length)
@@ -95,11 +112,11 @@ function restoreCatalogFile(rows, overlay){
     const f=(o.f && typeof o.f==='object') ? o.f : {};
     const out={};
     (Array.isArray(o.order)?o.order:[]).forEach(key=>{
-      if(CATALOG_COMMERCIAL_KEYS.indexOf(key)>=0){ if(key in f) out[key]=f[key]; }
+      if(CATALOG_COMMERCIAL_KEYS.indexOf(key)>=0){ if(key in f) out[key]=nestedOrder(f[key]); }
       else if(r && key in r) out[key]=r[key];
     });
     Object.keys(r||{}).forEach(key=>{ if(!(key in out) && CATALOG_COMMERCIAL_KEYS.indexOf(key)<0) out[key]=r[key]; });
-    Object.keys(f).forEach(key=>{ if(!(key in out) && CATALOG_COMMERCIAL_KEYS.indexOf(key)>=0) out[key]=f[key]; });
+    Object.keys(f).forEach(key=>{ if(!(key in out) && CATALOG_COMMERCIAL_KEYS.indexOf(key)>=0) out[key]=nestedOrder(f[key]); });
     return out;
   });
 }
