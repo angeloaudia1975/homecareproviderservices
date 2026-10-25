@@ -1757,6 +1757,18 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   Supabase SQL editor (the file holds prices: never committed, posted or given to ChatGPT). jsonb reorders keys inside
   nested objects (tiers, shipping) — values unchanged, consumers validate by fingerprints, the --apply read-back now
   compares canonically.
+  **P0 RELEASED 2026-10-25 (Claude, with Angelo's authorization):** private seed 10/10 versions, 1,120 rows (Angelo ran
+  the export SQL 12:58 CT; every identity / overlay / public prefix = the runbook; RLS on, anon denied) → admin #36 merged
+  d6b7bd7 (published) → forward fix #40 065566a (restore puts nested keys back in the files' one order — jsonb had
+  reordered tier keys, so Climbing Steps' fingerprint read a key-order-only change; no value moved) → storefront #3 merged
+  7725566 (published 1:17 PM CT). Verified live: all /data files carry no commercial field (Complete Medical 404);
+  catalog_file_commercial 401 and catalog-layers 401 to the public key; no service key in served pages; old storefront
+  permalink 401; mc_verify (save:false) PASS 22/22 on Climbing Steps 270c15b4…, Strongback d35dcdff…, Ovation 46f8ed0f…,
+  Bemis 51d188b1… (run #20) — all = Gold Standard; staff preview of a real dealer (PediFix only): own line 200 priced,
+  shop shows prices / MSRP / MAP / images, other lines 403; TEST sandbox (no lines) 403 on all 10; forged preview 401;
+  anonymous price_check unauthorized. NOT yet done: a real signed-in dealer checkout (order record, both emails, My
+  Orders, tampered price 409) — needs a dealer login (owner); legacy lockdown `supabase/p0_lock_layer_reads.sql`
+  (custom_products / product_overrides still public) waits for that checkout, then Angelo runs it.
   **Owner decisions (Angelo, 2026-10-23 16:29 CT):** release order = private table → verified seed → admin deploy →
   storefront deploy → lock legacy-table public access → protect old deploy links → final verification; the two P0 PRs
   are never merged or deployed apart, nor before the private table is populated and every release check passes. Making
