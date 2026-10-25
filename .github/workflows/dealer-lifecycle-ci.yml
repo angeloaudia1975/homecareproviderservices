@@ -24,4 +24,5 @@ jobs:
           node test/dealer-lifecycle.test.js
           node --test test/dealer-family-navigation.test.js
           node test/dealer-hq-inheritance.test.js
+          node test/dealer-inactive-counts.test.js
           node test/phase0-tasks.test.js
