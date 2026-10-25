@@ -37,7 +37,7 @@ function env(opts){
   const W=M.createWorld({failRead:(t)=>(opts.failMeta||(opts.state&&opts.state.failMeta))&&t==='manufacturer_meta'?500:0, failWrite:(m,t,b)=>m==='POST'&&t==='order_items'&&(opts.failItems||(opts.failItemsFor&&[].concat(b)[0].code===opts.failItemsFor))?500:0, tables:{
     app_settings:[{key:'platform_state',value:{mode:'development'}}],
     manufacturers:[{slug:LINE,name:'Ovation Medical'},{slug:'golden-technologies',name:'Golden'},{slug:'other-line',name:'Other'}], manufacturer_meta:[{slug:LINE},{slug:'other-line'}],
-    dealers:[{id:'d1',parent_id:null,is_test:true}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}],
+    dealers:[{id:'d1',parent_id:null,is_test:true}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}], dealer_manufacturers:require('./p0-entitle.js')('d1'),
     dealer_contract_prices:[{dealer_id:'d1',manufacturer:LINE,code:'C1',price:17,active:true}],
     product_overrides:[], custom_products:[], product_images:[], product_links:[], product_media:[], product_content:[], product_skus:[],
     orders:[], order_items:[], tracking_requests:[], email_sends:[], intent_events:[], email_attribution:[]}});

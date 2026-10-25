@@ -136,7 +136,7 @@ await t('storefront load: valid record → record rule; missing/invalid record o
 function world(slug, terms, products){
   const W=M.createWorld({ tokens:{dealer:'d@x.com'}, tables:{ app_settings:[{key:'platform_state',value:{mode:'live'}}],
     manufacturers:[{slug,name:slug}], manufacturer_meta:[terms===undefined?{slug}:{slug,freight_terms:terms}],
-    dealers:[{id:'d1',parent_id:null,is_test:false}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}],
+    dealers:[{id:'d1',parent_id:null,is_test:false}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}], dealer_manufacturers:require('./p0-entitle.js')('d1'),
     dealer_contract_prices:[], product_overrides:[], product_images:[], product_links:[], product_media:[], product_content:[], product_skus:[],
     custom_products:products.map(p=>Object.assign({manufacturer:slug,active:true},p)),
     orders:[], order_items:[], tracking_requests:[], email_sends:[], intent_events:[], email_attribution:[] }});

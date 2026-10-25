@@ -1717,6 +1717,55 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   whose final URL is off-host. Image candidates always say rights pending — "not licensed or approved for use" — until a
   line's rights are actually recorded. Tests: content-review 50, mutants 58/58.
 
+- **P0 dealer-price lock-down (issue ordering#2; PRs ordering#3 + admin#36, NOT merged / deployed, no SQL run).** No
+  commercial field (price, breaks, MAP, MSRP, price notes, dealer/tier prices, unit cost, per-item shipping) is ever in a
+  public file or readable with the public key: the static catalog files are split; their commercial half lives in the
+  private `catalog_file_commercial` (one row per line AND public-file version, `identity_sha256`; RLS on, no policies).
+  A commercial row is applied ONLY to the exact public row it was made for (per-row fingerprint `h`) and only the
+  version whose identity equals the public file actually read — never a positional match, never the nearest version;
+  any mismatch fails closed (503 / "Pricing could not be loaded"). A dealer prices and orders only its active
+  `dealer_manufacturers` lines; browsing other lines shows no commercial field. An edit to a legacy static catalog file
+  is a new version: re-seed it (`--reseed`, by fingerprint) BEFORE deploying the storefront, prune after. A line not in
+  `manufacturers.json` (retired) is never seeded or priced. Rolling the storefront back re-publishes prices — a
+  TEMPORARY EMERGENCY EXPOSURE. Runbook: ordering `docs/security/P0_PRICE_EXPOSURE.md`.
+  **Old Netlify deploys (verified 2026-10-24, ordering runbook §5.1):** the storefront's Deploy Preview visibility is
+  Private, so every superseded production permalink, preview and PR deploy-ID link answers 401 — only the current
+  production deploy is public. Never "Publish deploy" (roll back to) a pre-P0 storefront deploy: roll forward. The ADMIN
+  site's Deploy Preview visibility is Public: every old production permalink and preview runs its OLD functions with
+  today's environment variables (orders-api from before the Complete Medical guard / P0 check) — it must be set to
+  Private (owner action, a settings change) before the P0 release; production domains are unaffected.
+  **Release authorization + state (Angelo, 2026-10-24 16:53 CT):** he authorized Claude to use his Chrome session
+  (Netlify, GitHub, admin pages) for the security release — settings corrections, deploys of tested changes and
+  verification — and to continue the catalog work without per-step approval; one consolidated owner checklist at the
+  end. Unchanged: no permanent deletion of deploys or data by Claude (old deploys are protected by Private visibility,
+  which makes deletion unnecessary), no production SQL in the editor by Claude, the service-role key never handled by
+  Claude. State that day: the private table `catalog_file_commercial` was installed in production (by ChatGPT, 8/8 checks,
+  0 rows; outside probe 401); seed dry run at 4b1bad3 = the 10 identities in the runbook table exactly (Complete Medical
+  retired, nothing BAD), and no `public/data` change since 4b1bad3 except the Complete Medical removal. The admin Deploy
+  Preview visibility was still Public — the change through Chrome was refused by the session's permission control, so
+  it stays an owner click. The real seed needs `--apply` with SUPABASE_URL / SUPABASE_SERVICE_ROLE in the environment of
+  whoever runs it (owner). Admin #36 merged with main 9480d4e → 60a3929; storefront #3 already contains main.
+  **Admin Deploy Preview visibility set to PRIVATE (previews only) by Claude through Angelo's Chrome on 2026-10-25
+  (~11:10 CT, his re-sent authorization).** Verified outside: deploy previews 36/38/39 → 401; every superseded admin
+  production permalink (6adc391b…, 6adc32f3…, 6adbe8f5…, 6adbdc11…, 6ada1d04…) → 401 for pages AND functions; the current
+  production deploy (6add2581…, main@9480d4e) and www / netlify.app / Academy / Connect 360 → 200. No deploy deleted
+  (not needed). Old-deploy exposure closed on both sites.
+  **Seed without a service key (2026-10-25):** ChatGPT stored 5 of 10 records (bemis, dalton, airavant-bongorx,
+  corsicana, climbing-steps = 58 rows). The remaining five go in through `p0-seed-catalog-commercial.js --ref 4b1bad3
+  --export-sql <path outside every git repo>` (ordering #3, 52da4ea): one idempotent, fail-closed transaction that keeps
+  exactly-matching stored records, adds the missing ones and requires 10 / 1,120 at the end; Angelo pastes it into the
+  Supabase SQL editor (the file holds prices: never committed, posted or given to ChatGPT). jsonb reorders keys inside
+  nested objects (tiers, shipping) — values unchanged, consumers validate by fingerprints, the --apply read-back now
+  compares canonically.
+  **Owner decisions (Angelo, 2026-10-23 16:29 CT):** release order = private table → verified seed → admin deploy →
+  storefront deploy → lock legacy-table public access → protect old deploy links → final verification; the two P0 PRs
+  are never merged or deployed apart, nor before the private table is populated and every release check passes. Making
+  both repos private is RECOMMENDED but never done automatically — verify Netlify/GitHub integration first. Standard
+  dealer-facing shipping terms may stay public; negotiated or confidential pricing arrangements stay private. Dealers
+  may browse product information for lines they don't carry, never their wholesale prices or ordering. Escalate only
+  missing authoritative commercial information, material safety/security issues and real production release gates —
+  routine development needs no approval; unresolved manufacturer items go to the exceptions queue, never stop the others.
+
 ## 18. Manufacturer report imports — MI-1a transaction identity & safe replacement (RULE, agreed 2026-10-09/10)
 
 Project MI (Manufacturer Reporting & Intelligence) extends the EXISTING Sales Report Import and Commission

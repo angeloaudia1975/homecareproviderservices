@@ -21,7 +21,7 @@ const OVFILE=[{code:'B1',name:'Boot S',group:'Boot',base_price:50,tiers:[{minQty
 function world(){
   const W=M.createWorld({ tokens:{dealer:'d@x.com'}, tables:{ app_settings:[{key:'platform_state',value:{mode:'development'}}],
     manufacturers:[{slug:SB,name:'Strongback'},{slug:OV,name:'Ovation'}], manufacturer_meta:[{slug:SB,record_authoritative:true},{slug:OV}],
-    dealers:[{id:'d1',parent_id:null}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}],
+    dealers:[{id:'d1',parent_id:null}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}], dealer_manufacturers:require('./p0-entitle.js')('d1'),
     dealer_contract_prices:[], product_overrides:[], product_images:[], product_links:[], product_media:[], product_content:[],
     /* The legacy layers carry the SAME ladder without pools (as Strongback does today): only the record's pool can pool. */
     custom_products:RECORDS.map(r=>({manufacturer:SB,code:r.code,name:r.code,base_price:r.base_price,tiers:(r.tiers||null)&&r.tiers.map(x=>({min_qty:x.min_qty,price:x.price})),active:true})),
