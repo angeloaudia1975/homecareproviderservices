@@ -476,6 +476,14 @@ window.HUB_GUIDE = {
     connects: ["Images render across the ordering portal and catalog"],
     problems: "A polished, visual catalog that helps dealers buy with confidence."
   },
+  "Catalog Exceptions": {
+    tagline: "One queue for every manufacturer's open catalog work.",
+    what: "Reads every line's master record, product pages, public catalog file, price-list sources and Gold Standard runs, and sorts what is left to do into eight categories: missing or unverified prices, part-number mismatches and duplicates, units and case packs, missing descriptions, photos, freight, retired items still offered, and what is ready. Read-only; it never shows a price.",
+    features: ["Eight categories with totals", "Per-line detail with the exact part numbers or pages", "Blockers-only filter", "Frozen Gold Standard lines marked read-only", "CSV export (codes only)"],
+    connects: ["Manufacturer Center (prices, units, freight, verification)", "Product Content Enrichment (descriptions, features, pages)", "Product Images", "Product Catalog"],
+    problems: "Shows exactly what stands between each manufacturer and a complete, orderable catalog — without anyone rebuilding the list by hand.",
+    workflow: "Open the queue → pick a category or a line → open the tool that owns the fix → refresh to see it clear."
+  },
   "Product Content Enrichment & Review": {
     tagline: "Merge manufacturer website + PDF catalog with your HCPS record, pick the best version, and approve before dealers see it.",
     what: "The enrichment desk for product pages. For any existing HCPS product it runs two importers against the same record — the manufacturer's website and their PDF/catalog — then merges and compares all three sources so nothing is missed. Every piece of information is labeled with where it came from (Current HCPS Data, Manufacturer Website, or Manufacturer PDF), and you pick the best version field by field before it publishes. New, conflicting, missing, and duplicate content are all flagged up front.",

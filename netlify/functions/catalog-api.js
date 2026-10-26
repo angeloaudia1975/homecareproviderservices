@@ -4429,6 +4429,46 @@ async function handleCatalog(event){
           return json(200,{ok:true, stored, approval_used:g.decision.id, preview});
         }catch(err){ return json(502,{error:"freight_not_set",message:"Nothing was written: "+String((err&&err.message)||err).slice(0,300)}); }
       }
+      /* CATALOG EXCEPTIONS QUEUE (2026-10-26, ordering #1). Read-only. Every line's open work in eight categories
+         (_catalog_exceptions.js). Prices never leave this function: product_skus is reduced to priced true/false as it
+         is read, and catalog rows come from the PUBLIC (price-free) storefront files, never the server's priced
+         restore. Strict: any unreadable layer is a 503, never an empty queue. */
+      if(b.action==="catalog_exceptions"){
+        const CE=require("./_catalog_exceptions.js");
+        const paged=async(path,order)=>{ const all=[]; for(let off=0;off<100000;off+=1000){
+          let rows;
+          try{ rows=await sb("GET",`${path}&order=${order}`,null,{Range:`${off}-${off+999}`,"Range-Unit":"items"}); }
+          catch(e){ if(off>0 && /Supabase 416/.test(String(e&&e.message))) break; throw e; }  // a total that is an exact multiple of 1000
+          all.push(...(rows||[])); if(!rows||rows.length<1000) break; } return all; };
+        const publicFile=async slug=>{ const r=await fetch(`${ORDERING_BASE}/data/${encodeURIComponent(slug)}.json`,{headers:{"cache-control":"no-cache"}});
+          if(r.status===404) return null; if(!r.ok) throw new Error(`catalog file ${slug}: HTTP ${r.status}`);
+          const j=await r.json(); if(!Array.isArray(j)) throw new Error(`catalog file ${slug} is not a list`);
+          return j.map(x=>({code:x&&x.code, image:x&&x.image})); };
+        let mfrs, skuRows, pages, meta, sources, runs, decisions, catalogs={};
+        try{
+          [mfrs, skuRows, pages, meta, sources, runs, decisions]=await Promise.all([
+            fetchJson(`${ORDERING_BASE}/data/manufacturers.json`),
+            paged("product_skus?manufacturer=neq.golden&select=manufacturer,code,status,uom,case_qty,base_price","manufacturer.asc,code.asc"),
+            paged("product_content?manufacturer=neq.golden&select=manufacturer,page_key,status,disabled,skus,description,features,image,images_gallery","manufacturer.asc,page_key.asc"),
+            sb("GET","manufacturer_meta?select=slug,record_authoritative,record_resync_error,frozen,deferrals,freight_terms"),
+            sb("GET","mfr_sources?kind=eq.price_list&status=eq.accepted&select=id,manufacturer,legacy,received_date,title&order=id.asc&limit=2000"),
+            sb("GET","mfr_verification_runs?select=id,manufacturer,phase,result,fingerprint,run_at&order=run_at.desc&limit=500"),
+            sb("GET","mfr_decisions?kind=eq.regression_fix&select=id,manufacturer,used_at&limit=2000")]);
+          if(!Array.isArray(mfrs)||!mfrs.length) throw new Error("manufacturers.json is empty or not a list");
+          for(const m of mfrs.filter(x=>x&&x.slug)) catalogs[m.slug]=await publicFile(m.slug);
+        }catch(e){ return json(503,{error:"exceptions_unreadable", message:String((e&&e.message)||e).slice(0,300)}); }
+        Object.keys(catalogs).forEach(k=>{ if(catalogs[k]==null) delete catalogs[k]; });
+        const skus=(skuRows||[]).map(s=>({manufacturer:s.manufacturer, code:s.code, status:s.status, uom:s.uom, case_qty:s.case_qty, priced:Number(s.base_price)>0}));
+        const metaRows=(meta||[]).map(x=>({slug:x.slug, record_authoritative:x.record_authoritative, record_resync_error:x.record_resync_error,
+          frozen:x.frozen, deferrals:x.deferrals, freight_terms:x.freight_terms==null?null:true, freight_traced:!!(x.freight_terms&&x.freight_terms.trace)}));
+        const src={}; for(const s of sources||[]){ const cur=src[s.manufacturer]; if(!cur||(cur.legacy&&!s.legacy)||(!!cur.legacy===!!s.legacy&&s.id>cur.id)) src[s.manufacturer]={id:s.id,legacy:!!s.legacy,received_date:s.received_date,title:s.title}; }
+        const lines={}; const runsBy={}; (runs||[]).forEach(r=>{ (runsBy[r.manufacturer]=runsBy[r.manufacturer]||[]).push(r); });
+        const fixes={}; (decisions||[]).forEach(d=>{ if(!d.used_at) fixes[d.manufacturer]=(fixes[d.manufacturer]||0)+1; });
+        new Set([...Object.keys(runsBy),...Object.keys(fixes)]).forEach(s=>{ lines[s]={gold_standard:MC.goldStandardOf(runsBy[s]||[]), open_regression_fixes:fixes[s]||0}; });
+        const q=CE.exceptionsQueue({manufacturers:mfrs, catalogs, skus, pages, meta:metaRows, lines, sources:src,
+          exclude:["golden","golden-technologies"], measured:{master:true,pages:true,runs:true}});
+        return json(200,Object.assign({ok:true, generated:new Date().toISOString()}, q));
+      }
       if(b.action==="mc_overview"){
         let lines, meta, sources, decisions, runs;
         try{
