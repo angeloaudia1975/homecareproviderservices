@@ -40,6 +40,14 @@ const CHECK_CAT = {
   no_freight_terms: "freight",
 };
 
+/* A visible page has a photo when it has a main image, a chosen catalog-card image (not "none"), or any gallery
+   photo — a grouped page (e.g. one card for two options) is shown by its card image, not page.image. */
+function pagePhoto(p) {
+  if (!p) return false;
+  if (String(p.image || "").trim()) return true;
+  if (p.card_image && String(p.card_image).trim() && p.card_image !== "none") return true;
+  return (Array.isArray(p.images_gallery) ? p.images_gallery : []).some(g => g && String(g.url || g.src || g).trim());
+}
 function textLen(v) { return String(v == null ? "" : v).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().length; }
 function featureCount(v) {
   if (Array.isArray(v)) return v.filter(x => textLen(x && typeof x === "object" ? (x.text || x.title || "") : x) > 0).length;
@@ -78,7 +86,7 @@ function lineChecks(slug, skus, pages, meta, src) {
   const fewFeatures = visiblePages.filter(p => featureCount(p.features) < 3).map(p => p.page_key);
   if (fewFeatures.length) add("content", "info", "few_features", "visible pages with fewer than three feature bullets", fewFeatures);
   // images
-  const noPhoto = visiblePages.filter(p => !String(p.image || "").trim()).map(p => p.page_key);
+  const noPhoto = visiblePages.filter(p => !pagePhoto(p)).map(p => p.page_key);
   if (noPhoto.length) add("images", "warn", "page_without_photo", "visible pages with no main photo", noPhoto);
   const thirdParty = visiblePages.filter(p => (Array.isArray(p.images_gallery) ? p.images_gallery : [])
     .some(g => g && /third.?party|reseller/i.test(String(g.source || "")))).map(p => p.page_key);
@@ -110,13 +118,34 @@ function exceptionsQueue(input) {
   const meta = Object.fromEntries((i.meta || []).filter(x => x && x.slug).map(x => [x.slug, x]));
   const lines = m.lines.map(l => {
     const items = [];
+    /* Codes whose visible product page carries a photo are not "rows without an image": the shop shows the page's. */
+    const pagePhotoCodes = new Set();
+    for (const p of P[l.slug] || []) if (p && VISIBLE.has(String(p.status || "")) && p.disabled !== true && pagePhoto(p))
+      for (const e of Array.isArray(p.skus) ? p.skus : []) pagePhotoCodes.add(norm(e && (e.sku || e.code)));
     for (const e of l.exceptions || []) {
       const cat = CHECK_CAT[e.check]; if (!cat) continue;
+      if (e.check === "catalog_rows_without_image" && Array.isArray(e.codes)) {
+        const left = e.codes.filter(c => !pagePhotoCodes.has(norm(c)));
+        if (!left.length) continue;
+        items.push(Object.assign({ cat }, e, { codes: left, count: Math.max(0, (e.count || e.codes.length) - (e.codes.length - left.length)) }));
+        continue;
+      }
       items.push(Object.assign({ cat }, e));
     }
     items.push(...lineChecks(l.slug, S[l.slug] || [], P[l.slug] || [], meta[l.slug] || {}, (i.sources || {})[l.slug] || null));
-    const counts = Object.fromEntries(CATS.map(c => [c, items.filter(x => x.cat === c && x.check !== "retired_skus")
-      .reduce((n, x) => n + (x.count || 1), 0)]));
+    /* Counted = work: blockers and warnings only (notes are shown, not counted) — except "ready", which is the
+       count itself. A part number or page is counted ONCE per category however many checks name it; a check with
+       no codes counts 1. */
+    const counts = Object.fromEntries(CATS.map(c => {
+      const its = items.filter(x => x.cat === c && (c === "ready" || x.severity !== "info"));
+      const keys = new Set(); let n = 0;
+      for (const x of its) {
+        if (!Array.isArray(x.codes) || !x.codes.length) { n += 1; continue; }
+        const hidden = Math.max(0, (x.count || x.codes.length) - x.codes.length);
+        x.codes.forEach(code => keys.add(norm(code))); n += hidden;
+      }
+      return [c, n + keys.size];
+    }));
     const blockers = items.filter(x => x.severity === "blocker").length;
     return { slug: l.slug, name: names[l.slug] || l.slug, status: l.status, completion: l.completion,
       frozen: !!(meta[l.slug] && meta[l.slug].frozen), gold_standard: !!l.gold_standard, blockers, counts, items };
@@ -125,4 +154,4 @@ function exceptionsQueue(input) {
   return { categories: CATS.map(c => ({ key: c, label: LABELS[c] })), lines, totals, summary: m.summary };
 }
 
-module.exports = { exceptionsQueue, lineChecks, CATS, LABELS, CHECK_CAT, PACK_UOM };
+module.exports = { exceptionsQueue, lineChecks, pagePhoto, CATS, LABELS, CHECK_CAT, PACK_UOM };

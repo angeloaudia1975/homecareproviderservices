@@ -77,6 +77,30 @@ const base = () => ({
     const i = base(); i.skus[0].priced = false; const l = CE.exceptionsQueue(i).lines.find(x => x.slug === 'acme');
     ok(!item(l, 'sku_ready'), JSON.stringify(item(l, 'sku_ready')));
   });
+  await t('counts: notes are not counted; one part number counts once per category', () => {
+    const i = base();
+    i.catalogs.acme.push({ code: 'A5', image: '' }, { code: 'A5', image: '' });           // A5 twice in the file: duplicate + 2 rows w/o image
+    const l = CE.exceptionsQueue(i).lines.find(x => x.slug === 'acme');
+    const img = item(l, 'catalog_rows_without_image');
+    ok(img && img.codes.filter(c => c === 'A5').length >= 1, 'A5 listed');
+    ok(l.counts.images === new Set(l.items.filter(x => x.cat === 'images' && x.severity !== 'info').flatMap(x => x.codes || ['*'])).size, 'images counted once per code: ' + l.counts.images);
+    const j = base(); j.skus.push({ manufacturer: 'acme', code: 'M1', status: 'active', uom: 'Each', priced: true });   // in the master only (a note)
+    const lj = CE.exceptionsQueue(j).lines.find(x => x.slug === 'acme');
+    ok(item(lj, 'master_only_codes') && item(lj, 'master_only_codes').codes.includes('M1'), 'M1 noted');
+    ok(lj.counts.sku === CE.exceptionsQueue(base()).lines.find(x => x.slug === 'acme').counts.sku, 'a note changed the SKU count: ' + lj.counts.sku);
+  });
+  await t('photos: a card image or a gallery photo counts as the page photo; "none" does not', () => {
+    ok(CE.pagePhoto({ image: '', card_image: 'https://x/c.jpg' }), 'card image');
+    ok(CE.pagePhoto({ image: '', images_gallery: [{ url: 'https://x/g.jpg' }] }), 'gallery');
+    ok(!CE.pagePhoto({ image: '', card_image: 'none', images_gallery: [] }), 'none');
+    const i = base(); i.pages[1].card_image = 'https://x/c.jpg';
+    ok(!item(CE.exceptionsQueue(i).lines.find(x => x.slug === 'acme'), 'page_without_photo'), 'card image page still flagged');
+  });
+  await t('photos: a catalog row without an image is covered by its visible page photo', () => {
+    const i = base(); i.catalogs.acme = [{ code: 'A1', image: '' }];   // A1 sits on visible page p1, which has a photo
+    const l = CE.exceptionsQueue(i).lines.find(x => x.slug === 'acme');
+    const e = item(l, 'catalog_rows_without_image'); ok(!e || !e.codes.includes('A1'), JSON.stringify(e));
+  });
   await t('frozen lines are reported read-only', () => { ok(fz.frozen === true && acme.frozen === false, 'frozen'); });
   await t('the output carries no price field and no price value', () => {
     const s = JSON.stringify(q);
@@ -93,11 +117,13 @@ const base = () => ({
     const u = String(url), h = (opts && opts.headers) || {};
     if (u.endsWith('/auth/v1/user')) return resp(200, { email: 'boss@test' });
     if (u.includes('/rest/v1/staff_users')) return resp(200, [{ role, active: true }]);
-    if (u.endsWith('/data/manufacturers.json')) return resp(200, [{ slug: 'acme', name: 'Acme', hasData: true, freight: {} }]);
+    if (u.endsWith('/data/manufacturers.json')) return resp(200, [{ slug: 'acme', name: 'Acme', hasData: true, freight: {} }, { slug: 'legacyco', name: 'Legacy Co', hasData: true, freight: {} }]);
     if (u.includes('/data/acme.json')) return resp(200, [{ code: 'A1', image: 'a.jpg', base_price: 99.99 }]);
     if (breakTable && u.includes('/rest/v1/' + breakTable)) return resp(500, { message: 'down' });
     if (u.includes('/rest/v1/product_skus')) { ranges.push(h.Range); return resp(200, h.Range === '0-999' ? big : extra); }
     if (u.includes('/rest/v1/product_content')) return resp(200, []);
+    if (u.includes('/rest/v1/custom_products')) { ok(!/base_price|tiers|msrp/.test(u), 'custom_products read with a price column'); return resp(200, [{ manufacturer: 'acme', code: 'ADD1', image: '', active: true }, { manufacturer: 'acme', code: 'A1', image: 'new.jpg', active: true }, { manufacturer: 'legacyco', code: 'L1', image: 'l.jpg', active: true }]); }
+    if (u.includes('/rest/v1/product_overrides')) return resp(200, [{ manufacturer: 'acme', code: 'ADD1', patch: { base_price: 77.77, image: 'ov.jpg' } }]);
     if (u.includes('/rest/v1/manufacturer_meta')) return resp(200, [{ slug: 'acme', record_authoritative: true, freight_terms: { trace: { source_id: 1 } } }]);
     if (u.includes('/rest/v1/')) return resp(200, []);
     return resp(404, {});
@@ -109,12 +135,18 @@ const base = () => ({
     ok(ranges.join() === '0-999,1000-1999', 'ranges ' + ranges.join());
     const l = r.body.lines.find(x => x.slug === 'acme'); ok(l.counts.ready === 0 || l, 'line');
   });
+  await t('action: added products and saved-edit images are catalog rows (a line living only in the legacy layers is not "no data")', async () => {
+    const r = await call(); const l = r.body.lines.find(x => x.slug === 'acme');
+    const lg = r.body.lines.find(x => x.slug === 'legacyco');
+    ok(lg && lg.status !== 'no_data', 'a line with only added products reads as no data: ' + (lg && lg.status));
+    const e = l.items.find(x => x.check === 'catalog_rows_without_image'); ok(!e || !(e.codes || []).includes('ADD1'), 'override image ignored');
+  });
   await t('action: no price ever leaves the function (not from the master, not from the catalog file)', async () => {
-    const s = JSON.stringify((await call()).body); ok(!/12\.34|56\.78|99\.99|base_price/.test(s), 'price leaked');
+    const s = JSON.stringify((await call()).body); ok(!/12\.34|56\.78|99\.99|77\.77|base_price/.test(s), 'price leaked');
   });
   await t('action: other roles refused', async () => { role = 'admin'; const r = await call(); role = 'president'; ok(r.status === 403, String(r.status)); });
   await t('action: an unreadable layer is a 503, never an empty queue', async () => {
-    for (const tb of ['product_skus', 'product_content', 'manufacturer_meta', 'mfr_sources', 'mfr_verification_runs']) {
+    for (const tb of ['product_skus', 'product_content', 'manufacturer_meta', 'mfr_sources', 'mfr_verification_runs', 'custom_products', 'product_overrides']) {
       breakTable = tb; const r = await call(); breakTable = null; ok(r.status === 503 && r.body.error === 'exceptions_unreadable', tb + ' ' + r.status);
     }
   });
