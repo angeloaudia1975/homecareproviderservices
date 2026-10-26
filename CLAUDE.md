@@ -1769,6 +1769,19 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   anonymous price_check unauthorized. NOT yet done: a real signed-in dealer checkout (order record, both emails, My
   Orders, tampered price 409) — needs a dealer login (owner); legacy lockdown `supabase/p0_lock_layer_reads.sql`
   (custom_products / product_overrides still public) waits for that checkout, then Angelo runs it.
+  **P0 COMPLETE 2026-10-26.** Checkout gate PASS: order 0e49f3f2 (house account, ES0001 × 2, PO "test"), server
+  price = stored = My Orders, freight correct, HCPS email received (Angelo), cancelled with an audit note (no manufacturer
+  or fulfillment message: platform mode `development`, where the dealer confirmation and the manufacturer tracking request
+  do not send — in `live` mode EVERY order, test orders included, also emails the manufacturer). Angelo ran
+  `p0_lock_layer_reads.sql` (~08:55 CT); after it: probe ALL BLOCKED, public-key writes 401, signed-in pricing /
+  price_check / My Orders / admin / mc_verify (4 Gold Standards) pass, the no-lines dealer gets 403, old deploys 401.
+  Ordering issue #2 closed; tracker homecareproviderservices#42. Open: Ohio Medical — the storefront file is `gce` but
+  dealers carry `ohio-medical`, so no dealer sees it; stays off until Angelo decides and a price list is verified.
+- **No dealer or wholesale price in any public GitHub text (RULE, 2026-10-26).** Both repositories are public, so issue
+  and PR comments, PR descriptions, commit messages and tracker bodies follow the same rule as committed files: no dealer
+  price, tier, contract or order total — write "priced from the record", "= server price", "[price withheld]". Publicly
+  published terms (a freight rule) are fine. Learned when evidence comments on ordering #2 and tracker #42 carried
+  prices; they were redacted, but GitHub keeps comment edit history, which only the owner can delete.
   **Owner decisions (Angelo, 2026-10-23 16:29 CT):** release order = private table → verified seed → admin deploy →
   storefront deploy → lock legacy-table public access → protect old deploy links → final verification; the two P0 PRs
   are never merged or deployed apart, nor before the private table is populated and every release check passes. Making
