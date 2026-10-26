@@ -19,8 +19,9 @@ const M = [
   ['a code counted once per check, not per category', F, 'x.codes.forEach(code => keys.add(norm(code))); n += hidden;', 'n += x.codes.length + hidden;', false],
   ['card image not a page photo', F, 'if (p.card_image && String(p.card_image).trim() && p.card_image !== "none") return true;', '', false],
   ['page photo does not cover catalog rows', F, 'const left = e.codes.filter(c => !pagePhotoCodes.has(norm(c)));', 'const left = e.codes.slice();', false],
-  ['legacy layers ignored', API, 'for(const c of customRows||[]){', 'for(const c of []){', false],
+  ['legacy layers ignored', API, 'for(const c of customRows||[]){ if(!c||c.code==null) continue; const L=at(c.manufacturer);', 'for(const c of []){ if(!c||c.code==null) continue; const L=at(c.manufacturer);', false],
   ['legacy layer read with its prices', API, 'custom_products?manufacturer=neq.golden&select=manufacturer,code,image,active', 'custom_products?manufacturer=neq.golden&select=manufacturer,code,image,active,base_price,tiers', false],
+  ['file duplicates collapsed', API, 'for(const r of rows||[]) if(r) at(m).push({code:r.code,image:r.image||""});', 'for(const r of rows||[]) if(r&&!at(m).some(x=>x.code===r.code)) at(m).push({code:r.code,image:r.image||""});', false],
   ['any staff role allowed', API, 'if(me.role!=="president") return json(403,{error:"President only"});', '', false],
 ];
 let bad = 0;

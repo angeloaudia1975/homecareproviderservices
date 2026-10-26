@@ -4465,11 +4465,17 @@ async function handleCatalog(event){
         }catch(e){ return json(503,{error:"exceptions_unreadable", message:String((e&&e.message)||e).slice(0,300)}); }
         /* One catalog per line, merged the way the shop merges it: file rows, then added products (same code replaces),
            then a saved edit's image / switch-off. A switched-off row is not part of the catalog. */
-        { const lay={}; const at=(m)=>lay[m]=lay[m]||new Map();
-          for(const [m,rows] of Object.entries(catalogs)) for(const r of rows||[]) if(r&&r.code!=null) at(m).set(String(r.code),{code:r.code,image:r.image||""});
-          for(const c of customRows||[]){ if(!c||c.code==null) continue; if(c.active===false){ at(c.manufacturer).delete(String(c.code)); continue; } at(c.manufacturer).set(String(c.code),{code:c.code,image:c.image||""}); }
-          for(const o of overRows||[]){ const L=lay[o.manufacturer]; const row=L&&L.get(String(o.code)); if(!row) continue; if(o.active===false){ L.delete(String(o.code)); continue; } if(o.image!==undefined) row.image=o.image; }
-          catalogs={}; for(const [m,L] of Object.entries(lay)) if(L.size) catalogs[m]=[...L.values()]; }
+        { /* Every file row is kept — a part number printed twice in the file is a real duplicate the queue must show. */
+          const lay={}; const at=m=>lay[m]=lay[m]||[];
+          for(const [m,rows] of Object.entries(catalogs)) for(const r of rows||[]) if(r) at(m).push({code:r.code,image:r.image||""});
+          const same=(r,c)=>r.code!=null&&String(r.code)===String(c);
+          for(const c of customRows||[]){ if(!c||c.code==null) continue; const L=at(c.manufacturer);
+            if(c.active===false){ lay[c.manufacturer]=L.filter(r=>!same(r,c.code)); continue; }
+            const hit=L.filter(r=>same(r,c.code)); if(hit.length) hit.forEach(r=>{ r.image=c.image||r.image; }); else L.push({code:c.code,image:c.image||""}); }
+          for(const o of overRows||[]){ const L=lay[o.manufacturer]; if(!L) continue;
+            if(o.active===false){ lay[o.manufacturer]=L.filter(r=>!same(r,o.code)); continue; }
+            if(o.image!==undefined) L.forEach(r=>{ if(same(r,o.code)) r.image=o.image; }); }
+          catalogs={}; for(const [m,L] of Object.entries(lay)) if(L.length) catalogs[m]=L; }
         const skus=(skuRows||[]).map(s=>({manufacturer:s.manufacturer, code:s.code, status:s.status, uom:s.uom, case_qty:s.case_qty, priced:Number(s.base_price)>0}));
         const metaRows=(meta||[]).map(x=>({slug:x.slug, record_authoritative:x.record_authoritative, record_resync_error:x.record_resync_error,
           frozen:x.frozen, deferrals:x.deferrals, freight_terms:x.freight_terms==null?null:true, freight_traced:!!(x.freight_terms&&x.freight_terms.trace)}));
