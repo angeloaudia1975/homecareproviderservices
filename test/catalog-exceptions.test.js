@@ -118,7 +118,7 @@ const base = () => ({
     if (u.endsWith('/auth/v1/user')) return resp(200, { email: 'boss@test' });
     if (u.includes('/rest/v1/staff_users')) return resp(200, [{ role, active: true }]);
     if (u.endsWith('/data/manufacturers.json')) return resp(200, [{ slug: 'acme', name: 'Acme', hasData: true, freight: {} }, { slug: 'legacyco', name: 'Legacy Co', hasData: true, freight: {} }]);
-    if (u.includes('/data/acme.json')) return resp(200, [{ code: 'A1', image: 'a.jpg', base_price: 99.99 }]);
+    if (u.includes('/data/acme.json')) return resp(200, [{ code: 'A1', image: 'a.jpg', base_price: 99.99 }, { code: 'DUP', image: 'd.jpg' }, { code: 'DUP', image: 'd.jpg' }]);
     if (breakTable && u.includes('/rest/v1/' + breakTable)) return resp(500, { message: 'down' });
     if (u.includes('/rest/v1/product_skus')) { ranges.push(h.Range); return resp(200, h.Range === '0-999' ? big : extra); }
     if (u.includes('/rest/v1/product_content')) return resp(200, []);
@@ -140,6 +140,10 @@ const base = () => ({
     const lg = r.body.lines.find(x => x.slug === 'legacyco');
     ok(lg && lg.status !== 'no_data', 'a line with only added products reads as no data: ' + (lg && lg.status));
     const e = l.items.find(x => x.check === 'catalog_rows_without_image'); ok(!e || !(e.codes || []).includes('ADD1'), 'override image ignored');
+  });
+  await t('action: a part number printed twice in the file is still reported as a duplicate', async () => {
+    const l = (await call()).body.lines.find(x => x.slug === 'acme');
+    const d = l.items.find(x => x.check === 'catalog_duplicate_codes'); ok(d && d.codes.includes('DUP'), JSON.stringify(d));
   });
   await t('action: no price ever leaves the function (not from the master, not from the catalog file)', async () => {
     const s = JSON.stringify((await call()).body); ok(!/12\.34|56\.78|99\.99|77\.77|base_price/.test(s), 'price leaked');
