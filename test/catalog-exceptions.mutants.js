@@ -15,6 +15,12 @@ const M = [
   ['response carries the raw master rows', API, 'return json(200,Object.assign({ok:true, generated:new Date().toISOString()}, q));', 'return json(200,Object.assign({ok:true, generated:new Date().toISOString(), skuRows}, q));', false],
   ['response carries the catalog files', API, 'return json(200,Object.assign({ok:true, generated:new Date().toISOString()}, q));', 'return json(200,Object.assign({ok:true, generated:new Date().toISOString(), raw:(skuRows||[]).map(s=>s.base_price)}, q));', false],
   ['unreadable layer swallowed', API, '}catch(e){ return json(503,{error:"exceptions_unreadable"', '}catch(e){ mfrs=mfrs||[]; } if(false){ return json(503,{error:"exceptions_unreadable"', false],
+  ['notes counted as work', F, '(c === "ready" || x.severity !== "info")', 'true', false],
+  ['a code counted once per check, not per category', F, 'x.codes.forEach(code => keys.add(norm(code))); n += hidden;', 'n += x.codes.length + hidden;', false],
+  ['card image not a page photo', F, 'if (p.card_image && String(p.card_image).trim() && p.card_image !== "none") return true;', '', false],
+  ['page photo does not cover catalog rows', F, 'const left = e.codes.filter(c => !pagePhotoCodes.has(norm(c)));', 'const left = e.codes.slice();', false],
+  ['legacy layers ignored', API, 'for(const c of customRows||[]){', 'for(const c of []){', false],
+  ['legacy layer read with its prices', API, 'custom_products?manufacturer=neq.golden&select=manufacturer,code,image,active', 'custom_products?manufacturer=neq.golden&select=manufacturer,code,image,active,base_price,tiers', false],
   ['any staff role allowed', API, 'if(me.role!=="president") return json(403,{error:"President only"});', '', false],
 ];
 let bad = 0;

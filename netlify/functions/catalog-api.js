@@ -4444,20 +4444,32 @@ async function handleCatalog(event){
           if(r.status===404) return null; if(!r.ok) throw new Error(`catalog file ${slug}: HTTP ${r.status}`);
           const j=await r.json(); if(!Array.isArray(j)) throw new Error(`catalog file ${slug} is not a list`);
           return j.map(x=>({code:x&&x.code, image:x&&x.image})); };
-        let mfrs, skuRows, pages, meta, sources, runs, decisions, catalogs={};
+        let mfrs, skuRows, pages, meta, sources, runs, decisions, customRows, overRows, catalogs={};
         try{
-          [mfrs, skuRows, pages, meta, sources, runs, decisions]=await Promise.all([
+          [mfrs, skuRows, pages, meta, sources, runs, decisions, customRows, overRows]=await Promise.all([
             fetchJson(`${ORDERING_BASE}/data/manufacturers.json`),
             paged("product_skus?manufacturer=neq.golden&select=manufacturer,code,status,uom,case_qty,base_price","manufacturer.asc,code.asc"),
-            paged("product_content?manufacturer=neq.golden&select=manufacturer,page_key,status,disabled,skus,description,features,image,images_gallery","manufacturer.asc,page_key.asc"),
+            paged("product_content?manufacturer=neq.golden&select=manufacturer,page_key,status,disabled,skus,description,features,image,card_image,images_gallery","manufacturer.asc,page_key.asc"),
             sb("GET","manufacturer_meta?select=slug,record_authoritative,record_resync_error,frozen,deferrals,freight_terms"),
             sb("GET","mfr_sources?kind=eq.price_list&status=eq.accepted&select=id,manufacturer,legacy,received_date,title&order=id.asc&limit=2000"),
             sb("GET","mfr_verification_runs?select=id,manufacturer,phase,result,fingerprint,run_at&order=run_at.desc&limit=500"),
-            sb("GET","mfr_decisions?kind=eq.regression_fix&select=id,manufacturer,used_at&limit=2000")]);
+            sb("GET","mfr_decisions?kind=eq.regression_fix&select=id,manufacturer,used_at&limit=2000"),
+            /* The legacy catalog layers (added products, saved edits) are catalog rows too — ABM lives only there. Only
+               code / image / active are kept; their price fields are never selected (custom_products) or are dropped
+               from the patch as it is read (product_overrides). */
+            paged("custom_products?manufacturer=neq.golden&select=manufacturer,code,image,active","manufacturer.asc,code.asc"),
+            paged("product_overrides?manufacturer=neq.golden&select=manufacturer,code,patch","manufacturer.asc,code.asc")]);
+          overRows=(overRows||[]).map(o=>({manufacturer:o.manufacturer, code:o.code, image:o.patch&&typeof o.patch.image==="string"?o.patch.image:undefined, active:o.patch&&o.patch.active===false?false:undefined}));
           if(!Array.isArray(mfrs)||!mfrs.length) throw new Error("manufacturers.json is empty or not a list");
           for(const m of mfrs.filter(x=>x&&x.slug)) catalogs[m.slug]=await publicFile(m.slug);
         }catch(e){ return json(503,{error:"exceptions_unreadable", message:String((e&&e.message)||e).slice(0,300)}); }
-        Object.keys(catalogs).forEach(k=>{ if(catalogs[k]==null) delete catalogs[k]; });
+        /* One catalog per line, merged the way the shop merges it: file rows, then added products (same code replaces),
+           then a saved edit's image / switch-off. A switched-off row is not part of the catalog. */
+        { const lay={}; const at=(m)=>lay[m]=lay[m]||new Map();
+          for(const [m,rows] of Object.entries(catalogs)) for(const r of rows||[]) if(r&&r.code!=null) at(m).set(String(r.code),{code:r.code,image:r.image||""});
+          for(const c of customRows||[]){ if(!c||c.code==null) continue; if(c.active===false){ at(c.manufacturer).delete(String(c.code)); continue; } at(c.manufacturer).set(String(c.code),{code:c.code,image:c.image||""}); }
+          for(const o of overRows||[]){ const L=lay[o.manufacturer]; const row=L&&L.get(String(o.code)); if(!row) continue; if(o.active===false){ L.delete(String(o.code)); continue; } if(o.image!==undefined) row.image=o.image; }
+          catalogs={}; for(const [m,L] of Object.entries(lay)) if(L.size) catalogs[m]=[...L.values()]; }
         const skus=(skuRows||[]).map(s=>({manufacturer:s.manufacturer, code:s.code, status:s.status, uom:s.uom, case_qty:s.case_qty, priced:Number(s.base_price)>0}));
         const metaRows=(meta||[]).map(x=>({slug:x.slug, record_authoritative:x.record_authoritative, record_resync_error:x.record_resync_error,
           frozen:x.frozen, deferrals:x.deferrals, freight_terms:x.freight_terms==null?null:true, freight_traced:!!(x.freight_terms&&x.freight_terms.trace)}));
