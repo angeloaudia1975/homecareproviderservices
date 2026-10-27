@@ -1834,6 +1834,12 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   `source_rule` figure — Access4U MSRP = dealer × 1.5 — never is); a stated MSRP equal to today's derived 2× MSRP is
   unchanged (with a note); ladder rungs at qty 1 or at the single-unit price buy nothing and are dropped on both sides;
   a row with a list `dealer_price` beside a discounted `base_price` (Access4U) is compared on the list price.
+  Pack size (#57): a quantity of 1 is a single unit (= none stated); today's pack = `case_qty`, else the catalog file's
+  `qty_per_pack` (PediFix), else the count in the unit wording ("Pack of 12") — equal by wording alone is unchanged with
+  a note (the record still needs the numeric field before activation). Live PediFix run 2026-10-27 (2025-dated list,
+  still blocked as not current): 482 unchanged · 12 changed (11 unit — displays / mix packs sold as Each today vs a pack
+  on the list; 1 dealer price) · 22 added (incl. P8206) · 2 removed (P3306 + its 100-packet; the list prints P3305 —
+  possible code alias, never renamed by the comparison).
   Payloads sent from the browser carry codes and the source's own figures only, over the signed-in call; nothing stored.
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
