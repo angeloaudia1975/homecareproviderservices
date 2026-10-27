@@ -8,7 +8,8 @@ const T = 'source-compare.test.js', TI = 'catalog-import.test.js';
 const M = [
   ['control', F, 'Pure: no database, no network.', 'Pure: no database,  no network.', true, T],
   ['unstated fields compared', F, 'if (s[f] == null) continue;', '', false, T],
-  ['derived MSRP treated as stated', F, 'if (f === "msrp" && c.msrp_derived) { fields.push("msrp (today derived)"); continue; }', '', false, T],
+  ['derived MSRP treated as stated', F, 'if (f === "msrp" && c.msrp_derived) {', 'if (false) {', false, T],
+  ['equal derived MSRP reported as a change', F, 'if (same(s[f], c[f])) notes.push(', 'if (false) notes.push(', false, T],
   ['named-account price treated as general', F, 'const scoped = rs.some(r => r.dealer_price_scope && !/^general$/i.test(String(r.dealer_price_scope)));', 'const scoped = false;', false, T],
   ['source ambiguity ignored', F, 'if (new Set(forms.map(f => JSON.stringify(f))).size > 1) {', 'if (false) {', false, T],
   ['catalog ambiguity ignored', F, 'if (new Set(cforms.map(f => JSON.stringify(f))).size > 1) {', 'if (false) {', false, T],
@@ -16,7 +17,7 @@ const M = [
   ['unknown catalog version accepted', F, 'if (!i.identity) return refuse(', 'if (false) return refuse(', false, T],
   ['another line accepted', F, "if (!line.manufacturer || (line.manufacturer !== i.slug && !(i.aliases || []).includes(line.manufacturer)))", 'if (false)', false, T],
   ['removed rows dropped', F, "for (const [k, cs] of C) if (!S.has(k)) out.push(", "for (const [k, cs] of C) if (false) out.push(", false, T],
-  ['figures in the answer', F, 'out.push(fields.length ? { code, state: "changed", fields, locators }', 'out.push(fields.length ? { code, state: "changed", fields, locators, s, c }', false, T],
+  ['figures in the answer', F, 'Object.assign({ code, state: "changed", fields, locators }, note)', 'Object.assign({ code, state: "changed", fields, locators, s, c }, note)', false, T],
   ['switched-off product compared', F, '&& p.active !== false)', ')', false, T],
   ['rule-derived MSRP compared', F, 'const stated = (v, how) => (how == null || how === "stated") ? cents(v) : null;', 'const stated = (v, how) => cents(v);', false, T],
   ['any role compares', API, 'if(me.role!=="president") return json(403,{error:"President only"});', '', false, T],

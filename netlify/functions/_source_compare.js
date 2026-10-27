@@ -17,7 +17,8 @@
      unverifiable  the source row has no usable general dealer price (missing, not a number, or quoted for one named
                    account — ABM), or today's product carries no price to compare with
    A field the source does not state is never compared ("not stated" is not "changed"). A derived MSRP (2× dealer,
-   `_msrp_suggested`) is not a stated price: a source MSRP beside it reads "msrp (today derived)".
+   `_msrp_suggested`) is not a stated price: a different source MSRP reads "msrp (today derived)"; an equal one is unchanged
+   with a note.
 
    Refusals (no comparison is guessed): a source with no SHA-256 (its identity is unknown), a source for another line,
    an empty source, or a catalog the server could not read for its exact version (the caller refuses before this).
@@ -40,7 +41,7 @@ function tiersKey(t) {
 /* Today's commercial values of one product, as the shop prices it. */
 function currentOf(p) {
   const price = cents(p.base_price != null && p.base_price !== "" ? p.base_price : p.dealer_price);
-  return { dealer_price: price, tiers: tiersKey(p.tiers || p.tier_prices), msrp: p._msrp_suggested ? null : cents(p.msrp), msrp_derived: !!p._msrp_suggested,
+  return { dealer_price: price, tiers: tiersKey(p.tiers || p.tier_prices), msrp: cents(p.msrp), msrp_derived: !!p._msrp_suggested,
     map: cents(p.map), uom: txt(p.uom) || null, case_qty: parseInt(p.case_qty, 10) > 0 ? parseInt(p.case_qty, 10) : null };
 }
 /* What a source row STATES (null = not stated). */
@@ -84,13 +85,14 @@ function compareSource(input) {
     if (new Set(cforms.map(f => JSON.stringify(f))).size > 1) { out.push({ code, state: "ambiguous", note: "listed " + cur.length + " times in today's catalog with different figures", locators }); continue; }
     const c = cforms[0];
     if (c.dealer_price == null) { out.push({ code, state: "unverifiable", note: "today's product carries no price to compare with", locators }); continue; }
-    const fields = [];
+    const fields = [], notes = [];
     for (const f of FIELDS) {
       if (s[f] == null) continue;                                  // not stated on the source: never compared
-      if (f === "msrp" && c.msrp_derived) { fields.push("msrp (today derived)"); continue; }
+      if (f === "msrp" && c.msrp_derived) { if (same(s[f], c[f])) notes.push("MSRP now stated by the source (equal to today's derived MSRP)"); else fields.push("msrp (today derived)"); continue; }
       if (!same(s[f], c[f])) fields.push(f);
     }
-    out.push(fields.length ? { code, state: "changed", fields, locators } : { code, state: "unchanged", locators });
+    const note = notes.length ? { note: notes.join("; ") } : {};
+    out.push(fields.length ? Object.assign({ code, state: "changed", fields, locators }, note) : Object.assign({ code, state: "unchanged", locators }, note));
   }
   for (const [k, cs] of C) if (!S.has(k)) out.push({ code: String(cs[0].code), state: "removed", note: "in today's catalog, not on this source — never retired from a comparison" });
   out.sort((a, b) => STATES.indexOf(a.state) - STATES.indexOf(b.state) || a.code.localeCompare(b.code));
