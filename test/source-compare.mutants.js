@@ -21,6 +21,7 @@ const M = [
   ['switched-off product compared', F, '&& p.active !== false)', ')', false, T],
   ['rule-derived MSRP compared', F, 'const stated = (v, how) => (how == null || how === "stated") ? cents(v) : null;', 'const stated = (v, how) => cents(v);', false, T],
   ['no-op rungs compared', F, '.filter(r => r[1] != null && r[0] > 1 && r[1] !== b)', '.filter(r => r[1] != null)', false, T],
+  ['discounted base compared instead of the list price', F, 'const raw = p.dealer_price != null && p.dealer_price !== "" ? p.dealer_price : p.base_price', 'const raw = p.base_price != null && p.base_price !== "" ? p.base_price : p.dealer_price', false, T],
   ['any role compares', API, 'if(me.role!=="president") return json(403,{error:"President only"});', '', false, T],
   ['unreadable catalog guessed', API, 'catch(err){ return json(409,{error:"catalog_unreadable"', 'catch(err){ L={products:[],identity:"x",source:"layers"}; } if(false){ return json(409,{error:"catalog_unreadable"', false, T],
   ['offline prices read as changes', I, 'else if (offline && b && COMMERCIAL_BA.includes(f) && was == null)', 'else if (false)', false, TI],

@@ -43,7 +43,9 @@ function tiersKey(t, base) {
 }
 /* Today's commercial values of one product, as the shop prices it. */
 function currentOf(p) {
-  const raw = p.base_price != null && p.base_price !== "" ? p.base_price : p.dealer_price, price = cents(raw);
+  /* A row that carries a list dealer price beside a discounted base (Access4U: dealer_price + tier_prices) is compared on
+     the LIST price — the figure a manufacturer price list prints (the importer's own rule). */
+  const raw = p.dealer_price != null && p.dealer_price !== "" ? p.dealer_price : p.base_price, price = cents(raw);
   return { dealer_price: price, tiers: tiersKey(p.tiers || p.tier_prices, raw), msrp: cents(p.msrp), msrp_derived: !!p._msrp_suggested,
     map: cents(p.map), uom: txt(p.uom) || null, case_qty: parseInt(p.case_qty, 10) > 0 ? parseInt(p.case_qty, 10) : null };
 }
