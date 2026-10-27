@@ -92,6 +92,7 @@ const pm=p=>{const[y,m]=p.split("-").map(Number);return y*12+(m-1);};
 
 // ---- territory ACCESS RULES (shared with the ordering portal's dealer-auth). ----
 const { computeAccess } = require("./_access.js");
+const LD=require("./_line_discounts.js");
 const orgAccounts=require("./_accountorg.js")(sbGet,sbSend);
 const P = require("./_platform.js");
 const ACT_ORDERING = process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app";
@@ -185,7 +186,7 @@ async function ownsDealer(me, dealer_id){
 // verification, owner, branch family or account structure, not even on a dealer in their own
 // book. Their dealer work — visits, notes, contacts, tasks, deals, email — runs through Dealer 360.
 const NON_MGMT_READS=new Set(["portal_access","preview_link"]);
-const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","backfill_master","attribution_breakdown","reattribute","clear_order_refs","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","rep_bulk","list_contract_prices","set_contract_price","clear_contract_price","prefill_access","prefill_access_all","create_dealer"]);
+const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","backfill_master","attribution_breakdown","reattribute","clear_order_refs","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","rep_bulk","list_contract_prices","set_contract_price","clear_contract_price","list_line_discounts","set_line_discount","clear_line_discount","prefill_access","prefill_access_all","create_dealer"]);
 
 async function buildState(){
   const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
@@ -679,6 +680,32 @@ exports.handler = async (event)=>{
       if(act==="clear_contract_price"){
         if(!b.dealer_id||!b.manufacturer||!b.code) return json(400,{error:"dealer_id, manufacturer, code required"});
         await sbSend("DELETE",`dealer_contract_prices?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}`,null,{Prefer:"return=minimal"});
+        return json(200,{ok:true});
+      }
+      // ---- Dealer line discount off the STANDARD list (owner policy 2026-10-27; dealer_line_discounts) ----
+      /* Only the purchase price moves: MSRP and MAP never depend on it. A contract price stays an absolute
+         override (checked first by the shop and the order server) and is never discounted again. */
+      if(act==="list_line_discounts"){
+        if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+        let rows;
+        try{ rows=await sbGet(`dealer_line_discounts?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,discount_pct,note,active,set_by,updated_at&order=manufacturer`); }
+        catch(e){ if(LD.MISSING.test(String((e&&e.message)||e))) return json(200,{ok:true,installed:false,rates:[]});
+          return json(503,{error:"layer_unreadable",message:"Could not read this dealer's line discounts: "+String((e&&e.message)||e)}); }
+        return json(200,{ok:true,installed:true,rates:rows||[]});
+      }
+      if(act==="set_line_discount"){
+        if(!b.dealer_id||!b.manufacturer) return json(400,{error:"dealer_id, manufacturer required"});
+        if(!LD.validRate(b.discount_pct)) return json(400,{error:"bad_rate",message:"A discount is a percentage above 0 and below 100, with at most two decimals (e.g. 10, 15, 20 or 12.5)."});
+        const row={dealer_id:b.dealer_id,manufacturer:String(b.manufacturer),discount_pct:Number(b.discount_pct),
+          note:(b.note!=null&&String(b.note).trim())?String(b.note).trim().slice(0,200):null,active:true,
+          set_by:String((me&&me.email)||"management").slice(0,120),updated_at:new Date().toISOString()};
+        try{ await sbSend("POST","dealer_line_discounts?on_conflict=dealer_id,manufacturer",row,{Prefer:"resolution=merge-duplicates,return=minimal"}); }
+        catch(e){ if(LD.MISSING.test(String((e&&e.message)||e))) return json(503,{error:"not_installed",message:"Run supabase/dealer_line_discounts.sql first. Nothing was saved."}); throw e; }
+        return json(200,{ok:true});
+      }
+      if(act==="clear_line_discount"){
+        if(!b.dealer_id||!b.manufacturer) return json(400,{error:"dealer_id, manufacturer required"});
+        await sbSend("DELETE",`dealer_line_discounts?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&manufacturer=eq.${encodeURIComponent(b.manufacturer)}`,null,{Prefer:"return=minimal"});
         return json(200,{ok:true});
       }
       if(act==="nomerge"){

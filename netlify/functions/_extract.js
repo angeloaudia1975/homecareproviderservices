@@ -27,7 +27,7 @@ function grabDecl(src, anchor){
 function slice(src, a, b){ const i=src.indexOf(a), j=src.indexOf(b, i); if(i<0||j<0) throw new Error('anchor not found: '+(i<0?a:b)); return src.slice(i,j); }
 /* Identical to test/extract-engine.js. */
 function extractEngine(src){
-  const pricing=['function familyQty','function tierQty','function contractPrice','function unitPrice','function linesSubtotal','function validFreightTerms','function freightTermsFor','function computeFreight'].map(a=>grabDecl(src,a)).join('\n');
+  const pricing=['function familyQty','function tierQty','function contractPrice','function lineRatePrice','function unitPrice','function linesSubtotal','function validFreightTerms','function freightTermsFor','function computeFreight'].map(a=>grabDecl(src,a)).join('\n');
   const startA=src.indexOf('/* Pure. The same rule as images-api.js')>=0?'/* Pure. The same rule as images-api.js':'async function mergeCatalogEdits(slug, prods){';
   const merge=slice(src, startA, 'async function loadProducts(slug){');
   const color=slice(src, 'const COLOR_SUFFIX=', '/* ---------- render tabs');

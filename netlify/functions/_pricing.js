@@ -10,6 +10,7 @@
 
    Every read is strict: a layer that cannot be read stops the pricing. An order is never priced
    from a partial catalog. */
+const LD = require("./_line_discounts.js");
 const ENGINE = require("./_shop_engine.js");
 const CC = require("./_catalog_commercial.js");
 
@@ -66,6 +67,13 @@ function recordAuthority(metaRows) {
 
 /* Contract prices exactly as dealer-auth.js hands them to the shop: the master account's prices
    apply to its branches, a branch's own rows override. Keyed "slug::code". */
+/* The dealer's line discounts (owner policy 2026-10-27), resolved like contract prices. */
+async function dealerRates(sb, dealerId) {
+  if (!dealerId) return {};
+  const d = await sb("GET", `dealers?id=eq.${enc(dealerId)}&select=id,parent_id`);
+  const rec = d && d[0];
+  return LD.lineRates(sb, dealerId, rec && rec.parent_id);
+}
 async function contractPrices(sb, dealerId) {
   const prices = {};
   if (!dealerId) return prices;
@@ -116,7 +124,7 @@ const LAYER_SELECT = {
 
 /* One line's products, built by the shop's own mergeCatalogEdits with the server answering its
    reads. Returns { products, engine } — engine.unitPrice prices against the CART map given. */
-async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart, freightCfg, freightOverride }) {
+async function lineProducts({ slug, sb, catalogFile, contentFile, contract, rates, cart, freightCfg, freightOverride }) {
   const [publicFile, metaRows, commercialRec] = await Promise.all([
     catalogFile(slug),
     sb("GET", `manufacturer_meta?slug=eq.${enc(slug)}&select=slug,enriched_only,category_map,record_authoritative,record_resync_error,freight_terms`),
@@ -181,7 +189,7 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart
   const CONFIG = { SUPABASE_URL: "https://engine.local", SUPABASE_ANON: "server", CONTENT_APPROVED_ONLY: true };
   const state = { manufacturers: [{ slug, hasData: true, enrichedOnly: meta.enriched_only === true,
     categoryMap: (meta.category_map && typeof meta.category_map === "object") ? meta.category_map : null }] };
-  const AUTH = { session: { access_token: "server" }, status: "approved", prices: contract || {} };
+  const AUTH = { session: { access_token: "server" }, status: "approved", prices: contract || {}, rates: rates || {} };
   const quiet = { log() {}, warn() {}, error() {} };
   /* Freight is the shop's rule too (computeFreight, verbatim): the line's manufacturers.json entry. */
   const mfrEntry = Object.assign({ slug }, (freightCfg && freightCfg[slug]) || {});
@@ -208,6 +216,7 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart
    untouched — Golden prices its own orders through its own commerce API. */
 async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, manufacturersFile }) {
   const contract = await contractPrices(sb, dealerId);
+  const rates = await dealerRates(sb, dealerId);
   /* Freight terms (manufacturers.json, the shop's own file). Strict like every other read: an order
      is never quoted freight from a file that could not be read. No reader given = no freight. */
   let freightCfg = null;
@@ -229,7 +238,7 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
     throw new Error("manufacturer list unavailable (manufacturers.json missing, empty or not a list)");
   const listed = s => !freightCfg || Object.prototype.hasOwnProperty.call(freightCfg, s);
   for (const slug of slugs) bySlug[slug] = listed(slug)
-    ? await lineProducts({ slug, sb, catalogFile, contentFile, contract, cart, freightCfg }) : null;
+    ? await lineProducts({ slug, sb, catalogFile, contentFile, contract, rates, cart, freightCfg }) : null;
   /* The family quantity is the shop's: every cart line, priced from its CURRENT product. */
   const lines = [];
   (orders || []).forEach((o, oi) => {
@@ -273,8 +282,9 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
     /* The family the dealer chose travels back, so a code sold in two ramp families (Access4U SR3 / PRK) maps to its own cart line. */
     o.items.push({ code: l.code, ...(l.family != null ? { family: l.family } : {}), name: l.p.name, qty: l.qty, available: true, unit, ...unitBits,
       contract: contract[k] != null ? contract[k] : null,
+      rate: rates[l.slug] != null ? rates[l.slug] : null,
       line_total: Math.round(unit * l.qty * 100) / 100, client_unit: l.client, changed: diff,
-      commercial: { base_price: l.p.base_price, msrp: l.p.msrp, map: l.p.map, tiers: l.p.tiers || null,
+      commercial: { base_price: l.p.base_price, ...(l.p.dealer_price != null ? { dealer_price: l.p.dealer_price } : {}), msrp: l.p.msrp, map: l.p.map, tiers: l.p.tiers || null,
                     group: l.p.group || "", manufacturer: l.slug, price_note: l.p.price_note || "" } });
   }
   out.forEach(o => { if (!isGolden(o.manufacturer_slug)) o.subtotal = Math.round(o.items.reduce((n, it) => n + (it.line_total || 0), 0) * 100) / 100; });
@@ -314,4 +324,4 @@ function remoteFiles(base) {
   };
 }
 
-module.exports = { priceOrders, lineProducts, contractPrices, feedRows, recordAuthority, isGolden, remoteFiles, fullCatalogFile, commercialFor, LAYER_SELECT, COMMERCIAL_SELECT };
+module.exports = { priceOrders, lineProducts, contractPrices, dealerRates, feedRows, recordAuthority, isGolden, remoteFiles, fullCatalogFile, commercialFor, LAYER_SELECT, COMMERCIAL_SELECT };

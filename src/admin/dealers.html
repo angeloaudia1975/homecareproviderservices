@@ -454,6 +454,7 @@ function renderDetail(){
              <input id="cpfilter" placeholder="Filter by code or name…" oninput="cpRender()" style="flex:1;min-width:180px">
              <span id="cpst" class="st"></span>
            </div>
+           <div id="cprate"></div>
            <div id="cptable"><div class="hint" style="margin-top:8px">Pick a line to load its products and set contract prices.</div></div>`
         : `<div class="dim" style="margin-top:6px">Grant this dealer at least one manufacturer line (in “Ordering access” above) before setting contract prices.</div>`}
    </div>`;
@@ -500,7 +501,7 @@ function cpLineOptions(d){ return (d.access||[]).map(s=>`<option value="${esc(s)
 function cpCssId(code){ return String(code).replace(/[^a-zA-Z0-9_-]/g,"_"); }
 async function cpLoadLine(dealerId){
   const slug=(($("#cpline")||{}).value||""); const st=$("#cpst");
-  CP={dealerId,slug,products:[],over:{}};
+  CP={dealerId,slug,products:[],over:{},rate:null,rateInstalled:true,hasList:false}; cpRateRender();
   const host=$("#cptable");
   if(!slug){ if(host)host.innerHTML=`<div class="hint" style="margin-top:8px">Pick a line to load its products.</div>`; return; }
   if(st){st.textContent="Loading…";st.className="st";}
@@ -512,11 +513,45 @@ async function cpLoadLine(dealerId){
     if(!cr.ok||cj.error) throw new Error(cj.message||cj.error||("catalog HTTP "+cr.status));   // an unread catalog is not an empty one
     const prods=[...(cj.products||[]),...((cj.custom||[]).map(c=>({code:c.code,name:c.name,base_price:c.base_price})))].filter(p=>p&&p.code);
     const pj=await post({action:"list_contract_prices",dealer_id:dealerId});
+    const lj=await post({action:"list_line_discounts",dealer_id:dealerId});
+    const lr=(lj.rates||[]).find(r=>r.manufacturer===slug&&r.active!==false);
+    CP.rate=lr?Number(lr.discount_pct):null; CP.rateInstalled=lj.installed!==false;
+    CP.hasList=prods.some(p=>p.dealer_price!=null&&p.dealer_price!=="");
     const over={}; (pj.prices||[]).filter(r=>r.manufacturer===slug).forEach(r=>over[r.code]=Number(r.price));
     CP.products=prods; CP.over=over;
     if(st){st.textContent="";st.className="st";}
-    cpRender();
+    cpRateRender(); cpRender();
   }catch(e){ if(st){st.textContent="Couldn't load — "+(e.message||e);st.className="st warn";} }
+}
+/* LINE DISCOUNT (owner policy 2026-10-27). One rate per dealer per line off the STANDARD dealer list; blank =
+   the line's default (15% on Access4U). Only the purchase price moves — MSRP and MAP never do — and a contract
+   price below still wins and is never discounted again. */
+function cpRateRender(){
+  const h=$("#cprate"); if(!h) return;
+  if(!CP.slug||!CP.hasList){ h.innerHTML=""; return; }
+  if(!CP.rateInstalled){ h.innerHTML=`<div class="hint" style="text-transform:none;margin:8px 0">Line discounts are not switched on yet (supabase/dealer_line_discounts.sql has not been run).</div>`; return; }
+  const cur=CP.rate!=null?`${CP.rate}% off the standard list`:"Default — the line's standard dealer discount";
+  h.innerHTML=`<div style="border:1px solid #e3e8ef;border-radius:10px;padding:10px 12px;margin:8px 0">
+    <b>Dealer discount on ${esc(mfrNameBySlug(CP.slug))}</b> <span class="hint" style="text-transform:none">— now: ${esc(cur)}</span>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">
+      ${[10,15,20].map(v=>`<button class="btn sm" type="button" onclick="cpRateSet(${v})">${v}%</button>`).join("")}
+      <input id="cprateval" type="number" min="0.01" max="99.99" step="0.01" placeholder="other %" style="width:110px" value="${CP.rate!=null&&[10,15,20].indexOf(CP.rate)<0?CP.rate:""}">
+      <button class="btn sm" type="button" onclick="cpRateSet(Number(($('#cprateval')||{}).value))">Save</button>
+      ${CP.rate!=null?`<button class="btn sm ghost" type="button" onclick="cpRateClear()">Back to default</button>`:""}
+      <span id="cpratest" class="st"></span>
+    </div>
+    <div class="hint" style="text-transform:none;margin-top:6px">Only this dealer's purchase price changes. MSRP and MAP stay the same for every dealer. A contract price set below still wins and is not discounted again.</div>
+  </div>`;
+}
+async function cpRateSet(v){
+  const st=$("#cpratest");
+  if(!(isFinite(v)&&v>0&&v<100&&Math.round(v*100)===v*100)){ if(st){st.textContent="Enter a percentage above 0 and below 100 (two decimals at most).";st.className="st warn";} return; }
+  try{ await post({action:"set_line_discount",dealer_id:CP.dealerId,manufacturer:CP.slug,discount_pct:v}); CP.rate=v; cpRateRender(); }
+  catch(e){ if(st){st.textContent="Not saved — "+(e.message||e);st.className="st warn";} }
+}
+async function cpRateClear(){
+  try{ await post({action:"clear_line_discount",dealer_id:CP.dealerId,manufacturer:CP.slug}); CP.rate=null; cpRateRender(); }
+  catch(e){ const st=$("#cpratest"); if(st){st.textContent="Not cleared — "+(e.message||e);st.className="st warn";} }
 }
 function cpRender(){
   const host=$("#cptable"); if(!host)return;

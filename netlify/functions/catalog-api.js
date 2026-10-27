@@ -2268,7 +2268,8 @@ async function handleCatalog(event){
       const media={}; for(const r of (mediaRows||[])){ (media[r.code]=media[r.code]||[]).push({id:r.id,kind:r.kind,url:r.url,title:r.title||"",sort:r.sort||0}); }
       // full catalog fields so the editor can show + edit everything (incl. tiers)
       const products=(prods||[]).map(p=>({code:p.code,name:p.name,category:p.category||"",image:p.image||"",
-        base_price:p.base_price,msrp:p.msrp,description:p.description||"",tiers:p.tiers||null,price_note:p.price_note||"",group:p.group||""}));
+        base_price:p.base_price,msrp:p.msrp,description:p.description||"",tiers:p.tiers||null,price_note:p.price_note||"",group:p.group||"",
+        ...(p.dealer_price!=null&&p.dealer_price!==""?{dealer_price:p.dealer_price}:{}), ...(p.map!=null&&p.map!==""?{map:p.map}:{})}));
       /* ONE ANSWER TO "WHAT CATEGORY IS THIS?".
          The Structure Map showed the derived heading, this screen showed the raw one, and
          the same product read "Back & Spine" on one page and "Orthopedic Bracing & Supports"

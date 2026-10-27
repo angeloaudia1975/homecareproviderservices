@@ -39,7 +39,7 @@ async function serverPrice(orders, dealerId){
 const pricedView=o=>({manufacturer_slug:o.manufacturer_slug||o.manufacturer||null, subtotal:o.subtotal,
   freight_fee:o.freight_fee==null?null:o.freight_fee, estimated_total:o.estimated_total==null?null:o.estimated_total,
   items:(o.items||[]).map(it=>({code:it.code, ...(it.family!=null?{family:it.family}:{}), name:it.name, qty:it.qty, unit:it.unit, line_total:it.line_total,
-    client_unit:it.client_unit, changed:!!it.changed, available:it.available!==false, contract:it.contract==null?null:it.contract,
+    client_unit:it.client_unit, changed:!!it.changed, available:it.available!==false, contract:it.contract==null?null:it.contract, rate:it.rate==null?null:it.rate,
     commercial:it.commercial||null}))});
 
 // ---- dealer order confirmation (transactional email, via Resend) ------------
