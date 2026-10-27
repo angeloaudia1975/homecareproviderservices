@@ -1,11 +1,13 @@
-/* Catalog Exceptions (2026-10-26) — page script. Read-only: catalog-api "catalog_exceptions" (President). Shows
-   codes and counts only, never a price. No inline script (strict CSP safe). */
+/* Catalog Exceptions (2026-10-26) — page script. catalog-api "catalog_exceptions" (President, read-only) plus the
+   Batch 2 bulk corrections: correction_plan (preview), correction_apply (dry run = validate, then record) and
+   correction_undo. Shows codes and counts only, never a price. No inline script (strict CSP safe). */
 (function () {
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   let TOKEN = (window.HCPS && HCPS.token && HCPS.token()) || "";
   window.addEventListener("hcps-token", e => { try { TOKEN = e.detail; } catch (_) {} });
   let Q = null, SEL = null, CAT = "", BLOCKERS = false, FIND = "";
+  let MODE = "queue", PLAN = null, PICK = new Set(), VALID = null, PF = { manufacturers: [], categories: [], codes: "" }, PMSG = "";
   const STATUS = { gold_standard: "Gold Standard", blocked: "Blocked", in_progress: "In progress", partial_measurement: "Partly measured", no_data: "No data" };
   const TOOL = { pricing: ["Manufacturer Center", l => "/admin/manufacturer-center.html#line=" + encodeURIComponent(l)],
     sku: ["Product Catalog", () => "/admin/catalog.html"], units: ["Manufacturer Center", l => "/admin/manufacturer-center.html#line=" + encodeURIComponent(l)],
@@ -49,8 +51,10 @@
       <div class="tiles">${tiles}</div>
       <div class="bar"><input type="search" id="find" placeholder="Find a manufacturer" value="${esc(FIND)}" aria-label="Find a manufacturer">
         <label><input type="checkbox" id="blk" ${BLOCKERS ? "checked" : ""}> Blockers only</label>
-        <button class="sec" id="clr">Clear filters</button><button class="sec" id="csv">Download CSV</button><button class="sec" id="rf">Refresh</button></div>
+        <button class="sec" id="clr">Clear filters</button><button class="sec" id="csv">Download CSV</button><button class="sec" id="rf">Refresh</button>
+        <button class="sec pri" id="bulk">Bulk corrections →</button></div>
       <div class="split"><div>${cards}</div><div class="panel" id="panel">${panel()}</div></div>`;
+    $("#bulk").onclick = () => { MODE = "bulk"; PF.manufacturers = SEL ? [SEL] : []; PF.categories = CAT ? [CAT] : []; renderBulk(); };
     document.querySelectorAll(".tile").forEach(b => b.onclick = () => { CAT = CAT === b.dataset.cat ? "" : b.dataset.cat; render(); });
     document.querySelectorAll(".ln").forEach(b => b.onclick = () => { SEL = b.dataset.line; render(); });
     $("#find").oninput = e => { FIND = e.target.value.trim().toLowerCase(); const p = e.target.selectionStart; render(); const f = $("#find"); f.focus(); try { f.setSelectionRange(p, p); } catch (_) {} };
@@ -73,6 +77,90 @@
       ${l.frozen ? `<div class="note" style="margin-top:8px">Gold Standard line — frozen. Any change goes through a recorded regression fix in Manufacturer Center; nothing is changed from this queue.</div>` : ""}
       ${cats || `<div class="empty" style="margin-top:8px">No exceptions${CAT ? " in " + esc(catLabel(CAT)) : ""}.</div>`}`;
   }
+  /* ---------------- Bulk corrections (Batch 2) ---------------- */
+  const KIND = { duplicate_classification: "Duplicate review", image_status: "Photo review status", handoff: "Owning tool", frozen_line: "Frozen line" };
+  const BLOCK = { owner_decision: "Needs the owner's decision", frozen: "Frozen — regression fix only", owning_tool: "Fix in the owning tool", already_recorded: "Already recorded" };
+  function renderBulk() {
+    const mf = (Q.lines || []).map(l => `<label class="pick"><input type="checkbox" data-pm="${esc(l.slug)}" ${PF.manufacturers.includes(l.slug) ? "checked" : ""}> ${esc(l.name)}${l.frozen ? " (frozen)" : ""}</label>`).join("");
+    const cf = Q.categories.filter(c => c.key !== "ready").map(c => `<label class="pick"><input type="checkbox" data-pc="${c.key}" ${PF.categories.includes(c.key) ? "checked" : ""}> ${esc(c.label)}</label>`).join("");
+    let list = "";
+    if (PLAN) {
+      const c = PLAN.counts;
+      list = `<div class="note">${c.total} proposal(s) · <b>${c.applicable} can be recorded here</b> (${c.affected_skus} part number(s)) · ${c.owner_decision} need your decision · ${c.handoff} belong to another tool · ${c.frozen} on frozen lines · ${c.already_recorded} already recorded.
+        Recording a review changes nothing a dealer sees: no price, catalog row, page or photo is written, nothing is deleted.</div>
+        <div class="bar"><button class="sec" id="selall">Select all applicable</button><button class="sec" id="selnone">Clear selection</button><span class="hint">${PICK.size} selected</span></div>
+        ${PLAN.proposals.map(p => `<div class="prop${p.supported ? "" : " off"}">
+          <div class="row1"><label class="pick big">${p.supported ? `<input type="checkbox" data-pp="${esc(p.id)}" ${PICK.has(p.id) ? "checked" : ""}>` : ""}
+            <span class="ttl">${esc(p.manufacturer)} · ${esc((p.codes || []).slice(0, 6).join(", ") || p.id.split(":").pop())}${(p.codes || []).length > 6 ? " …" : ""}</span></label>
+            <span><span class="chip c-info">${esc(KIND[p.kind] || p.kind)}</span> <span class="chip ${p.supported ? "c-ok" : "c-warn"}">${p.supported ? "Can record" : esc(BLOCK[p.blocked] || p.blocked)}</span></span></div>
+          <div class="kv"><span>Category</span><b>${esc(catLabel(p.cat))}</b><span>Affected</span><b>${p.affected} part number(s)</b>
+            <span>Original</span><b>${esc(p.original)}</b><span>Proposed</span><b>${esc(p.proposed)}</b></div>
+          <div class="codes">${(p.evidence || []).map(esc).join("<br>")}</div>
+          ${p.current ? `<div class="hint">Current review: ${esc(p.current.status)} by ${esc(p.current.by || "")} (decision #${p.current.decision_id})</div>` : ""}
+          <div class="acts"><a href="${esc(p.href)}">Open ${esc(p.tool)}</a></div></div>`).join("") || `<div class="empty">Nothing to correct for this filter.</div>`}`;
+    }
+    const valid = VALID ? `<div class="note"><b>Validated — ${VALID.decisions.length} review decision(s) will be recorded:</b><div class="codes">${VALID.decisions.map(d => esc(d.manufacturer + " · " + d.code + " → " + (d.hcps_value.classification || d.hcps_value.status))).join("<br>")}</div></div>` : "";
+    const recorded = PLAN && PLAN.recorded && PLAN.recorded.length ? `<div class="cat"><h3>Recorded corrections (latest first) — undo records a superseding “reopened” decision</h3>
+      ${PLAN.recorded.slice(0, 40).map(r => `<div class="ex"><b>#${r.id}</b> ${esc(r.manufacturer)} · ${esc(r.code)} · ${esc(r.field.replace("catalog:", ""))} → ${esc(r.status)} <span class="hint">${esc(r.by || "")} · ${esc(r.at ? new Date(r.at).toLocaleString() : "")}</span>
+        ${r.status !== "reopened" ? `<button class="sec small" data-undo="${r.id}">Undo</button>` : ""}</div>`).join("")}</div>` : "";
+    $("#body").innerHTML = `<div class="bar"><button class="sec" id="back">← Back to the queue</button></div>
+      <div class="note"><b>Bulk corrections.</b> Choose manufacturers, categories or part numbers, preview the plan, validate it, then record the selected reviews with a reason.
+      Frozen Gold Standard lines, prices, units, content and photos are never changed here — those rows link to the tool that owns them.</div>
+      <div class="cat"><h3>Manufacturers</h3><div class="picks">${mf}</div></div>
+      <div class="cat"><h3>Categories</h3><div class="picks">${cf}</div></div>
+      <div class="bar" style="margin-top:10px"><input id="pcodes" placeholder="Part numbers (optional, comma separated)" value="${esc(PF.codes)}" aria-label="Part numbers">
+        <button class="sec pri" id="prev">Preview plan</button></div>
+      ${PMSG ? `<div class="err">${esc(PMSG)}</div>` : ""}
+      ${list}
+      ${PLAN ? `<div class="bar sticky"><input id="preason" placeholder="Reason for these corrections (required)" aria-label="Reason">
+        <button class="sec" id="pval" ${PICK.size ? "" : "disabled"}>Validate selection</button>
+        <button class="sec pri" id="papply" ${VALID && PICK.size ? "" : "disabled"}>Record ${PICK.size} correction(s)</button></div>${valid}` : ""}
+      ${recorded}`;
+    $("#back").onclick = () => { MODE = "queue"; render(); };
+    document.querySelectorAll("[data-pm]").forEach(b => b.onchange = () => { toggle(PF.manufacturers, b.dataset.pm, b.checked); });
+    document.querySelectorAll("[data-pc]").forEach(b => b.onchange = () => { toggle(PF.categories, b.dataset.pc, b.checked); });
+    $("#prev").onclick = () => { PF.codes = $("#pcodes").value; preview(); };
+    document.querySelectorAll("[data-pp]").forEach(b => b.onchange = () => { b.checked ? PICK.add(b.dataset.pp) : PICK.delete(b.dataset.pp); VALID = null; keepReason(renderBulk); });
+    if (PLAN) {
+      $("#selall").onclick = () => { PLAN.proposals.filter(p => p.supported).forEach(p => PICK.add(p.id)); VALID = null; keepReason(renderBulk); };
+      $("#selnone").onclick = () => { PICK.clear(); VALID = null; keepReason(renderBulk); };
+      $("#pval").onclick = () => apply(true); $("#papply").onclick = () => apply(false);
+      if (REASON) $("#preason").value = REASON;
+      $("#preason").oninput = e => { REASON = e.target.value; };
+    }
+    document.querySelectorAll("[data-undo]").forEach(b => b.onclick = () => undo(b.dataset.undo));
+  }
+  let REASON = "";
+  const keepReason = fn => { const r = $("#preason"); if (r) REASON = r.value; fn(); };
+  const toggle = (arr, v, on) => { const i = arr.indexOf(v); if (on && i < 0) arr.push(v); if (!on && i >= 0) arr.splice(i, 1); };
+  const filterBody = () => ({ manufacturers: PF.manufacturers, categories: PF.categories, codes: PF.codes.split(/[,\s]+/).map(x => x.trim()).filter(Boolean) });
+  async function preview() {
+    PMSG = ""; $("#prev").disabled = true; $("#prev").textContent = "Building the plan…";
+    const r = await api(Object.assign({ action: "correction_plan" }, filterBody()));
+    if (r.status !== 200 || !r.body.ok) { PMSG = "The plan could not be built: " + (r.body.message || r.body.error || "HTTP " + r.status) + ". Nothing was changed."; PLAN = null; }
+    else { PLAN = r.body; PICK = new Set([...PICK].filter(id => PLAN.proposals.some(p => p.id === id && p.supported))); VALID = null; }
+    renderBulk();
+  }
+  async function apply(dry) {
+    REASON = ($("#preason").value || "").trim();
+    if (REASON.length < 5) { PMSG = "Give a reason (at least 5 characters)."; return renderBulk(); }
+    const r = await api(Object.assign({ action: "correction_apply", plan_hash: PLAN.plan_hash, ids: [...PICK], reason: REASON, dry_run: dry }, filterBody()));
+    if (r.status !== 200 || !r.body.ok) { PMSG = (r.body.message || r.body.error || "HTTP " + r.status); VALID = null; if (r.body.error === "plan_changed") PLAN = null; return renderBulk(); }
+    if (dry) { VALID = r.body; PMSG = ""; return renderBulk(); }
+    PMSG = ""; VALID = null; PICK.clear(); REASON = "";
+    if (r.body.queue) Q = Object.assign({ categories: Q.categories }, r.body.queue);
+    await preview();
+    PMSG = "Recorded " + r.body.recorded.length + " correction(s). The queue was recalculated.";
+    renderBulk();
+  }
+  async function undo(id) {
+    const why = (($("#preason") && $("#preason").value) || "").trim();
+    if (why.length < 5) { PMSG = "Type the reason for the undo in the reason box first (at least 5 characters)."; return renderBulk(); }
+    const r = await api({ action: "correction_undo", decision_id: Number(id), reason: why });
+    if (r.status !== 200 || !r.body.ok) { PMSG = (r.body.message || r.body.error || "HTTP " + r.status); return renderBulk(); }
+    if (r.body.queue) Q = Object.assign({ categories: Q.categories }, r.body.queue);
+    REASON = ""; await preview(); PMSG = "Reopened decision #" + id + " (a superseding decision was recorded)."; renderBulk();
+  }
   function csv() {
     const rows = [["manufacturer", "category", "severity", "check", "count", "codes_or_pages", "detail"]];
     for (const l of visibleLines()) for (const x of l.items) if (!CAT || x.cat === CAT)
@@ -88,7 +176,7 @@
     if (r.status === 403) { $("#body").innerHTML = `<div class="empty">Catalog Exceptions is limited to the President.</div>`; return; }
     if (r.status !== 200 || !r.body.ok) { $("#body").innerHTML = `<div class="err">The queue could not be read: ${esc(r.body.message || r.body.error || ("HTTP " + r.status))}. Nothing is shown rather than a partial list.</div>`; return; }
     Q = r.body; if (!SEL) { const first = Q.lines.find(l => l.blockers) || Q.lines[0]; SEL = first && first.slug; }
-    render();
+    MODE === "bulk" ? renderBulk() : render();
   }
   function boot() { if (!TOKEN) return gate(); load(); }
   boot();

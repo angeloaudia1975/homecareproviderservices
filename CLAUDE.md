@@ -1790,6 +1790,23 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   may browse product information for lines they don't carry, never their wholesale prices or ordering. Escalate only
   missing authoritative commercial information, material safety/security issues and real production release gates —
   routine development needs no approval; unresolved manufacturer items go to the exceptions queue, never stop the others.
+- **Bulk catalog corrections (Batch 2, Angelo's directive 2026-10-26).** Catalog Exceptions → Bulk corrections
+  (catalog-api `correction_plan` read-only / `correction_apply` / `correction_undo`, President only; pure logic
+  `_catalog_corrections.js`). Filter by manufacturer, category, part number → each proposal shows original value,
+  proposed value, evidence, affected SKUs and the owning tool → validate (dry run) → record with a reason. It records
+  REVIEW DECISIONS ONLY (append-only `mfr_decisions`, kind `exception`, field `catalog:duplicate_code` /
+  `catalog:image_status`, `supersedes_id` chain) and never writes a price, catalog row, page or photo, never deletes.
+  Duplicate part numbers are classified from the rows themselves: repeated_record (identical), cross_listing (only
+  category / subcategory / family differ), shared_part (names differ only by words naming their own section, e.g. Zen-O
+  vs Zen-O Lite); anything else (unit, brand, UPC, photo, size…) = conflict → owner decision, never recordable here.
+  A recorded acceptance moves the code to a "duplicate_reviewed" note (stops counting); a photo review state rides
+  along but the code KEEPS counting until a photo with recorded rights is placed in Product Images. Undo = a superseding
+  `reopened` decision (only the current review). A plan that changed since the preview is refused (409 plan_changed).
+  Frozen lines, prices, units, content, freight and retired items are never applicable — they link to the owning tool
+  (frozen → Decisions / regression fix). Tests: catalog-corrections 25 (+18/18 mutants), catalog-corrections.ui (4 widths).
+- **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
+  the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
+  guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.
 
 ## 18. Manufacturer report imports — MI-1a transaction identity & safe replacement (RULE, agreed 2026-10-09/10)
 

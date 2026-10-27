@@ -36,6 +36,20 @@
  .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
  .acts a{min-height:44px;display:inline-flex;align-items:center;padding:0 14px;border-radius:8px;border:1px solid var(--line);color:var(--navy);text-decoration:none;font-weight:700;font-size:13px}
  .empty{border:1px dashed var(--line);border-radius:10px;padding:16px;color:var(--gray);font-size:13px;background:#fafbfc}
+ button.pri{background:var(--navy);color:#fff;border-color:var(--navy)}
+ button.small{min-height:44px;padding:0 12px;margin-left:6px}
+ button:disabled{opacity:.5;cursor:not-allowed}
+ .picks{display:flex;flex-wrap:wrap;gap:6px}
+ .pick{display:inline-flex;gap:6px;align-items:center;font-size:13px;min-height:44px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+ .pick.big{border:0;padding:0;min-height:44px}
+ .pick input{width:20px;height:20px}
+ .prop{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#fff}
+ .prop.off{background:#fafbfc}
+ .prop .row1{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between}
+ .kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 10px;font-size:13px;margin-top:6px}
+ .kv span{color:var(--gray);font-size:12px}.kv b{font-weight:600;overflow-wrap:anywhere}
+ .c-ok{background:#e9f7ef;color:#1f7a44;border-color:#b9e3c9}
+ .sticky{position:sticky;bottom:0;background:#fff;padding:8px 0;border-top:1px solid var(--line);z-index:2}
  @media (max-width:880px){ .split{grid-template-columns:1fr} .panel{position:static} }
  @media (max-width:760px){ .wrap{padding:14px 14px 50px} }
 </style>
@@ -43,7 +57,7 @@
 <header id="ac-head"></header>
 <div class="wrap">
   <div class="top"><div><h1 style="margin:0">Catalog Exceptions</h1>
-    <div class="sub">Every manufacturer's open catalog work in one queue: prices, part numbers, units, content, photos, freight, retired items, and what is ready. Read-only — fixes happen in the tool that owns each record (Manufacturer Center, Product Content Enrichment, Product Catalog); nothing here changes a price or publishes a product.</div></div></div>
+    <div class="sub">Every manufacturer's open catalog work in one queue: prices, part numbers, units, content, photos, freight, retired items, and what is ready. Fixes happen in the tool that owns each record (Manufacturer Center, Product Content Enrichment, Product Catalog). Bulk corrections records review decisions only (duplicates, photo review states) — nothing here changes a price or publishes a product.</div></div></div>
   <div id="body"><div class="msg">Loading…</div></div>
 </div>
 <script src="/admin/staff-session.js"></script>
