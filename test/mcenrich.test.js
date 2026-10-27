@@ -227,5 +227,13 @@ await t('a photo that fails to copy is recorded, never linked (zero broken image
   eq(pg.live_page,'assist-live'); const before=JSON.stringify(W3.db.product_content);
   const rr=await call(C3,withWin({action:'enrich_page',page_key:pg.page_key})); eq([rr.status,rr.body.error],[409,'live_page']); eq(JSON.stringify(W3.db.product_content),before);
 });
+await t('a line WITHOUT master records reads its products through the storefront merge (read-only) — no crash on a code without a saved edit',async()=>{
+  const W2=world(); const C2=PC(W2); W2.db.product_skus=W2.db.product_skus.filter(r=>r.manufacturer!==S.REAL);
+  W2.db.product_overrides=(W2.db.product_overrides||[]).slice(0,1);   // most codes have no saved edit (the live AirAvant crash)
+  const before=JSON.stringify(W2.db);
+  const r=await call(C2,{action:'enrich_plan'}); eq(r.status,200,JSON.stringify(r.body).slice(0,300));
+  ok(r.body.active>0 && r.body.pages.length>0,'no products: '+JSON.stringify(r.body).slice(0,200));
+  eq(JSON.stringify(W2.db),before,'enrich_plan wrote something');
+});
 console.log(`mc enrichment (Bemis sandbox): ${pass} passed, ${fail} failed`); process.exit(fail?1:0);
 })();

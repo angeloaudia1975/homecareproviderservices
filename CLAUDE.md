@@ -1853,6 +1853,10 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   evidence record stays private, outside git); 34 Access4U part-number questions still block staging. The consolidated
   manufacturer-question doc (Access4U, Dalton, PediFix, Corsicana, ABM, AirAvant) is the Claude Doc "HCPS Manufacturer
   Questions — Catalog Completion (Oct 2026)" (claude.ai/artifact/B6CjSygrSjkhdzy8wTP9eb) — no prices in it.
+  (6) Product Enrichment's read-only plan on a line WITHOUT master records (AirAvant) crashed ("reading 'active'" on a
+  code with no saved edit) and could never see a price (public file has none): it now reads the line through the
+  storefront's own merge on the server (`_pricing.lineProducts`, GET only). Starting enrichment drafts for such a line
+  still needs Angelo's go-ahead (Continue Product Enrichment shows only with a deferral or window).
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.
