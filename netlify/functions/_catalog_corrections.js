@@ -109,7 +109,8 @@ function buildPlan(input) {
     for (const x of l.items || []) {
       if (x.severity === "info" && x.cat !== "sku") continue;
       if (x.cat === "ready") continue;
-      const codes = Array.isArray(x.codes) ? x.codes : [];
+      /* A part number printed twice is named twice by readiness — one proposal per part number. */
+      const seen = new Set(), codes = (Array.isArray(x.codes) ? x.codes : []).filter(c => { const k = norm(c); if (seen.has(k)) return false; seen.add(k); return true; });
       if (l.frozen) {
         push({ id: `${l.slug}:${x.check}`, manufacturer: l.slug, cat: x.cat, kind: "frozen_line", codes, affected: x.count || codes.length || 1,
           original: x.detail, proposed: "No change from here — this line is frozen (Gold Standard).",
