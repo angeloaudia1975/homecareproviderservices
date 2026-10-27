@@ -46,7 +46,9 @@ function currentOf(p) {
 /* What a source row STATES (null = not stated). */
 function sourceOf(r) {
   const price = cents(r.dealer_price);
-  return { dealer_price: price, tiers: tiersKey(r.tiers), msrp: cents(r.msrp), map: cents(r.map), uom: txt(r.uom) || null,
+  /* An MSRP / MAP the importer DERIVED from a stated rule (Access4U: MSRP = dealer × 1.5) is not a stated price. */
+  const stated = (v, how) => (how == null || how === "stated") ? cents(v) : null;
+  return { dealer_price: price, tiers: tiersKey(r.tiers), msrp: stated(r.msrp, r.msrp_source), map: stated(r.map, r.map_source), uom: txt(r.uom) || null,
     case_qty: parseInt(r.case_qty, 10) > 0 ? parseInt(r.case_qty, 10) : null };
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);

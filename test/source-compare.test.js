@@ -48,6 +48,12 @@ const base = () => ({ slug: 'acme', line: line(src), products, identity: 'f'.rep
     const q = SC.compareSource(Object.assign(base(), { line: line([{ code: 'A2', dealer_price: 303.33 }]) }));
     ok(q.rows.find(x => x.code === 'A2').state === 'unchanged', JSON.stringify(q.rows[0]));
   });
+  await t('an MSRP / MAP derived from a stated rule (importer source_rule) is never compared', () => {
+    const q = SC.compareSource(Object.assign(base(), { line: line([{ code: 'A1', dealer_price: 101.11, msrp: 151.67, msrp_source: 'source_rule', map: 106.17, map_source: 'source_rule' }]) }));
+    ok(q.rows.find(x => x.code === 'A1').state === 'unchanged', JSON.stringify(q.rows[0]));
+    const s = SC.compareSource(Object.assign(base(), { line: line([{ code: 'A1', dealer_price: 101.11, msrp: 303.03, msrp_source: 'stated' }]) }));
+    ok(s.rows.find(x => x.code === 'A1').fields.join() === 'msrp', JSON.stringify(s.rows[0]));
+  });
   await t('a price change is detected (cent precision, $ and commas in the source)', () => {
     const q = SC.compareSource(Object.assign(base(), { line: line([{ code: 'A1', dealer_price: '$101.12' }, { code: 'A4', dealer_price: '606.66' }]) }));
     ok(q.rows.find(x => x.code === 'A1').fields.join() === 'dealer_price' && q.rows.find(x => x.code === 'A4').state === 'unchanged', JSON.stringify(q.rows));
