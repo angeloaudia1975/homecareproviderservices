@@ -478,11 +478,11 @@ window.HUB_GUIDE = {
   },
   "Catalog Exceptions": {
     tagline: "One queue for every manufacturer's open catalog work.",
-    what: "Reads every line's master record, product pages, public catalog file, price-list sources and Gold Standard runs, and sorts what is left to do into eight categories: missing or unverified prices, part-number mismatches and duplicates, units and case packs, missing descriptions, photos, freight, retired items still offered, and what is ready. Read-only; it never shows a price.",
-    features: ["Eight categories with totals", "Per-line detail with the exact part numbers or pages", "Blockers-only filter", "Frozen Gold Standard lines marked read-only", "CSV export (codes only)"],
+    what: "Reads every line's master record, product pages, public catalog file, price-list sources and Gold Standard runs, and sorts what is left to do into eight categories: missing or unverified prices, part-number mismatches and duplicates, units and case packs, missing descriptions, photos, freight, retired items still offered, and what is ready. It never shows a price. Bulk corrections turns the queue into a plan: filter by manufacturer, category or part number, see each item's original value, proposed correction, evidence and affected SKUs, validate, then record the review decisions (duplicate classifications, photo review states) with a reason — undoable, and the queue recalculates.",
+    features: ["Eight categories with totals", "Per-line detail with the exact part numbers or pages", "Blockers-only filter", "Frozen Gold Standard lines marked read-only", "CSV export (codes only)", "Bulk corrections: preview → validate → record → undo, append-only history"],
     connects: ["Manufacturer Center (prices, units, freight, verification)", "Product Content Enrichment (descriptions, features, pages)", "Product Images", "Product Catalog"],
     problems: "Shows exactly what stands between each manufacturer and a complete, orderable catalog — without anyone rebuilding the list by hand.",
-    workflow: "Open the queue → pick a category or a line → open the tool that owns the fix → refresh to see it clear."
+    workflow: "Open the queue → pick a category or a line → open the tool that owns the fix, or use Bulk corrections for duplicate reviews and photo review states → the queue recalculates."
   },
   "Product Content Enrichment & Review": {
     tagline: "Merge manufacturer website + PDF catalog with your HCPS record, pick the best version, and approve before dealers see it.",

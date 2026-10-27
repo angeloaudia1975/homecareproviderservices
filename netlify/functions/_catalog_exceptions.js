@@ -22,6 +22,7 @@
    NEVER a price: the input carries `priced` (true/false) per SKU, the output carries codes and counts only. Nothing
    here decides a fix; a frozen (Gold Standard) line is reported read-only so no bulk action ever touches it. */
 const R = require("./_readiness.js");
+const CC = require("./_catalog_corrections.js");
 
 const VISIBLE = new Set(["published", "active", "discontinued"]);
 const OFF = new Set(["retired", "not_listed", "discontinued", "hidden", "inactive"]);
@@ -107,7 +108,7 @@ function lineChecks(slug, skus, pages, meta, src) {
 }
 
 /* input: the launchMatrix input, plus `sources` ({slug: current accepted price-list source or null}) and per-SKU
-   `priced` booleans (never a price). Output: { categories, lines:[{slug,name,status,frozen,completion,counts,items}], totals }. */
+   `priced` booleans (never a price), and `reviews` (mfr_decisions rows of field catalog:*). Output: { categories, lines:[{slug,name,status,frozen,completion,counts,items}], totals }. */
 function exceptionsQueue(input) {
   const i = input || {};
   const skus = (i.skus || []).map(s => Object.assign({}, s, { base_price: s.priced ? 1 : null }));
@@ -116,6 +117,7 @@ function exceptionsQueue(input) {
   const by = (rows, k) => { const o = {}; for (const r of rows || []) if (r) (o[r[k]] = o[r[k]] || []).push(r); return o; };
   const S = by(skus, "manufacturer"), P = by(i.pages, "manufacturer");
   const meta = Object.fromEntries((i.meta || []).filter(x => x && x.slug).map(x => [x.slug, x]));
+  const reviews = CC.latestReviews(i.reviews || []);
   const lines = m.lines.map(l => {
     const items = [];
     /* Codes whose visible product page carries a photo are not "rows without an image": the shop shows the page's. */
@@ -124,6 +126,19 @@ function exceptionsQueue(input) {
       for (const e of Array.isArray(p.skus) ? p.skus : []) pagePhotoCodes.add(norm(e && (e.sku || e.code)));
     for (const e of l.exceptions || []) {
       const cat = CHECK_CAT[e.check]; if (!cat) continue;
+      /* Batch 2: a duplicate part number whose latest recorded review accepts it (cross-listing, shared part,
+         repeated record) is no longer open work — it is listed as a reviewed note. A conflict, or a review
+         reopened later, stays counted. */
+      if (e.check === "catalog_duplicate_codes" && Array.isArray(e.codes)) {
+        const settled = e.codes.filter(c => CC.duplicateSettled(reviews, l.slug, c));
+        const left = e.codes.filter(c => !settled.includes(c));
+        if (settled.length) items.push({ cat, severity: "info", check: "duplicate_reviewed", codes: settled, count: settled.length,
+          detail: "part numbers listed more than once, reviewed and recorded as intentional (" + settled.map(c => c + ": " +
+            (CC.CLASSES[CC.reviewStatus(CC.reviewOf(reviews, l.slug, CC.FIELD.duplicate, c))] || "reviewed")).join("; ") + ")" });
+        if (!left.length) continue;
+        items.push(Object.assign({ cat }, e, { codes: left, count: Math.max(0, (e.count || e.codes.length) - settled.length) }));
+        continue;
+      }
       if (e.check === "catalog_rows_without_image" && Array.isArray(e.codes)) {
         const left = e.codes.filter(c => !pagePhotoCodes.has(norm(c)));
         if (!left.length) continue;
@@ -133,6 +148,11 @@ function exceptionsQueue(input) {
       items.push(Object.assign({ cat }, e));
     }
     items.push(...lineChecks(l.slug, S[l.slug] || [], P[l.slug] || [], meta[l.slug] || {}, (i.sources || {})[l.slug] || null));
+    /* Recorded image review states ride along (the codes stay counted until a photo with rights is placed). */
+    for (const x of items) if (x.cat === "images" && Array.isArray(x.codes)) {
+      const st = {}; x.codes.forEach(c => { const d = CC.reviewOf(reviews, l.slug, CC.FIELD.image, c); const v = CC.reviewStatus(d); if (v && v !== "reopened") st[c] = v; });
+      if (Object.keys(st).length) x.reviews = st;
+    }
     /* Counted = work: blockers and warnings only (notes are shown, not counted) — except "ready", which is the
        count itself. A part number or page is counted ONCE per category however many checks name it; a check with
        no codes counts 1. */

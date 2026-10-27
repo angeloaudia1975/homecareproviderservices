@@ -2072,6 +2072,65 @@ async function noteParity(slug, msg){
    modify-write starts, so nothing is half-written. Strict: if the freeze state cannot be read, the
    commercial action is refused too. The only override is b.regression_fix = {decision_id, reason}
    naming an unused mfr_decisions row of kind regression_fix for this same line. */
+/* The catalog exceptions queue's data (shared by catalog_exceptions and the bulk-correction plan / apply). Strict:
+   any unreadable layer returns {fail: 503}. Prices never leave it: product_skus is reduced to priced true/false and
+   catalog rows keep only the non-commercial identity fields (IDENTITY_FIELDS). */
+const IDENTITY_FIELDS=["code","image",...require("./_catalog_corrections.js").IDENTITY];
+async function exceptionsData(){
+  const CE=require("./_catalog_exceptions.js");
+  const paged=async(path,order)=>{ const all=[]; for(let off=0;off<100000;off+=1000){
+    let rows;
+    try{ rows=await sb("GET",`${path}&order=${order}`,null,{Range:`${off}-${off+999}`,"Range-Unit":"items"}); }
+    catch(e){ if(off>0 && /Supabase 416/.test(String(e&&e.message))) break; throw e; }  // a total that is an exact multiple of 1000
+    all.push(...(rows||[])); if(!rows||rows.length<1000) break; } return all; };
+  const publicFile=async slug=>{ const r=await fetch(`${ORDERING_BASE}/data/${encodeURIComponent(slug)}.json`,{headers:{"cache-control":"no-cache"}});
+    if(r.status===404) return null; if(!r.ok) throw new Error(`catalog file ${slug}: HTTP ${r.status}`);
+    const j=await r.json(); if(!Array.isArray(j)) throw new Error(`catalog file ${slug} is not a list`);
+    return j.map(x=>{ const o={}; if(x) for(const k of IDENTITY_FIELDS) if(x[k]!==undefined) o[k]=x[k]; return o; }); };
+  let full={}; let mfrs, skuRows, pages, meta, sources, runs, decisions, reviews, customRows, overRows, catalogs={};
+  try{
+    [mfrs, skuRows, pages, meta, sources, runs, decisions, reviews, customRows, overRows]=await Promise.all([
+      fetchJson(`${ORDERING_BASE}/data/manufacturers.json`),
+      paged("product_skus?manufacturer=neq.golden&select=manufacturer,code,status,uom,case_qty,base_price","manufacturer.asc,code.asc"),
+      paged("product_content?manufacturer=neq.golden&select=manufacturer,page_key,status,disabled,skus,description,features,image,card_image,images_gallery","manufacturer.asc,page_key.asc"),
+      sb("GET","manufacturer_meta?select=slug,record_authoritative,record_resync_error,frozen,deferrals,freight_terms"),
+      sb("GET","mfr_sources?kind=eq.price_list&status=eq.accepted&select=id,manufacturer,legacy,received_date,title&order=id.asc&limit=2000"),
+      sb("GET","mfr_verification_runs?select=id,manufacturer,phase,result,fingerprint,run_at&order=run_at.desc&limit=500"),
+      sb("GET","mfr_decisions?kind=eq.regression_fix&select=id,manufacturer,used_at&limit=2000"),
+      sb("GET","mfr_decisions?field=like.catalog:*&select=id,manufacturer,kind,field,code,hcps_value,decided_by,decided_at&order=id.asc&limit=5000"),
+      /* The legacy catalog layers (added products, saved edits) are catalog rows too — ABM lives only there. Only
+         code / image / active are kept; their price fields are never selected (custom_products) or are dropped
+         from the patch as it is read (product_overrides). */
+      paged("custom_products?manufacturer=neq.golden&select=manufacturer,code,image,active","manufacturer.asc,code.asc"),
+      paged("product_overrides?manufacturer=neq.golden&select=manufacturer,code,patch","manufacturer.asc,code.asc")]);
+    overRows=(overRows||[]).map(o=>({manufacturer:o.manufacturer, code:o.code, image:o.patch&&typeof o.patch.image==="string"?o.patch.image:undefined, active:o.patch&&o.patch.active===false?false:undefined}));
+    if(!Array.isArray(mfrs)||!mfrs.length) throw new Error("manufacturers.json is empty or not a list");
+    for(const m of mfrs.filter(x=>x&&x.slug)) catalogs[m.slug]=await publicFile(m.slug);
+  }catch(e){ return {fail:json(503,{error:"exceptions_unreadable", message:String((e&&e.message)||e).slice(0,300)})}; }
+  /* One catalog per line, merged the way the shop merges it: file rows, then added products (same code replaces),
+     then a saved edit's image / switch-off. A switched-off row is not part of the catalog. */
+  { /* Every file row is kept — a part number printed twice in the file is a real duplicate the queue must show. */
+    const lay={}; const at=m=>lay[m]=lay[m]||[];
+    for(const [m,rows] of Object.entries(catalogs)) for(const r of rows||[]) if(r) at(m).push(Object.assign({},r,{code:r.code,image:r.image||""}));
+    const same=(r,c)=>r.code!=null&&String(r.code)===String(c);
+    for(const c of customRows||[]){ if(!c||c.code==null) continue; const L=at(c.manufacturer);
+      if(c.active===false){ lay[c.manufacturer]=L.filter(r=>!same(r,c.code)); continue; }
+      const hit=L.filter(r=>same(r,c.code)); if(hit.length) hit.forEach(r=>{ r.image=c.image||r.image; }); else L.push({code:c.code,image:c.image||""}); }
+    for(const o of overRows||[]){ const L=lay[o.manufacturer]; if(!L) continue;
+      if(o.active===false){ lay[o.manufacturer]=L.filter(r=>!same(r,o.code)); continue; }
+      if(o.image!==undefined) L.forEach(r=>{ if(same(r,o.code)) r.image=o.image; }); }
+    catalogs={}; full={}; for(const [m,L] of Object.entries(lay)) if(L.length){ full[m]=L; catalogs[m]=L.map(r=>({code:r.code,image:r.image})); } }
+  const skus=(skuRows||[]).map(s=>({manufacturer:s.manufacturer, code:s.code, status:s.status, uom:s.uom, case_qty:s.case_qty, priced:Number(s.base_price)>0}));
+  const metaRows=(meta||[]).map(x=>({slug:x.slug, record_authoritative:x.record_authoritative, record_resync_error:x.record_resync_error,
+    frozen:x.frozen, deferrals:x.deferrals, freight_terms:x.freight_terms==null?null:true, freight_traced:!!(x.freight_terms&&x.freight_terms.trace)}));
+  const src={}; for(const s of sources||[]){ const cur=src[s.manufacturer]; if(!cur||(cur.legacy&&!s.legacy)||(!!cur.legacy===!!s.legacy&&s.id>cur.id)) src[s.manufacturer]={id:s.id,legacy:!!s.legacy,received_date:s.received_date,title:s.title}; }
+  const lines={}; const runsBy={}; (runs||[]).forEach(r=>{ (runsBy[r.manufacturer]=runsBy[r.manufacturer]||[]).push(r); });
+  const fixes={}; (decisions||[]).forEach(d=>{ if(!d.used_at) fixes[d.manufacturer]=(fixes[d.manufacturer]||0)+1; });
+  new Set([...Object.keys(runsBy),...Object.keys(fixes)]).forEach(s=>{ lines[s]={gold_standard:MC.goldStandardOf(runsBy[s]||[]), open_regression_fixes:fixes[s]||0}; });
+  const q=CE.exceptionsQueue({manufacturers:mfrs, catalogs, skus, pages, meta:metaRows, lines, sources:src, reviews,
+    exclude:["golden","golden-technologies"], measured:{master:true,pages:true,runs:true}});
+  return {q, rows:full, reviews:reviews||[], meta:metaRows};
+}
 async function freezeGate(b, me){
   /* Release A (approved 2026-10-11): the freeze covers what dealers see, not only prices — the content
      actions (MC.CONTENT_ACTIONS: catalog-layer names / categories / images, media, links, the line's
@@ -4434,58 +4493,62 @@ async function handleCatalog(event){
          is read, and catalog rows come from the PUBLIC (price-free) storefront files, never the server's priced
          restore. Strict: any unreadable layer is a 503, never an empty queue. */
       if(b.action==="catalog_exceptions"){
-        const CE=require("./_catalog_exceptions.js");
-        const paged=async(path,order)=>{ const all=[]; for(let off=0;off<100000;off+=1000){
-          let rows;
-          try{ rows=await sb("GET",`${path}&order=${order}`,null,{Range:`${off}-${off+999}`,"Range-Unit":"items"}); }
-          catch(e){ if(off>0 && /Supabase 416/.test(String(e&&e.message))) break; throw e; }  // a total that is an exact multiple of 1000
-          all.push(...(rows||[])); if(!rows||rows.length<1000) break; } return all; };
-        const publicFile=async slug=>{ const r=await fetch(`${ORDERING_BASE}/data/${encodeURIComponent(slug)}.json`,{headers:{"cache-control":"no-cache"}});
-          if(r.status===404) return null; if(!r.ok) throw new Error(`catalog file ${slug}: HTTP ${r.status}`);
-          const j=await r.json(); if(!Array.isArray(j)) throw new Error(`catalog file ${slug} is not a list`);
-          return j.map(x=>({code:x&&x.code, image:x&&x.image})); };
-        let mfrs, skuRows, pages, meta, sources, runs, decisions, customRows, overRows, catalogs={};
-        try{
-          [mfrs, skuRows, pages, meta, sources, runs, decisions, customRows, overRows]=await Promise.all([
-            fetchJson(`${ORDERING_BASE}/data/manufacturers.json`),
-            paged("product_skus?manufacturer=neq.golden&select=manufacturer,code,status,uom,case_qty,base_price","manufacturer.asc,code.asc"),
-            paged("product_content?manufacturer=neq.golden&select=manufacturer,page_key,status,disabled,skus,description,features,image,card_image,images_gallery","manufacturer.asc,page_key.asc"),
-            sb("GET","manufacturer_meta?select=slug,record_authoritative,record_resync_error,frozen,deferrals,freight_terms"),
-            sb("GET","mfr_sources?kind=eq.price_list&status=eq.accepted&select=id,manufacturer,legacy,received_date,title&order=id.asc&limit=2000"),
-            sb("GET","mfr_verification_runs?select=id,manufacturer,phase,result,fingerprint,run_at&order=run_at.desc&limit=500"),
-            sb("GET","mfr_decisions?kind=eq.regression_fix&select=id,manufacturer,used_at&limit=2000"),
-            /* The legacy catalog layers (added products, saved edits) are catalog rows too — ABM lives only there. Only
-               code / image / active are kept; their price fields are never selected (custom_products) or are dropped
-               from the patch as it is read (product_overrides). */
-            paged("custom_products?manufacturer=neq.golden&select=manufacturer,code,image,active","manufacturer.asc,code.asc"),
-            paged("product_overrides?manufacturer=neq.golden&select=manufacturer,code,patch","manufacturer.asc,code.asc")]);
-          overRows=(overRows||[]).map(o=>({manufacturer:o.manufacturer, code:o.code, image:o.patch&&typeof o.patch.image==="string"?o.patch.image:undefined, active:o.patch&&o.patch.active===false?false:undefined}));
-          if(!Array.isArray(mfrs)||!mfrs.length) throw new Error("manufacturers.json is empty or not a list");
-          for(const m of mfrs.filter(x=>x&&x.slug)) catalogs[m.slug]=await publicFile(m.slug);
-        }catch(e){ return json(503,{error:"exceptions_unreadable", message:String((e&&e.message)||e).slice(0,300)}); }
-        /* One catalog per line, merged the way the shop merges it: file rows, then added products (same code replaces),
-           then a saved edit's image / switch-off. A switched-off row is not part of the catalog. */
-        { /* Every file row is kept — a part number printed twice in the file is a real duplicate the queue must show. */
-          const lay={}; const at=m=>lay[m]=lay[m]||[];
-          for(const [m,rows] of Object.entries(catalogs)) for(const r of rows||[]) if(r) at(m).push({code:r.code,image:r.image||""});
-          const same=(r,c)=>r.code!=null&&String(r.code)===String(c);
-          for(const c of customRows||[]){ if(!c||c.code==null) continue; const L=at(c.manufacturer);
-            if(c.active===false){ lay[c.manufacturer]=L.filter(r=>!same(r,c.code)); continue; }
-            const hit=L.filter(r=>same(r,c.code)); if(hit.length) hit.forEach(r=>{ r.image=c.image||r.image; }); else L.push({code:c.code,image:c.image||""}); }
-          for(const o of overRows||[]){ const L=lay[o.manufacturer]; if(!L) continue;
-            if(o.active===false){ lay[o.manufacturer]=L.filter(r=>!same(r,o.code)); continue; }
-            if(o.image!==undefined) L.forEach(r=>{ if(same(r,o.code)) r.image=o.image; }); }
-          catalogs={}; for(const [m,L] of Object.entries(lay)) if(L.length) catalogs[m]=L; }
-        const skus=(skuRows||[]).map(s=>({manufacturer:s.manufacturer, code:s.code, status:s.status, uom:s.uom, case_qty:s.case_qty, priced:Number(s.base_price)>0}));
-        const metaRows=(meta||[]).map(x=>({slug:x.slug, record_authoritative:x.record_authoritative, record_resync_error:x.record_resync_error,
-          frozen:x.frozen, deferrals:x.deferrals, freight_terms:x.freight_terms==null?null:true, freight_traced:!!(x.freight_terms&&x.freight_terms.trace)}));
-        const src={}; for(const s of sources||[]){ const cur=src[s.manufacturer]; if(!cur||(cur.legacy&&!s.legacy)||(!!cur.legacy===!!s.legacy&&s.id>cur.id)) src[s.manufacturer]={id:s.id,legacy:!!s.legacy,received_date:s.received_date,title:s.title}; }
-        const lines={}; const runsBy={}; (runs||[]).forEach(r=>{ (runsBy[r.manufacturer]=runsBy[r.manufacturer]||[]).push(r); });
-        const fixes={}; (decisions||[]).forEach(d=>{ if(!d.used_at) fixes[d.manufacturer]=(fixes[d.manufacturer]||0)+1; });
-        new Set([...Object.keys(runsBy),...Object.keys(fixes)]).forEach(s=>{ lines[s]={gold_standard:MC.goldStandardOf(runsBy[s]||[]), open_regression_fixes:fixes[s]||0}; });
-        const q=CE.exceptionsQueue({manufacturers:mfrs, catalogs, skus, pages, meta:metaRows, lines, sources:src,
-          exclude:["golden","golden-technologies"], measured:{master:true,pages:true,runs:true}});
+        const d=await exceptionsData(); if(d.fail) return d.fail;
+        const q=d.q;
         return json(200,Object.assign({ok:true, generated:new Date().toISOString()}, q));
+      }
+      /* BULK CATALOG CORRECTIONS (Batch 2, 2026-10-26). correction_plan is read-only; correction_apply records the
+         selected review decisions (append-only mfr_decisions, kind exception, field catalog:*) after re-deriving the
+         plan — a plan that changed since the preview is refused (409 plan_changed); correction_undo records a
+         superseding "reopened" decision. None of them writes a price, a catalog row, a page, a photo or anything a
+         dealer sees, and a frozen Gold Standard line is never touched (its items are never applicable). The
+         recalculated queue comes back with every write. (_catalog_corrections.js) */
+      if(b.action==="correction_plan"||b.action==="correction_apply"||b.action==="correction_undo"){
+        const CC=require("./_catalog_corrections.js");
+        const d=await exceptionsData(); if(d.fail) return d.fail;
+        const filter={manufacturers:Array.isArray(b.manufacturers)?b.manufacturers.map(String):[], categories:Array.isArray(b.categories)?b.categories.map(String):[], codes:Array.isArray(b.codes)?b.codes.map(String):[]};
+        const actor=String((me&&me.email)||"president").slice(0,80);
+        if(b.action==="correction_plan"){
+          const plan=CC.buildPlan({queue:d.q, rows:d.rows, decisions:d.reviews, filter});
+          return json(200,Object.assign({ok:true, generated:new Date().toISOString(), filter}, plan,
+            {recorded:(d.reviews||[]).slice(-200).reverse().map(r=>({id:r.id, manufacturer:r.manufacturer, field:r.field, code:r.code, status:CC.reviewStatus(r), by:r.decided_by, at:r.decided_at}))}));
+        }
+        const reason=String(b.reason||"").trim();
+        if(reason.length<5) return json(400,{error:"reason_required", message:"Give a reason (at least 5 characters). Nothing was recorded."});
+        const frozen=new Set((d.meta||[]).filter(m=>m.frozen===true).map(m=>m.slug));
+        if(b.action==="correction_undo"){
+          const id=parseInt(b.decision_id,10);
+          const dec=(d.reviews||[]).find(r=>r.id===id);
+          if(!dec) return json(404,{error:"no_such_correction", message:"Decision "+b.decision_id+" is not a recorded catalog correction. Nothing was recorded."});
+          if(frozen.has(dec.manufacturer)) return json(423,{error:"line_frozen", message:dec.manufacturer+" is frozen. Nothing was recorded."});
+          const latest=CC.reviewOf(CC.latestReviews(d.reviews), dec.manufacturer, dec.field, dec.code);
+          if(!latest || latest.id!==dec.id || CC.reviewStatus(dec)==="reopened") return json(409,{error:"not_current", message:"Only the current review of a part number can be undone (a later decision already replaced it). Nothing was recorded."});
+          const row=CC.reopenFor(dec, actor, reason);
+          if(b.dry_run===true) return json(200,{ok:true, dry_run:true, decision:row});
+          let ins; try{ ins=await sb("POST","mfr_decisions",row,{Prefer:"return=representation"}); }
+          catch(e2){ return json(502,{error:"decision_not_recorded", message:String((e2&&e2.message)||e2).slice(0,300)}); }
+          const after=await exceptionsData(); if(after.fail) return json(200,{ok:true, recorded:ins, queue_unreadable:true});
+          return json(200,{ok:true, recorded:ins, queue:Object.assign({generated:new Date().toISOString()}, after.q)});
+        }
+        /* correction_apply */
+        const plan=CC.buildPlan({queue:d.q, rows:d.rows, decisions:d.reviews, filter});
+        if(!b.plan_hash || b.plan_hash!==plan.plan_hash) return json(409,{error:"plan_changed", message:"The catalog changed since this plan was previewed. Preview it again; nothing was recorded.", plan_hash:plan.plan_hash});
+        const ids=Array.isArray(b.ids)?b.ids.map(String):[];
+        if(!ids.length) return json(400,{error:"nothing_selected", message:"Select at least one applicable correction. Nothing was recorded."});
+        const byId=Object.fromEntries(plan.proposals.map(p=>[p.id,p]));
+        const rows=[];
+        for(const id of ids){ const p=byId[id];
+          if(!p) return json(409,{error:"not_in_plan", id, message:"“"+id+"” is not in the current plan. Nothing was recorded."});
+          if(frozen.has(p.manufacturer)) return json(423,{error:"line_frozen", id, message:p.manufacturer+" is frozen (Gold Standard). Nothing was recorded."});
+          try{ rows.push(CC.decisionFor(p, actor, reason)); }
+          catch(e2){ return json(409,{error:"not_applicable", id, message:"“"+id+"” cannot be applied from here ("+String(e2.message)+"). Nothing was recorded."}); }
+        }
+        if(b.dry_run===true) return json(200,{ok:true, dry_run:true, decisions:rows});
+        let ins; try{ ins=await sb("POST","mfr_decisions",rows,{Prefer:"return=representation"}); }
+        catch(e2){ return json(502,{error:"decision_not_recorded", message:String((e2&&e2.message)||e2).slice(0,300)}); }
+        const after=await exceptionsData(); if(after.fail) return json(200,{ok:true, recorded:ins, queue_unreadable:true});
+        return json(200,{ok:true, recorded:(ins||[]).map(r=>({id:r.id, manufacturer:r.manufacturer, field:r.field, code:r.code})),
+          queue:Object.assign({generated:new Date().toISOString()}, after.q)});
       }
       if(b.action==="mc_overview"){
         let lines, meta, sources, decisions, runs;
