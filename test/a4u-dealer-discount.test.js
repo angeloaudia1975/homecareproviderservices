@@ -21,7 +21,8 @@ const LINE='access4u';
 const P=(code,extra)=>Object.assign({manufacturer:LINE,code,name:'Item '+code,group:'',dealer_price:1000,base_price:850,msrp:1500,map:1050},extra||{});
 const FILE=()=>({[LINE]:[ P('RR4x36'), P('PS5x5',{dealer_price:628,base_price:533.8,msrp:942,map:659.4}),
   P('SR3',{family:'RS',dealer_price:400,base_price:340,msrp:600,map:420}), P('SR3',{family:'RR',dealer_price:500,base_price:425,msrp:750,map:525}),
-  P('TIERED',{tiers:[{minQty:1,price:850},{minQty:5,price:800}]}), P('NOLIST',{dealer_price:null}) ], manufacturers:[{slug:LINE,name:'Access4U'}]});
+  P('TIERED',{tiers:[{minQty:1,price:850},{minQty:5,price:800}]}), P('NOLIST',{dealer_price:null}),
+  P('RSU',{dealer_price:200,base_price:170,msrp:300,map:210,upgrades:[{label:'Picket',price_add:40},{label:'Guardrail',price_add:20}]}) ], manufacturers:[{slug:LINE,name:'Access4U'}]});
 
 function world({rates, contract, failRead}){
   const W=M.createWorld({ tokens:{dealer:'d@x.com'}, failRead, tables:{
@@ -114,6 +115,30 @@ await t('sign-in (dealer-auth me) hands the dealer his own rates with his contra
   const W2=world({rates:[rate('d1',10)],failRead:tb=>tb==='dealer_line_discounts'?500:0}); const A2=M.load('dealer-auth.js',W2,{},ROOT);
   const r2=await call(A2,{action:'me'});
   eq([r2.body.rates,r2.body.prices,r2.body.prices_unavailable],[null,null,true],'unknown, and the shop says so');
+});
+await t('railing upgrades: one configured line per upgrade, priced on the server off the configured standard list',async()=>{
+  const q=async(opts,up,unit)=>{ const W=world(opts), C=mod(W); const r=await call(C,{action:'price_check',orders:[order([Object.assign({code:'RSU',qty:1},up?{upgrade:up}:{},unit!=null?{unit}:{})])]}); return r.body.orders[0].items[0]; };
+  const plain=await q({}), pk=await q({},'Picket'), gr=await q({},'Guardrail');
+  eq([plain.unit,pk.unit,gr.unit],[170,204,187],'default 15%: 200→170, 240→204, 220→187');
+  eq([pk.commercial.msrp,pk.commercial.map],[360,252],'configured MSRP = 240 x 1.5, MAP 30% below');
+  eq([gr.commercial.msrp,gr.commercial.map],[330,231],'guardrail 220 x 1.5 = 330, MAP 231');
+  eq([plain.commercial.msrp,plain.commercial.map],[300,210],'plain part unchanged');
+  eq([pk.upgrade,/Picket upgrade$/.test(pk.name)],['Picket',true],'upgrade echoed; the stored name says it');
+  const r20=await q({rates:[rate('d1',20)]},'Picket'); eq([r20.unit,r20.commercial.msrp,r20.commercial.map],[192,360,252],'20% dealer: purchase only');
+  const cp=await q({contract:[{dealer_id:'d1',manufacturer:LINE,code:'RSU',price:150,active:true}]},'Picket');
+  eq(cp.unit,184,'contract covers the plain part; the upgrade adds at the default discount (150 + 34)');
+  const cpr=await q({rates:[rate('d1',10)],contract:[{dealer_id:'d1',manufacturer:LINE,code:'RSU',price:150,active:true}]},'Picket');
+  eq(cpr.unit,186,'contract + upgrade at the dealer rate (150 + 36), never a double discount on the contract');
+  const bad=await q({},'Gold rail'); eq(bad.available,false,'an upgrade the product does not offer is refused');
+  const none=await q({},'Picket'); eq(none.available,true,'sanity');
+  const plainOnly=await (async()=>{ const W=world({}), C=mod(W); const r=await call(C,{action:'price_check',orders:[order([{code:'RR4x36',qty:1,upgrade:'Picket'}])]}); return r.body.orders[0].items[0]; })();
+  eq(plainOnly.available,false,'a part without upgrades cannot be ordered with one');
+});
+await t('an upgraded line is stored with its configured price and name; the plain line beside it stays plain',async()=>{
+  const W=world({}), C=mod(W);
+  const c=await call(C,{action:'create',orders:[order([{code:'RSU',qty:1,unit:170},{code:'RSU',qty:2,upgrade:'Picket',unit:204}])],dealer:{}});
+  eq(c.status,200,'recorded');
+  eq(W.db.order_items.map(i=>[i.code,i.unit_price,i.line_total,/Picket upgrade$/.test(i.name)]),[['RSU',170,170,false],['RSU',204,408,true]],'two lines');
 });
 /* ── the module ── */
 await t('rates: valid 0 < r < 100 with two decimals; a table not installed yet means no rates; any other failure throws',async()=>{

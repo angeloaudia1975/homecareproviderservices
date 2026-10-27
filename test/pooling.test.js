@@ -42,7 +42,7 @@ const server=async(slug,lines)=>{ const W=world(); const C=M.load('orders-api.js
 /* The browser: the shop page's own familyQty/tierQty/contractPrice/unitPrice over a CART. */
 const html=fs.readFileSync(SHOP,'utf8');
 const {grabDecl}=require(path.join(__dirname,'extract-picker.js'));
-const engine=['function familyQty','function tierQty','function contractPrice','function lineRatePrice','function unitPrice'].map(a=>grabDecl(html,a)).join('\n');
+const engine=['function familyQty','function tierQty','function contractPrice','function lineRatePrice','function withUpgrade','function upgradeAddPurchase','function unitPrice'].map(a=>grabDecl(html,a)).join('\n');
 const browser=(products,lines)=>{ const ctx={CART:new Map(),AUTH:{prices:{}}}; vm.createContext(ctx); vm.runInContext(engine+';this.unitPrice=unitPrice;',ctx);
   const by=Object.fromEntries(products.map(p=>[p.code,p]));
   lines.forEach(([c,q])=>ctx.CART.set(c,{p:by[c],qty:q}));

@@ -195,7 +195,7 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, rate
   const mfrEntry = Object.assign({ slug }, (freightCfg && freightCfg[slug]) || {});
   const mfrInfo = s => (s === slug ? mfrEntry : { slug: s });
   const engine = new Function("fetch", "window", "console", "document", "CONFIG", "state", "AUTH", "PREVIEW", "CART", "mfrInfo",
-    ENGINE.SOURCE + "\n;return { mergeCatalogEdits, unitPrice, computeFreight, freightTermsFor, validFreightTerms, CATALOG_SOURCE };")(shimFetch, {}, quiet, {}, CONFIG, state, AUTH, null, cart, mfrInfo);
+    ENGINE.SOURCE + "\n;return { mergeCatalogEdits, unitPrice, withUpgrade, computeFreight, freightTermsFor, validFreightTerms, CATALOG_SOURCE };")(shimFetch, {}, quiet, {}, CONFIG, state, AUTH, null, cart, mfrInfo);
   /* FREIGHT TERMS AS DATA (Phase 5): the record's terms when present and valid, else the file's entry —
      the storefront's own freightTermsFor, verbatim, so the server and the cart can never pick differently. */
   let freightSource = "none", freightInvalid = false;
@@ -252,10 +252,14 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
       const same = L ? L.products.filter(x => String(x.code) === String(it.code)) : [];
       const fam = it.family == null ? null : String(it.family);
       const pick = fam != null ? same.filter(x => String(x.family || "") === fam) : same;
-      const p = pick.length === 1 ? pick[0]
+      const p0 = pick.length === 1 ? pick[0]
               : (pick.length > 1 && new Set(pick.map(x => x.base_price)).size === 1 ? pick[0] : null);
+      /* A railing upgrade (owner 2026-10-27) is the same part number configured with ONE upgrade the product lists;
+         the shop's own withUpgrade builds it. An upgrade the product does not offer is not priced. */
+      const up = it.upgrade == null || it.upgrade === "" ? null : String(it.upgrade);
+      const p = p0 && up ? (L.engine.withUpgrade(p0, up) || null) : p0;
       if (p) cart.set(slug + "::" + p.code + "::" + oi + "::" + ii, { p, qty });
-      lines.push({ oi, ii, slug, code: String(it.code), family: fam, qty, p, client: it.unit == null ? null : Number(it.unit) });
+      lines.push({ oi, ii, slug, code: String(it.code), family: fam, upgrade: up, qty, p, client: it.unit == null ? null : Number(it.unit) });
     });
   });
   let changed = false;
@@ -266,7 +270,7 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
     /* Visible is not sellable: a discontinued product is shown for reference only. */
     if (!l.p || l.p._discontinued) {
       changed = true;
-      o.items.push(Object.assign({ code: l.code, qty: l.qty, available: false, unit: null, line_total: null, client_unit: l.client, changed: true }, l.family != null ? { family: l.family } : {}));
+      o.items.push(Object.assign({ code: l.code, qty: l.qty, available: false, unit: null, line_total: null, client_unit: l.client, changed: true }, l.family != null ? { family: l.family } : {}, l.upgrade ? { upgrade: l.upgrade } : {}));
       continue;
     }
     const unit = Math.round(Number(bySlug[l.slug].engine.unitPrice(l.p, l.qty)) * 100) / 100;
@@ -280,7 +284,7 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
     if (l.p.uom) unitBits.uom = String(l.p.uom);
     if (Number(l.p.case_qty) > 1) unitBits.case_qty = Number(l.p.case_qty);
     /* The family the dealer chose travels back, so a code sold in two ramp families (Access4U SR3 / PRK) maps to its own cart line. */
-    o.items.push({ code: l.code, ...(l.family != null ? { family: l.family } : {}), name: l.p.name, qty: l.qty, available: true, unit, ...unitBits,
+    o.items.push({ code: l.code, ...(l.family != null ? { family: l.family } : {}), ...(l.upgrade ? { upgrade: l.upgrade } : {}), name: l.p.name, qty: l.qty, available: true, unit, ...unitBits,
       contract: contract[k] != null ? contract[k] : null,
       rate: rates[l.slug] != null ? rates[l.slug] : null,
       line_total: Math.round(unit * l.qty * 100) / 100, client_unit: l.client, changed: diff,
