@@ -136,7 +136,7 @@ async function main() {
   if (a.snapshot) shared.frozen = (readJson(a.snapshot).meta || []).filter(m => m.frozen === true).map(m => m.slug);
   if (!a.batch) {
     const r = await runOne({ mfr: a.mfr, file: a.file, received: a.received, received_evidence: a["received-evidence"], transcription: a.transcription, ocr: a.ocr, catalog_slug: a["catalog-slug"], out: a.out }, shared);
-    console.log(`${r.name}: ${r.rows} rows · new ${r.new} · changed ${r.changed} · unchanged ${r.unchanged} · preserved-not-on-source ${r.not_on_source_preserved} · blocking ${r.blocking} · exceptions ${r.exceptions} · stageable ${r.stageable ? "yes" : "no"}`);
+    console.log(`${r.name}: ${r.rows} rows · new ${r.new} · changed ${r.changed} · compare on server ${r.compare_on_server} · unchanged ${r.unchanged} · preserved-not-on-source ${r.not_on_source_preserved} · blocking ${r.blocking} · exceptions ${r.exceptions} · stageable ${r.stageable ? "yes" : "no"}`);
     return;
   }
   const jobs = readJson(a.batch), results = [], queue = [];
