@@ -1897,6 +1897,21 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   Implementation: per-dealer, per-line rate in the locked table `dealer_line_discounts` (RULE 19; branch row overrides
   its master, like contract prices); price order = contract price → line rate × standard list (`dealer_price`) →
   default `base_price`; family-specific (RS/RR cross-listed) pricing and the unresolved part-number holds are unchanged.
+- **Access4U Fall 2026 — FINAL rules (Angelo, 2026-10-27 15:57 CT; supersede any MSRP x 2 / no-MAP note).** MSRP = undiscounted
+  standard dealer price x 1.5; MAP = MSRP x 0.70 — identical for every dealer, for every Access4U SKU (legacy items too, from their
+  own standard list). Dealer discounts (default 15%, individual 10/15/20/other) touch only the purchase price. Effective 2026-10-27.
+  **No free shipping:** freight is actual cost by order size and weight, confirmed by HCPS (manufacturers.json elseActual; the ramp
+  builder quotes no flat freight). **Part numbers:** RS3x48, RS4x48, RS5x48, RS6x48 (the list printed RS3x48 on all four rows);
+  stairs STP2/3/4/5/6/7M/8M/9M each as x36 and x48 — only these are orderable; the superseded STP2…STP9 are out of the active file
+  (history and order records keep them). Items in the open question list (AST x30, SR3x36/x48, PRK36/48, RRS5x36, GP5x3.5, PS4x5,
+  PS4x6, TRR3/TRR312) and SR3/PRK (two families) are untouched. **Railing upgrades** (the list's Picket / Commercial / Guardrail
+  add-ons) are private commercial data (`upgrades`, in CATALOG_COMMERCIAL_KEYS) and orderable as a configured line of the same part
+  number (`withUpgrade`, cart key `::u=<label>`, order item `upgrade`, stored name "… — <label> upgrade"): configured list = list +
+  add; the dealer's discount, MSRP and MAP follow from the configured list; a contract price covers the plain part and the upgrade
+  is added at the dealer's rate (or the default). One upgrade per line (whether upgrades combine is an open owner question).
+  **How the data changes:** a legacy line's file update = new public file + a private version added BESIDE the deployed one
+  (`scripts/p0-seed-catalog-commercial.js --add-version <slug> --full <private> --export-sql <private>`, run by Angelo), then deploy
+  the storefront, then prune the old version. `scripts/p0-lines.js UPDATED` registers the new identity so the P0 tests keep guarding it.
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.

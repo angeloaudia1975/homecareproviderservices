@@ -30,7 +30,7 @@
    reach a dealer. A missing or extra row is a mismatch (thrown), never "no price".
    Pure: no I/O. */
 
-const CATALOG_COMMERCIAL_KEYS=["base_price","tiers","dealer_price","tier_prices","msrp","map","price_note","unit_cost","shipping"];
+const CATALOG_COMMERCIAL_KEYS=["base_price","tiers","dealer_price","tier_prices","msrp","map","price_note","unit_cost","shipping","upgrades"];
 /* ROW IDENTITY (P0 review, 2026-10-23). A commercial row is attached to a public row ONLY when the
    public row is exactly the row it was made for: every commercial entry carries `h`, the SHA-256 of
    its public row's non-commercial fields (canonical JSON, keys sorted), and the whole line carries
