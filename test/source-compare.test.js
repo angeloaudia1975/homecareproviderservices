@@ -36,6 +36,10 @@ const base = () => ({ slug: 'acme', line: line(src), products, identity: 'f'.rep
   await t('unchanged when every stated field equals today (unit compared case-insensitively)', () => ok(S('A1').state === 'unchanged', JSON.stringify(S('A1'))));
   await t('changed names the field, never the value (tier ladder)', () => ok(S('A2').state === 'changed' && S('A2').fields.join() === 'tiers', JSON.stringify(S('A2'))));
   await t('a derived MSRP today is not a stated price', () => ok(S('A3').state === 'changed' && S('A3').fields.join() === 'msrp (today derived)', JSON.stringify(S('A3'))));
+  await t('a source MSRP equal to today\'s derived MSRP is unchanged, with a note', () => {
+    const q = SC.compareSource(Object.assign(base(), { line: line([{ code: 'A3', dealer_price: 505.55, msrp: 1011.1, msrp_source: 'stated' }]) }));
+    const a = q.rows.find(x => x.code === 'A3'); ok(a.state === 'unchanged' && /derived/.test(a.note), JSON.stringify(a));
+  });
   await t('in today\'s catalog but not on the source = removed (never retired)', () => ok(S('A4').state === 'removed' && /never retired/.test(S('A4').note), JSON.stringify(S('A4'))));
   await t('cross-listed with identical figures (SR3) compares once and can be unchanged', () => ok(S('SR3').state === 'unchanged' && r.rows.filter(x => x.code === 'SR3').length === 1, JSON.stringify(S('SR3'))));
   await t('two different figures today = ambiguous; on the source = ambiguous', () => { ok(S('X9').state === 'ambiguous', 'X9'); ok(S('D2').state === 'ambiguous', 'D2'); });
