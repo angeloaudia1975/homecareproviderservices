@@ -18,7 +18,9 @@
                    account — ABM), or today's product carries no price to compare with
    A field the source does not state is never compared ("not stated" is not "changed"). A derived MSRP (2× dealer,
    `_msrp_suggested`) is not a stated price: a different source MSRP reads "msrp (today derived)"; an equal one is unchanged
-   with a note.
+   with a note. A pack quantity of 1 is a single unit (= none stated). Today's pack size is the numeric field (case_qty, or the
+   catalog file's qty_per_pack), else the count the unit wording states ("Pack of 12") — PediFix keeps it there; equal by
+   wording alone is unchanged with a note (the record still needs the numeric field before activation).
 
    Refusals (no comparison is guessed): a source with no SHA-256 (its identity is unknown), a source for another line,
    an empty source, or a catalog the server could not read for its exact version (the caller refuses before this).
@@ -41,13 +43,25 @@ function tiersKey(t, base) {
     .filter(r => r[1] != null && r[0] > 1 && r[1] !== b).sort((a, b2) => a[0] - b2[0]);
   return rows.length ? rows.map(r => r[0] + ":" + r[1]).join("|") : null;
 }
+/* A pack quantity: 1 means a single unit, the same as none stated (a list printing "1" against an "Each" product is not a
+   unit difference). */
+const packN = v => { const n = parseInt(v, 10); return n > 1 ? n : null; };
+/* The count a unit WORDING states ("Pack of 12", "12-roll pack", "Case of 10", "Box of 100", "2/CS"), else null. */
+function countInWords(u) {
+  const s = String(u == null ? "" : u);
+  const m = s.match(/\b(?:pack|case|box|bag|carton|set)\s+of\s+(\d+)\b/i) || s.match(/\b(\d+)\s*[- ]?(?:\w+[- ])?(?:pack|pk|ct|count)\b/i) || s.match(/\b(\d+)\s*\/\s*(?:cs|case|bx|box|pk)\b/i);
+  return m ? packN(m[1]) : null;
+}
 /* Today's commercial values of one product, as the shop prices it. */
 function currentOf(p) {
   /* A row that carries a list dealer price beside a discounted base (Access4U: dealer_price + tier_prices) is compared on
      the LIST price — the figure a manufacturer price list prints (the importer's own rule). */
   const raw = p.dealer_price != null && p.dealer_price !== "" ? p.dealer_price : p.base_price, price = cents(raw);
+  /* Today's pack size: the numeric field (case_qty, or the catalog file's qty_per_pack — PediFix), else the count the unit
+     wording dealers read states ("Pack of 12"). Which one supplied it is kept for the note. */
+  const numeric = packN(p.case_qty) || packN(p.qty_per_pack), worded = numeric ? null : countInWords(p.uom);
   return { dealer_price: price, tiers: tiersKey(p.tiers || p.tier_prices, raw), msrp: cents(p.msrp), msrp_derived: !!p._msrp_suggested,
-    map: cents(p.map), uom: txt(p.uom) || null, case_qty: parseInt(p.case_qty, 10) > 0 ? parseInt(p.case_qty, 10) : null };
+    map: cents(p.map), uom: txt(p.uom) || null, case_qty: numeric || worded, case_from_words: !!worded };
 }
 /* What a source row STATES (null = not stated). */
 function sourceOf(r) {
@@ -55,7 +69,7 @@ function sourceOf(r) {
   /* An MSRP / MAP the importer DERIVED from a stated rule (Access4U: MSRP = dealer × 1.5) is not a stated price. */
   const stated = (v, how) => (how == null || how === "stated") ? cents(v) : null;
   return { dealer_price: price, tiers: tiersKey(r.tiers, r.dealer_price), msrp: stated(r.msrp, r.msrp_source), map: stated(r.map, r.map_source), uom: txt(r.uom) || null,
-    case_qty: parseInt(r.case_qty, 10) > 0 ? parseInt(r.case_qty, 10) : null };
+    case_qty: packN(r.case_qty) };
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -95,6 +109,7 @@ function compareSource(input) {
       if (s[f] == null) continue;                                  // not stated on the source: never compared
       if (f === "msrp" && c.msrp_derived) { if (same(s[f], c[f])) notes.push("MSRP now stated by the source (equal to today's derived MSRP)"); else fields.push("msrp (today derived)"); continue; }
       if (!same(s[f], c[f])) fields.push(f);
+      else if (f === "case_qty" && c.case_from_words) notes.push("pack size today only in the unit wording, not a numeric field");
     }
     const note = notes.length ? { note: notes.join("; ") } : {};
     out.push(fields.length ? Object.assign({ code, state: "changed", fields, locators }, note) : Object.assign({ code, state: "unchanged", locators }, note));

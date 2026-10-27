@@ -75,6 +75,22 @@ const base = () => ({ slug: 'acme', line: line(src), products, identity: 'f'.rep
     const q = SC.compareSource(Object.assign(base(), { line: line([{ code: 'A1', dealer_price: '$101.12' }, { code: 'A4', dealer_price: '606.66' }]) }));
     ok(q.rows.find(x => x.code === 'A1').fields.join() === 'dealer_price' && q.rows.find(x => x.code === 'A4').state === 'unchanged', JSON.stringify(q.rows));
   });
+  await t('pack size: 1 = a single unit; qty_per_pack and the unit wording count as today\'s pack (PediFix shape)', () => {
+    const prods = [{ code: 'E1', base_price: 10, uom: 'Each' }, { code: 'Q1', base_price: 10, uom: 'Each', qty_per_pack: 1 },
+      { code: 'P12', base_price: 10, uom: 'Pack of 12', qty_per_pack: 12 }, { code: 'W12', base_price: 10, uom: 'Pack of 12' },
+      { code: 'R12', base_price: 10, uom: '12-roll pack' }, { code: 'CS2', base_price: 10, uom: '2/CS' },
+      { code: 'DISP', base_price: 10, uom: 'Each' }, { code: 'W6', base_price: 10, uom: 'Pack of 6' }];
+    const q = SC.compareSource(Object.assign(base(), { products: prods, line: line([
+      { code: 'E1', dealer_price: 10, case_qty: 1 }, { code: 'Q1', dealer_price: 10, case_qty: 1 },
+      { code: 'P12', dealer_price: 10, uom: 'Pack of 12', case_qty: 12 }, { code: 'W12', dealer_price: 10, uom: 'Pack of 12', case_qty: 12 },
+      { code: 'R12', dealer_price: 10, case_qty: 12 }, { code: 'CS2', dealer_price: 10, case_qty: 2 },
+      { code: 'DISP', dealer_price: 10, uom: 'Pack of 9', case_qty: 9 }, { code: 'W6', dealer_price: 10, case_qty: 12 }]) }));
+    const g = c => q.rows.find(x => x.code === c);
+    ['E1', 'Q1', 'P12'].forEach(c => ok(g(c).state === 'unchanged' && !g(c).note, c + ' ' + JSON.stringify(g(c))));
+    ['W12', 'R12', 'CS2'].forEach(c => ok(g(c).state === 'unchanged' && /unit wording/.test(g(c).note), c + ' ' + JSON.stringify(g(c))));
+    ok(g('DISP').state === 'changed' && g('DISP').fields.join() === 'uom,case_qty', JSON.stringify(g('DISP')));
+    ok(g('W6').state === 'changed' && g('W6').fields.join() === 'case_qty', JSON.stringify(g('W6')));
+  });
   await t('summary counts every state; source and catalog provenance kept', () => {
     const n = SC.STATES.reduce((a, s) => a + r.summary[s], 0); ok(n === r.rows.length, n + ' vs ' + r.rows.length);
     ok(r.source.sha256 === SHA && r.source.received_date === '2026-10-09' && r.catalog.identity === 'f'.repeat(16) && r.catalog.authority === 'layers', JSON.stringify([r.source, r.catalog]));
