@@ -58,6 +58,11 @@ const R = (o) => Object.assign({ manufacturer: 'm', brand: 'B', uom: 'Each', ima
     ok(!P('a4u:dup:BAD').supported && P('a4u:dup:BAD').blocked === 'owner_decision', 'BAD');
     ok(/uom/.test(P('a4u:dup:BAD').proposed), P('a4u:dup:BAD').proposed);
   });
+  await t('plan: a part number named twice (duplicate rows) gives ONE proposal — ids are unique', () => {
+    const q2 = { lines: [{ slug: 'g', name: 'G', frozen: false, items: [{ cat: 'images', severity: 'warn', check: 'catalog_rows_without_image', detail: 'x', codes: ['RS00515', 'RS00515', 'rs-00515'], count: 3 }] }] };
+    const p2 = CC.buildPlan({ queue: q2, rows: {} }); ok(p2.proposals.length === 1, String(p2.proposals.length));
+    ok(new Set(plan.proposals.map(p => p.id)).size === plan.proposals.length, 'duplicate ids');
+  });
   await t('plan: every proposal shows original, proposed, evidence, affected and the owning tool', () => {
     for (const p of plan.proposals) ok(p.original && p.proposed && Array.isArray(p.evidence) && p.evidence.length && p.affected >= 1 && p.tool && p.href, p.id);
   });

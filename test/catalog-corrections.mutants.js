@@ -17,6 +17,7 @@ const M = [
   ['hash ignores the recorded review', F, 'p.current ? p.current.decision_id : 0]', '0]', false],
   ['queue ignores reviews', E, 'const settled = e.codes.filter(c => CC.duplicateSettled(reviews, l.slug, c));', 'const settled = [];', false],
   ['queue settles any line', E, 'CC.duplicateSettled(reviews, l.slug, c)', 'CC.duplicateSettled(reviews, "other", c) || CC.duplicateSettled(reviews, l.slug, c) || true', false],
+  ['codes not de-duplicated', F, 'if (seen.has(k)) return false; seen.add(k); return true;', 'return true;', false],
   ['stale plan accepted', API, 'if(!b.plan_hash || b.plan_hash!==plan.plan_hash) return json(409,{error:"plan_changed"', 'if(false) return json(409,{error:"plan_changed"', false],
   ['frozen apply not refused', API, 'if(frozen.has(p.manufacturer)) return json(423,{error:"line_frozen", id,', 'if(false) return json(423,{error:"line_frozen", id,', false],
   ['dry run writes', API, 'if(b.dry_run===true) return json(200,{ok:true, dry_run:true, decisions:rows});', '', false],
