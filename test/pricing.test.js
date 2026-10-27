@@ -167,6 +167,10 @@ await t('one code in two families is priced by the family the dealer chose, neve
   eq(item(r,'SR3').unit,200,'RR family'); eq(r.body.changed,false,'unchanged');
   const r2=await call(C,{action:'price_check',orders:[order([{code:'SR3',qty:1,unit:100}])]});
   eq(item(r2,'SR3').available,false,'ambiguous without a family');
+  /* both families in one order: each line priced by its own family and the family echoed back (cart mapping) */
+  const r3=await call(C,{action:'price_check',orders:[order([{code:'SR3',family:'RS',qty:1,unit:100},{code:'SR3',family:'RR',qty:2,unit:200}])]});
+  const its=r3.body.orders[0].items;
+  eq(its.map(x=>x.family+':'+x.unit+':'+x.qty),['RS:100:1','RR:200:2'],'per-family lines'); eq(r3.body.changed,false,'unchanged');
 });
 await t('an order whose lines cannot be written is withdrawn — never recorded half, never confirmed',async()=>{
   const W=world({failWrite:(m,t)=>m==='POST'&&t==='order_items'?500:0}); const C=mod(W);

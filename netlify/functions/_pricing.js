@@ -246,7 +246,7 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
       const p = pick.length === 1 ? pick[0]
               : (pick.length > 1 && new Set(pick.map(x => x.base_price)).size === 1 ? pick[0] : null);
       if (p) cart.set(slug + "::" + p.code + "::" + oi + "::" + ii, { p, qty });
-      lines.push({ oi, ii, slug, code: String(it.code), qty, p, client: it.unit == null ? null : Number(it.unit) });
+      lines.push({ oi, ii, slug, code: String(it.code), family: fam, qty, p, client: it.unit == null ? null : Number(it.unit) });
     });
   });
   let changed = false;
@@ -257,7 +257,7 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
     /* Visible is not sellable: a discontinued product is shown for reference only. */
     if (!l.p || l.p._discontinued) {
       changed = true;
-      o.items.push({ code: l.code, qty: l.qty, available: false, unit: null, line_total: null, client_unit: l.client, changed: true });
+      o.items.push(Object.assign({ code: l.code, qty: l.qty, available: false, unit: null, line_total: null, client_unit: l.client, changed: true }, l.family != null ? { family: l.family } : {}));
       continue;
     }
     const unit = Math.round(Number(bySlug[l.slug].engine.unitPrice(l.p, l.qty)) * 100) / 100;
@@ -270,7 +270,8 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
     const unitBits = {};
     if (l.p.uom) unitBits.uom = String(l.p.uom);
     if (Number(l.p.case_qty) > 1) unitBits.case_qty = Number(l.p.case_qty);
-    o.items.push({ code: l.code, name: l.p.name, qty: l.qty, available: true, unit, ...unitBits,
+    /* The family the dealer chose travels back, so a code sold in two ramp families (Access4U SR3 / PRK) maps to its own cart line. */
+    o.items.push({ code: l.code, ...(l.family != null ? { family: l.family } : {}), name: l.p.name, qty: l.qty, available: true, unit, ...unitBits,
       contract: contract[k] != null ? contract[k] : null,
       line_total: Math.round(unit * l.qty * 100) / 100, client_unit: l.client, changed: diff,
       commercial: { base_price: l.p.base_price, msrp: l.p.msrp, map: l.p.map, tiers: l.p.tiers || null,
