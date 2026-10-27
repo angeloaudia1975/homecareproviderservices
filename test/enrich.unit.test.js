@@ -187,4 +187,8 @@ t('catalog names vs the manufacturer: a term the page never names, or shows only
   eq(E.CHOICES.catalog_name.map(c=>c.id),['use_source','keep_catalog_name']);
   eq(E.classify({page_key:'s',skus:[{code:'X',price_ok:true}]},{description:'x'.repeat(90),features:['a','b','c'],category:'c',image:'https://x/a.jpg',enrichment_flags:{mc:{images_done:true,sources:[{role:'product'}],conflicts:[{kind:'catalog_name',title:'t'}]}}},[]).issues[0].resolution_key,'catalog_name');
 });
+t('messages name no other manufacturer (AirAvant page said "Bemis\'s landing page")',()=>{
+  const c=E.classify({page_key:'a',skus:[{code:'BNG500',price_ok:true}]},{description:'x'.repeat(90),features:['a','b','c'],category:'c',image:'https://x/a.jpg',enrichment_flags:{mc:{images_done:true,sources:[{role:'landing',url:'https://bongorx.com/'}],conflicts:[]}}},[]);
+  const i=c.issues.find(x=>x.type==='needs_content'); ok(i&&/^The manufacturer's landing page/.test(i.detail)&&!/Bemis/.test(JSON.stringify(c)),JSON.stringify(i));
+});
 console.log(`enrich engine (pure): ${pass} passed, ${fail} failed`); process.exit(fail?1:0);

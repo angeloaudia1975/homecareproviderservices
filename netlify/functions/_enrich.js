@@ -421,7 +421,7 @@ function buildDraft(page, sources, opts){
   } else if(landing || related){
     /* Angelo 2026-10-11: a landing page or a bundle page may show that the product exists and what it fits, but it is
        never the standalone description or specification source for a component. They are recorded as evidence only. */
-    if(related) notes.push("A Bemis bundle page includes it (" + related.url + ") — evidence it exists and fits; not used as its description.");
+    if(related) notes.push("A " + (opts.brand || "manufacturer") + " bundle page includes it (" + related.url + ") — evidence it exists and fits; not used as its description.");
     if(landing) notes.push("The line's landing page mentions it (" + landing.url + ") — not product-specific; not used as its description.");
   }
   const srcText = [prod && prod.extract.text, landing && landing.extract.text, related && related.extract.text].filter(Boolean).join(" ");
@@ -430,7 +430,7 @@ function buildDraft(page, sources, opts){
     /* a figure in our catalog line that no manufacturer source states stays out of the draft until one does */
     const unsup = srcText ? unsupportedFacts(cd, srcText) : [];
     if(unsup.length) cd = norm(cd.split(/(?<=[.!?])\s+/).filter(x => !unsupportedFacts(x, srcText).length).join(" "));
-    if(cd){ description = cd; fields.description = { source: "HCPS catalog line only (no product-specific manufacturer source)" + (unsup.length ? "; left out until a Bemis source confirms it: " + unsup.join(", ") : ""), url: null, evidence: cd }; }
+    if(cd){ description = cd; fields.description = { source: "HCPS catalog line only (no product-specific manufacturer source)" + (unsup.length ? "; left out until a " + (opts.brand || "manufacturer") + " source confirms it: " + unsup.join(", ") : ""), url: null, evidence: cd }; }
   }
   if(prod){
     const n0 = description, f0 = features.map(f => f.text).join("|");
@@ -580,7 +580,7 @@ function classify(page, row, decisions, opts){
   const anySource = (mc.sources || []).some(s => s.role === "product" || s.role === "landing" || s.role === "related");
   const noSource = !(mc.sources || []).some(s => s.role === "product");
   if(!issues.some(i => i.rerun)){   // a source hold keeps its content issues listed
-    if(noSource && anySource) add("needs_content", "No product-specific manufacturer source", "Bemis's " + [...new Set((mc.sources || []).filter(s => s.role !== "product").map(s => s.role === "related" ? "bundle page" : "landing page"))].join(" and ") + " show it exists, but a landing or bundle page is never a component's standalone description or specification source. Add an official source for this product and re-run.", {});
+    if(noSource && anySource) add("needs_content", "No product-specific manufacturer source", "The manufacturer's " + [...new Set((mc.sources || []).filter(s => s.role !== "product").map(s => s.role === "related" ? "bundle page" : "landing page"))].join(" and ") + " show it exists, but a landing or bundle page is never a component's standalone description or specification source. Add an official source for this product and re-run.", {});
     else if(noSource) add("needs_content", "No manufacturer page found", "Only your catalog line exists" + (desc ? ": “" + desc.slice(0, 160) + "”" : "") + ". That is too thin for a product page.", {});
     else if(desc.length < 80 || feats < 3) add("needs_content", "Too little from the source", "The source says too little about this product to make a page: " + [desc.length < 80 ? (desc.length ? "a " + desc.length + "-character description" : "no description") : "", feats < 3 ? (feats ? "only " + feats + " feature" + (feats === 1 ? "" : "s") : "no features") : ""].filter(Boolean).join(" and ") + ". Add a better source, or hold the page back.", {});
   }
