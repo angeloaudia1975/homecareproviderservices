@@ -39,9 +39,9 @@ Other rules:
 
 | Line | Status |
 |---|---|
-| Access4U | Hash-matched to "Pricelist fall 2026.pdf" (received 2026-10-09). Still needs its evidence record (message id, mailbox, Outlook timestamp, capture reference) before it counts as verified |
+| Access4U | **Verified 2026-10-27** — `mailbox_attachment_match`: the read-only `report_inventory` run found "Pricelist fall 2026.pdf" in the President's mailbox (Outlook 2026-10-09 09:32 CT) with the imported file's exact SHA-256. The evidence record (message id, mailbox, timestamp, capture reference) is kept privately with the review package, not in git. The importer now reports `received_verified` and the provenance blocker is gone |
 | Dalton (corrected Nov 2026 list, REVa) | The 20 Oct email attachment is a **different** file. Needs the email that carried REVa, or an HCPS intake record. Effective date stays 2026-11-01 |
-| AIRAVANT / BongoRx, Corsicana (`_rev`), ABM, PediFix | No hash match yet. Each needs its matching attachment or an intake record |
+| AIRAVANT / BongoRx, Corsicana (`_rev`), ABM, PediFix | No hash match in the President's mailbox for 2026-09-01 → 2026-10-28 (read-only scan, 2026-10-27; earlier months not yet fully scanned). Each needs the manufacturer to email the file again, or an HCPS intake record |
 | Ohio Medical / GCE | No price-list email found. A contract email is not evidence |
 
 These are open blockers, not failures. PediFix's 2025 document is still not a current 2026 list, and ABM stays

@@ -6,6 +6,9 @@ const E = path.join(__dirname, '..', 'netlify', 'functions', '_catalog_exception
 const API = path.join(__dirname, '..', 'netlify', 'functions', 'catalog-api.js');
 const M = [
   ['control', F, 'Pure: no database, no network.', 'Pure: no database,  no network.', true],
+  ['price-differing listings recordable', F, 'if (cd && cd.has(norm(code)) && c.classification !== "conflict") {', 'if (false) {', false],
+  ['commercial check skipped', API, 'if(dupLines.length){', 'if(false){', false],
+  ['filtered plan hides the rest', API, 'if(filtered){ const all=', 'if(false){ const all=', false],
   ['conflict recordable', F, 'supported: c.classification !== "conflict" && !settled,', 'supported: !settled,', false],
   ['conflict accepted by decisionFor', F, 'if (!ACCEPTED.has(p.classification)) throw new Error("owner_decision");', '', false],
   ['unit difference ignored', F, 'const IDENTITY = ["name", "category", "subcategory", "family", "uom",', 'const IDENTITY = ["name", "category", "subcategory", "family",', false],

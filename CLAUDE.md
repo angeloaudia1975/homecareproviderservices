@@ -1841,6 +1841,18 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   on the list; 1 dealer price) · 22 added (incl. P8206) · 2 removed (P3306 + its 100-packet; the list prints P3305 —
   possible code alias, never renamed by the comparison).
   Payloads sent from the browser carry codes and the source's own figures only, over the signed-in call; nothing stored.
+- **Catalog Completion — 27 Oct afternoon (batch after Angelo's bulk review #912–#923).** (1) A FILTERED bulk-corrections
+  plan answers `outside_filter` {applicable, by_manufacturer} and the page says "N more can be recorded outside this
+  filter" — a filtered "0 can be recorded" once hid the 11 Access4U proposals. (2) Duplicate listings whose COMMERCIAL
+  figures differ (price, ladder, MSRP, MAP, unit — checked on the server from the storefront's own merge, a boolean per
+  code, never a figure) are a conflict needing the owner's decision, whatever their identity fields say (Access4U PRK: two
+  listings, two ladders); the plan is refused (503 `commercial_unreadable`) when those figures cannot be read. (3) The queue
+  shows recorded photo reviews beside the codes they cover; the codes stay counted until a photo with rights is placed.
+  (4) Importer exception evidence never carries a figure: a legacy discount structure is described by its quantity breaks
+  only. (5) Access4U's received date is VERIFIED (mailbox_attachment_match from the read-only report_inventory run; the
+  evidence record stays private, outside git); 34 Access4U part-number questions still block staging. The consolidated
+  manufacturer-question doc (Access4U, Dalton, PediFix, Corsicana, ABM, AirAvant) is the Claude Doc "HCPS Manufacturer
+  Questions — Catalog Completion (Oct 2026)" (claude.ai/artifact/B6CjSygrSjkhdzy8wTP9eb) — no prices in it.
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.

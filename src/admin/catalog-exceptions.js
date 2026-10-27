@@ -70,7 +70,8 @@
       if (!items.length) return "";
       const tool = TOOL[c.key];
       return `<div class="cat"><h3>${esc(c.label)}</h3>${items.map(x => `<div class="ex"><span class="chip c-${esc(x.severity)}">${esc(x.severity)}</span> <b>${esc(x.check.replace(/_/g, " "))}</b>${x.count ? ` · ${x.count}` : ""}
-        <div class="d">${esc(x.detail)}</div>${x.codes ? `<div class="codes">${x.codes.map(esc).join(", ")}${x.count > x.codes.length ? " …" : ""}</div>` : ""}</div>`).join("")}
+        <div class="d">${esc(x.detail)}</div>${x.codes ? `<div class="codes">${x.codes.map(esc).join(", ")}${x.count > x.codes.length ? " …" : ""}</div>` : ""}
+        ${x.reviews ? `<div class="hint">Review recorded for ${Object.keys(x.reviews).length} of ${x.count || x.codes.length} (still counted until a photo with rights is placed): ${Object.entries(x.reviews).map(([c, v]) => esc(c) + " — " + esc(String(v).replace(/_/g, " "))).join(", ")}</div>` : ""}</div>`).join("")}
         ${tool && !l.frozen ? `<div class="acts"><a href="${esc(tool[1](l.slug))}">Open ${esc(tool[0])}</a></div>` : ""}</div>`;
     }).join("");
     return `<div class="ttl">${esc(l.name)}</div><div class="hint">${esc(l.slug)} · ${esc(STATUS[l.status] || l.status)}</div>
@@ -87,6 +88,7 @@
     if (PLAN) {
       const c = PLAN.counts;
       list = `<div class="note">${c.total} proposal(s) · <b>${c.applicable} can be recorded here</b> (${c.affected_skus} part number(s)) · ${c.owner_decision} need your decision · ${c.handoff} belong to another tool · ${c.frozen} on frozen lines · ${c.already_recorded} already recorded.
+        ${PLAN.outside_filter && PLAN.outside_filter.applicable ? `<br><b>${PLAN.outside_filter.applicable} more can be recorded outside this filter</b> (${Object.entries(PLAN.outside_filter.by_manufacturer).map(([m, n]) => esc(m) + " " + n).join(", ")}) — clear the filter to see them.` : ""}
         Recording a review changes nothing a dealer sees: no price, catalog row, page or photo is written, nothing is deleted.</div>
         <div class="bar"><button class="sec" id="selall">Select all applicable</button><button class="sec" id="selnone">Clear selection</button><span class="hint">${PICK.size} selected</span></div>
         ${PLAN.proposals.map(p => `<div class="prop${p.supported ? "" : " off"}">

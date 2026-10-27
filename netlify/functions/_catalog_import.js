@@ -293,6 +293,10 @@ function lineRefusal(slug, frozen) {
    source does not state is kept: change "not_stated"). Stable order (normalized code, then code); no clock, no
    random; identical inputs give byte-identical JSON and CSV (beforeAfterHash). */
 const BA_FIELDS = ["name", "dealer_price", "tiers", "msrp", "map", "uom", "case_qty", "status"];
+/* The quantities of a legacy discount structure, never its figures — exception evidence is shareable (no price). */
+const breaksOnly = c => { const t = c.tier_prices || c.tiers; const q = Array.isArray(t) ? t.map(x => x.min_qty != null ? x.min_qty : x.minQty) : (t && typeof t === "object" ? Object.keys(t) : []);
+  const qs = q.map(Number).filter(n => isFinite(n)).sort((a, b) => a - b);
+  return qs.length ? "breaks at " + qs.join(" / ") + " units" : "a discounted base price"; };
 const tierText = t => {
   if (Array.isArray(t)) return t.length ? t.map(x => `${x.min_qty != null ? x.min_qty : x.minQty}+:${money(x.price)}${x.pool ? "(" + x.pool + ")" : ""}`).join(" ") : null;
   if (t && typeof t === "object") { const k = Object.keys(t).sort((a, b) => Number(a) - Number(b)); return k.length ? "legacy " + k.map(x => `${x}:${money(t[x])}`).join(" ") : null; }
@@ -452,7 +456,7 @@ function exceptionsFor(line, comparison, ctx) {
       const legacyTiers = (c.tier_prices && Object.keys(c.tier_prices).length) || (Array.isArray(c.tiers) && c.tiers.length > 1) ||
         (c.dealer_price != null && c.base_price != null && money(c.base_price) < money(c.dealer_price));
       if (legacyTiers && !((r.tiers || []).length > 1))
-        add(r.code, "discount_unverified", "HCPS holds an older discount/tier structure (" + (tierText(c.tier_prices) || tierText(c.tiers) || ("base " + money(c.base_price))) + ") that the source does not state — kept only as history", r.locator,
+        add(r.code, "discount_unverified", "HCPS holds an older discount/tier structure (" + breaksOnly(c) + ") that the source does not state — kept only as history", r.locator,
           "Confirm the current discount terms with the manufacturer; an old structure is never assumed to apply to the new list.", false);
       const sc = capacityOf(r.name + " " + (r.description || "")), cc = capacityOf((c.name || "") + " " + (c.description || ""));
       if (sc != null && cc != null && sc !== cc)

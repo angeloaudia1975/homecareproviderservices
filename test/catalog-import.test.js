@@ -348,6 +348,8 @@ async function run(src, adpSrc) {
     const cat = [{ code: 'R', name: 'Bed, 450LB Weight Capacity', dealer_price: 50, base_price: 41.5, tier_prices: { 15: 41.5 }, image: 'https://cdn.example.com/r.jpg' }];
     const P = pkg([row({ code: 'R', name: 'Bed, 600LB Weight Capacity', dealer_price: 50 })], { catalog: cat });
     eq(kinds(P), ['capacity_conflict', 'discount_unverified', 'image_rights']); eq(P.stageable, true, 'held items never block price import');
+    const d = P.exceptions.find(x => x.kind === 'discount_unverified');
+    okv(/breaks at 15 units/.test(d.evidence) && !/41\.5/.test(JSON.stringify(P.exceptions)), 'discount evidence carries a figure: ' + d.evidence);
   });
   t('exceptions: pack text and an unverified case quantity block; OTC / medical claims and TBD freight are held', () => {
     const P = pkg([row({ code: 'G', flags: [C.flag('warn', 'pack_in_text', '100/Box')] }), row({ code: 'K', flags: [C.flag('blocker', 'case_qty_unverified', 'Case of 10')] }),
