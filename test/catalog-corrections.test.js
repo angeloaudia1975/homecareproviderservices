@@ -137,7 +137,7 @@ const R = (o) => Object.assign({ manufacturer: 'm', brand: 'B', uom: 'Each', ima
 
   /* ---- the catalog-api actions ---- */
   process.env.SUPABASE_URL = 'https://db.test'; process.env.SUPABASE_SERVICE_ROLE = 'svc';
-  let role = 'president', breakTable = null, posted = [], decisions = [], nextId = 100, frozenA4u = false;
+  let role = 'president', sr3p2 = 98.76, breakTable = null, posted = [], decisions = [], nextId = 100, frozenA4u = false;
   const resp = (status, body) => ({ ok: status >= 200 && status < 300, status, headers: { get: () => null }, text: async () => JSON.stringify(body), json: async () => body });
   global.fetch = async (url, opts) => {
     const u = String(url), m = (opts && opts.method) || 'GET';
@@ -145,7 +145,7 @@ const R = (o) => Object.assign({ manufacturer: 'm', brand: 'B', uom: 'Each', ima
     if (u.includes('/rest/v1/staff_users')) return resp(200, [{ role, active: true }]);
     if (u.endsWith('/data/manufacturers.json')) return resp(200, [{ slug: 'a4u', name: 'A4U', hasData: true, freight: {} }, { slug: 'gold', name: 'Gold', hasData: true, freight: {} }]);
     if (u.includes('/data/a4u.json')) return resp(200, [
-      { code: 'SR3', name: 'S', category: 'One', family: 'RS', uom: 'Each', image: 'x.png', base_price: 98.76 }, { code: 'SR3', name: 'S', category: 'Two', family: 'RR', uom: 'Each', image: 'x.png', base_price: 98.76 },
+      { code: 'SR3', name: 'S', category: 'One', family: 'RS', uom: 'Each', image: 'x.png', base_price: 98.76 }, { code: 'SR3', name: 'S', category: 'Two', family: 'RR', uom: 'Each', image: 'x.png', base_price: sr3p2 },
       { code: 'BAD', name: 'B', category: 'One', uom: 'Each', image: 'b.png' }, { code: 'BAD', name: 'B', category: 'Two', uom: 'Case', image: 'b.png' }, { code: 'N', name: 'N', image: '' }]);
     if (u.includes('/data/gold.json')) return resp(200, [{ code: 'G1', image: 'g.png' }, { code: 'G1', image: 'g.png' }]);
     if (breakTable && u.includes('/rest/v1/' + breakTable)) return resp(500, { message: 'down' });
@@ -168,6 +168,22 @@ const R = (o) => Object.assign({ manufacturer: 'm', brand: 'B', uom: 'Each', ima
     ok(!r.body.proposals.find(p => p.id === 'a4u:dup:BAD').supported, 'BAD applicable');
     ok(r.body.proposals.filter(p => p.manufacturer === 'gold').every(p => !p.supported), 'frozen applicable');
     ok(!posted.length, 'plan wrote'); ok(!/98\.76|base_price/.test(JSON.stringify(r.body)), 'price leaked');
+  });
+  await t('action plan: a filtered plan says how many reviews it left out (never a silent "0 recordable")', async () => {
+    const all = (await call({ action: 'correction_plan' })).body;
+    const other = all.proposals.find(p => p.supported && p.manufacturer !== 'a4u');
+    const f = (await call({ action: 'correction_plan', manufacturers: ['gold'] })).body;
+    const n = all.proposals.filter(p => p.supported).length - f.proposals.filter(p => p.supported).length;
+    ok(f.outside_filter && f.outside_filter.applicable === n && n > 0, JSON.stringify(f.outside_filter));
+    ok(f.outside_filter.by_manufacturer.a4u >= 1, JSON.stringify(f.outside_filter));
+    ok(all.outside_filter === null, 'unfiltered plan reports an outside count'); void other;
+  });
+  await t('action plan: listings that differ in price are a conflict (owner decision), and no figure leaves', async () => {
+    sr3p2 = 77.77; const r = (await call({ action: 'correction_plan' })).body; sr3p2 = 98.76;
+    const p = r.proposals.find(x => x.id === 'a4u:dup:SR3');
+    ok(p && !p.supported && p.blocked === 'owner_decision' && p.classification === 'conflict' && /commercial figures/.test(p.differs.join()), JSON.stringify(p));
+    ok(!/98\.76|77\.77/.test(JSON.stringify(r)), 'figure leaked');
+    const back = (await call({ action: 'correction_plan' })).body; ok(back.proposals.find(x => x.id === 'a4u:dup:SR3').supported, 'equal prices not applicable again');
   });
   await t('action apply: reason required; a stale plan, a conflict, a frozen item or an unknown id records nothing', async () => {
     ok((await call({ action: 'correction_apply', plan_hash: pl.plan_hash, ids: ['a4u:dup:SR3'] })).status === 400, 'no reason');

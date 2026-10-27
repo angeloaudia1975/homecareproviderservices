@@ -125,4 +125,7 @@ function compareSource(input) {
     catalog: { identity: String(i.identity).slice(0, 16), authority: i.authority || "layers" },
     fingerprint: crypto.createHash("sha256").update(JSON.stringify([src.sha256, i.identity, out])).digest("hex") };
 }
-module.exports = { compareSource, FIELDS, STATES, tiersKey, cents };
+/* Do these listings of ONE part number carry different commercial figures? A boolean only — never the figures. */
+function figuresDiffer(products) { const f = (products || []).filter(Boolean).map(p => { const c = currentOf(p); delete c.case_from_words; return JSON.stringify(c); });
+  return new Set(f).size > 1; }
+module.exports = { compareSource, FIELDS, STATES, tiersKey, cents, figuresDiffer };

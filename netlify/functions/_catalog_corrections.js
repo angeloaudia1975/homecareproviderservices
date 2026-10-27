@@ -122,6 +122,10 @@ function buildPlan(input) {
         for (const code of codes) {
           const same = rows.filter(r => r && norm(r.code) === norm(code));
           const c = classifyDuplicate(same), cur = reviewOf(reviews, l.slug, FIELD.duplicate, code);
+          /* Listings that differ in price, ladder, MSRP, MAP or unit (a server-side boolean from the private commercial
+             record — never the figures) are a conflict whatever their identity fields say (Access4U PRK, 2026-10-27). */
+          const cd = i.commercial_differs && i.commercial_differs[l.slug];
+          if (cd && cd.has(norm(code)) && c.classification !== "conflict") { c.classification = "conflict"; c.differs = c.differs.concat(["commercial figures (price / ladder / MSRP / MAP / unit)"]); }
           const settled = cur && ACCEPTED.has(reviewStatus(cur));
           push({ id: `${l.slug}:dup:${norm(code)}`, manufacturer: l.slug, cat: "sku", kind: "duplicate_classification", codes: [code],
             affected: 1, field: FIELD.duplicate,

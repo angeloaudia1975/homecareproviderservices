@@ -4513,10 +4513,28 @@ async function handleCatalog(event){
         const CC=require("./_catalog_corrections.js");
         const d=await exceptionsData(); if(d.fail) return d.fail;
         const filter={manufacturers:Array.isArray(b.manufacturers)?b.manufacturers.map(String):[], categories:Array.isArray(b.categories)?b.categories.map(String):[], codes:Array.isArray(b.codes)?b.codes.map(String):[]};
+        /* Duplicate part numbers on non-frozen lines: do their listings carry different commercial figures? Read from the
+           storefront's own merge on the server; a boolean per code reaches the plan, never a figure. Strict: unreadable
+           = no plan. */
+        const commercial_differs={};
+        { const frozenL=new Set((d.meta||[]).filter(m=>m.frozen===true).map(m=>m.slug));
+          const dupLines=(d.q.lines||[]).filter(l=>!frozenL.has(l.slug)&&(l.items||[]).some(x=>x.check==="catalog_duplicate_codes"));
+          if(dupLines.length){ const PRICING=require("./_pricing.js"), SCMP=require("./_source_compare.js"), files=PRICING.remoteFiles(ORDERING_BASE);
+            const nk=c=>String(c==null?"":c).toUpperCase().replace(/[^A-Z0-9]/g,"");
+            try{ for(const l of dupLines){ const L=await PRICING.lineProducts({slug:l.slug, sb, catalogFile:files.catalogFile, contentFile:files.contentFile, contract:{}, cart:new Map(), freightCfg:null});
+                const by={}; (L.products||[]).filter(p=>p&&p.active!==false).forEach(p=>{ (by[nk(p.code)]=by[nk(p.code)]||[]).push(p); });
+                commercial_differs[l.slug]=new Set(Object.entries(by).filter(([,ps])=>ps.length>1&&SCMP.figuresDiffer(ps)).map(([k])=>k)); } }
+            catch(e){ return json(503,{error:"commercial_unreadable", message:"Nothing was planned: today's commercial figures could not be read to check duplicate listings ("+String((e&&e.message)||e).replace(/\$?\d+\.\d{2}/g,"[withheld]").slice(0,200)+")."}); } } }
         const actor=String((me&&me.email)||"president").slice(0,80);
         if(b.action==="correction_plan"){
-          const plan=CC.buildPlan({queue:d.q, rows:d.rows, decisions:d.reviews, filter});
-          return json(200,Object.assign({ok:true, generated:new Date().toISOString(), filter}, plan,
+          const plan=CC.buildPlan({queue:d.q, rows:d.rows, decisions:d.reviews, filter, commercial_differs});
+          /* A filtered plan says what it left out, so "0 can be recorded" never hides recordable reviews on other lines. */
+          const filtered=filter.manufacturers.length||filter.categories.length||filter.codes.length;
+          let outside=null;
+          if(filtered){ const all=CC.buildPlan({queue:d.q, rows:d.rows, decisions:d.reviews, filter:{}, commercial_differs}), inP=new Set(plan.proposals.map(p=>p.id));
+            const rest=all.proposals.filter(p=>p.supported&&!inP.has(p.id)), by={}; rest.forEach(p=>{ by[p.manufacturer]=(by[p.manufacturer]||0)+1; });
+            outside={applicable:rest.length, by_manufacturer:by}; }
+          return json(200,Object.assign({ok:true, generated:new Date().toISOString(), filter, outside_filter:outside}, plan,
             {recorded:(d.reviews||[]).slice(-200).reverse().map(r=>({id:r.id, manufacturer:r.manufacturer, field:r.field, code:r.code, status:CC.reviewStatus(r), by:r.decided_by, at:r.decided_at}))}));
         }
         const reason=String(b.reason||"").trim();
@@ -4537,7 +4555,7 @@ async function handleCatalog(event){
           return json(200,{ok:true, recorded:ins, queue:Object.assign({generated:new Date().toISOString()}, after.q)});
         }
         /* correction_apply */
-        const plan=CC.buildPlan({queue:d.q, rows:d.rows, decisions:d.reviews, filter});
+        const plan=CC.buildPlan({queue:d.q, rows:d.rows, decisions:d.reviews, filter, commercial_differs});
         if(!b.plan_hash || b.plan_hash!==plan.plan_hash) return json(409,{error:"plan_changed", message:"The catalog changed since this plan was previewed. Preview it again; nothing was recorded.", plan_hash:plan.plan_hash});
         const ids=Array.isArray(b.ids)?b.ids.map(String):[];
         if(!ids.length) return json(400,{error:"nothing_selected", message:"Select at least one applicable correction. Nothing was recorded."});

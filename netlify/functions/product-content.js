@@ -388,9 +388,15 @@ async function enrichContext(m) {
   /* A line without commercial records yet (not record-authoritative): its catalog layers stand in, read-only. */
   let recs = Array.isArray(records) ? records : [];
   if (!recs.length) {
-    const ov = {}; (overrides || []).forEach(o => { ov[ENRICH.codeNorm(o.code)] = o.patch || {}; });
-    recs = catalog.map(c => ({ code: c.code, status: ov[ENRICH.codeNorm(c.code)].active === false ? 'inactive' : 'active', base_price: firstNumber(ov[ENRICH.codeNorm(c.code)].base_price, c.base_price), msrp: c.msrp, uom: c.uom, case_qty: c.case_qty }))
-      .concat((custom || []).filter(c => !catalog.some(x => ENRICH.codeNorm(x.code) === ENRICH.codeNorm(c.code))).map(c => ({ code: c.code, status: c.active === false ? 'inactive' : 'active', base_price: null })));
+    /* The public file carries no prices since P0, so the layers are read through the storefront's own merge on the
+       server (the private commercial record of the deployed file's version + the saved layers) — read-only, strict.
+       (2026-10-27: the old file-only fallback crashed on a code without a saved edit and could never see a price.) */
+    const sbRead = (method, path) => { if (method !== 'GET') throw new Error('enrichment never writes commercial data'); return read(path); };
+    const files = PRICING.remoteFiles(ORDERING_BASE);
+    const L = await PRICING.lineProducts({ slug: m, sb: sbRead, catalogFile: files.catalogFile, contentFile: files.contentFile, contract: {}, cart: new Map(), freightCfg: null });
+    const seen = new Set();
+    recs = (L.products || []).filter(p => p && p.code != null && !seen.has(ENRICH.codeNorm(p.code)) && seen.add(ENRICH.codeNorm(p.code)))
+      .map(p => ({ code: p.code, status: p.active === false ? 'inactive' : 'active', base_price: firstNumber(p.dealer_price, p.base_price), msrp: p.msrp, uom: p.uom, case_qty: p.case_qty }));
   }
   const mm = (meta && meta[0]) || {};
   return { slug: m, frozen: mm.frozen === true, authoritative: mm.record_authoritative === true, records: recs, catalog, custom: custom || [], overrides: overrides || [],
