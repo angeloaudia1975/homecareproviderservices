@@ -1886,6 +1886,17 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   the SKU/product, the exact information needed, what existing documents establish, the recommended answer when the
   documents support one, what remains unresolved, and the impact on publication. (4) Never invent unresolved commercial
   prices, units, freight or clinical claims; unverified products stay unpublished.
+- **Access4U dealer pricing policy (Angelo, 2026-10-27 15:42 CT — FINAL, do not ask again).** The Fall 2026 Access4U
+  list is the STANDARD dealer list, effective 2026-10-27 (an owner-stated date, recorded as such — never the received date).
+  A dealer's PURCHASE price = standard list less the dealer's discount: new dealers default to 15%; an individual dealer
+  may have 10%, 15%, 20% or another approved rate. ONLY the purchase price is discounted. MSRP and MAP NEVER depend on a
+  dealer's discount: they come from the manufacturer's standard-price rule or stated values (Fall 2026: MSRP = standard
+  list × 1.5; MAP = 30% below MSRP), identical for every dealer on the same SKU. A per-SKU contract price stays an
+  absolute override and is never discounted again (no double discount). One rule everywhere — listing, product detail,
+  ramp builder, cart, server pricing (`_pricing.js` / `_shop_engine.js`), stored orders, order history, confirmations.
+  Implementation: per-dealer, per-line rate in the locked table `dealer_line_discounts` (RULE 19; branch row overrides
+  its master, like contract prices); price order = contract price → line rate × standard list (`dealer_price`) →
+  default `base_price`; family-specific (RS/RR cross-listed) pricing and the unresolved part-number holds are unchanged.
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.
