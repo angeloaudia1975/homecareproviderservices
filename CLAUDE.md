@@ -1912,6 +1912,18 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   **How the data changes:** a legacy line's file update = new public file + a private version added BESIDE the deployed one
   (`scripts/p0-seed-catalog-commercial.js --add-version <slug> --full <private> --export-sql <private>`, run by Angelo), then deploy
   the storefront, then prune the old version. `scripts/p0-lines.js UPDATED` registers the new identity so the P0 tests keep guarding it.
+- **Access4U SOURCE OF TRUTH (Angelo, 2026-10-27 17:40 CT — supersedes every earlier "Assist 36 inches only" / held-item note).**
+  The Fall 2026 Access4U dealer price list decides the available products, widths, prices and upgrades; the active line = exactly
+  its rows (125 orderable; PRK alone held — same price as PRK36, identity unstated). Legacy items not on the list (mini ramps,
+  modular ramp runs, standalone guardrails, commercial platforms/ramps, mesh deck, gates, STRA, extra platform sizes, SR3/PRK
+  families…) leave active ordering; order history keeps them. Widths: Threshold 30/36, Assist with handrails 30/36, Assist without
+  handrails 30/36, Portable Folding 30 only (X = not offered). Categories: **Threshold Ramps** (supported / basic / adjustable /
+  rubber as subcategories), **Assist Ramps** (with / without handrails), **Portable Ramps** (Portable Folding Ramps). A row printed
+  with one base code and width columns (`AST24x3W`) is ordered as the width-specific code in Access4U's own x30/x36 convention, with
+  `width_in`, `mfr_ref` (the printed reference) and "(30″ width)" in the name, so the order states the width. Codes follow the list's
+  printing (TRR012, GP5x5, DLOOP…); reorder matches a re-spelled code only when exactly one product has it. Every listed upgrade
+  with its price applies; dealer discounts apply to upgrades too; actual freight from Access4U's order confirmation after the order
+  is placed — no free freight, no advance quotes.
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.
