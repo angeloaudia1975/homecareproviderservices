@@ -1871,6 +1871,21 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   messages never name another manufacturer ("Bemis's landing page" appeared on AirAvant). (5) Six manufacturer email
   drafts are the "Email drafts" tab of the questions doc; recipients only from real mailbox evidence (Corsicana and ABM
   left for Angelo). (6) Starting Corsicana drafts was refused by the session's permission check — needs Angelo's click.
+- **Owner directives (Angelo, 2026-10-27 15:23 CT — STANDING, supersede earlier outreach requests).**
+  (1) **No manufacturer outreach, ever, unless Angelo says otherwise:** no emails sent, no email drafts in his account, no
+  searching his mailbox or contacts for manufacturer recipients, no communication with manufacturers on his behalf. He
+  handles all manufacturer contact himself and gives the answers to Claude / ChatGPT. (The email-drafts tab made earlier
+  that day was removed.) (2) **Official manufacturer assets are authorized:** as the regional sales representative he is
+  approved to use official images, brochures and trademarks of the manufacturers HCPS represents on the HCPS platform —
+  collect and implement them from manufacturer websites, brochures, catalogs, previously provided files and authorized
+  asset libraries. Every image is matched to its correct manufacturer, SKU and variant, with provenance and a quality
+  check; never an unrelated third-party asset, never invented product information. A manufacturer-owned asset is not held
+  back only because no separate general permission statement exists (this replaces the per-asset "rights pending" hold for
+  manufacturer-owned assets of represented lines; Bemis approval gates and the frozen-line rules are unchanged).
+  (3) **Manufacturer questions** are kept as ONE consolidated list for Angelo, grouped by manufacturer; each question names
+  the SKU/product, the exact information needed, what existing documents establish, the recommended answer when the
+  documents support one, what remains unresolved, and the impact on publication. (4) Never invent unresolved commercial
+  prices, units, freight or clinical claims; unverified products stay unpublished.
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.
