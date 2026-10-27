@@ -175,7 +175,9 @@
     if (r.status === 401) return gate();
     if (r.status === 403) { $("#body").innerHTML = `<div class="empty">Catalog Exceptions is limited to the President.</div>`; return; }
     if (r.status !== 200 || !r.body.ok) { $("#body").innerHTML = `<div class="err">The queue could not be read: ${esc(r.body.message || r.body.error || ("HTTP " + r.status))}. Nothing is shown rather than a partial list.</div>`; return; }
-    Q = r.body; if (!SEL) { const first = Q.lines.find(l => l.blockers) || Q.lines[0]; SEL = first && first.slug; }
+    if (!SEL) { try { const h = new URLSearchParams(String(location.hash || "").replace(/^#/, "")); if (h.get("line")) SEL = h.get("line"); } catch (_) {} }
+    Q = r.body; if (SEL && !Q.lines.some(l => l.slug === SEL)) SEL = null;
+    if (!SEL) { const first = Q.lines.find(l => l.blockers) || Q.lines[0]; SEL = first && first.slug; }
     MODE === "bulk" ? renderBulk() : render();
   }
   function boot() { if (!TOKEN) return gate(); load(); }

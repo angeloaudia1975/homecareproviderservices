@@ -1804,6 +1804,18 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   `reopened` decision (only the current review). A plan that changed since the preview is refused (409 plan_changed).
   Frozen lines, prices, units, content, freight and retired items are never applicable — they link to the owning tool
   (frozen → Decisions / regression fix). Tests: catalog-corrections 25 (+18/18 mutants), catalog-corrections.ui (4 widths).
+- **Manufacturer Center pipeline status (Batch 3, 2026-10-26).** The Manufacturer Center front screen shows one row per
+  line along Import → Match → Enrich → Review → Approve → Publish → Verify (catalog-api `mc_pipeline`, read-only,
+  President; pure `_mc_pipeline.js` over the Catalog Exceptions queue + source register + decisions + runs — no product
+  data of its own). Each step is done / needs attention / blocked / not started, with a summary and a link to the
+  tool that does that work (Sources, Match & decide, Continue Product Enrichment, Catalog Exceptions, Decisions, Stage,
+  Verify & activate). "Ready to publish" requires: an accepted price-list source, every active SKU priced, master
+  records, no parity error, no photo without recorded rights, no unaccepted source, duplicates classified, no open
+  regression fix, traced freight terms — otherwise the row lists what blocks publication. **Server gate:**
+  `set_record_authority` (on) now also refuses a line with no accepted price-list source (409 `no_accepted_source`).
+  "Order-verified" is shown only when a verification order is on record — never inferred (none is recorded today).
+  Frozen lines read Published; their changes stay on the regression-fix procedure. Catalog Exceptions opens a line
+  from `#line=<slug>`. Tests: mc-pipeline 10, mc-pipeline.ui (4 widths), mcgates 13.
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.

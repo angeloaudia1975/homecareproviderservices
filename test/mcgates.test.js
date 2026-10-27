@@ -60,7 +60,8 @@ await t('match: source facts and HCPS interpretation stay apart; the latest deci
 /* Server paths */
 function world(extra){ const W=M.createWorld({ serialIds:GATES.SERIAL, tables:Object.assign({ manufacturer_meta:[{slug:'n1',record_authoritative:false},{slug:'n2'}],
   product_skus:[{manufacturer:'n1',code:'A',base_price:10,status:'active',updated_at:'2026-10-10T10:00:00Z'}], custom_products:[{manufacturer:'n1',code:'A',base_price:10,active:true}],
-  product_overrides:[], product_content:[], mfr_decisions:[], mfr_verification_runs:[], mfr_sources:[], price_imports:[] }, extra||{}) });
+  product_overrides:[], product_content:[], mfr_decisions:[], mfr_verification_runs:[], price_imports:[],
+  mfr_sources:[{id:39,manufacturer:'n1',kind:'price_list',title:'L0',status:'accepted',received_date:'2026-10-09'},{id:38,manufacturer:'n2',kind:'price_list',title:'N2',status:'accepted',received_date:'2026-10-09'}] }, extra||{}) });
   const inner=W.fetch; W.fetch=async(u,o)=>{ u=String(u); if(u.startsWith('https://ordering.test/data/')) return {ok:false,status:404,json:async()=>null,text:async()=>''};
     (W.db.product_skus||[]).forEach(r=>{ r.code_norm=norm(r.code); }); return inner(u,o); }; return W; }
 const mod=W=>M.load('catalog-api.js',W,{ANALYTICS_TOKEN:'pass',ORDERING_BASE:'https://ordering.test'},ROOT);
@@ -86,6 +87,13 @@ await t('an approval of another line, or of the other gate, is refused',async()=
   const r=await call(C,{action:'set_record_authority',manufacturer:'n1',authoritative:true,confirm_parity:true,approval_decision_id:other.body.approval.id}); eq([r.status,r.body.error],[409,'approval_invalid']);
   const st=await call(C,{action:'mc_approve_gate',manufacturer:'n1',gate:'stage',plan_hash:H,plan_kind:'records',reason:'x'});
   const r2=await call(C,{action:'set_record_authority',manufacturer:'n1',authoritative:true,confirm_parity:true,approval_decision_id:st.body.approval.id}); eq([r2.status,r2.body.error],[409,'approval_invalid']);
+});
+await t('activation is refused without an accepted price-list source (commercial facts unverified)',async()=>{
+  const W=world({mfr_sources:[{id:40,manufacturer:'n1',kind:'price_list',title:'L',status:'received',received_date:'2026-10-10'},{id:42,manufacturer:'n1',kind:'terms',title:'T',status:'accepted',received_date:'2026-10-10'}]}), C=mod(W);
+  const id=run(W); const ap=await call(C,{action:'mc_approve_gate',manufacturer:'n1',gate:'activate',run_id:id,reason:'ok'}); eq(ap.status,200,JSON.stringify(ap.body));
+  const r=await call(C,{action:'set_record_authority',manufacturer:'n1',authoritative:true,confirm_parity:true,approval_decision_id:ap.body.approval.id});
+  eq([r.status,r.body.error,W.db.manufacturer_meta[0].record_authoritative],[409,'no_accepted_source',false]);
+  eq(W.db.mfr_decisions.filter(d=>d.used_at).length,0,'approval not spent');
 });
 await t('approving needs a reason and a real plan hash; the approval dry run records nothing',async()=>{
   const W=world(), C=mod(W);

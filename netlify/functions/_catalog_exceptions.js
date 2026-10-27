@@ -167,7 +167,7 @@ function exceptionsQueue(input) {
       return [c, n + keys.size];
     }));
     const blockers = items.filter(x => x.severity === "blocker").length;
-    return { slug: l.slug, name: names[l.slug] || l.slug, status: l.status, completion: l.completion,
+    return { slug: l.slug, name: names[l.slug] || l.slug, status: l.status, completion: l.completion, stages: l.stages, launch_ready: l.launch_ready === true,
       frozen: !!(meta[l.slug] && meta[l.slug].frozen), gold_standard: !!l.gold_standard, blockers, counts, items };
   });
   const totals = Object.fromEntries(CATS.map(c => [c, lines.reduce((n, l) => n + l.counts[c], 0)]));

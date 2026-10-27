@@ -4110,6 +4110,12 @@ async function handleCatalog(event){
         if(stats.drift.length)
           return json(409,{error:"parity_drift", drift:stats.drift.slice(0,100), message:
             "Nothing was switched on. "+parityMessage(stats)});
+        /* Batch 3 (2026-10-26): commercial facts first — a line is never switched to record authority without an
+           accepted price-list source in the register. */
+        let srcOk;
+        try{ srcOk=await sb("GET",`mfr_sources?manufacturer=eq.${encodeURIComponent(slug)}&kind=eq.price_list&status=eq.accepted&select=id&limit=1`); }
+        catch(e){ return json(503,{error:"source_unreadable", message:"Nothing was switched on — the source register could not be read: "+String((e&&e.message)||e).slice(0,300)}); }
+        if(!(srcOk&&srcOk.length)) return json(409,{error:"no_accepted_source", message:"Nothing was switched on: "+slug+" has no accepted price-list source, so its commercial facts are unverified. Register and accept the manufacturer's price list in Manufacturer Center → Sources first."});
         /* GATE 2 (Manufacturer Center Phase 6). Activation needs an unused gate:activate approval that names a
            passing pre-activation verification run of this line, and the record must not have changed since. */
         let g2=null;
@@ -4549,6 +4555,20 @@ async function handleCatalog(event){
         const after=await exceptionsData(); if(after.fail) return json(200,{ok:true, recorded:ins, queue_unreadable:true});
         return json(200,{ok:true, recorded:(ins||[]).map(r=>({id:r.id, manufacturer:r.manufacturer, field:r.field, code:r.code})),
           queue:Object.assign({generated:new Date().toISOString()}, after.q)});
+      }
+      /* MANUFACTURER CENTER PIPELINE (Batch 3, 2026-10-26). Read-only: one row per line along Import → Match → Enrich →
+         Review → Approve → Publish → Verify, built from the exceptions queue, the source register, the decisions log
+         and the verification runs (_mc_pipeline.js). Codes and counts only, never a price. */
+      if(b.action==="mc_pipeline"){
+        const PL=require("./_mc_pipeline.js");
+        const d=await exceptionsData(); if(d.fail) return d.fail;
+        let sources, decs;
+        try{ [sources, decs]=await Promise.all([
+          sb("GET","mfr_sources?select=id,manufacturer,kind,status,legacy&order=id.asc&limit=5000"),
+          sb("GET","mfr_decisions?kind=in.(regression_fix,enrichment_window)&select=id,manufacturer,kind,used_at&order=id.asc&limit=5000")]); }
+        catch(e){ return json(503,{error:"mc_unreadable", message:String((e&&e.message)||e).slice(0,300)}); }
+        const p=PL.pipeline({queue:d.q, sources, decisions:decs, order_verified:{}});
+        return json(200,Object.assign({ok:true, generated:new Date().toISOString(), totals:d.q.totals, categories:d.q.categories}, p));
       }
       if(b.action==="mc_overview"){
         let lines, meta, sources, decisions, runs;

@@ -57,6 +57,24 @@
  .enst.on{border-color:var(--orange);background:#fff7ef;box-shadow:inset 0 -3px 0 var(--orange)}.enst.later{opacity:.55}
  .enissue{border-left:4px solid #f3d9a4}.enissue span,.enissue b{overflow-wrap:anywhere}
  /* Release C — Dealer Preview (staff-only; the dealer-like cards use the storefront's own words and prices) */
+ /* Batch 3 — pipeline status */
+ .pl-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+ .pl-filters{display:flex;flex-wrap:wrap;gap:6px}.pl-filters .btn{min-height:44px}.pl-f.on{border-color:var(--orange);box-shadow:inset 0 -3px 0 var(--orange)}
+ .pl-row{border:1px solid #e6ebf1;border-radius:10px;padding:10px 12px;margin:8px 0;background:#fff}
+ .pl-head{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;justify-content:space-between}.pl-slug{font-size:11px}
+ .pl-meta{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.pl-a{text-decoration:none}
+ .pl-steps{list-style:none;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin:8px 0 0;padding:0}
+ .pl-step a{display:flex;flex-direction:column;gap:2px;min-height:44px;height:100%;border:1px solid var(--silver);border-radius:9px;padding:7px 8px;text-decoration:none;color:var(--ink);background:#f7f9fc}
+ .pl-dot{font-weight:800;width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;background:#e5e9ef;color:var(--gray)}
+ .pl-lab{font-weight:800;font-size:12px}.pl-st{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:var(--gray)}
+ .pl-sum{font-size:11.5px;color:var(--gray);overflow-wrap:anywhere}.pl-tool{font-size:11px;color:var(--blue-dk);font-weight:700;margin-top:auto}
+ .s-done a{background:#f3fbf6;border-color:#bfe3cf}.s-done .pl-dot{background:var(--green);color:#fff}.s-done .pl-st{color:var(--green)}
+ .s-attention a{background:#fffaf0;border-color:#f3d9a4}.s-attention .pl-dot{background:var(--amber);color:#fff}.s-attention .pl-st{color:var(--amber)}
+ .s-blocked a{background:#fff5f5;border-color:#f3b4b4}.s-blocked .pl-dot{background:var(--red);color:#fff}.s-blocked .pl-st{color:var(--red)}
+ .pl-why{margin-top:8px;font-size:12px;color:var(--red);background:#fff5f5;border:1px solid #f3d0d0;border-radius:8px;padding:6px 9px}
+ @media(max-width:1100px){.pl-steps{grid-template-columns:repeat(4,minmax(0,1fr))}}
+ @media(max-width:640px){.pl-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+ @media(max-width:380px){.pl-steps{grid-template-columns:1fr}}
  .pvtiles{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:10px 0}
  @media(max-width:900px){.pvtiles{grid-template-columns:repeat(2,1fr)}}
  .pvtile{border:1px solid var(--silver);border-radius:10px;padding:9px 10px;background:#fff}.pvtile b{display:block;font-size:22px;line-height:1.1}.pvtile span{font-size:11.5px;color:var(--gray)}
@@ -107,6 +125,7 @@
 <div class="toast" id="toast"></div>
 <script src="/admin/staff-session.js"></script>
 <script src="/admin/admin-chrome.js"></script>
+<script src="/admin/mc-pipeline.js"></script>
 <script>
 /* MANUFACTURER CENTER — Phases 1–3 + the guided workflow of Phase 6 (approved 2026-10-10). It
    orchestrates the Structure Map, Product Content Enrichment, the commercial master (product_skus) and
@@ -172,8 +191,10 @@ function render(){
   <div class="infobar"><b>Guided workflow:</b> Sources → Match &amp; decide → Structure &amp; content → Commercial &amp; freight → Stage (<b>Approval 1</b>) → Verify &amp; activate (<b>Approval 2</b>). Every write shows a dry run first. <b>Frozen lines</b> (Climbing Steps, Strongback, Ovation, Bemis) open read-only and refuse every change — in catalog-api and in the database — unless a <b>regression_fix</b> decision is recorded and sent with it. Bemis product pages are an <b>approved deferral</b>, not a regression.</div>
   <div class="bar"><button class="btn ghost" id="stbtn" onclick="selftest()">Test the freeze guard</button><span class="mut" style="font-size:12px">Tries one commercial write per table on every frozen line; each attempt is rolled back.</span></div>
   <div id="st"></div>
+  <div id="pipe"></div>
   <div class="card"><table><thead><tr><th>Line</th><th>Status</th><th>Accepted source</th><th>Mfr effective date</th><th>Decisions</th><th>Deferrals</th><th>Gold Standard / verification</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="mut">No lines.</td></tr>'}</tbody></table></div>
   <div id="line"></div>`;
+  if(window.MCPipeline) MCPipeline.load();
 }
 async function selftest(){
   const b=$("#stbtn"); b.disabled=true; b.textContent="Testing…";
