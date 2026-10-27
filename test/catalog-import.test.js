@@ -195,7 +195,19 @@ async function run(src, adpSrc) {
     eq(f('N9').msrp, { before: null, after: null, change: 'not_stated' }, 'a source-RULE MSRP is not a stated MSRP');
     eq(f('N9').status, { before: null, after: 'active (new record)', change: 'added' });
     eq(f('OLD').status, { before: 'listed (no master record)', after: 'listed (no master record)', change: 'not_on_source' }, 'preserved, status unchanged');
-    eq(ba.summary, { rows: 4, new: 1, changed: 1, unchanged: 1, not_on_source_preserved: 1 });
+    eq(ba.summary, { rows: 4, new: 1, changed: 1, unchanged: 1, not_on_source_preserved: 1, compare_on_server: 0 });
+  });
+  t('before/after: a price-free (public) catalog never makes a price "changed" — it reads compare_on_server; units still compare', () => {
+    const V = C.validateLine(srcLine(baRows()));
+    const strip = baCat().map(r => { const o = Object.assign({}, r); ['base_price', 'tiers', 'msrp', 'map', 'dealer_price'].forEach(k => delete o[k]); return o; });
+    const ba = C.beforeAfter(V, { catalog: strip, master: baMaster() });
+    eq(ba.rows.map(r => r.code + ':' + r.row_kind), ['A1:compare_on_server', 'B-2:compare_on_server', 'N9:new', 'OLD:not_on_source_preserved']);
+    const f = c => ba.rows.find(r => r.code === c).fields;
+    eq(f('B-2').dealer_price, { before: null, after: 7, change: 'compare_on_server' });
+    eq(f('B-2').msrp, { before: null, after: 12, change: 'compare_on_server' });
+    eq(ba.summary.changed, 0); eq(ba.summary.compare_on_server, 2);
+    const u = C.validateLine(srcLine([row({ code: 'A1', name: 'Ay', dealer_price: 10, uom: 'Each', case_qty: 4 })]));
+    eq(C.beforeAfter(u, { catalog: strip, master: baMaster() }).rows.find(r => r.code === 'A1').row_kind, 'changed', 'a unit change is still a change');
   });
   t('before/after: identical inputs give byte-identical JSON + CSV (hash), whatever the input order', () => {
     const one = C.beforeAfter(C.validateLine(srcLine(baRows())), { catalog: baCat(), master: baMaster() });

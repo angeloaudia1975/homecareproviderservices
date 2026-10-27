@@ -312,8 +312,15 @@ function afterStated(r) {
     msrp: r.msrp_source === "stated" ? r.msrp ?? null : null, map: r.map_source === "stated" ? r.map ?? null : null,
     uom: nz(r.uom), case_qty: r.case_qty ?? null, status: null };
 }
+/* (2026-10-27) The public catalog files carry no prices since the P0 security release. When the catalog this run was
+   given holds no commercial field at all, its "before" prices are UNKNOWN here, not empty: the commercial fields read
+   "compare_on_server" (Manufacturer Center → Compare a reviewed price list, catalog-api source_compare, which compares
+   with the private record) and never make a row "changed". Units and case quantities are still compared. */
+const COMMERCIAL_BA = ["dealer_price", "tiers", "msrp", "map"];
+const catalogHasPrices = rows => (rows || []).some(r => r && ["dealer_price", "base_price", "tiers", "tier_prices", "msrp", "map"].some(k => r[k] != null && r[k] !== ""));
 function beforeAfter(line, existing) {
   const e = existing || {};
+  const offline = (e.catalog || []).length > 0 && !catalogHasPrices(e.catalog);
   const byCat = new Map(), byMaster = new Map();
   for (const r of (e.catalog || []).filter(Boolean)) { const k = normCode(r.code); if (k && !byCat.has(k)) byCat.set(k, r); }
   for (const r of (e.master || []).filter(Boolean)) { const k = normCode(r.code); if (k && !byMaster.has(k)) byMaster.set(k, r); }
@@ -326,13 +333,15 @@ function beforeAfter(line, existing) {
       const was = b ? b[f] ?? null : null; let now = a[f];
       let change;
       if (f === "status") { now = b ? was : "active (new record)"; change = b ? "not_stated" : "added"; }
+      else if (offline && b && COMMERCIAL_BA.includes(f) && was == null) { change = now == null ? "not_stated" : "compare_on_server"; if (now == null) now = was; }
       else if (now == null) { now = was; change = "not_stated"; }
       else if (was == null) change = "added";
       else change = String(was) === String(now) ? "unchanged" : "changed";
       fields[f] = { before: was, after: now, change };
     }
     const priced = ["dealer_price", "tiers", "msrp", "map", "uom", "case_qty"].some(f => fields[f].change === "changed" || (b && fields[f].change === "added"));
-    rows.push({ key: k, code: r.code, row_kind: !b ? "new" : priced ? "changed" : "unchanged", fields });
+    const server = !priced && COMMERCIAL_BA.some(f => fields[f].change === "compare_on_server");
+    rows.push({ key: k, code: r.code, row_kind: !b ? "new" : priced ? "changed" : server ? "compare_on_server" : "unchanged", fields });
   }
   const keys = new Set([...byCat.keys(), ...byMaster.keys()]);
   for (const k of keys) {
@@ -344,7 +353,8 @@ function beforeAfter(line, existing) {
   rows.sort((x, y) => (x.key < y.key ? -1 : x.key > y.key ? 1 : x.code < y.code ? -1 : x.code > y.code ? 1 : 0));
   const count = kd => rows.filter(r => r.row_kind === kd).length;
   return { manufacturer: canonicalSlug(line.manufacturer), source: provenanceOf(line), fields: BA_FIELDS,
-    summary: { rows: rows.length, new: count("new"), changed: count("changed"), unchanged: count("unchanged"), not_on_source_preserved: count("not_on_source_preserved") },
+    summary: { rows: rows.length, new: count("new"), changed: count("changed"), unchanged: count("unchanged"), not_on_source_preserved: count("not_on_source_preserved"),
+      compare_on_server: count("compare_on_server") },
     rows: rows.map(r => ({ code: r.code, row_kind: r.row_kind, fields: r.fields })) };
 }
 const csvCell = v => { const s = v == null ? "" : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };

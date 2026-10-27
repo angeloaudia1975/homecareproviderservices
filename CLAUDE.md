@@ -1816,6 +1816,20 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   "Order-verified" is shown only when a verification order is on record — never inferred (none is recorded today).
   Frozen lines read Published; their changes stay on the regression-fix procedure. Catalog Exceptions opens a line
   from `#line=<slug>`. Tests: mc-pipeline 10, mc-pipeline.ui (4 widths), mcgates 13.
+- **Private price-list comparison (2026-10-27).** A manufacturer price list is compared with what dealers are charged
+  TODAY on the server only: catalog-api `source_compare` (President, read-only, nothing stored; pure `_source_compare.js`)
+  takes the importer's `line.json` and runs it against the storefront's own merge (`_pricing.js lineProducts` = the
+  private `catalog_file_commercial` record of the deployed file's exact version + saved layers + the authoritative master
+  record). Per part number: unchanged · changed (field NAMES only) · added · removed ("not on source", never a
+  retirement) · ambiguous (same part with different figures on the source or in today's catalog) · unverifiable (no
+  general dealer price — incl. ABM's named-account prices — or nothing to compare with). A field the source doesn't state
+  is never compared; a derived 2× MSRP is not a stated MSRP. Refused, never guessed: source without SHA-256, another
+  line's source, empty source, or today's catalog unreadable for its exact version. The answer never carries a price
+  (tests grep every input figure). UI: Manufacturer Center → "Compare a reviewed price list with today's prices" (loads
+  line.json from the computer). The offline importer now marks commercial fields `compare_on_server` (never "changed")
+  when its catalog is the price-free public file; units and case quantities still compare. Never restore prices to
+  public files or reopen the legacy tables for this. Tests: source-compare 16 (+15/15 mutants with the importer rule),
+  source-compare.ui (4 widths), catalog-import 55 (+81/81).
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.

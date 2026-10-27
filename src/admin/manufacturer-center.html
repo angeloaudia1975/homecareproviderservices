@@ -57,6 +57,10 @@
  .enst.on{border-color:var(--orange);background:#fff7ef;box-shadow:inset 0 -3px 0 var(--orange)}.enst.later{opacity:.55}
  .enissue{border-left:4px solid #f3d9a4}.enissue span,.enissue b{overflow-wrap:anywhere}
  /* Release C — Dealer Preview (staff-only; the dealer-like cards use the storefront's own words and prices) */
+ .sc-sum{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.sc-sum .btn{min-height:44px}.sc-f.on{border-color:var(--orange)}
+ .sc-list{max-height:420px;overflow:auto;border:1px solid #eef2f6;border-radius:8px;padding:4px 8px}
+ .sc-row{padding:6px 0;border-bottom:1px solid #f1f4f8;font-size:12.5px;overflow-wrap:anywhere}.sc-loc{font-size:11px}
+ #srccmp .bar select,#srccmp .bar input{min-height:44px;font-size:16px;max-width:100%}#srccmp .bar .btn{min-height:44px}
  /* Batch 3 — pipeline status */
  .pl-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
  .pl-filters{display:flex;flex-wrap:wrap;gap:6px}.pl-filters .btn{min-height:44px}.pl-f.on{border-color:var(--orange);box-shadow:inset 0 -3px 0 var(--orange)}
@@ -126,6 +130,7 @@
 <script src="/admin/staff-session.js"></script>
 <script src="/admin/admin-chrome.js"></script>
 <script src="/admin/mc-pipeline.js"></script>
+<script src="/admin/source-compare.js"></script>
 <script>
 /* MANUFACTURER CENTER — Phases 1–3 + the guided workflow of Phase 6 (approved 2026-10-10). It
    orchestrates the Structure Map, Product Content Enrichment, the commercial master (product_skus) and
@@ -192,9 +197,11 @@ function render(){
   <div class="bar"><button class="btn ghost" id="stbtn" onclick="selftest()">Test the freeze guard</button><span class="mut" style="font-size:12px">Tries one commercial write per table on every frozen line; each attempt is rolled back.</span></div>
   <div id="st"></div>
   <div id="pipe"></div>
+  <div id="srccmp"></div>
   <div class="card"><table><thead><tr><th>Line</th><th>Status</th><th>Accepted source</th><th>Mfr effective date</th><th>Decisions</th><th>Deferrals</th><th>Gold Standard / verification</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="mut">No lines.</td></tr>'}</tbody></table></div>
   <div id="line"></div>`;
   if(window.MCPipeline) MCPipeline.load();
+  if(window.SourceCompare) SourceCompare.draw(LINES);
 }
 async function selftest(){
   const b=$("#stbtn"); b.disabled=true; b.textContent="Testing…";
