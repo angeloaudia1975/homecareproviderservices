@@ -2958,6 +2958,15 @@
         "stats": []
       },
       {
+        "type": "video",
+        "eyebrow": "Dalton Medical iSeries Bed Overview",
+        "headline": "",
+        "copy": "Introduction to the iSeries Bed System by Dalton Medical",
+        "embed": "https://www.youtube.com/watch?v=8WBU1Hup89E",
+        "checklist": [],
+        "video_side": ""
+      },
+      {
         "type": "cards",
         "eyebrow": "Other Categories",
         "title": "More of what your job already requires",
