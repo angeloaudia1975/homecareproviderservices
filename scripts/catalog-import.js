@@ -123,7 +123,7 @@ async function runOne(job, shared) {
       (r.flags || []).map(f => f.code).join("; "), r.locator].map(csvCell).join(",");
   })).join("\n") + "\n");
   const s = R.counts;
-  return { name: job.name || slug, manufacturer: slug, file: fileName, rows: line.rows.length, distinct: s.distinct, new: s.new, changed: P.before_after.summary.changed,
+  return { name: job.name || slug, manufacturer: slug, file: fileName, rows: line.rows.length, distinct: s.distinct, new: s.new, changed: P.before_after.summary.changed, compare_on_server: P.before_after.summary.compare_on_server || 0,
     unchanged: P.before_after.summary.unchanged, not_on_source_preserved: P.before_after.summary.not_on_source_preserved,
     blocking: P.counts.blocking, exceptions: P.counts.total, stageable: P.stageable, exceptions_list: P.exceptions };
 }
@@ -136,7 +136,7 @@ async function main() {
   if (a.snapshot) shared.frozen = (readJson(a.snapshot).meta || []).filter(m => m.frozen === true).map(m => m.slug);
   if (!a.batch) {
     const r = await runOne({ mfr: a.mfr, file: a.file, received: a.received, received_evidence: a["received-evidence"], transcription: a.transcription, ocr: a.ocr, catalog_slug: a["catalog-slug"], out: a.out }, shared);
-    console.log(`${r.name}: ${r.rows} rows · new ${r.new} · changed ${r.changed} · unchanged ${r.unchanged} · preserved-not-on-source ${r.not_on_source_preserved} · blocking ${r.blocking} · exceptions ${r.exceptions} · stageable ${r.stageable ? "yes" : "no"}`);
+    console.log(`${r.name}: ${r.rows} rows · new ${r.new} · changed ${r.changed} · compare on server ${r.compare_on_server} · unchanged ${r.unchanged} · preserved-not-on-source ${r.not_on_source_preserved} · blocking ${r.blocking} · exceptions ${r.exceptions} · stageable ${r.stageable ? "yes" : "no"}`);
     return;
   }
   const jobs = readJson(a.batch), results = [], queue = [];
@@ -157,7 +157,7 @@ async function main() {
   write(a.out, "exceptions.csv", exCsv(queue));
   write(a.out, "run.json", { lines: results });
   for (const r of results) console.log(r.error ? `${r.name}: FAILED — ${r.error}` :
-    `${r.name}: ${r.rows} rows · new ${r.new} · changed ${r.changed} · unchanged ${r.unchanged} · preserved ${r.not_on_source_preserved} · blocking ${r.blocking} · exceptions ${r.exceptions} · stageable ${r.stageable ? "yes" : "no"}`);
+    `${r.name}: ${r.rows} rows · new ${r.new} · changed ${r.changed} · compare on server ${r.compare_on_server} · unchanged ${r.unchanged} · preserved ${r.not_on_source_preserved} · blocking ${r.blocking} · exceptions ${r.exceptions} · stageable ${r.stageable ? "yes" : "no"}`);
 }
 if (require.main === module) main().catch(e => { console.error("import failed: " + (e.stack || e.message)); process.exit(1); });
 module.exports = { runOne };

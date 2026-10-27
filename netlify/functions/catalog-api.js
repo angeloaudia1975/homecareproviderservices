@@ -4570,6 +4570,23 @@ async function handleCatalog(event){
         const p=PL.pipeline({queue:d.q, sources, decisions:decs, order_verified:{}});
         return json(200,Object.assign({ok:true, generated:new Date().toISOString(), totals:d.q.totals, categories:d.q.categories}, p));
       }
+      /* PRIVATE PRICE-LIST COMPARISON (2026-10-27). The importer's reviewed line (line.json) is compared on the server
+         with what dealers are charged today — the storefront's own merge over the private commercial record of the
+         deployed catalog version (_pricing.js lineProducts). Read-only; nothing is stored; the answer carries codes,
+         states, field names and counts only, never a price (_source_compare.js). Refused, never guessed, when the
+         source is unidentified or today's catalog cannot be read for its exact version. */
+      if(b.action==="source_compare"){
+        const SC=require("./_source_compare.js");
+        const slug=String(b.manufacturer||"").trim(), line=b.line;
+        if(!slug||!line||typeof line!=="object") return json(400,{error:"manufacturer and line (the importer's line.json) are required"});
+        const PRICING=require("./_pricing.js"), files=PRICING.remoteFiles(ORDERING_BASE);
+        let L;
+        try{ L=await PRICING.lineProducts({slug, sb, catalogFile:files.catalogFile, contentFile:files.contentFile, contract:{}, cart:new Map(), freightCfg:null}); }
+        catch(err){ return json(409,{error:"catalog_unreadable", message:"Nothing was compared: today's catalog for "+slug+" could not be read for its exact version ("+String((err&&err.message)||err).replace(/\$?\d+\.\d{2}/g,"[withheld]").slice(0,240)+")."}); }
+        const r=SC.compareSource({slug, line, products:L.products, identity:L.identity, authority:L.source, aliases:slug==="gce"?["ohio-medical"]:[]});
+        if(!r.ok) return json(409,{error:r.refused, message:r.message+" Nothing was compared."});
+        return json(200,Object.assign({generated:new Date().toISOString()}, r));
+      }
       if(b.action==="mc_overview"){
         let lines, meta, sources, decisions, runs;
         try{

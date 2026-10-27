@@ -199,7 +199,7 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, cart
   /* The shop forgives a failed read and carries on with what it has; an order may not. */
   if (failures.length) throw new Error("layer_unreadable: " + failures[0].slice(0, 300));
   const src = engine.CATALOG_SOURCE[slug] || {};
-  return { products, engine, source: src.source || "layers", freight: mfrEntry.freight || null, freightSource, freightInvalid };
+  return { products, engine, source: src.source || "layers", freight: mfrEntry.freight || null, freightSource, freightInvalid, identity: commercial.identity };
 }
 
 /* Price every line of every order. orders: [{manufacturer_slug, items:[{code, qty, unit?}]}].
