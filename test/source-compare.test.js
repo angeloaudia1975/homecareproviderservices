@@ -56,6 +56,11 @@ const base = () => ({ slug: 'acme', line: line(src), products, identity: 'f'.rep
       line: line([{ code: 'L', dealer_price: 15, tiers: [{ min_qty: 10, price: 14 }] }]) }));
     ok(r2.rows[0].fields.join() === 'tiers', JSON.stringify(r2.rows[0]));
   });
+  await t('a list dealer price beside a discounted base is compared on the list price (Access4U shape)', () => {
+    const q = SC.compareSource(Object.assign(base(), { products: [{ code: 'R', base_price: 90, dealer_price: 100, tier_prices: { 2: 95 } }],
+      line: line([{ code: 'R', dealer_price: 100 }]) }));
+    ok(q.rows[0].state === 'unchanged', JSON.stringify(q.rows[0]));
+  });
   await t('a field the source does not state is never compared', () => {
     const q = SC.compareSource(Object.assign(base(), { line: line([{ code: 'A2', dealer_price: 303.33 }]) }));
     ok(q.rows.find(x => x.code === 'A2').state === 'unchanged', JSON.stringify(q.rows[0]));
