@@ -42,7 +42,7 @@ const serverFreight=async lines=>{ const C=mod(world()); const r=await call(C,{a
 /* The browser: the shop page's own computeFreight / linesSubtotal / unitPrice. */
 const html=fs.readFileSync(SHOP,'utf8');
 const {grabDecl}=require(path.join(__dirname,'extract-picker.js'));
-const code=['function familyQty','function tierQty','function contractPrice','function unitPrice','function linesSubtotal','function computeFreight'].map(a=>grabDecl(html,a)).join('\n');
+const code=['function familyQty','function tierQty','function contractPrice','function lineRatePrice','function unitPrice','function linesSubtotal','function computeFreight'].map(a=>grabDecl(html,a)).join('\n');
 const browserFreight=lines=>{ const entry=mfrs.find(m=>m.slug===SB);
   const ctx={CART:new Map(),AUTH:{prices:{}},mfrInfo:s=>s===SB?entry:{slug:s}}; vm.createContext(ctx); vm.runInContext(code+';this.cf=computeFreight;',ctx);
   const by=Object.fromEntries(ROWS.map(([c,category,b])=>[c,{manufacturer:SB,code:c,category,base_price:b}]));
