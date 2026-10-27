@@ -18,6 +18,7 @@ const M = [
   ['removed rows dropped', F, "for (const [k, cs] of C) if (!S.has(k)) out.push(", "for (const [k, cs] of C) if (false) out.push(", false, T],
   ['figures in the answer', F, 'out.push(fields.length ? { code, state: "changed", fields, locators }', 'out.push(fields.length ? { code, state: "changed", fields, locators, s, c }', false, T],
   ['switched-off product compared', F, '&& p.active !== false)', ')', false, T],
+  ['rule-derived MSRP compared', F, 'const stated = (v, how) => (how == null || how === "stated") ? cents(v) : null;', 'const stated = (v, how) => cents(v);', false, T],
   ['any role compares', API, 'if(me.role!=="president") return json(403,{error:"President only"});', '', false, T],
   ['unreadable catalog guessed', API, 'catch(err){ return json(409,{error:"catalog_unreadable"', 'catch(err){ L={products:[],identity:"x",source:"layers"}; } if(false){ return json(409,{error:"catalog_unreadable"', false, T],
   ['offline prices read as changes', I, 'else if (offline && b && COMMERCIAL_BA.includes(f) && was == null)', 'else if (false)', false, TI],
