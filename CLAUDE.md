@@ -1830,6 +1830,11 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   when its catalog is the price-free public file; units and case quantities still compare. Never restore prices to
   public files or reopen the legacy tables for this. Tests: source-compare 16 (+15/15 mutants with the importer rule),
   source-compare.ui (4 widths), catalog-import 55 (+81/81).
+  Comparison rules learned from the live runs (2026-10-27, #52–#55): only a STATED MSRP / MAP is compared (an importer
+  `source_rule` figure — Access4U MSRP = dealer × 1.5 — never is); a stated MSRP equal to today's derived 2× MSRP is
+  unchanged (with a note); ladder rungs at qty 1 or at the single-unit price buy nothing and are dropped on both sides;
+  a row with a list `dealer_price` beside a discounted `base_price` (Access4U) is compared on the list price.
+  Payloads sent from the browser carry codes and the source's own figures only, over the signed-in call; nothing stored.
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.
