@@ -1857,6 +1857,20 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   code with no saved edit) and could never see a price (public file has none): it now reads the line through the
   storefront's own merge on the server (`_pricing.lineProducts`, GET only). Starting enrichment drafts for such a line
   still needs Angelo's go-ahead (Continue Product Enrichment shows only with a deferral or window).
+- **Catalog Completion — 27 Oct, after #59 (Angelo's batch: Access4U reviews, AirAvant drafts, emails).** (1) Access4U photo
+  reviews #924–#932 recorded (source_requested, owner-authorized); bulk-corrections plan now 0 recordable, SR3 + PRK owner
+  decisions. (2) **A code sold in two families on one line stays two cart lines (RULE).** Access4U SR3 / PRK are listed in
+  Stock Orders ("RS") and the Modular System ("RR") at different prices: the shop's cart key includes the family
+  (ordering #7), the server prices each line by its family and echoes it (admin #60), a line without a family is refused
+  when its listings differ (unchanged), contract prices stay keyed by code, and reorder never guesses between families at
+  different prices. Only Access4U carries families. The price conflict itself is a manufacturer question — never resolved
+  by picking one. (3) AirAvant: 12 HIDDEN drafts (status pending_review; public read returns 0 rows) with copy from
+  bongorx.com home + FAQ (verbatim facts, attributed: FDA clearance as AirAvant's statement; no cost, insurance or VA
+  statements) and provenance per field; photos left missing; BNG511–515 and the XS size flagged needs_verification
+  (confidence 0.4). Review Issues stays "needs content" until a product-specific AirAvant source exists. (4) Enrichment
+  messages never name another manufacturer ("Bemis's landing page" appeared on AirAvant). (5) Six manufacturer email
+  drafts are the "Email drafts" tab of the questions doc; recipients only from real mailbox evidence (Corsicana and ABM
+  left for Angelo). (6) Starting Corsicana drafts was refused by the session's permission check — needs Angelo's click.
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.
