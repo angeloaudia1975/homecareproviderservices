@@ -32,16 +32,19 @@ const norm = c => String(c == null ? "" : c).toUpperCase().replace(/[^A-Z0-9]/g,
 const num = v => { if (v === "" || v == null) return null; const n = typeof v === "number" ? v : Number(String(v).replace(/[$,\s]/g, "")); return isFinite(n) ? n : null; };
 const cents = v => { const n = num(v); return n == null ? null : Math.round(n * 100); };
 const txt = v => v == null ? "" : String(v).trim().toLowerCase().replace(/\s+/g, " ");
-function tiersKey(t) {
+/* A ladder as the quantities where the price actually changes: a rung at quantity 1, or at the single-unit price, buys
+   nothing and is dropped on both sides (a list printing "1 / 10 / 20" with 10+ at the 1-unit price = today's "20+"). */
+function tiersKey(t, base) {
   if (!Array.isArray(t) || !t.length) return null;
-  const rows = t.map(r => [parseInt(r && (r.min_qty != null ? r.min_qty : r.minQty), 10) || 1, cents(r && r.price)]).filter(r => r[1] != null)
-    .sort((a, b) => a[0] - b[0]);
+  const b = cents(base);
+  const rows = t.map(r => [parseInt(r && (r.min_qty != null ? r.min_qty : r.minQty), 10) || 1, cents(r && r.price)])
+    .filter(r => r[1] != null && r[0] > 1 && r[1] !== b).sort((a, b2) => a[0] - b2[0]);
   return rows.length ? rows.map(r => r[0] + ":" + r[1]).join("|") : null;
 }
 /* Today's commercial values of one product, as the shop prices it. */
 function currentOf(p) {
-  const price = cents(p.base_price != null && p.base_price !== "" ? p.base_price : p.dealer_price);
-  return { dealer_price: price, tiers: tiersKey(p.tiers || p.tier_prices), msrp: cents(p.msrp), msrp_derived: !!p._msrp_suggested,
+  const raw = p.base_price != null && p.base_price !== "" ? p.base_price : p.dealer_price, price = cents(raw);
+  return { dealer_price: price, tiers: tiersKey(p.tiers || p.tier_prices, raw), msrp: cents(p.msrp), msrp_derived: !!p._msrp_suggested,
     map: cents(p.map), uom: txt(p.uom) || null, case_qty: parseInt(p.case_qty, 10) > 0 ? parseInt(p.case_qty, 10) : null };
 }
 /* What a source row STATES (null = not stated). */
@@ -49,7 +52,7 @@ function sourceOf(r) {
   const price = cents(r.dealer_price);
   /* An MSRP / MAP the importer DERIVED from a stated rule (Access4U: MSRP = dealer × 1.5) is not a stated price. */
   const stated = (v, how) => (how == null || how === "stated") ? cents(v) : null;
-  return { dealer_price: price, tiers: tiersKey(r.tiers), msrp: stated(r.msrp, r.msrp_source), map: stated(r.map, r.map_source), uom: txt(r.uom) || null,
+  return { dealer_price: price, tiers: tiersKey(r.tiers, r.dealer_price), msrp: stated(r.msrp, r.msrp_source), map: stated(r.map, r.map_source), uom: txt(r.uom) || null,
     case_qty: parseInt(r.case_qty, 10) > 0 ? parseInt(r.case_qty, 10) : null };
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
