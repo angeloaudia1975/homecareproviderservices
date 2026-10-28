@@ -154,7 +154,9 @@ if (!Array.isArray(catalog) || !catalog.length) { console.error("no catalog rows
 const prev = readJson(contentPath, { pages: {} });
 const overrides = readJson(overridesPath, {});
 const records = catalog.map(r => ({ code: r.code, code_norm: codeNorm(r.code), status: "active", base_price: 1, uom: r.uom || null, case_qty: r.case_qty || null }));
-const cat2 = catalog.map(r => Object.assign({}, r, { details_url: sources[r.code] || sources[codeNorm(r.code)] || r.details_url || "" }));
+/* a site's home page ("https://www.pedifix.com") is not a product page: it never sources a product nor groups SKUs */
+const productUrl = u => /^https?:\/\/[^/]+\/[^#?\s]+/i.test(String(u || "")) ? u : "";
+const cat2 = catalog.map(r => Object.assign({}, r, { details_url: productUrl(sources[r.code] || sources[codeNorm(r.code)] || r.details_url || "") }));
 /* pages from the previous run keep their keys (drafts, never "live" here: the static file is the preview's own) */
 const prevPages = Object.values(prev.pages || {}).map(p => Object.assign({}, p, { status: "pending_review" }));
 const plan = E.planPages({ slug, records, catalog: cat2, pages: prevPages });
