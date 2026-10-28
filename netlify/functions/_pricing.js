@@ -124,7 +124,7 @@ const LAYER_SELECT = {
 
 /* One line's products, built by the shop's own mergeCatalogEdits with the server answering its
    reads. Returns { products, engine } — engine.unitPrice prices against the CART map given. */
-async function lineProducts({ slug, sb, catalogFile, contentFile, contract, rates, cart, freightCfg, freightOverride }) {
+async function lineProducts({ slug, sb, catalogFile, contentFile, contract, rates, cart, freightCfg, freightOverride, engineSource }) {
   const [publicFile, metaRows, commercialRec] = await Promise.all([
     catalogFile(slug),
     sb("GET", `manufacturer_meta?slug=eq.${enc(slug)}&select=slug,enriched_only,category_map,record_authoritative,record_resync_error,freight_terms`),
@@ -195,7 +195,7 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, rate
   const mfrEntry = Object.assign({ slug }, (freightCfg && freightCfg[slug]) || {});
   const mfrInfo = s => (s === slug ? mfrEntry : { slug: s });
   const engine = new Function("fetch", "window", "console", "document", "CONFIG", "state", "AUTH", "PREVIEW", "CART", "mfrInfo",
-    ENGINE.SOURCE + "\n;return { mergeCatalogEdits, unitPrice, withUpgrade, computeFreight, freightTermsFor, validFreightTerms, CATALOG_SOURCE };")(shimFetch, {}, quiet, {}, CONFIG, state, AUTH, null, cart, mfrInfo);
+    (engineSource || ENGINE.SOURCE) + "\n;return { mergeCatalogEdits, unitPrice, withUpgrade, computeFreight, freightTermsFor, validFreightTerms, CATALOG_SOURCE };")(shimFetch, {}, quiet, {}, CONFIG, state, AUTH, null, cart, mfrInfo);
   /* FREIGHT TERMS AS DATA (Phase 5): the record's terms when present and valid, else the file's entry —
      the storefront's own freightTermsFor, verbatim, so the server and the cart can never pick differently. */
   let freightSource = "none", freightInvalid = false;
@@ -214,7 +214,7 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, rate
    Returns { orders:[{manufacturer_slug, items:[{code, qty, unit, line_total, client_unit, changed,
    available, commercial}] , subtotal}], changed:boolean }. Golden orders are passed through
    untouched — Golden prices its own orders through its own commerce API. */
-async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, manufacturersFile }) {
+async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, manufacturersFile, engineSource }) {
   const contract = await contractPrices(sb, dealerId);
   const rates = await dealerRates(sb, dealerId);
   /* Freight terms (manufacturers.json, the shop's own file). Strict like every other read: an order
@@ -238,7 +238,7 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
     throw new Error("manufacturer list unavailable (manufacturers.json missing, empty or not a list)");
   const listed = s => !freightCfg || Object.prototype.hasOwnProperty.call(freightCfg, s);
   for (const slug of slugs) bySlug[slug] = listed(slug)
-    ? await lineProducts({ slug, sb, catalogFile, contentFile, contract, rates, cart, freightCfg }) : null;
+    ? await lineProducts({ slug, sb, catalogFile, contentFile, contract, rates, cart, freightCfg, engineSource }) : null;
   /* The family quantity is the shop's: every cart line, priced from its CURRENT product. */
   const lines = [];
   (orders || []).forEach((o, oi) => {
@@ -262,15 +262,28 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
       lines.push({ oi, ii, slug, code: String(it.code), family: fam, upgrade: up, qty, p, client: it.unit == null ? null : Number(it.unit) });
     });
   });
+  /* ORDER RULES PRINTED ON A MANUFACTURER'S LIST (ABM 2026, owner 2026-10-27) — the shop's cartRuleProblems, on the
+     server: a line below its min_order_qty, or a `requires` product ordered without (enough of) the product it needs
+     in the same order, is not priced (available:false, rule named) — the order cannot be recorded. */
+  const ruleQty = {};
+  lines.forEach(l => { if (l.p) { const k = l.slug + "::" + l.p.code; ruleQty[k] = (ruleQty[k] || 0) + l.qty; } });
+  lines.forEach(l => {
+    if (!l.p) return;
+    const m = Math.round(Number(l.p.min_order_qty)); if (m > 1 && l.qty < m) { l.rule = "below_minimum"; l.min_order_qty = m; }
+    const r = l.p.requires;
+    if (r && r.code) { const have = ruleQty[l.slug + "::" + r.code] || 0, per = Math.max(1, Math.round(Number(r.max_per)) || 1);
+      if (!have || l.qty > have * per) { l.rule = "requires"; l.requires = { code: String(r.code), max_per: per }; } }
+  });
   let changed = false;
   const out = (orders || []).map(o => Object.assign({}, o, { items: [] }));
   for (const l of lines) {
     const o = out[l.oi];
     if (isGolden(l.slug)) { o.items.push(Object.assign({}, orders[l.oi].items[l.ii])); continue; }
     /* Visible is not sellable: a discontinued product is shown for reference only. */
-    if (!l.p || l.p._discontinued) {
+    if (!l.p || l.p._discontinued || l.rule) {
       changed = true;
-      o.items.push(Object.assign({ code: l.code, qty: l.qty, available: false, unit: null, line_total: null, client_unit: l.client, changed: true }, l.family != null ? { family: l.family } : {}, l.upgrade ? { upgrade: l.upgrade } : {}));
+      o.items.push(Object.assign({ code: l.code, qty: l.qty, available: false, unit: null, line_total: null, client_unit: l.client, changed: true }, l.family != null ? { family: l.family } : {}, l.upgrade ? { upgrade: l.upgrade } : {},
+        l.rule ? { rule: l.rule } : {}, l.min_order_qty ? { min_order_qty: l.min_order_qty } : {}, l.requires ? { requires: l.requires } : {}));
       continue;
     }
     const unit = Math.round(Number(bySlug[l.slug].engine.unitPrice(l.p, l.qty)) * 100) / 100;

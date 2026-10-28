@@ -1934,6 +1934,25 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   placed = Placed with the manufacturer by HCPS → confirmed = Confirmed by the manufacturer (records its confirmation #
   and the ACTUAL freight once, final total = subtotal + freight; a repeat is refused) → shipped → completed; cancel from the
   first three. One step at a time, moved only from the status read (no double recording). Golden's own portal is unchanged.
+- **Private catalog preview + Product Enrichment engine (owner, 2026-10-27 19:16 / 19:22; tracker #42 gate).** Nothing from the
+  new catalogs is published until the owner approves the WHOLE preview. The preview = the ordering site's branch
+  `preview/catalog-2026` on its Netlify deploy preview (Netlify team login). There `STAGING` (index.html, deploy-preview /
+  branch hosts only, never live): static content files (public/data/content/<slug>.json) show first; price checks go to
+  orders-api `preview_price_check`, checkout to `preview_order`, sending the catalog/content/manufacturers files the page
+  loaded. The server prices them ONLY at the private catalog_file_commercial record whose identity equals those rows
+  (refused otherwise; a file carrying a price is refused), with `_shop_engine_preview.js` / `_hcps_email_preview.js`
+  (verbatim copies from the preview branch — the live copies stay = live storefront so mc_verify and live orders are
+  unchanged). preview_order records NOTHING, emails neither dealer nor manufacturer, returns both rendered emails and
+  sends one copy of the HCPS email to angelo@homecareproviderservices.us marked "CATALOG PREVIEW — NOT AN ORDER". A
+  staff view-as-dealer token (dealers-api preview_link, `base` = a deploy preview of hcpsonlineordering only) may run the
+  two preview actions, never `create`. Connect 360 → Commerce → Catalog Preview opens it as any dealer.
+  **Content comes from the enrichment engine, never hand-built pages:** `scripts/catalog-enrich.js` runs _enrich.js
+  (planPages / extractPage / buildDraft / assembleImages / classify) over a line from an official SKU→page source map,
+  merges SKUs that one official product page lists as its variants into one page with options, reads Shopify product
+  data (<page>.json) when the site is Shopify, copies photos (≤1200 px, hash-named, deduped, promo art withheld) into the
+  storefront's assets, writes the content file + a completeness report (expected vs completed SKUs, photos, categories).
+  Re-runs keep page keys; corrections live in content-overrides/<slug>.json and always win. On approval the files are
+  published (merge) and the private versions already stored make prices live.
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.

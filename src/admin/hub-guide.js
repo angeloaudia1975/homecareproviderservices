@@ -15,6 +15,14 @@
  */
 window.HUB_GUIDE = {
 
+  "Catalog Preview": {
+    tagline: "See the finished, unpublished multi-manufacturer catalog exactly as a dealer would — before anything goes live.",
+    what: "Opens the private catalog preview (a Netlify deploy preview only HCPS's Netlify team can open) as any dealer, with that dealer's real protected pricing. Every new catalog, product page, gallery, category, option, freight rule and the full cart and checkout can be reviewed there. Placing an order in the preview records nothing: it shows the dealer's order-received acknowledgment and the HCPS intake email, and sends one copy of the HCPS email to the owner marked CATALOG PREVIEW — NOT AN ORDER. Nothing reaches a manufacturer.",
+    features: ["View-as-dealer link (30 minutes) minted for the preview site only", "Real dealer pricing from the private price record", "Checkout that records nothing and sends nothing to a dealer or manufacturer", "Both order emails rendered for review"],
+    data: "Mints a dealer_preview_tokens row (read-only view-as-dealer); the preview site prices through orders-api preview actions, which never write an order.",
+    actions: ["Set the preview site address", "Pick a dealer (TEST dealers listed first) and open the preview"]
+  },
+
   /* ---------------- SALES & MARKETING ---------------- */
   "Scheduling Console": {
     tagline: "The command center for every dealer appointment — self-booked or rep-scheduled — with Outlook, Zoom, reminders, and Dealer 360 all wired in behind the scenes.",

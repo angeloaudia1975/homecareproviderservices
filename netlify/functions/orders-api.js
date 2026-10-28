@@ -14,7 +14,7 @@ const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "POST, OPTIONS",
-  "access-control-allow-headers": "content-type, authorization",
+  "access-control-allow-headers": "content-type, authorization, x-hcps-preview",
 };
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store",...CORS},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
@@ -32,9 +32,32 @@ async function sb(method,path,body,extra){
 const num = (v)=>{ const n=Number(v); return Number.isFinite(n)?n:0; };
 /* Price the HCPS lines of an order set for this dealer. Golden orders are priced by Golden's
    own commerce API and pass through untouched. A layer that cannot be read throws. */
-async function serverPrice(orders, dealerId){
+async function serverPrice(orders, dealerId, preview){
   const files=PRICING.remoteFiles(process.env.ORDERING_BASE||"https://hcpsonlineordering.netlify.app");
-  return PRICING.priceOrders({orders, dealerId, sb, catalogFile:files.catalogFile, contentFile:files.contentFile, manufacturersFile:files.manufacturersFile});
+  /* CATALOG PREVIEW (owner, 2026-10-27): the private preview deploy carries catalog files production does not serve yet,
+     so the browser sends them. Only the two preview actions accept them, and they never record or send an order. The
+     prices still come from the private record whose identity equals those rows (a public file without a stored version
+     is refused), so a preview can show only prices HCPS has stored. */
+  const pv=preview||null;
+  const pick=(key,fn)=>async slug=>{ const m=pv&&pv[key]; if(m&&Object.prototype.hasOwnProperty.call(m,slug)) return JSON.parse(JSON.stringify(m[slug])); return fn(slug); };
+  return PRICING.priceOrders({orders, dealerId, sb, catalogFile:pick("catalog_files",files.catalogFile), contentFile:pick("content_files",files.contentFile),
+    manufacturersFile: pv&&Array.isArray(pv.manufacturers) ? async()=>JSON.parse(JSON.stringify(pv.manufacturers)) : files.manufacturersFile,
+    /* the preview runs the preview branch's engine; live orders and price checks run the live one */
+    engineSource: pv ? require("./_shop_engine_preview.js").SOURCE : undefined});
+}
+/* What a preview request may carry: public catalog rows (no commercial field), content files and the line list. */
+function previewFiles(b){
+  const CC=require("./_catalog_commercial.js");
+  const out={catalog_files:{},content_files:{},manufacturers:null};
+  const cf=b&&b.catalog_files; if(cf&&typeof cf==="object") for(const [k,v] of Object.entries(cf)){
+    if(!/^[a-z0-9-]{2,60}$/.test(k)||!Array.isArray(v)||v.length>5000) throw new Error("bad catalog file "+k);
+    if(CC.commercialKeysIn(v).length) throw new Error("a preview catalog file may not carry commercial fields ("+k+")");
+    out.catalog_files[k]=v; }
+  const tf=b&&b.content_files; if(tf&&typeof tf==="object") for(const [k,v] of Object.entries(tf)){
+    if(!/^[a-z0-9-]{2,60}$/.test(k)||(v!==null&&typeof v!=="object")) throw new Error("bad content file "+k); out.content_files[k]=v; }
+  if(b&&Array.isArray(b.manufacturers)) out.manufacturers=b.manufacturers.slice(0,100);
+  if(JSON.stringify(out).length>6e6) throw new Error("preview payload too large");
+  return out;
 }
 const pricedView=o=>({manufacturer_slug:o.manufacturer_slug||o.manufacturer||null, subtotal:o.subtotal,
   freight_fee:o.freight_fee==null?null:o.freight_fee, estimated_total:o.estimated_total==null?null:o.estimated_total,
@@ -131,6 +154,15 @@ async function entitlementGate(orders, dealerId){
   return missing.length ? json(403,{ok:false,status:"not_entitled",lines:missing}) : null;
 }
 
+/* A staff preview token (dealer_preview_tokens, 30 minutes, minted by dealers-api preview_link) → the dealer it names. */
+async function dealerFromPreview(event){
+  const t=String(event.headers["x-hcps-preview"]||event.headers["X-HCPS-Preview"]||"").trim();
+  if(!/^[0-9a-f]{48}$/.test(t)) return null;
+  const rows=await sb("GET",`dealer_preview_tokens?token=eq.${encodeURIComponent(t)}&select=dealer_id,expires_at`).catch(()=>[]);
+  const r=rows&&rows[0]; if(!r||!r.dealer_id) return null;
+  if(r.expires_at && new Date(r.expires_at).getTime()<Date.now()) return null;
+  return {dealer_id:r.dealer_id,email:"",preview:true};
+}
 // Resolve the caller's JWT to an APPROVED dealer_id (or null).
 async function dealerFromToken(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -151,8 +183,44 @@ exports.handler = async (event)=>{
     if(event.httpMethod!=="POST") return json(405,{error:"method not allowed"});
     let b; try{b=JSON.parse(event.body||"{}");}catch{return json(400,{error:"bad JSON"});}
 
-    const who=await dealerFromToken(event);
+    const PREVIEW_ACTIONS=new Set(["preview_price_check","preview_order"]);
+    let who=await dealerFromToken(event);
+    /* A staff "view as dealer" token (dealers-api preview_link) may run the two preview actions only — never create. */
+    if(!who && PREVIEW_ACTIONS.has(b.action)) who=await dealerFromPreview(event);
     if(!who) return json(200,{ok:false,status:"unauthorized"});   // not signed in / not approved
+
+    if(PREVIEW_ACTIONS.has(b.action)){
+      const orders=Array.isArray(b.orders)?b.orders:[];
+      if(!orders.length) return json(400,{error:"no orders"});
+      let pv; try{ pv=previewFiles(b); }catch(e){ return json(400,{ok:false,status:"bad_preview",error:String(e.message||e)}); }
+      const denied=await entitlementGate(orders, who.dealer_id); if(denied) return denied;
+      let priced;
+      try{ priced=await serverPrice(orders, who.dealer_id, pv); }
+      catch(e){ console.error("preview pricing failed",e&&e.message); return json(503,{ok:false,status:"pricing_unavailable",error:String(e.message||e)}); }
+      const view=priced.orders.filter(o=>!PRICING.isGolden(o.manufacturer_slug||o.manufacturer)).map(pricedView);
+      if(b.action==="preview_price_check") return json(200,{ok:true,preview:true,changed:priced.changed,orders:view});
+      if(priced.changed) return json(409,{ok:false,status:"prices_changed",preview:true,orders:view});
+      /* NOTHING IS RECORDED and nothing goes to the dealer or a manufacturer: the two emails a real order would produce
+         are rendered and returned, and one copy of the HCPS intake email goes to the owner, marked as a preview. */
+      const d=b.dealer||{}; let mfrName={};
+      try{ const ms=await sb("GET","manufacturers?select=slug,name"); for(const m of (ms||[])) mfrName[m.slug]=m.name||m.slug; }catch(e){}
+      (pv.manufacturers||[]).forEach(m=>{ if(m&&m.slug&&!mfrName[m.slug]) mfrName[m.slug]=m.name||m.slug; });
+      const fakeId=o=>"PREVIEW-"+String(o.manufacturer_slug||"").toUpperCase().slice(0,12)+"-"+Date.now().toString(36).toUpperCase();
+      const summaries=priced.orders.filter(o=>!PRICING.isGolden(o.manufacturer_slug)).map((o,i)=>{ const src=orders[i]||{};
+        return {request_slug:o.manufacturer_slug, slug:o.manufacturer_slug, line:mfrName[o.manufacturer_slug]||o.manufacturer_slug, po:src.po||"", order_id:fakeId(o),
+          freight_fee:o.freight_fee==null?null:o.freight_fee, estimated_total:o.estimated_total==null?null:o.estimated_total, freight_lines:o.freight_lines||[], freight_note:o.freight_note||"",
+          subtotal:o.subtotal, items:(o.items||[]).map((it,j)=>{ const lb=unitLabel(Object.assign({},(src.items||[])[j]||{},{uom:it.uom,case_qty:it.case_qty}));
+            return Object.assign({code:it.code,name:it.name,qty:it.qty,unit_price:it.unit,line_total:it.line_total}, lb?{unit_label:lb}:{}); })}; });
+      const dealerMail=orderConfirmation(String(d.email||who.email||"dealer@example.invalid"),d,summaries);
+      const E=new Function(require("./_hcps_email_preview.js").SOURCE+";return {buildEmail};")();
+      const hcps=summaries.map(s=>{ const m=E.buildEmail(d,{manufacturer_name:s.line,manufacturer_slug:s.slug,po:s.po,notes:(orders.find(o=>o.manufacturer_slug===s.slug)||{}).notes||"",
+          items:s.items.map(it=>({code:it.code,name:it.name,qty:it.qty,unit:it.unit_price,uom:"",case_qty:null})),items_count:s.items.reduce((n,it)=>n+Number(it.qty||0),0),
+          items_subtotal:s.subtotal,freight_fee:s.freight_fee,freight_lines:s.freight_lines,freight_note:s.freight_note,estimated_total:s.estimated_total,order_id:s.order_id},b.submitted_at||new Date().toISOString());
+        return {slug:s.slug,subject:"[CATALOG PREVIEW — NOT AN ORDER] "+m.subject,html:m.html,text:m.text}; });
+      let copied=0;
+      if(b.send_owner_copy!==false){ for(const m of hcps){ try{ const r=await sendMail({to:"angelo@homecareproviderservices.us",subject:m.subject,html:m.html,text:"CATALOG PREVIEW — NOT AN ORDER. Nothing was recorded and nothing was sent to the dealer or the manufacturer.\n\n"+m.text}); if(r&&r.ok) copied++; }catch(e){} } }
+      return json(200,{ok:true,preview:true,recorded:false,orders:view,summaries,dealer_email:{subject:"[PREVIEW] "+dealerMail.subject,html:dealerMail.html,text:dealerMail.text},hcps_emails:hcps,owner_copies:copied});
+    }
 
     if(b.action==="price_check"){
       const orders=Array.isArray(b.orders)?b.orders:[];

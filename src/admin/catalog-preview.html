@@ -1,0 +1,62 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Catalog Preview</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .cp-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:0 0 14px}
+ .cp-row label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:#41576b;min-width:260px;flex:1}
+ .cp-row input{font-size:16px;padding:10px 12px;border:1px solid #cfd8e3;border-radius:9px;font-family:inherit}
+ .cp-list{max-height:320px;overflow:auto;border:1px solid #e3e9f0;border-radius:10px;background:#fff}
+ .cp-list button{display:flex;justify-content:space-between;width:100%;text-align:left;border:0;border-bottom:1px solid #eef2f6;background:#fff;padding:11px 14px;font:inherit;cursor:pointer;min-height:44px}
+ .cp-list button:hover{background:#f5f9fd}
+ .cp-tag{font-size:10.5px;font-weight:800;color:#8a5a00;background:#fff7e6;border-radius:6px;padding:2px 7px}
+ .cp-note{background:#f7fafd;border:1px solid #e3e9f0;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.55;color:#33475b;margin:0 0 14px}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1>Catalog Preview</h1><div class="sub">Open the private, unpublished catalog preview as any dealer — real dealer pricing, full checkout, nothing recorded or sent to a manufacturer.</div></div></div>
+  <div class="cp-note"><b>How the preview is protected.</b> The preview site is a Netlify deploy preview: only signed-in members of the HCPS Netlify team can open it.
+   Inside it, prices come from the private price record for the dealer you choose (a 30-minute view-as-dealer link minted here).
+   Placing an order there records nothing: it shows the dealer's acknowledgment and the HCPS order email, and sends one copy of the HCPS email to angelo@homecareproviderservices.us marked <b>CATALOG PREVIEW — NOT AN ORDER</b>.</div>
+  <div class="cp-row">
+    <label>Preview site address<input id="base" placeholder="https://deploy-preview-12--hcpsonlineordering.netlify.app" autocomplete="off"></label>
+    <label>Find a dealer<input id="q" placeholder="Type a dealer name (TEST dealers are marked)" autocomplete="off"></label>
+  </div>
+  <div id="body"><div class="msg">Loading dealers…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const DEFAULT_BASE="https://deploy-preview-12--hcpsonlineordering.netlify.app";
+let DEALERS=[];
+try{ $("#base").value=localStorage.getItem("hcps_catalog_preview_base")||DEFAULT_BASE; }catch(e){ $("#base").value=DEFAULT_BASE; }
+$("#base").addEventListener("change",()=>{ try{ localStorage.setItem("hcps_catalog_preview_base",$("#base").value.trim()); }catch(e){} });
+async function api(method,body){ const r=await fetch("/.netlify/functions/dealers-api",{method,headers:{"content-type":"application/json",authorization:"Bearer "+HCPS.token()},body:body?JSON.stringify(body):undefined}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
+async function load(){
+  if(!HCPS.token()){ $("#body").innerHTML=`<div class="msg">Sign in to Connect 360 first.</div>`; return; }
+  const r=await api("GET");
+  if(r.status!==200){ $("#body").innerHTML=`<div class="msg err">${esc((r.body&&r.body.error)||"Couldn't load dealers.")}</div>`; return; }
+  DEALERS=(r.body.dealers||[]).map(d=>({id:d.id,name:d.business_name||d.name||"(unnamed)",test:/^TEST\b/i.test(d.business_name||"")||d.is_test===true,city:[d.city,d.state].filter(Boolean).join(", ")}))
+    .sort((a,b)=>(b.test-a.test)||a.name.localeCompare(b.name));
+  render();
+}
+function render(){
+  const q=$("#q").value.trim().toLowerCase();
+  const rows=DEALERS.filter(d=>!q||d.name.toLowerCase().includes(q)).slice(0,60);
+  $("#body").innerHTML=`<div class="cp-list">${rows.map(d=>`<button onclick="openPreview('${esc(d.id)}',this)"><span><b>${esc(d.name)}</b> <span class="hint" style="margin:0">${esc(d.city)}</span></span>${d.test?'<span class="cp-tag">TEST</span>':""}</button>`).join("")||`<div class="msg">No dealer matches.</div>`}</div>`;
+}
+$("#q").addEventListener("input",render);
+async function openPreview(id,btn){
+  const base=$("#base").value.trim().replace(/\/+$/,"");
+  const w=window.open("about:blank","_blank");
+  if(btn) btn.disabled=true;
+  const r=await api("POST",{action:"preview_link",dealer_id:id,base});
+  if(btn) btn.disabled=false;
+  if(r.body&&r.body.ok&&r.body.url){ if(w) w.location.href=r.body.url; else location.href=r.body.url; }
+  else { if(w) w.close(); alert((r.body&&r.body.error)||"Couldn't open the preview."); }
+}
+load();
+</script>
+</body></html>
