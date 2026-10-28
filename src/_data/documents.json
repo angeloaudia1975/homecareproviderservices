@@ -1084,6 +1084,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "access4u-modular-ramp-installation-instructions-mvsn0xmu",
+      "title": "Access4u Modular Ramp Installation Instructions",
+      "type": "training",
+      "manufacturer": "access4u",
+      "format": "pdf",
+      "file": "/assets/docs/access4u-modular-ramp-assembly-instructions-mvsn08vr.pdf",
+      "url": "",
+      "description": "How in install an Access4u Modular Ramping System.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
