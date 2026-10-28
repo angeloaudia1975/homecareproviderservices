@@ -72,7 +72,14 @@ function freightWords(s, fee){
   if(fee>0){ const f=L.find(r=>r.status==="flat"&&r.flatLabel); return money(fee)+(f?" "+f.flatLabel:""); }
   const f=L.find(r=>r.status==="free"&&r.freeLabel); return f?f.freeLabel:"Free";
 }
+/* Freight still to come (2026-10-27, owner): a line whose freight is the manufacturer's actual charge is never shown
+   as $0 or free, and its total is never shown as final — it is pending until HCPS has the manufacturer's confirmation. */
+function freightPending(s){ return (s.freight_lines||[]).some(r=>r.status==="actual"); }
 function freightLineHtml(s){
+  if(freightPending(s) && !(num(s.freight_fee)>0))
+    return `<div style="text-align:right;font-size:13px;color:#374151;margin:2px 10px 0">Freight: <b>pending</b> — the actual freight from the manufacturer's confirmation is added after HCPS places the order</div>`
+      +(s.freight_note?`<div style="text-align:right;font-size:12px;color:#6b7280;margin:2px 10px 0">${esc(s.freight_note)}</div>`:"")
+      +`<div style="text-align:right;font-size:13px;font-weight:700;color:#1b2733;margin:2px 10px 0">Merchandise total: ${money(s.subtotal)} + freight (pending)</div>`;
   if(s.freight_fee==null) return "";
   const fee=num(s.freight_fee);
   const free=(s.freight_lines||[]).length && (s.freight_lines||[]).every(r=>r.status==="free");
@@ -81,6 +88,8 @@ function freightLineHtml(s){
     +`<div style="text-align:right;font-size:13px;font-weight:700;color:#1b2733;margin:2px 10px 0">Total: ${money(s.estimated_total)}</div>`;
 }
 function freightLineText(s){
+  if(freightPending(s) && !(num(s.freight_fee)>0))
+    return `\n  Freight: pending — the actual freight from the manufacturer's confirmation is added after HCPS places the order`+(s.freight_note?`\n  ${s.freight_note}`:"")+`\n  Merchandise total: ${money(s.subtotal)} + freight (pending)`;
   if(s.freight_fee==null) return "";
   const fee=num(s.freight_fee);
   const free=(s.freight_lines||[]).length && (s.freight_lines||[]).every(r=>r.status==="free");
@@ -93,44 +102,16 @@ function orderConfirmation(to,d,summaries){
     return `<div style="margin:0 0 16px"><div style="font-weight:700;color:#2B4071;font-size:14px;margin:0 0 6px">${esc(s.line)}${s.po?` &middot; PO ${esc(s.po)}`:""}</div><table style="border-collapse:collapse;width:100%"><thead><tr><th style="text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#8a96a3;padding:0 10px 4px">Item</th><th style="font-size:10px;color:#8a96a3;padding:0 10px 4px">Qty</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Unit</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Total</th></tr></thead><tbody>${rows}</tbody></table><div style="text-align:right;font-size:13px;font-weight:700;color:#1b2733;margin:6px 10px 0">Subtotal: ${money(s.subtotal)}</div>${freightLineHtml(s)}</div>`;
   }).join("");
   const html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px">
-    <h2 style="color:#2B4071;margin:0 0 4px">Order received${d.business?", "+esc(d.business):""}</h2>
-    <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 14px">Thanks for ordering through the HomeCare Provider Services portal. We've received the following and it's on its way to the manufacturer for fulfillment. You can view this anytime in your order history.</p>
+    <h2 style="color:#2B4071;margin:0 0 4px">Order received by HCPS${d.business?", "+esc(d.business):""}</h2>
+    <p style="font-size:13.5px;line-height:1.6;color:#374151;margin:0 0 14px">Thanks for ordering through the HomeCare Provider Services portal. <b>This is an order-received acknowledgment, not a manufacturer confirmation.</b> HCPS reviews your order, places it with the manufacturer, and sends you the order confirmation. You can view this anytime in your order history.</p>
     ${blocks}
     <a href="${PORTAL_URL}" style="display:inline-block;background:#F5821F;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:8px;font-size:14px;margin-top:4px">View your order history &rarr;</a>
     <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:16px 0 0">Pricing shown is your contract pricing; the manufacturer's invoice is the final billing document. Questions about this order? Reply to this email or reach your HCPS rep.</p>
     <p style="font-size:12px;color:#9aa4ae;margin:14px 0 0">HomeCare Provider Services &middot; Your partner in mobility &amp; home medical equipment.</p></div>`;
-  const text=`Order received${d.business?", "+d.business:""}\n\nThanks for ordering through the HomeCare Provider Services portal. We've received your order and it's on its way to the manufacturer.\n\n`
+  const text=`Order received${d.business?", "+d.business:""}\n\nThanks for ordering through the HomeCare Provider Services portal. This is an order-received acknowledgment, not a manufacturer confirmation. HCPS reviews your order, places it with the manufacturer, and sends you the order confirmation.\n\n`
     +summaries.map(s=>`${s.line}${s.po?" (PO "+s.po+")":""}\n`+(s.items||[]).map(it=>`  ${num(it.qty)} x ${it.name||it.code||"Item"}${it.unit_label?" ("+it.unit_label+")":""} @ ${money(it.unit_price)} = ${money(it.line_total)}`).join("\n")+`\n  Subtotal: ${money(s.subtotal)}`+freightLineText(s)).join("\n\n")
     +`\n\nView your order history: ${PORTAL_URL}`;
-  return {to,subject:"Your HCPS order confirmation",html,text};
-}
-
-// ---- Phase 4: shipment tracking request to each manufacturer (best-effort, transactional) ----
-// Asks the manufacturer (their contact if on file, else HCPS) to send tracking to the dealer and
-// back to HCPS for sync. Logged in tracking_requests. Never throws into the order flow.
-async function sendTrackingRequests(d, who, summaries){
-  let contacts={};
-  try{ const ms=await sb("GET","manufacturers?select=slug,name,contact_email"); for(const m of (ms||[])){ contacts[m.slug]={name:m.name||m.slug, email:m.contact_email||null}; } }catch(e){}
-  const HCPS_TO=(process.env.PRICING_REQUEST_TO||process.env.ORDER_TO||"orders@homecareproviderservices.us");
-  const dealerEmail=String((d&&d.email)||(who&&who.email)||"").trim();
-  for(const s of (summaries||[])){
-    if(!s.slug) continue;
-    const c=contacts[s.slug]||{name:s.line,email:null};
-    const to=c.email||HCPS_TO;
-    const items=(s.items||[]).map(it=>`${num(it.qty)} x ${it.name||it.code||"Item"}`).join(", ");
-    const ship=[d&&d.address,d&&d.city,d&&d.state,d&&d.zip].filter(Boolean).join(", ");
-    const subject=`Tracking request — ${s.po?"PO "+s.po+" — ":""}${(d&&d.business)||"Dealer"} — ${c.name}`;
-    const html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px"><h2 style="color:#2B4071;margin:0 0 8px">Shipment tracking request</h2>`
-      +`<p style="font-size:13.5px;color:#374151">Please send shipment/tracking for this order to the dealer (${esc(dealerEmail)}) and to HCPS (${esc(HCPS_TO)}) so we can sync it to their order history.</p>`
-      +`<table style="border-collapse:collapse;font-size:14px"><tr><td style="padding:3px 12px 3px 0;color:#6b7280">Manufacturer</td><td>${esc(c.name)}</td></tr>`
-      +`<tr><td style="padding:3px 12px 3px 0;color:#6b7280">PO</td><td>${esc(s.po||"—")}</td></tr>`
-      +`<tr><td style="padding:3px 12px 3px 0;color:#6b7280">Dealer</td><td><b>${esc((d&&d.business)||"—")}</b></td></tr>`
-      +`<tr><td style="padding:3px 12px 3px 0;color:#6b7280">Ship to</td><td>${esc(ship||"—")}</td></tr>`
-      +`<tr><td style="padding:3px 12px 3px 0;color:#6b7280;vertical-align:top">Items</td><td>${esc(items)}</td></tr></table></div>`;
-    const text=`Shipment tracking request\nPlease send tracking to the dealer (${dealerEmail}) and HCPS (${HCPS_TO}).\nManufacturer: ${c.name}\nPO: ${s.po||"—"}\nDealer: ${(d&&d.business)||"—"}\nItems: ${items}`;
-    try{ await sendMail({to,subject,html,text}); }catch(e){}
-    try{ await sb("POST","tracking_requests",{dealer_id:who&&who.dealer_id,order_ref:s.order_id||null,manufacturer:s.slug,po:s.po||null,summary:items,status:"requested"},{Prefer:"return=minimal"}); }catch(e){}
-  }
+  return {to,subject:"HCPS received your order",html,text};
 }
 
 /* P0 (2026-10-23, homecareproviderservicesordering issue #2): a dealer prices and orders ONLY the lines it
@@ -244,7 +225,7 @@ exports.handler = async (event)=>{
           }
         }
         summaries.push({request_slug:slug, slug:cleanSlug, line:cleanSlug?(mfrName[cleanSlug]||cleanSlug):(slug||"Order"), po:o.po||"",
-          freight_fee:row.freight_fee==null?null:row.freight_fee, estimated_total:row.estimated_total==null?null:row.estimated_total, freight_lines:o.freight_lines||[],
+          freight_fee:row.freight_fee==null?null:row.freight_fee, estimated_total:row.estimated_total==null?null:row.estimated_total, freight_lines:o.freight_lines||[], freight_note:o.freight_note||"",
           items:items.map((x,i)=>{ const lb=unitLabel((o.items||[])[i]); return lb?Object.assign({},x,{unit_label:lb}):x; }), subtotal:row.subtotal, order_id:oid});
         if(cleanSlug) slugs.add(cleanSlug);
         saved++;
@@ -255,8 +236,8 @@ exports.handler = async (event)=>{
         // Best-effort: a mail hiccup never fails the saved order.
         const to=String(d.email||who.email||"").trim();
         if(EMAIL_RE.test(to) && P.allowTransactional(st.mode,isTest)){ try{ await sendMail(orderConfirmation(to,d,summaries)); }catch(e){ console.error("order confirm email failed",e&&e.message); } }
-        // Phase 4 — auto tracking request to each manufacturer (best-effort; never affects the saved order).
-        if(P.allowTransactional(st.mode,isTest)){ try{ await sendTrackingRequests(d,who,summaries); }catch(e){ console.error("tracking request failed",e&&e.message); } }
+        /* NO message of any kind goes to a manufacturer (owner, 2026-10-27): HCPS reviews each order and places it
+           with the manufacturer itself. The old automatic "tracking request" to the manufacturer is removed. */
         // Email→revenue attribution: credit this order to a recent email touch, if any.
         // A campaign CLICK for the line in the last 7d wins (strongest signal); otherwise
         // any automated marketing SEND to the dealer in the last 14d. Runs BEFORE the intent

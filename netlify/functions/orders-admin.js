@@ -14,7 +14,12 @@ async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 const clean=(v,n)=>{ const s=(v==null?"":String(v)).trim(); return s?s.slice(0,n||500):null; };
 const num=v=>{ const n=Number(v); return Number.isFinite(n)?n:0; };
-const STATUSES=["submitted","confirmed","shipped","completed","cancelled"];
+/* Order statuses (owner, 2026-10-27): HCPS receives every dealer order and places it with the manufacturer itself.
+   submitted = received by HCPS · placed = HCPS placed it with the manufacturer · confirmed = the manufacturer
+   confirmed it (its confirmation # and the actual freight are recorded then) · shipped · completed · cancelled. */
+const STATUSES=["submitted","placed","confirmed","shipped","completed","cancelled"];
+const NEXT={submitted:["placed","cancelled"],placed:["confirmed","cancelled"],confirmed:["shipped","cancelled"],shipped:["completed"],completed:[],cancelled:[]};
+const r2=n=>Math.round(Number(n)*100)/100;
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -79,11 +84,29 @@ exports.handler = async (event)=>{
       if(!manage) return json(403,{error:"Not permitted"});
       const status=STATUSES.includes(b.status)?b.status:null;
       if(!b.id||!status) return json(400,{error:"id + valid status required"});
+      const cur=(await sbGet(`orders?id=eq.${encodeURIComponent(b.id)}&select=id,status,subtotal,freight_fee,estimated_total,admin_notes`))[0];
+      if(!cur) return json(404,{error:"order not found"});
+      const from=cur.status||"submitted";
+      if(!(NEXT[from]||[]).includes(status)) return json(409,{error:"not_allowed",message:`An order that is "${from}" cannot move to "${status}".`});
       const patch={status,updated_at:new Date().toISOString()};
       if("tracking_number" in b) patch.tracking_number=clean(b.tracking_number,120);
-      if("admin_notes" in b) patch.admin_notes=clean(b.admin_notes,1000);
-      await sbSend("PATCH",`orders?id=eq.${encodeURIComponent(b.id)}`,patch,{Prefer:"return=minimal"});
-      return json(200,{ok:true,status});
+      const notes=[];
+      if(status==="confirmed"){
+        /* The manufacturer's confirmation: its number and the ACTUAL freight it states, recorded once with the
+           order's final total. Freight is a non-negative amount in dollars and cents; nothing is guessed. */
+        const conf=clean(b.mfr_confirmation,120);
+        const fr=b.actual_freight===""||b.actual_freight==null?null:Number(b.actual_freight);
+        if(fr!=null && !(Number.isFinite(fr) && fr>=0 && Math.abs(fr*100-Math.round(fr*100))<1e-6)) return json(400,{error:"actual_freight must be an amount of 0 or more"});
+        if(fr!=null){ patch.freight_fee=r2(fr); patch.estimated_total=r2(num(cur.subtotal)+fr); }
+        notes.push(`Manufacturer confirmation${conf?" #"+conf:""}${fr!=null?" · actual freight $"+r2(fr).toFixed(2)+" · final total $"+r2(num(cur.subtotal)+fr).toFixed(2):""} — recorded by ${me.email||me.name} ${new Date().toISOString().slice(0,16).replace("T"," ")} UTC`);
+      }
+      if(status==="placed") notes.push(`Placed with the manufacturer by ${me.email||me.name} ${new Date().toISOString().slice(0,16).replace("T"," ")} UTC`);
+      const extra=clean(b.admin_notes,1000); if(extra) notes.push(extra);
+      if(notes.length) patch.admin_notes=String([cur.admin_notes||"",...notes].filter(Boolean).join("\n")).slice(-4000);
+      /* The status moves only from the one we read: a second click (or another person) cannot record it twice. */
+      const upd=await sbSend("PATCH",`orders?id=eq.${encodeURIComponent(b.id)}&status=eq.${encodeURIComponent(from)}`,patch,{Prefer:"return=representation"});
+      if(!upd||!upd.length) return json(409,{error:"changed",message:"This order was updated by someone else — reload."});
+      return json(200,{ok:true,status,freight_fee:upd[0].freight_fee,estimated_total:upd[0].estimated_total,admin_notes:upd[0].admin_notes});
     }
 
     return json(400,{error:"unknown action"});
