@@ -401,16 +401,17 @@ exports.handler = async (event)=>{
         const drows=await sbGet(`dealers?id=eq.${encodeURIComponent(dealer_id)}&select=id,business_name`).catch(()=>[]);
         const dealer=drows&&drows[0];
         if(!dealer) return json(404,{error:"dealer not found"});
-        const token=require("crypto").randomBytes(24).toString("hex");
-        const ttlMin=30;
-        const expires_at=new Date(Date.now()+ttlMin*60*1000).toISOString();
-        try{ await sbSend("POST","dealer_preview_tokens",{token,dealer_id,created_by:(me.email||me.name||""),expires_at},{Prefer:"return=minimal"}); }
-        catch(e){ return json(500,{error:"Could not create preview session. Run supabase/dealer_preview_tokens.sql, then retry.",detail:String(e.message||e)}); }
         /* The private CATALOG PREVIEW deploy (owner, 2026-10-27): a Netlify deploy preview or branch deploy of the ordering
-           site may be named instead of the live site — never any other host. */
+           site may be named instead of the live site — never any other host. That site sits behind the Netlify team login
+           and its token can only price and preview (orders-api refuses create), so a review session lasts 4 hours. */
         const base=String(b.base||"").replace(/\/+$/,"");
         const okBase=/^https:\/\/(deploy-preview-\d{1,5}|[a-z0-9-]{1,40})--hcpsonlineordering\.netlify\.app$/.test(base);
         if(base && !okBase) return json(400,{error:"base must be a deploy preview of hcpsonlineordering.netlify.app"});
+        const token=require("crypto").randomBytes(24).toString("hex");
+        const ttlMin=okBase?240:30;
+        const expires_at=new Date(Date.now()+ttlMin*60*1000).toISOString();
+        try{ await sbSend("POST","dealer_preview_tokens",{token,dealer_id,created_by:(me.email||me.name||""),expires_at},{Prefer:"return=minimal"}); }
+        catch(e){ return json(500,{error:"Could not create preview session. Run supabase/dealer_preview_tokens.sql, then retry.",detail:String(e.message||e)}); }
         return json(200,{ok:true,url:`${okBase?base:PORTAL_URL}/?preview=${token}`,dealer_name:dealer.business_name||"",expires_in:ttlMin*60});
       }
       if(act==="merge"){
