@@ -56,13 +56,10 @@ function imageInfo(buf) {
 }
 /* A photo is stored once, named by its bytes; a large one is resized to 1200 px (sharp when present, else as is). */
 function store(buf, ext) {
-  const name = sha(buf).slice(0, 20) + "." + ext; const file = path.join(assetsDir, name);
-  if (!fs.existsSync(file)) {
-    fs.writeFileSync(file, buf);
-    /* a photo wider than 900 px is scaled down in place (ImageMagick when present); the original stays cached */
-    try { execFileSync("convert", [file, "-resize", "900x900>", "-strip", "-quality", "80", file]); } catch (e) {}
-  }
-  return { url: assetsUrl + name, bytes: buf.length, sha: sha(buf) };
+  /* one storage rule for every image (scripts/_catalog_images_lib.js): ≤900 px, an opaque PNG becomes JPEG, named by
+     the stored bytes — so a re-run stores the same file again under the same name, never a second copy */
+  const r = require("./_catalog_images_lib.js").storeImage(buf, assetsDir, assetsUrl, { minSide: 0 });
+  return r.error ? { url: null, error: r.error, bytes: buf.length, sha: sha(buf) } : { url: r.url, bytes: buf.length, sha: sha(buf) };
 }
 
 function shopifyProduct(u) {
@@ -236,7 +233,7 @@ for (const page of plan.pages) {
     else { const local = path.join(shop, "public", c.src.replace(/^\//, "")); if (fs.existsSync(local)) buf = fs.readFileSync(local); }
     const ext = imageInfo(buf);
     if (!ext) { done.push({ src: c.src, role: c.role, code: c.code, error: buf ? "not an image" : "could not be read" }); continue; }
-    const s = store(buf, ext); if (c.role === "gallery") n++;
+    const s = store(buf, ext); if (!s.url) { done.push({ src: c.src, role: c.role, code: c.code, error: s.error }); continue; } if (c.role === "gallery") n++;
     done.push(Object.assign({ src: c.src, role: c.role, code: c.code, from: c.from, promo: c.promo }, s));
   }
   const img = E.assembleImages(page, row, done);

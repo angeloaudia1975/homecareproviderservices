@@ -163,4 +163,17 @@ else if (cmd === "discover") {
   if (arg("report")) writeJson(arg("report"), { ambiguous, missing });
   console.log(JSON.stringify({ mode: shopify ? "shopify" : "sitemap", pages_read: pagesRead, skus: codes.length, mapped: Object.keys(out).filter(k => codes.includes(k)).length, added, ambiguous: Object.keys(ambiguous).length, not_found: missing.length }));
 }
+/* prune: files in the line's gallery folder that no page, approved image or catalog row refers to any more
+   (an earlier run's copy under an older name). --dry-run lists them. */
+else if (cmd === "prune") {
+  const refs = new Set();
+  const add = u => { if (u && typeof u === "string" && u.startsWith(assetsUrl)) refs.add(u.slice(assetsUrl.length)); };
+  JSON.stringify(content, (k, v) => { add(v); return v; });
+  JSON.stringify(readJson(overridesPath, {}), (k, v) => { add(v); return v; });
+  JSON.stringify(catalog, (k, v) => { add(v); return v; });
+  const files = fs.existsSync(assetsDir) ? fs.readdirSync(assetsDir) : [];
+  const orphans = files.filter(f => !refs.has(f));
+  if (!flag("dry-run")) for (const f of orphans) fs.unlinkSync(path.join(assetsDir, f));
+  console.log(JSON.stringify({ files: files.length, referenced: files.length - orphans.length, removed: flag("dry-run") ? 0 : orphans.length, orphans: flag("dry-run") ? orphans.length : undefined }));
+}
 else { console.error("unknown command " + cmd); process.exit(2); }

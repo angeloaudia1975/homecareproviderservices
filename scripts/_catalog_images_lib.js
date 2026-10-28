@@ -174,13 +174,14 @@ function audit(slug, catalog, pages, shop) {
 }
 
 /* ── store an image file into the line's assets: verified type + size, ≤900 px, named by its bytes ── */
-function storeImage(buf, assetsDir, assetsUrl) {
+function storeImage(buf, assetsDir, assetsUrl, opts) {
+  const minSide = opts && opts.minSide != null ? opts.minSide : MIN_SIDE;
   if (!buf || buf.length < 1024) return { error: "empty or too small a file" };
   const tmp = path.join(require("os").tmpdir(), "hcps-img-" + sha(buf).slice(0, 16));
   fs.writeFileSync(tmp, buf);
   const d = dims(tmp);
   if (!longSide(d)) { fs.unlinkSync(tmp); return { error: "not an image" }; }
-  if (longSide(d) < MIN_SIDE) { fs.unlinkSync(tmp); return { error: "too small (" + d.join("x") + ", needs " + MIN_SIDE + " px)" }; }
+  if (longSide(d) < minSide) { fs.unlinkSync(tmp); return { error: "too small (" + d.join("x") + ", needs " + minSide + " px)" }; }
   /* photos (or images with no transparency) are JPEG; a PNG with real transparency stays PNG */
   let opaque = true;
   try { opaque = execFileSync("identify", ["-format", "%[opaque]", tmp + "[0]"]).toString().trim().toLowerCase() === "true"; } catch (e) {}
