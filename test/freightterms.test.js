@@ -191,7 +191,9 @@ await t('dealer confirmation and HCPS email words are identical with the record 
   /* What each boundary cart must say — exactly today's words (dealer confirmation | HCPS email). */
   const WANT={'climbing-steps':[[/Freight: Free/,/Freight: FREE/],[/Freight: Free/,/Freight: FREE/]],
     'strongback-mobility':[[/Freight: \$15\.00/,/Freight: \$15\.00 flat/],[/Freight: \$15\.00/,/Freight: \$15\.00 flat/],[/Freight: \$15\.00/,/Freight: \$15\.00 flat/],[/Freight: Free/,/Freight: FREE/]],
-    'ovation-medical':[[/^$/,/actual freight \(confirmed by manufacturer\)/],[/^$/,/actual freight \(confirmed by manufacturer\)/]],   // dealer: no freight line (amount unknown, confirmed by HCPS)
+    /* Ovation's freight is the actual charge: since the owner's 2026-10-27 order-routing rule both emails say it is PENDING
+       (never $0, never a final total) until HCPS records the manufacturer's confirmation. */
+    'ovation-medical':[[/Freight: pending/,/PENDING — actual freight/],[/Freight: pending/,/PENDING — actual freight/]],
     'bemis':[[/Freight: \$40\.00 shipping & handling/,/Freight: \$40\.00 shipping & handling/],[/Freight: Prepaid freight/,/Freight: Prepaid freight/],[/Freight: Prepaid freight/,/Freight: Prepaid freight/]]};
   for(const s of FROZEN) for(let i=0;i<SRV[s].carts.length;i++){ const cart=SRV[s].carts[i];
     const a=await run(s,cart,undefined), b=await run(s,cart,recordOf(s));

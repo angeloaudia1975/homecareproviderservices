@@ -197,11 +197,12 @@ exports.handler = async (event) => {
       let mfrContact = null, mfrDisplay = manufacturer;
       try { const m = await sb("GET", `manufacturers?slug=eq.${encodeURIComponent(manufacturer)}&select=name,contact_email`); if (m && m[0]) { mfrContact = m[0].contact_email || null; mfrDisplay = m[0].name || manufacturer; } } catch (e) {}
       const d = who.dealer || {};
-      const to = mfrContact || PRICING_TO;
+      /* Never to a manufacturer (owner, 2026-10-27): HCPS asks the manufacturer for tracking itself. */
+      const to = "angelo@homecareproviderservices.us";
       const subject = `Tracking request — ${row.po ? "PO " + row.po + " — " : ""}${d.name || "Dealer"} — ${mfrDisplay}`;
       const html = `<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px">
         <h2 style="color:#2B4071;margin:0 0 8px">Shipment tracking request</h2>
-        <p style="font-size:13.5px;color:#374151">Please provide shipment/tracking information for the order below — sent directly to the dealer, and to HCPS (${esc(PRICING_TO)}) so we can sync it to the dealer's order history.</p>
+        <p style="font-size:13.5px;color:#374151">A dealer asked for shipment tracking on the order below. This request went to HCPS only — nothing was sent to the manufacturer.</p>
         <table style="border-collapse:collapse;font-size:14px">
           <tr><td style="padding:3px 12px 3px 0;color:#6b7280">Manufacturer</td><td>${esc(mfrDisplay || "—")}</td></tr>
           <tr><td style="padding:3px 12px 3px 0;color:#6b7280">PO</td><td>${esc(row.po || "—")}</td></tr>
@@ -211,9 +212,9 @@ exports.handler = async (event) => {
           ${row.summary ? `<tr><td style="padding:3px 12px 3px 0;color:#6b7280;vertical-align:top">Items</td><td>${esc(row.summary)}</td></tr>` : ""}
         </table>
         <p style="font-size:12.5px;color:#6b7280;margin-top:14px">Requested via the HCPS Dealer Business Hub.</p></div>`;
-      const text = `Shipment tracking request\n\nPlease send tracking for this order to the dealer and to HCPS (${PRICING_TO}).\n\nManufacturer: ${mfrDisplay || "—"}\nPO: ${row.po || "—"}\nOrder: ${row.order_ref || "—"}\nDealer: ${d.name || "—"}\nDealer email: ${who.email || "—"}${row.summary ? `\nItems: ${row.summary}` : ""}`;
+      const text = `Shipment tracking request (dealer → HCPS only; nothing was sent to the manufacturer).\n\nManufacturer: ${mfrDisplay || "—"}\nPO: ${row.po || "—"}\nOrder: ${row.order_ref || "—"}\nDealer: ${d.name || "—"}\nDealer email: ${who.email || "—"}${row.summary ? `\nItems: ${row.summary}` : ""}`;
       try { await sendMail({ to, subject, html, text, reply_to: who.email }); } catch (e) {}
-      return json(200, { ok: true, saved, sent_to: mfrContact ? "manufacturer" : "hcps" });
+      return json(200, { ok: true, saved, sent_to: "hcps" });
     }
 
     // ---- account setup center (credit apps, resale cert, per-line terms) — NO card storage ----

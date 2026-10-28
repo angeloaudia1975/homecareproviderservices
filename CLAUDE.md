@@ -1924,6 +1924,16 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   printing (TRR012, GP5x5, DLOOP…); reorder matches a re-spelled code only when exactly one product has it. Every listed upgrade
   with its price applies; dealer discounts apply to upgrades too; actual freight from Access4U's order confirmation after the order
   is placed — no free freight, no advance quotes.
+- **Global order routing (owner, 2026-10-27 — supersedes every automatic-submission note).** Every HCPS dealer order is
+  recorded server-side and its full intake email goes to angelo@homecareproviderservices.us (submit-order always adds it
+  to ORDER_TO). NOTHING is sent to a manufacturer — no order, tracking request or message (orders-api's automatic
+  "tracking request" and dealer-tools' manufacturer-addressed tracking request were removed; both now reach HCPS only).
+  HCPS places the order and sends the dealer the confirmation. The dealer's automatic email is an ORDER-RECEIVED
+  acknowledgment ("not a manufacturer confirmation"). Actual-freight lines are never shown as $0 / free / final: "Freight
+  pending" with the merchandise total. Statuses (orders-admin, Order Review & Fulfillment): submitted = Received by HCPS →
+  placed = Placed with the manufacturer by HCPS → confirmed = Confirmed by the manufacturer (records its confirmation #
+  and the ACTUAL freight once, final total = subtotal + freight; a repeat is refused) → shipped → completed; cancel from the
+  first three. One step at a time, moved only from the status read (no double recording). Golden's own portal is unchanged.
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.
