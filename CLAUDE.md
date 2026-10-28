@@ -1949,10 +1949,26 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   **Content comes from the enrichment engine, never hand-built pages:** `scripts/catalog-enrich.js` runs _enrich.js
   (planPages / extractPage / buildDraft / assembleImages / classify) over a line from an official SKU→page source map,
   merges SKUs that one official product page lists as its variants into one page with options, reads Shopify product
-  data (<page>.json) when the site is Shopify, copies photos (≤1200 px, hash-named, deduped, promo art withheld) into the
+  data (<page>.json) when the site is Shopify, copies photos (≤900 px, hash-named, deduped, promo art withheld) into the
   storefront's assets, writes the content file + a completeness report (expected vs completed SKUs, photos, categories).
   Re-runs keep page keys; corrections live in content-overrides/<slug>.json and always win. On approval the files are
   published (merge) and the private versions already stored make prices live.
+- **Product images — recovery rules + engine (owner, 2026-10-27 20:53 "complete image recovery").** A product shows the
+  RIGHT picture or none: never a filler from another product, a site icon, a logo or a banner. Images come from official
+  manufacturer sources (sites, media libraries, brochures / manuals / spec PDFs; Google only to discover them), each one
+  VIEWED and matched to the exact product / variant before it is assigned. Stored in HCPS assets (≤900 px, named by
+  their bytes), never hot-linked. A photo counts as done only when it renders in the preview, not because a URL is in a
+  JSON file. One image layer serves every line, `scripts/_catalog_images_lib.js`, used by catalog-enrich on every run and
+  by `scripts/catalog-images.js`: `audit` (what a dealer is shown per SKU: no_photo / broken / low_resolution <300 px /
+  shared_across_products), `clean` (site chrome = one small image repeated on 5+ pages, tiny and duplicate pictures
+  incl. same picture at another size by perceptual hash, a real primary, one photo on every option = the page photo, an
+  old small thumbnail never outranks the manufacturer photo), `import` (a verified image map {SKU:[{url|file,source,note}],
+  _unresolved} or the owner's ZIP / folder: file named by SKU, `SKU_2`, `SKU-side`, or inside a SKU folder; longest code
+  wins; ambiguous / unknown names reported, never guessed; ≥300 px; stored once; recorded in
+  content-overrides/<slug>.json `_images`, which every later run re-applies — re-imports add nothing) and `discover`
+  (SKU → official page from Shopify products.json or the sitemaps, exact SKU on the page; several pages = ambiguous).
+  Only images that can't be found or verified go to the owner, in ONE list (manufacturer, SKU, description, what's
+  missing, why). Ordering test: test/catalog-images.test.js (admin repo).
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.

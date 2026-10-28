@@ -258,6 +258,15 @@ for (const page of plan.pages) {
     category: out.subcategory || out.category || "", source: out.source_url || null, overridden: Object.keys(ov) });
 }
 
+/* ── 2b. images: a person's approved images (overrides "_images") on every run, then the cleaning rules
+   (site chrome, tiny / duplicate photos, real primary, option-photo rules) — scripts/_catalog_images_lib.js ── */
+{
+  const IL = require("./_catalog_images_lib.js");
+  const log = IL.applyApproved(pages, overrides._images || {}, shop, {});
+  IL.cleanPages(pages, shop, log);
+  report.images = Object.fromEntries(Object.entries(log).map(([k, v]) => [k, v.length]));
+}
+
 /* ── 3. completeness: expected (catalog) vs completed ── */
 const onPage = new Set(Object.values(pages).flatMap(p => p.skus.map(s => codeNorm(s.sku))));
 const skuWithImage = new Set(Object.values(pages).flatMap(p => p.skus.filter(s => s.image || (p.images_gallery || []).length).map(s => codeNorm(s.sku))));
