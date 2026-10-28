@@ -71,6 +71,86 @@ function shopifyProduct(u) {
   try { const p = JSON.parse(j).product; return p && p.title ? p : null; } catch (e) { return null; }
 }
 
+/* A Wix site (Access4U, …) renders its text as rich-text blocks whose font class says what each block is: font_0 the
+   page title, font_2/3 the manufacturer's prose and bullet lines, font_4 a section subtitle ("Threshold Ramp (TR)"),
+   font_8 that section's size lines. Its photos are wixstatic thumbnails whose original is the URL without "/v1/…".
+   The page is rebuilt as plain Description / Features / Specifications HTML and read by the same extractPage.
+   A fragment in the source URL (…/thresholdramps#tr) names ONE section of a family page: its size lines become the
+   specifications, and a photo whose alt text names only ANOTHER section is left out (a SKU never takes another
+   model's photo — RULE 11). The words are the manufacturer's own; nothing is invented. */
+const isWix = html => /<meta[^>]+name="generator"[^>]+Wix/i.test(html || "") && /static\.wixstatic\.com/.test(html || "");
+function wixPage(html, u) {
+  const raw = String(html || "");
+  const foot = raw.search(/<footer\b/i); const body = foot > 0 ? raw.slice(0, foot) : raw;
+  const txt = s => s.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "").replace(/&nbsp;|&#160;/g, " ").replace(/&amp;/g, "&").replace(/&quot;|&#34;/g, '"')
+    .replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (m, d) => String.fromCodePoint(+d)).replace(/[​ ]/g, " ").replace(/\s+/g, " ").trim();
+  const blocks = [];
+  for (const m of body.matchAll(/<(p|h[1-6]|li)\b[^>]*class="[^"]*\bfont_(\d+)\b[^"]*"[^>]*>([\s\S]*?)<\/\1>/gi)) {
+    const t = txt(m[3]); if (t) blocks.push({ font: +m[2], text: t });
+  }
+  const title = (blocks.find(b => b.font === 0) || {}).text || "";
+  const prose = blocks.filter(b => b.font === 2 || b.font === 3);
+  /* sections: a font_4 subtitle and the size lines (font_8) under it */
+  const secs = [];
+  for (const b of blocks) { if (b.font === 4) secs.push({ title: b.text, lines: [] }); else if (b.font === 8 && secs.length) secs[secs.length - 1].lines.push(b.text); }
+  const frag = decodeURIComponent((u.split("#")[1] || "")).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const words = s => new Set(s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(w => w.length > 1).map(w => w.replace(/s$/, "")));
+  const tokenOf = s => ((/\(([A-Za-z0-9]{1,8})\)/.exec(s) || [])[1] || "").toLowerCase();
+  const own = frag ? secs.find(s => tokenOf(s.title) === frag) || secs.find(s => words(s.title).has(frag.replace(/s$/, ""))) : null;
+  /* no section named by the fragment: a page with ONE size table shares it; otherwise no section is guessed */
+  const pick = !frag ? secs : own ? [own] : secs.length === 1 ? secs : [];
+  const distinct = s => { const w = words(s.title); for (const o of secs) if (o !== s) for (const x of words(o.title)) w.delete(x); return w; };
+  /* "Label: value" stays as written; a bare size line is labelled by its own unit words */
+  const specLine = (line, sec) => {
+    const c = /^([A-Za-z][A-Za-z ]{1,30}):\s*(.+)$/.exec(line); if (c) return [c[1], c[2]];
+    const f = /^(.{1,40}?)\s+for\s+(.+)$/i.exec(line); if (f) return [f[1], f[2]];
+    if (/\blong\b|\blength\b/i.test(line)) return ["Length", line];
+    if (/\bwide\b|\bwidth\b/i.test(line)) return ["Width", line];
+    if (/\brise\b/i.test(line)) return ["Rise", line];
+    return [sec.title.replace(/\s*\([^)]*\)\s*$/, ""), line];
+  };
+  const specs = [];
+  for (const s of pick) for (const l of s.lines) { const [a, b] = specLine(l, s); if (b && !specs.some(x => x[0] === a)) specs.push([a, b]); }
+  /* description = the opening prose; the remaining prose lines are the manufacturer's own feature lines. With a
+     section chosen, a line that names only ANOTHER section ("Mini Ramps have a small curb …") is not this product's. */
+  const otherOnly = t => { if (!own) return false; const tw = words(t); const mine = [...distinct(own)].some(x => tw.has(x));
+    return !mine && secs.some(o => o !== own && [...distinct(o)].some(x => tw.has(x))); };
+  const long = prose.filter(b => b.text.length >= 25 && !otherOnly(b.text));
+  const desc = []; let rest = long;
+  while (rest.length && desc.length < 2 && (!desc.length || desc.join(" ").length < 80)) { desc.push(rest[0].text); rest = rest.slice(1); }
+  const feats = rest.map(b => b.text).filter(t => t.length <= 240).concat(prose.filter(b => b.text.length < 25 && b.text.length >= 8 && !otherOnly(b.text)).map(b => b.text));
+  /* photos: the originals of the content photos (no logo, award or tiny icon) */
+  const others = secs.filter(s => s !== own);
+  const imgs = [];
+  for (const m of body.matchAll(/<img\b[^>]*>/gi)) {
+    const src = (m[0].match(/\ssrc="([^"]+)"/i) || [])[1] || ""; const alt = txt((m[0].match(/\salt="([^"]*)"/i) || [])[1] || "");
+    const w = +((/\/w_(\d+),/.exec(src) || [])[1] || 0);
+    if (!/static\.wixstatic\.com\/media\/[^/]+~mv2\./.test(src) || /logo|award/i.test(alt) || (w && w <= 40 && !alt)) continue;
+    /* the original, served by Wix at a fixed size no wider than 1200 px (an original upload can exceed the fetch limit) */
+    const orig = src.replace(/\/v1\/.*$/, ""); const full = orig + "/v1/fit/w_1200,h_1200,q_90/" + orig.split("/").pop();
+    if (frag) {
+      const aw = words(alt);
+      const mineHit = own && [...distinct(own)].some(x => aw.has(x));
+      const otherHit = others.some(o => [...distinct(o)].some(x => aw.has(x)));
+      if (otherHit && !mineHit) continue;
+      if (!own && others.some(o => [...words(o.title)].some(x => aw.has(x)))) continue;
+    }
+    if (!imgs.some(x => x.src === full)) imgs.push({ src: full, alt: alt || title });
+  }
+  const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  const head = own ? own.title : title;
+  const out = "<html><head><title>" + esc(head) + "</title></head><body><h1>" + esc(head) + "</h1>" +
+    "<h2>Description</h2>" + desc.map(d => "<p>" + esc(d) + "</p>").join("") +
+    (feats.length ? "<h2>Features</h2><ul>" + feats.map(f => "<li>" + esc(f) + "</li>").join("") + "</ul>" : "") +
+    (specs.length ? "<h2>Specifications</h2>" + specs.map(s => "<p>" + esc(s[0]) + ": " + esc(s[1]) + "</p>").join("") : "") +
+    imgs.map(i => '<img src="' + esc(i.src) + '" alt="' + esc(i.alt) + '">').join("") + "</body></html>";
+  const ex = E.extractPage(out, u);
+  ex.product = true;   // a manufacturer's own product / product-family page
+  ex.wix = { section: own ? own.title : null, family: title };
+  return ex;
+}
+
 /* ── 1. the line's products and the pages they form ── */
 const catalog = readJson(catalogPath, []);
 if (!Array.isArray(catalog) || !catalog.length) { console.error("no catalog rows at " + catalogPath); process.exit(2); }
@@ -88,7 +168,8 @@ const plan = E.planPages({ slug, records, catalog: cat2, pages: prevPages });
 {
   const byUrl = new Map();
   for (const pg of plan.pages) {
-    const urls = [...new Set(pg.skus.map(x => (x.details_url || "").replace(/[?#].*$/, "").replace(/\/+$/, "")).filter(Boolean))];
+    /* the query is dropped; a fragment is kept — it names one section of a family page (see wixPage) */
+    const urls = [...new Set(pg.skus.map(x => (x.details_url || "").replace(/\?[^#]*/, "").replace(/\/+(?=#|$)/, "")).filter(Boolean))];
     if (pg.bundle || urls.length !== 1) continue;
     if (!byUrl.has(urls[0])) byUrl.set(urls[0], []); byUrl.get(urls[0]).push(pg);
   }
@@ -97,7 +178,14 @@ const plan = E.planPages({ slug, records, catalog: cat2, pages: prevPages });
     const shop = shopifyProduct(u);
     const title = sku => { const v = shop && (shop.variants || []).find(x => codeNorm(x.sku) === codeNorm(sku)); return v && v.title && v.title !== "Default Title" ? v.title : ""; };
     const lead = group[0];
-    lead.name = shop && shop.title ? shop.title.replace(/\s*\(#[^)]*\)\s*$/, "") : lead.name;
+    /* without a manufacturer product title, the page is named by the words its SKUs' names share ("Assist Ramp No Rail") */
+    const shared = (() => { const ns = group.flatMap(g => g.skus).map(x => String(x.name || "").split(/\s+/)); let i = 0;
+      while (ns.every(n => n[i] && n[i].toLowerCase() === ns[0][i].toLowerCase() && !/\d/.test(n[i]))) i++; return ns[0].slice(0, i).join(" ").replace(/[,\-–]+$/, ""); })();
+    const wixHtml = !shop ? get(u.split("#")[0]) : null;
+    const wix = !!wixHtml && isWix(wixHtml); const section = wix ? (wixPage(wixHtml, u).wix || {}).section : null;
+    /* (Wix family pages only — every other line keeps its lead SKU's name, as before) */
+    lead.name = shop && shop.title ? shop.title.replace(/\s*\(#[^)]*\)\s*$/, "") : !wix ? lead.name : shared.split(" ").length >= 2 ? shared : section ||
+      (String(lead.name).split(/\s+/).slice(0, Math.max(1, String(lead.name).split(/\s+/).findIndex(w => /\d/.test(w)))).join(" ").replace(/[,\-–]+$/, "") || lead.name);
     lead.skus = group.flatMap(g => g.skus).map(x => Object.assign({}, x, { option: title(x.code) || x.option || x.name }));
     lead.options = { Option: lead.skus.map(x => x.option) };
     lead.group_reason = "one manufacturer product page (" + u + ") lists these SKUs as its variants";
@@ -112,9 +200,9 @@ for (const page of plan.pages) {
   const urls = [...new Set(page.skus.map(s => s.details_url).filter(Boolean))];
   const srcs = [];
   for (const u of urls) {
-    const html = get(u);
+    const html = get(u.split("#")[0]);
     if (!html) { srcs.push(null); continue; }
-    let ex = E.extractPage(html, u);
+    let ex = isWix(html) ? wixPage(html, u) : E.extractPage(html, u);
     /* A Shopify store (PediFix, …) publishes each product as JSON at <product url>.json: the manufacturer's own
        description, every product photo and the photo of each variant SKU. Its words go through the same extractPage. */
     const shop = shopifyProduct(u);
@@ -131,7 +219,7 @@ for (const page of plan.pages) {
       ex2.shopify = { variants: (shop.variants || []).map(v => ({ sku: v.sku, title: v.title, image: (variantImgs.find(im => im.id === v.image_id) || {}).src || "" })) };
       ex = ex2;
     }
-    srcs.push({ url: u, role: ex.product ? "product" : "landing", extract: ex, matched_by: shop ? "official SKU source map (manufacturer product data)" : "official SKU source map" });
+    srcs.push({ url: u, role: ex.product ? "product" : "landing", extract: ex, matched_by: shop ? "official SKU source map (manufacturer product data)" : ex.wix ? "official SKU source map (manufacturer page" + (ex.wix.section ? ", section " + ex.wix.section : "") + ")" : "official SKU source map" });
   }
   const sources2 = srcs.filter(Boolean);
   /* the variant's own photo, from the manufacturer's product data, is that SKU's option photo */
