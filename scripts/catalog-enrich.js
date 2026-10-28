@@ -59,8 +59,8 @@ function store(buf, ext) {
   const name = sha(buf).slice(0, 20) + "." + ext; const file = path.join(assetsDir, name);
   if (!fs.existsSync(file)) {
     fs.writeFileSync(file, buf);
-    /* a photo wider than 1200 px is scaled down in place (ImageMagick when present); the original stays cached */
-    try { execFileSync("convert", [file, "-resize", "1200x1200>", "-strip", "-quality", "86", file]); } catch (e) {}
+    /* a photo wider than 900 px is scaled down in place (ImageMagick when present); the original stays cached */
+    try { execFileSync("convert", [file, "-resize", "900x900>", "-strip", "-quality", "80", file]); } catch (e) {}
   }
   return { url: assetsUrl + name, bytes: buf.length, sha: sha(buf) };
 }

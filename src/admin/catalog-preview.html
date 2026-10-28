@@ -38,7 +38,7 @@ async function load(){
   if(!HCPS.token()){ $("#body").innerHTML=`<div class="msg">Sign in to Connect 360 first.</div>`; return; }
   const r=await api("GET");
   if(r.status!==200){ $("#body").innerHTML=`<div class="msg err">${esc((r.body&&r.body.error)||"Couldn't load dealers.")}</div>`; return; }
-  DEALERS=(r.body.dealers||[]).map(d=>({id:d.id,name:d.business_name||d.name||"(unnamed)",test:/^TEST\b/i.test(d.business_name||"")||d.is_test===true,city:[d.city,d.state].filter(Boolean).join(", ")}))
+  DEALERS=(r.body.dealers||[]).map(d=>({id:d.id,name:d.business_name||d.name||"(unnamed)",test:/^TEST\b/i.test(d.business_name||d.name||"")||d.is_test===true,city:[d.city,d.state].filter(Boolean).join(", ")}))
     .sort((a,b)=>(b.test-a.test)||a.name.localeCompare(b.name));
   render();
 }
