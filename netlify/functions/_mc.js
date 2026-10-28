@@ -125,7 +125,9 @@ function expectedFreightWords(fee, lines, money){
   if(fee > 0){ const f = (lines || []).find(r => r.status === "flat" && r.flatLabel); return { dealer: money(fee) + (f ? " " + f.flatLabel : ""), hcps: money(fee) + " " + (f ? f.flatLabel : "flat") }; }
   const f = (lines || []).find(r => r.status === "free" && r.freeLabel);
   const anyActual = (lines || []).some(r => r.status === "actual");
-  return { dealer: f ? f.freeLabel : "Free", hcps: anyActual ? "actual freight (confirmed by manufacturer)" : ((lines || []).length ? (f ? f.freeLabel : "FREE") : "—") };
+  /* Owner, 2026-10-27: actual freight is PENDING until HCPS records the manufacturer's confirmation (never $0 / free / final). */
+  return { dealer: anyActual ? "pending — the actual freight from the manufacturer's confirmation is added after HCPS places the order" : (f ? f.freeLabel : "Free"),
+    hcps: anyActual ? "PENDING — actual freight from the manufacturer's confirmation, after HCPS places the order" : ((lines || []).length ? (f ? f.freeLabel : "FREE") : "—") };
 }
 
 /* verifyLine — everything a dealer would see for one line, checked on the server.
@@ -326,7 +328,7 @@ async function verifyLine(d){
       if(hcps.text.indexOf(lab) < 0) eIssues.push({ email: "hcps", code: p.code, missing: lab }); }
     const dealerFreight = (dealer.text.match(/Freight: ([^\n]+)/) || [])[1] || null;
     const hcpsFreight = (hcps.text.match(/Freight: ([^\n]+)/) || [])[1] || null;
-    if((Number(o.freight_fee) > 0 || (o.freight_lines || []).some(r => r.status === "free")) && dealerFreight !== want.dealer) eIssues.push({ email: "dealer", freight: dealerFreight, expected: want.dealer });
+    if((Number(o.freight_fee) > 0 || (o.freight_lines || []).some(r => r.status === "free" || r.status === "actual")) && dealerFreight !== want.dealer) eIssues.push({ email: "dealer", freight: dealerFreight, expected: want.dealer });
     if(hcpsFreight !== want.hcps) eIssues.push({ email: "hcps", freight: hcpsFreight, expected: want.hcps });
     add(check("emails", "Dealer confirmation and HCPS email: unit wording and freight words", !eIssues.length, eIssues.length ? eIssues : { dealer_freight: dealerFreight, hcps_freight: hcpsFreight,
       dealer_lines: dealer.text.split("\n").filter(l => / x /.test(l)), hcps_lines: hcps.text.split("\n").filter(l => / x /.test(l)) }));
