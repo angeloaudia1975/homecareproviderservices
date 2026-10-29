@@ -1969,6 +1969,11 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   (SKU → official page from Shopify products.json or the sitemaps, exact SKU on the page; several pages = ambiguous).
   Only images that can't be found or verified go to the owner, in ONE list (manufacturer, SKU, description, what's
   missing, why). Ordering test: test/catalog-images.test.js (admin repo).
+  **Owner SKU removals are reversible retirements (PediFix review, 2026-10-29):** `catalog-images retire --skus … --reason … --ref …`
+  records them in content-overrides/<slug>.json `_retired`; every run switches those SKU entries off (hidden + disabled) so
+  the storefront, search, cart and order server drop them, while the catalog file, the private price record, the live
+  site and order history stay untouched; `restore` brings them back. Retired SKUs leave the image audit / missing list.
+  Manufacturers are reviewed one at a time in the order the owner sets; other lines are not touched during one review.
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.
