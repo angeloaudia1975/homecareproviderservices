@@ -114,5 +114,25 @@ t("approved images are applied again by applyApproved (what every enrichment run
   L.applyApproved(fresh, ov._images, shop, {}); L.applyApproved(fresh, ov._images, shop, {});
   eq(fresh.d.images_gallery.length, 2); eq(fresh.f.images_gallery.length, 1);
 });
+t("retire switches a SKU off on its page (reversible), keeps catalog rows, leaves it out of the audit; restore brings it back", () => {
+  const cat0 = fs.readFileSync(path.join(shop, "public", "data", "acme.json"), "utf8");
+  const r = run("retire", "--skus", "B1-L,C1", "--reason", "owner decision", "--ref", "tracker #42");
+  eq(r.retired_now, 2, JSON.stringify(r));
+  let c = JSON.parse(fs.readFileSync(path.join(shop, "public", "data", "content", "acme.json"), "utf8")).pages;
+  const bl = c.b.skus.find(s => s.sku === "B1-L"); eq([bl.status, bl.disabled, bl.retired.ref], ["hidden", true, "tracker #42"]);
+  eq(c.c.skus[0].status, "hidden");
+  eq(fs.readFileSync(path.join(shop, "public", "data", "acme.json"), "utf8"), cat0, "catalog file untouched");
+  const a = JSON.parse(execFileSync("node", [CLI, "audit", "--line", "acme", "--shop", shop]).toString());
+  eq([a.skus, a.retired], [catalog.length - 2, 2]);
+  /* a later import / enrichment keeps them retired */
+  run("import", "--zip", path.join(root, "imgs.zip"));
+  c = JSON.parse(fs.readFileSync(path.join(shop, "public", "data", "content", "acme.json"), "utf8")).pages;
+  eq(c.c.skus[0].disabled, true, "still retired after another run");
+  const r2 = run("restore", "--skus", "C1");
+  c = JSON.parse(fs.readFileSync(path.join(shop, "public", "data", "content", "acme.json"), "utf8")).pages;
+  eq([c.c.skus[0].status, c.c.skus[0].disabled, !!c.c.skus[0].retired], ["active", false, false]);
+  eq(r2.retired_now, 1);
+  let threw = false; try { run("retire", "--skus", "NOPE", "--reason", "x"); } catch (e) { threw = true; } ok(threw, "unknown SKU refused");
+});
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`catalog images: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

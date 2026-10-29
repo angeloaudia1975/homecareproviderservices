@@ -263,6 +263,7 @@ for (const page of plan.pages) {
   const IL = require("./_catalog_images_lib.js");
   const log = IL.applyApproved(pages, overrides._images || {}, shop, {});
   IL.cleanPages(pages, shop, log);
+  IL.applyRetired(pages, overrides._retired || {}, log);
   report.images = Object.fromEntries(Object.entries(log).map(([k, v]) => [k, v.length]));
 }
 

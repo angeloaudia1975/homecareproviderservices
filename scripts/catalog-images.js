@@ -50,7 +50,7 @@ function get(url, binary) {
 }
 
 if (cmd === "audit") {
-  const a = L.audit(slug, catalog, content.pages || {}, shop);
+  const a = L.audit(slug, catalog, content.pages || {}, shop, readJson(overridesPath, {})._retired);
   if (arg("out")) writeJson(arg("out"), a);
   console.log(JSON.stringify(a.summary));
 }
@@ -108,6 +108,7 @@ else if (cmd === "import") {
     overrides._images = approved; writeJson(overridesPath, overrides);
     const log = L.applyApproved(content.pages || {}, approved, shop, {});
     L.cleanPages(content.pages || {}, shop, log);
+    L.applyRetired(content.pages || {}, overrides._retired || {}, log);
     writeJson(contentPath, content);
     report.applied = Object.fromEntries(Object.entries(log).map(([k, v]) => [k, v.length]));
   }
@@ -175,5 +176,26 @@ else if (cmd === "prune") {
   const orphans = files.filter(f => !refs.has(f));
   if (!flag("dry-run")) for (const f of orphans) fs.unlinkSync(path.join(assetsDir, f));
   console.log(JSON.stringify({ files: files.length, referenced: files.length - orphans.length, removed: flag("dry-run") ? 0 : orphans.length, orphans: flag("dry-run") ? orphans.length : undefined }));
+}
+/* retire / restore: the owner's reversible removal of SKUs from the dealer catalog (see applyRetired).
+   catalog-images retire --line <slug> --shop <dir> --skus A,B,C --reason "<why>" [--ref "<decision ref>"]
+   catalog-images restore --line <slug> --shop <dir> --skus A,B */
+else if (cmd === "retire" || cmd === "restore") {
+  const list = String(arg("skus", "")).split(",").map(x => x.trim()).filter(Boolean);
+  const codes = catalog.map(r => r.code);
+  const unknown = list.filter(x => !codes.some(c => L.codeNorm(c) === L.codeNorm(x)));
+  if (!list.length || unknown.length) { console.error(unknown.length ? "not SKUs of this line: " + unknown.join(", ") : "--skus required"); process.exit(2); }
+  if (cmd === "retire" && !arg("reason")) { console.error("--reason required"); process.exit(2); }
+  const overrides = readJson(overridesPath, {});
+  overrides._retired = overrides._retired || {};
+  for (const x of list) {
+    const code = codes.find(c => L.codeNorm(c) === L.codeNorm(x));
+    if (cmd === "retire") overrides._retired[code] = { reason: arg("reason"), decided: arg("decided", new Date().toISOString().slice(0, 10)), ref: arg("ref", "") };
+    else delete overrides._retired[code];
+  }
+  writeJson(overridesPath, overrides);
+  const log = L.applyRetired(content.pages || {}, overrides._retired, {});
+  writeJson(contentPath, content);
+  console.log(JSON.stringify({ retired_now: Object.keys(overrides._retired).length, changed: Object.fromEntries(Object.entries(log).map(([k, v]) => [k, v.length])) }));
 }
 else { console.error("unknown command " + cmd); process.exit(2); }

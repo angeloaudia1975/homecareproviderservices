@@ -150,8 +150,31 @@ function applyApproved(pages, approved, shop, log) {
   return log;
 }
 
+/* ── owner-retired SKUs (content-overrides "_retired": {SKU: {reason, decided, ref}}) ──
+   Reversible: the SKU entry on its page is switched off (status "hidden", disabled) so the storefront and the
+   order server drop it — not shown, not searchable, not orderable — while the catalog file, the private price
+   record and every past order keep it untouched. Removing the SKU from "_retired" (catalog-images restore) brings
+   it back on the next run. A retired SKU is left out of the image audit and the missing-image list. */
+function applyRetired(pages, retired, log) {
+  const say = (k, m) => { (log[k] = log[k] || []).push(m); };
+  const keys = Object.keys(retired || {});
+  for (const p of Object.values(pages)) for (const s of p.skus || []) {
+    const c = codeNorm(s.sku);
+    const k = keys.find(x => codeNorm(x) === c);
+    if (k) {
+      const r = retired[k] || {};
+      s.status = "hidden"; s.disabled = true; s.retired = { reason: r.reason || "", decided: r.decided || "", ref: r.ref || "" };
+      say("retired", s.sku);
+    } else if (s.retired) { delete s.retired; s.status = "active"; s.disabled = false; say("restored", s.sku); }
+  }
+  return log;
+}
+
 /* ── audit: what a dealer sees per SKU ── */
-function audit(slug, catalog, pages, shop) {
+function audit(slug, catalog, pages, shop, retired) {
+  const off = new Set(Object.keys(retired || {}).map(codeNorm));
+  const retiredRows = catalog.filter(r => off.has(codeNorm(r.code))).map(r => r.code);
+  catalog = catalog.filter(r => !off.has(codeNorm(r.code)));
   const pageOf = {};
   for (const p of Object.values(pages)) for (const s of p.skus || []) pageOf[codeNorm(s.sku)] = p;
   const rows = [], urlProducts = new Map();
@@ -168,7 +191,7 @@ function audit(slug, catalog, pages, shop) {
   /* one picture shown on many DIFFERENT pages is a likely mismatch (a family photo on its own variants is fine) */
   for (const row of rows) if (!row.issue && row.shown && (urlProducts.get(row.shown) || new Set()).size >= CHROME_PAGES) row.issue = "shared_across_products";
   const sum = { line: slug, skus: rows.length, with_photo: rows.filter(r => r.shown && !["broken_file", "unreadable"].includes(r.issue)).length,
-    multi_photo: rows.filter(r => r.gallery >= 2).length, issues: {} };
+    multi_photo: rows.filter(r => r.gallery >= 2).length, retired: retiredRows.length, issues: {} };
   for (const r of rows) if (r.issue) sum.issues[r.issue] = (sum.issues[r.issue] || 0) + 1;
   return { summary: sum, rows };
 }
@@ -216,4 +239,4 @@ function matchFileToSku(relPath, codes) {
   return { sku: best[0], by: "file name" };
 }
 
-module.exports = { codeNorm, sha, dims, dhash, hamming, longSide, fileOf, shownImage, cleanPages, applyApproved, audit, storeImage, matchFileToSku, MIN_SIDE, CHROME_PAGES };
+module.exports = { codeNorm, sha, dims, dhash, hamming, longSide, fileOf, shownImage, cleanPages, applyApproved, applyRetired, audit, storeImage, matchFileToSku, MIN_SIDE, CHROME_PAGES };
