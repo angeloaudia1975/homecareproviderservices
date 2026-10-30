@@ -442,6 +442,15 @@ window.HUB_GUIDE = {
     problems: "Keep every automated dealer email sounding like a knowledgeable rep bringing a real opportunity — never desperate or generic — and change the rules in one place.",
     intelligence: "Injected into every AI email prompt; drafts that slip in a banned phrase are auto-regenerated."
   },
+  "Email Learning": {
+    tagline: "What HCPS drafted, beside what you actually sent — owner only.",
+    what: "Phase 1 of Smart Email Learning: each email draft HCPS writes for you (pre-visit heads-up, visit follow-up, Dealer 360 AI emails) is kept as drafted and, once Outlook accepts the send, beside the version you sent. Nothing is learned or changed yet; approved writing rules come in Phase 2.",
+    features: ["Original draft and sent version side by side", "Line-by-line comparison", "Filter by email type, sent or edited", "Your own emails only; text removed after 12 months"],
+    data: "email_drafts (locked; written only when the capture switch is on).",
+    actions: ["Review what you changed before sending"],
+    reports: [],
+    connects: ["Scheduled Routes heads-up and follow-up", "Dealer 360 AI email composer", "Outlook sending"]
+  },
   "Product Interest": {
     tagline: "Turn portal browsing into targeted campaigns — dealers who show intent but haven't ordered.",
     what: "Reads the behavioral signals flowing in from the ordering and Golden portals and answers the campaign question directly: for any product or manufacturer line, which dealers viewed, searched, or carted it recently but haven't actually ordered it? Select them and build a ready-to-use campaign audience in one click.",

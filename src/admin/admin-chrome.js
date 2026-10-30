@@ -103,6 +103,7 @@
         { href:"/admin/audiences.html",     label:"Target Audiences",      icon:"🎯", desc:"Build campaign lists from dealers & contacts" },
         { href:"/admin/campaigns.html",     label:"Campaign Studio",       icon:"✉️", desc:"Brief → audience, copy & sequence → Zoho Campaigns" },
         { href:"/admin/ai-style-guide.html", label:"AI Style Guide",       icon:"🖋️", status:"new", desc:"The writing rules every AI email generator follows — edit once, applies everywhere" },
+        { href:"/admin/email-learning.html", label:"Email Learning",       icon:"🧠", status:"new", desc:"Owner only — each HCPS email draft beside what you actually sent; learned writing rules come next" },
         { href:"/admin/product-interest.html", label:"Product Interest",    icon:"🎯", status:"new", desc:"Dealers showing product intent who haven't ordered — build a campaign audience" },
         { href:"/admin/scheduling-console.html", label:"Scheduling Console", icon:"📆", desc:"Dealer Hub service requests — assign a rep, book Outlook & log to Dealer 360" },
         { href:"/admin/academy.html",       label:"Academy Command Center", icon:"🎓", status:"new", desc:"Training & Certification Academy — courses, versions, product facts, learners & credentials (administrators)" }
