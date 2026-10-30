@@ -270,7 +270,10 @@ async function step(name, fn) { try { await fn(); pass++; console.log('ok   ' + 
     await page.click('#d_people .rcpt:has-text("Pat Lee")');
     assert.ok(/^Hi Pat,/.test(await page.inputValue('#d_body')), 'the greeting did not follow the chosen recipient');
     await page.screenshot({ path: path.join(SHOTS, 'email-multi-attendee.png'), fullPage: true });
-    await page.click('#draftwrap button:has-text("Close")'); await page.click('.rv-done .btn.xl:not(.go)');
+    // Picking a recipient is a change: Close asks first (2026-10-30), and Discard closes it.
+    await page.click('#draftwrap button:has-text("Close")'); assert.ok(await page.isVisible('#d_confirm'), 'no unsaved-changes prompt');
+    await page.click('#d_discard'); await page.waitForSelector('#draftwrap', { state: 'detached' });
+    await page.click('.rv-done .btn.xl:not(.go)');
   });
   await step('field: no JavaScript errors', async () => { assert.deepStrictEqual(errors.filter(e => /^field/.test(e)), []); });
   await ctx.close();

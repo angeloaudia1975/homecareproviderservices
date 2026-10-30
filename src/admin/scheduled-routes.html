@@ -1000,9 +1000,15 @@ function pickVisitRecipients(rows,attendees,savedTo){
   const noEmail=att.filter(a=>!RCPT_RE.test(String(a.email||"").trim())).map(a=>a.name);
   return { rows:all, pre, note, greet, noEmail, extra: want&&!all.some(r=>low(r.email)===want) ? String(savedTo).trim() : "" };
 }
-async function headsUp(i){
-  if(!navigator.onLine){ toast("Heads-up needs a connection"); return; }
+/* A pre-visit heads-up has no visit record to keep a draft on (the stop has not been visited yet), so
+   its Save draft keeps the email on this device, per signed-in user, per route stop — the same local
+   store the outbox uses. Opening Heads-up again picks the saved draft back up; Send clears it. */
+function previsitKey(s){ return "pvdraft_"+String((DAY&&DAY.route&&DAY.route.id)||"")+"_"+String((s&&s.dealer_id)||""); }
+async function headsUp(i,fresh){
   const s=DAY.stops[i];
+  const saved=fresh?null:obRead(previsitKey(s));
+  if(saved&&saved.body){ openDraft(s,saved.subject||"",saved.body||"","","Pre-visit heads-up — your saved draft",{previsit:true,saved:true,to:saved.to,cc:saved.cc,stop:i}); return; }
+  if(!navigator.onLine){ toast("Heads-up needs a connection"); return; }
   const etaEl=$("#eta_"+i); const eta=(etaEl&&etaEl.textContent||"").trim(); const etaTxt=(eta&&eta!=="—")?eta:"";
   /* THE DATE OF THIS STOP, not the date the route starts. On a multi-day route
      they are different for every stop after the first overnight, and sending a
@@ -1016,7 +1022,7 @@ async function headsUp(i){
        opened "Hi Jeremiah". */
     contact_name:s.contact_name||""}); }catch(e){ j=null; }
   if(!j||!j.ok){ toast((j&&j.message)||"Couldn't prepare the heads-up"); return; }
-  openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending");
+  openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending",{previsit:true,stop:i});
 }
 /* ---- WHO THE EMAIL GOES TO -------------------------------------------------
    The pre-visit heads-up and the after-visit follow-up are drafted by different code and sent by
@@ -1071,9 +1077,17 @@ function swapGreeting(body,name){
      a "$&" or "$1" in a replacement string is an instruction, and a name is not. */
   return String(body==null?"":body).replace(/^(\s*)Hi [^,\n]{1,40},/, (m,lead)=>lead+"Hi "+first+",");
 }
-/* opts.visit — the follow-up to an approved visit: adds Copy and Save draft (kept on the visit,
-   synced like everything else), and a send is recorded on the visit. opts.to — the address a saved
-   draft was going to, ticked instead of the first contact. Nothing ever sends without the tap. */
+/* opts.visit — the follow-up to an approved visit: Save draft keeps it on the visit (synced like
+   everything else), and a send is recorded on the visit. opts.previsit — the pre-visit heads-up:
+   Save draft keeps it on this device (see previsitKey). opts.to / opts.cc — the addresses a saved
+   draft was going to, ticked instead of the first contact. Nothing ever sends without the tap.
+
+   THE EDITOR ONLY CLOSES WHEN THE REP SAYS SO (2026-10-30). It used to close on any click whose
+   target was the dimmed backdrop. A browser fires "click" on the nearest element shared by the
+   press and the release — so selecting text in the message and letting go of the mouse past the
+   sheet's edge (or a touch-drag that ends there) was a backdrop click, and the email and every edit
+   in it were thrown away. Now nothing outside the buttons closes it: Close asks before discarding
+   unsaved changes, and Send closes it only after the email has gone. */
 let DRAFT=null;
 function openDraft(s,subject,body,signature,title,opts){
   opts=opts||{};
@@ -1085,18 +1099,21 @@ function openDraft(s,subject,body,signature,title,opts){
     pre=(r)=>p.pre.has(String(r.email||"").trim().toLowerCase());
   } else {
     rows=recipientRows(s);
-    const want=String(opts.to||"").trim().toLowerCase();
-    pre=want&&rows.some(r=>String(r.email||"").toLowerCase()===want) ? (r=>String(r.email||"").toLowerCase()===want) : ((r,i)=>i===0);
-    extra=want&&!rows.some(r=>String(r.email||"").toLowerCase()===want)?opts.to:"";
+    const wants=[opts.to].concat(Array.isArray(opts.cc)?opts.cc:[]).map(x=>String(x||"").trim()).filter(Boolean);
+    const want=new Set(wants.map(x=>x.toLowerCase())), onFile=new Set(rows.map(r=>String(r.email||"").trim().toLowerCase()));
+    pre=want.size ? (r=>want.has(String(r.email||"").trim().toLowerCase())) : ((r,i)=>i===0);
+    extra=wants.filter(x=>!onFile.has(x.toLowerCase())).join(", ");
   }
   DRAFT=opts.visit?{visit:true,dealer_id:s.dealer_id,route_id:(DAY&&DAY.route&&DAY.route.id)||null,report_id:(s.visit&&s.visit.id)||(REV&&REV.report_id)||null,
-    visit_key:ADHOC()?DAY.route.visit_key:null}:null;
+    visit_key:ADHOC()?DAY.route.visit_key:null}
+    : {previsit:!!opts.previsit,dealer_id:s.dealer_id,key:opts.previsit?previsitKey(s):null,stop:opts.stop,saved:!!opts.saved};
+  const canSave=!!(opts.visit||opts.previsit);
   const people=rows.length
     ? rows.map((r,i)=>`<label class="rcpt"><input type="checkbox" class="d_p" data-email="${esc(r.email)}" data-name="${esc(r.name)}"${pre(r,i)?" checked":""} onchange="draftWho()">
         <span><b>${esc(r.name||r.email)}</b>${r.title?` <span class="hint">· ${esc(r.title)}</span>`:""}${r.source==="attendee"?` <span class="hint">· at the meeting</span>`:""}${r.source==="account"?` <span class="hint">· account email</span>`:""}<br><span class="hint">${esc(r.email)}</span></span></label>`).join("")
     : `<div class="hint">No email on file for this account — type one below.</div>`;
   const old=document.getElementById("draftwrap"); if(old) old.remove();
-  const wrap=document.createElement("div"); wrap.className="modal"; wrap.id="draftwrap"; wrap.onclick=e=>{ if(e.target===wrap) wrap.remove(); };
+  const wrap=document.createElement("div"); wrap.className="modal"; wrap.id="draftwrap";   // no backdrop dismissal — see above
   wrap.innerHTML=`<div class="sheet">
     <h3>${esc(title||"Email — review before sending")}</h3>
     ${(opts.warnings||[]).map(w=>`<div class="rvnote">${esc(w)}</div>`).join("")}
@@ -1108,19 +1125,43 @@ function openDraft(s,subject,body,signature,title,opts){
     <div id="d_who" class="hint" style="margin-top:6px"></div>
     <label class="fl">Subject</label><input class="in" id="d_sub" value="${esc(subject)}">
     <label class="fl">Message</label><textarea class="in" id="d_body" style="min-height:200px">${esc(full)}</textarea>
-    <div class="hint" style="margin-top:6px">Nothing sends until you tap Send. It goes from your Outlook.</div>
-    ${opts.visit?`<div class="save-row" style="margin-top:12px">
+    <div class="hint" style="margin-top:6px">Nothing sends until you tap Send. It goes from your Outlook.${opts.previsit?" Save draft keeps it on this device.":""}</div>
+    ${canSave?`<div class="save-row" style="margin-top:12px">
       <button class="btn wide" onclick="copyDraft()">⧉ Copy</button>
-      <button class="btn wide" onclick="saveDraft(this)">Save draft</button>
+      <button class="btn wide" id="d_save" onclick="saveDraft(this)">Save draft</button>
     </div>`:""}
-    <div class="save-row" style="margin-top:${opts.visit?8:12}px">
-      <button class="btn wide" onclick="this.closest('.modal').remove()">Close</button>
+    ${opts.previsit&&opts.saved?`<button class="btn wide" style="margin-top:8px" onclick="draftRestart()">↺ Start a new heads-up instead</button>`:""}
+    <div id="d_confirm" class="rvnote" hidden style="margin-top:12px"><b>You have unsaved changes to this email.</b>
+      <div class="save-row" style="margin-top:8px">
+        <button class="btn wide" onclick="draftKeep()">Keep editing</button>
+        ${canSave?`<button class="btn wide" onclick="draftSaveClose(this)">Save draft &amp; leave</button>`:""}
+        <button class="btn wide" id="d_discard" style="color:#b42323" onclick="draftDiscard()">Discard changes</button>
+      </div></div>
+    <div class="save-row" style="margin-top:${canSave?8:12}px">
+      <button class="btn wide" id="d_close" onclick="closeDraft()">Close</button>
       <button class="btn go wide" onclick="sendDraft('${jesc(s.dealer_id)}',this)">Send from my Outlook</button>
     </div>
     <div id="d_msg" class="hint" style="margin-top:8px"></div></div>`;
   document.body.appendChild(wrap);
   draftWho();
+  // What "unchanged" means: the email as it opened, after the greeting was matched to the recipient.
+  DRAFT.baseline=draftSnap(draftNow());
 }
+/* ---- Unsaved-change protection ---- */
+function draftSnap(e){ return JSON.stringify([e.to,e.cc,e.subject,e.body]); }
+function draftDirty(){ return !!(DRAFT && document.getElementById("draftwrap") && draftSnap(draftNow())!==DRAFT.baseline); }
+function removeDraft(){ const w=document.getElementById("draftwrap"); if(w) w.remove(); DRAFT=null; }
+let DRAFT_AFTER=null;   // what to do once the rep confirms the discard (close, or open a new draft)
+function draftAsk(then){ DRAFT_AFTER=then; const c=$("#d_confirm"); if(!c) return; c.hidden=false;
+  try{ c.scrollIntoView({block:"nearest"}); }catch(e){} const k=c.querySelector("button"); if(k) k.focus(); }
+function draftKeep(){ DRAFT_AFTER=null; const c=$("#d_confirm"); if(c) c.hidden=true; }
+function draftDiscard(){ const then=DRAFT_AFTER||removeDraft; DRAFT_AFTER=null; then(); }
+async function draftSaveClose(btn){ if(await saveDraft(btn)) draftDiscard(); }
+/* Close — the only way out besides a successful Send. Asks first if anything was changed and not saved. */
+function closeDraft(){ if(draftDirty()){ draftAsk(removeDraft); return false; } removeDraft(); return true; }
+function draftRestart(){ const i=DRAFT&&DRAFT.stop; const go=()=>{ removeDraft(); headsUp(i,true); };
+  if(draftDirty()) draftAsk(go); else go(); }
+window.addEventListener("beforeunload",e=>{ if(draftDirty()){ e.preventDefault(); e.returnValue=""; return ""; } });
 /* What the picker currently adds up to: the ticked addresses in the order shown, then anything
    typed, and the name of whoever is first — which is who the greeting belongs to. */
 function draftPicked(){
@@ -1168,7 +1209,8 @@ async function sendDraft(dealer_id,btn){
   if(j&&j.ok){ toast(r.cc.length?`Email sent to ${1+r.cc.length} ✓`:"Email sent ✓");
     // A visit's follow-up is marked sent on the visit, so the summary and Dealer 360 show it went.
     if(DRAFT&&DRAFT.visit){ const d=DRAFT; tryOrQueue(Object.assign(draftSaveBody(d,{to:r.to,cc:r.cc,subject,body}),{sent:true})).then(()=>{ if(REV) REV.email=null; updateStatus(); }); }
-    const modal=document.getElementById("draftwrap"); if(modal) modal.remove(); }
+    if(DRAFT&&DRAFT.previsit&&DRAFT.key) obWrite(DRAFT.key,null);
+    removeDraft(); }
   else { if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't send — you can also send from Dealer 360."; } if(btn) btn.disabled=false; }
 }
 function draftSaveBody(d,email){ const b={action:"visit_email_save",dealer_id:d.dealer_id,email};
@@ -1182,13 +1224,24 @@ async function copyDraft(){
   if(m){ m.style.color=ok?"var(--ok)":"#b42323"; m.textContent=ok?"✓ Copied — paste it into any email.":"Couldn't copy here — select the message and copy it."; }
 }
 async function saveDraft(btn){
-  if(!DRAFT) return; const m=$("#d_msg"), e=draftNow();
+  const d=DRAFT; if(!d) return false; const m=$("#d_msg"), e=draftNow();
+  if(d.previsit){
+    const rec=Object.assign({},e,{saved_at:new Date().toISOString()}); obWrite(d.key,rec);
+    const back=obRead(d.key);
+    if(!back||back.body!==e.body||back.subject!==e.subject){ if(m){ m.style.color="#b42323"; m.textContent="Couldn't save the draft on this device — copy it before closing."; } return false; }
+    d.baseline=draftSnap(e); d.saved=true;
+    if(m){ m.style.color="var(--ok)"; m.textContent="✓ Draft saved on this device — tap Heads-up again to pick it up."; }
+    return true;
+  }
+  if(!d.visit) return false;
   if(btn) btn.disabled=true;
-  const res=await tryOrQueue(draftSaveBody(DRAFT,e)); updateStatus();
+  const res=await tryOrQueue(draftSaveBody(d,e)); updateStatus();
   if(btn) btn.disabled=false;
-  if(res.rejected){ if(m){ m.style.color="#b42323"; m.textContent=res.error||"Couldn't save the draft."; } return; }
+  if(res.rejected){ if(m){ m.style.color="#b42323"; m.textContent=res.error||"Couldn't save the draft."; } return false; }
+  d.baseline=draftSnap(e);
   if(REV) REV.email=Object.assign({},e,{saved_at:new Date().toISOString()});
   if(m){ m.style.color="var(--ok)"; m.textContent=res.sent?"✓ Draft saved on the visit.":"✓ Saved on this phone — syncs when you have signal."; }
+  return true;
 }
 
 // ---- Visit package (shared handout) ----
