@@ -3787,6 +3787,20 @@ direct-to-main path). Rules it established:
   Tests: sr-routes-api (29), routeclock (+ mutants), sr-eta (16 + 9 mutants), sr-consistency (planner =
   field app = heads-up, two browser zones), sr-review (other rep read only), sr-planner.
 
+- **A route never widens a rep's dealer access (RULE, Angelo 2026-10-30 17:14 CT; PR fix/route-dealer-access).** A
+  route extends a rep's reach to a dealer outside his book ONLY when it is assigned to him, held by someone else, and
+  assigned by an ACTIVE President (`assigned_by`, else the owner for older routes) — President-planned routes and
+  explicitly authorized ride-alongs. One rule: `_route_reach.js` (strict reads → 503). A rep's own route, a route a
+  non-President assigned, or one whose assigner is no longer an active President opens nothing: `save_route` refuses
+  adding such a dealer (403 `not_your_dealer`; stops already on the route are kept), `route_day` shows it name/address
+  only (its dealer and contacts are never read), every routes-api dealer action, the Outlook send, the AI draft and
+  Command Center Meeting Prep refuse or leave it out. Server-side only, never just the UI. **Follow-up continuity:** the
+  rep who personally performed a visit (checked in / ended / completed, his own report) may still draft (AI from that
+  visit only — no account history), save and send THAT visit's follow-up after a reassignment, only to the dealer's own
+  email, its contacts and the visit's attendees; nothing else of that dealer opens. Tests: sr-access (+ mutants),
+  sr-workflow (full plan → assign → ETA → heads-up → visit → reassign → follow-up → CRM intact), sr-access.qa. Separate
+  from Smart Email Learning.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.
