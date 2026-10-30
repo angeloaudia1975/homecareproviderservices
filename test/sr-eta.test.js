@@ -85,6 +85,7 @@ function run(srcClock, srcPage, srcApi) {
     eq(departureOf({ depart_time: '07:30', round_trip: false }, false), { ok: false, why: 'no_zone' });
     eq(departureOf({ depart_time: '07:30', depart_tz: 'Mars/Base' }, false), { ok: false, why: 'no_zone' });
     eq(departureOf({ depart_time: '07:30', depart_tz: 'America/New_York' }, false), { ok: true, time: '07:30', tz: 'America/New_York' });
+    eq(departureOf({ depart_tz: 'America/Chicago', home_base: HOME }, false), { ok: false, why: 'no_time' }, 'a home\'s time used for a trip that does not start there');
   });
   t('server: the heads-up refuses 1:21 AM EST and says why', () => { const w = []; eq(previsitEta('1:21 AM EST', w), ''); if (!/outside business hours/.test(w[0] || '')) throw new Error(JSON.stringify(w)); });
   t('server: normal times pass through, cleaned', () => { eq(previsitEta('12:21 PM EST', []), '12:21 PM EST'); eq(previsitEta(' 9:05  am ', []), '9:05 AM'); eq(previsitEta('7:00 PM CST', []), '7:00 PM CST'); });

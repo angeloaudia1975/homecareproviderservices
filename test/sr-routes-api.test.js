@@ -213,5 +213,50 @@ async function call(w, who, body, headers) {
     const r2 = await call(w, 'pres', { action: 'assign_route', id: 'r-greg', assigned_to_email: 'greg@hcps.us' });
     assert.ok(r2.j.ok); assert.strictEqual(rt.home_base, null); assert.strictEqual(rt.depart_time, '07:15', 'the departure went with the start point');
   });
+  await t('reassigned after visiting: the first rep still OPENS the route — only his own stops — and the new rep sees them as his', async () => {
+    const w = world(); const rt = w.db.rep_routes.find(r => r.id === 'r-other');
+    rt.stops = [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-ang', name: 'RMS' }];
+    w.db.dealer_visit_reports.push(visit({ route_id: 'r-other', status: 'ended' }));
+    rt.assigned_to_email = 'lori@hcps.us';
+    const d = await call(w, 'greg', { action: 'route_day', route_id: 'r-other' });
+    assert.strictEqual(d.status, 200, JSON.stringify(d.j)); assert.ok(d.j.route.own_visits_only);
+    assert.deepStrictEqual(d.j.stops.map(s => s.dealer_id), ['d-greg'], 'shows stops he never visited');
+    w.db.dealer_visit_reports.length = 0;
+    assert.strictEqual((await call(w, 'greg', { action: 'route_day', route_id: 'r-other' })).status, 403, 'a rep with no visit on it still reaches the route');
+  });
+  await t('an archived route is never "today\'s route" (field app by date, Command Center, Dealer 360 upcoming)', async () => {
+    const w = world(); const rt = w.db.rep_routes.find(r => r.id === 'r-ang'); const date = rt.scheduled_date;
+    w.db.rep_routes.forEach(r => { if (r.id !== 'r-ang' && r.scheduled_date === date) r.scheduled_date = '2026-12-01'; });
+    assert.strictEqual((await call(w, 'pres', { action: 'route_day', date })).j.route.id, 'r-ang');
+    rt.archived_at = '2026-10-30T12:00:00Z'; rt.updated_at = '2026-10-31T00:00:00Z';
+    const d = await call(w, 'pres', { action: 'route_day', date });
+    assert.strictEqual(d.j.route, null, 'the archived route is still today\'s route');
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'netlify', 'functions', 'rep-command-api.js'), 'utf8')
+      + require('fs').readFileSync(require('path').join(__dirname, '..', 'netlify', 'functions', 'crm-api.js'), 'utf8');
+    assert.strictEqual((src.match(/filter\(r=>!r\.archived_at\)/g) || []).length, 2, 'Command Center / Dealer 360 route reads do not drop archived routes');
+  });
+  await t('a route planned without a start point but with a departure zone is timed from its first stop on the phone', async () => {
+    const w = world(); const rt = w.db.rep_routes.find(r => r.id === 'r-other');
+    Object.assign(rt, { home_base: null, round_trip: true, depart_time: '09:00', depart_tz: 'America/Chicago' });
+    const d = await call(w, 'greg', { action: 'route_day', route_id: 'r-other' });
+    assert.strictEqual(d.j.route.timed_from_first_stop, true);
+    rt.depart_tz = null;
+    assert.strictEqual((await call(w, 'greg', { action: 'route_day', route_id: 'r-other' })).j.route.timed_from_first_stop, false);
+  });
+  await t('before the SQL runs, a route whose departure only the new columns could hold is refused, not silently dropped', async () => {
+    const S = standardSeed({ rep_routes: [], dealer_visit_reports: [] });
+    S.columns = { rep_routes: ['id', 'owner_email', 'rep_name', 'name', 'scheduled_date', 'home_base', 'round_trip', 'stops', 'distance_m', 'duration_s', 'geometry', 'notes', 'created_at', 'updated_at', 'assigned_to_email', 'assigned_to_rep', 'assigned_at', 'assigned_by', 'calendar'] };
+    const w = createWorld(S);
+    const r = await call(w, 'greg', { action: 'save_route', name: 'no start', stops: [], depart_time: '09:00', depart_tz: 'America/Chicago' });
+    assert.strictEqual(r.status, 503, JSON.stringify(r.j)); assert.strictEqual(r.j.error, 'schema_update_needed');
+    assert.ok((await call(w, 'greg', { action: 'save_route', name: 'loop', stops: [], home_base: { lat: 1, lng: 1, depart_time: '09:00' }, depart_time: '09:00' })).j.ok, 'a round trip keeps its time in its start point');
+  });
+  await t('an empty claim (a refused or failed first write) never blocks deleting the route or dropping the stop', async () => {
+    const w = world(); w.db.dealer_visit_reports.push({ id: 'vr-claim', route_id: 'r-greg', dealer_id: 'd-greg', rep_email: 'greg@hcps.us', status: 'planned', checkin_at: null, fields: {} });
+    const drop = await call(w, 'greg', { action: 'save_route', id: 'r-greg', name: 'x', stops: [] });
+    assert.ok(drop.j.ok, JSON.stringify(drop.j));
+    const del = await call(w, 'greg', { action: 'delete_route', id: 'r-greg' });
+    assert.ok(del.j.ok, JSON.stringify(del.j));
+  });
   console.log(`\nsr-routes-api: ${pass} passed, ${fail} failed`); process.exitCode = fail ? 1 : 0;
 })();

@@ -1341,7 +1341,9 @@ async function openHandout(dealer_id){
    Glasgow, which a browser-local clock cannot see. */
 async function computeEtas(){
   const r=DAY.route, stops=DAY.stops||[];
-  const useHome = r.round_trip && r.home_base && isFinite(r.home_base.lat) && isFinite(r.home_base.lng);
+  /* A route planned without a start point of its own, with its departure zone saved, was timed by the
+     planner from its first stop — so it is here too (never from this rep's own home). */
+  const useHome = r.round_trip && !r.timed_from_first_stop && r.home_base && isFinite(r.home_base.lat) && isFinite(r.home_base.lng);
   /* Departure first: without one there is nothing to compute, and the stops say so (a one-stop
      one-way route used to skip this and show a blank with no reason). */
   DAY._depart=departureOf(r,useHome);
@@ -1390,7 +1392,9 @@ async function computeEtas(){
 /* The departure arrival times start from: {ok, time 'HH:MM', tz, why}. Pure — tested in sr-eta.test.js. */
 function departureOf(r,useHome){
   const ok=t=>/^([01]\d|2[0-3]):[0-5]\d$/.test(String(t||""));
-  const time=ok(r&&r.depart_time)?r.depart_time:(r&&r.home_base&&ok(r.home_base.depart_time)?r.home_base.depart_time:null);
+  /* Leaving from home: the route's time, else that home's own departure time. Timed from the first
+     stop: ONLY the route's own saved time — a home's time belongs to a trip that starts there. */
+  const time=ok(r&&r.depart_time)?r.depart_time:(useHome&&r&&r.home_base&&ok(r.home_base.depart_time)?r.home_base.depart_time:null);
   const tz=useHome?homeTz(r,true):(["America/Chicago","America/New_York"].includes(r&&r.depart_tz)?r.depart_tz:null);
   if(!time) return {ok:false,why:"no_time"};
   if(!tz) return {ok:false,why:"no_zone"};

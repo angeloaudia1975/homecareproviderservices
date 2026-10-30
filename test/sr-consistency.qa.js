@@ -35,6 +35,8 @@ const ROUTES = [
     stops: [stop('d-greg', 'Lexington stop', 'Lexington', 'KY', 38.04, -84.5), stop('d-dir-greg', 'Glasgow stop', 'Glasgow', 'KY', 36.99, -85.91)] },
   { id: 'r-C', name: 'C — one-way, saved without a departure', scheduled_date: '2026-11-03', round_trip: false, home_base: null,
     stops: [stop('d-greg', 'Lexington stop', 'Lexington', 'KY', 38.04, -84.5)] },
+  { id: 'r-D', name: 'D — planned without a start point, departure 09:00 Central', scheduled_date: '2026-11-03', round_trip: true, home_base: null, depart_time: '09:00', depart_tz: 'America/Chicago',
+    stops: [stop('d-greg', 'Lexington stop', 'Lexington', 'KY', 38.04, -84.5), stop('d-dir-greg', 'Glasgow stop', 'Glasgow', 'KY', 36.99, -85.91)] },
 ];
 const MIN = [141, 34, 56, 70, 60];
 const prettyDay = iso => new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
@@ -42,6 +44,8 @@ const prettyDay = iso => new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US'
 (async () => {
   const browser = await H.chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
   const w = H.world({ rep_routes: ROUTES.map(r => Object.assign({ owner_email: 'angelo@hcps.us', rep_name: 'Angelo Audia', updated_at: '2026-10-30T00:00:00Z' }, r)) });
+  // The viewer has a default home of his own: route D must NOT be timed from it (the plan never was).
+  (w.db.staff_users || []).forEach(u => { if (/angelo/.test(u.email || '')) u.home_base = HOME; });
   const { srv, port } = await H.serve(w, { legs: coords => MIN.slice(0, coords.length - 1).map(m => ({ duration_s: m * 60 })) });
   const B = `http://127.0.0.1:${port}`;
   const errors = [];
@@ -57,7 +61,7 @@ const prettyDay = iso => new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US'
     await planner.goto(`${B}/admin/map.html`); await planner.waitForFunction(() => typeof loadSaved === 'function' && typeof L !== 'undefined');
     await planner.waitForTimeout(400);
 
-    for (const route of ROUTES.slice(0, 2)) {
+    for (const route of ROUTES.filter(r => r.id !== 'r-C')) {
       await R.step(`[${tz}] ${route.name}: planner = field app = heads-up (date + local time, every stop)`, async () => {
         // Planner
         await planner.evaluate(id => { LASTROUTE = { legs: [] }; return loadSaved(id); }, route.id);
@@ -80,6 +84,7 @@ const prettyDay = iso => new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US'
         if (route.id === 'r-A') { assert.strictEqual(plan[0].t, '12:21 PM EST', 'day starts at 9:00 CENTRAL'); assert.deepStrictEqual(plan.map(p => p.d), ['2026-11-03', '2026-11-03', '2026-11-04']); }
         if (route.id === 'r-B') { assert.strictEqual(plan[0].t, '7:30 AM EST', 'leaves the first stop\'s area at 07:30 EASTERN, as saved');
           assert.strictEqual(plan[1].t, '9:36 AM CST', '07:30 + 45 min visit + 141 min drive = 10:36 Eastern = 9:36 Central (Glasgow)'); }
+        if (route.id === 'r-D') assert.strictEqual(plan[0].t, '10:00 AM EST', 'timed from the first stop at 09:00 Central, never from the rep\'s own home');
       });
     }
     await R.step(`[${tz}] C (no departure saved): no time anywhere — planner refuses to save it without one, field + heads-up say why`, async () => {

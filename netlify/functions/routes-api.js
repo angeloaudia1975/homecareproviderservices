@@ -606,6 +606,8 @@ exports.handler = async (event)=>{
       if(!isRound && (!depTime||!depTz)) return json(422,{error:"departure_required",
         message:"A one-way route needs its departure time and time zone — set both before saving."});
       let schema; try{ schema=await routeSchema(); }catch(e){ return json(503,{error:"Couldn't check the route table — try again. Nothing was saved."}); }
+      const hasOwnHome=!!(b.home_base && isFinite(Number(b.home_base.lat)) && isFinite(Number(b.home_base.lng)));
+      if(!schema && isRound && !hasOwnHome && (depTime||depTz)) return json(503,{error:"schema_update_needed",message:"Saving this route's departure needs the route update (sr_route_integrity.sql) — ask the President."});
       if(!isRound && !schema) return json(503,{error:"schema_update_needed",message:"Saving a one-way route needs the route update (sr_route_integrity.sql) — ask the President."});
       const row={
         owner_email:me.email||null, rep_name:me.rep_name||null, name,
@@ -640,7 +642,7 @@ exports.handler = async (event)=>{
           const keep=new Set(row.stops.map(x=>String((x&&x.dealer_id)||"")).filter(Boolean));
           const gone=(Array.isArray(own.stops)?own.stops:[]).filter(x=>x&&x.dealer_id&&!keep.has(String(x.dealer_id)));
           if(gone.length){
-            let vr; try{ vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(b.id)}&dealer_id=in.(${gone.map(x=>encodeURIComponent(String(x.dealer_id))).join(",")})&select=dealer_id`); }
+            let vr; try{ vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(b.id)}&dealer_id=in.(${gone.map(x=>encodeURIComponent(String(x.dealer_id))).join(",")})&or=(status.neq.planned,checkin_at.not.is.null)&select=dealer_id`); }
             catch(e){ return json(503,{error:"Couldn't check this route's visits — nothing was saved."}); }
             const hit=new Set((vr||[]).map(x=>String(x.dealer_id)));
             const names=gone.filter(x=>hit.has(String(x.dealer_id))).map(x=>x.name||x.dealer_id);
@@ -785,7 +787,7 @@ exports.handler = async (event)=>{
         : "not your route"});
       /* Never delete a route that holds a visit record (Angelo, 2026-10-30): the visits would lose
          their route and every later save on them would be refused. Archive it instead. */
-      let vr; try{ vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(b.id)}&select=id&limit=1`); }
+      let vr; try{ vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(b.id)}&or=(status.neq.planned,checkin_at.not.is.null)&select=id&limit=1`); }
       catch(e){ return json(503,{error:"Couldn't check this route's visits — nothing was deleted."}); }
       if(vr&&vr.length) return json(409,{error:"route_has_visits",can_archive:true,
         message:"This route has visit records, so it can't be deleted. Archive it instead — its visits stay exactly as they are."});
@@ -1347,14 +1349,23 @@ exports.handler = async (event)=>{
       if(b.route_id){
         const rows=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.route_id)}&select=*`).catch(()=>[]);
         route=(rows&&rows[0])||null;
-        if(route && !ownsRoute(route)) return json(403,{error:"not your route"});
+        if(route && !ownsRoute(route)){
+          /* Reassigned after he visited some stops: he still opens the route — but only the stops he
+             visited, so he can finish, approve and follow them up. Everything else is the new rep's. */
+          let mine; try{ mine=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&rep_email=eq.${encodeURIComponent(String(me.email||"").toLowerCase())}&select=dealer_id`); }
+          catch(e){ return json(503,{error:"Couldn't open this route — try again."}); }
+          const ids=new Set((mine||[]).map(x=>String(x.dealer_id)));
+          if(!ids.size) return json(403,{error:"not your route"});
+          route={...route, stops:(Array.isArray(route.stops)?route.stops:[]).filter(x=>x&&ids.has(String(x.dealer_id))), _own_visits_only:true};
+        }
       } else {
         const date=(b.date&&/^\d{4}-\d{2}-\d{2}$/.test(b.date))?b.date:new Date().toISOString().slice(0,10);
         /* Same rule as list_routes: in My Sales Workspace the President's day is HIS route — not the
            most recently edited route of whichever rep happens to drive that date. */
         const ws=SC.workspaceMine(event, me);
         const own=(isBoss(me)&&!ws)?"":"&"+mineFilter(me);
-        let rows=await sbGet(`rep_routes?scheduled_date=eq.${date}${own}&select=*&order=updated_at.desc&limit=${ws?50:1}`).catch(()=>[]);
+        let arch=""; try{ if(await routeSchema()) arch="&archived_at=is.null"; }catch(e){ return json(503,{error:"Couldn't read today's route — try again."}); }
+        let rows=await sbGet(`rep_routes?scheduled_date=eq.${date}${own}${arch}&select=*&order=updated_at.desc&limit=${ws?50:1}`).catch(()=>[]);
         if(ws) rows=(rows||[]).filter(r=>r.assigned_to_email ? emailEq(r.assigned_to_email,me.email) : emailEq(r.owner_email,me.email));
         route=(rows&&rows[0])||null;
       }
@@ -1371,6 +1382,11 @@ exports.handler = async (event)=>{
           needs_home_base:!hb,
           round_trip:route.round_trip,distance_m:route.distance_m,duration_s:route.duration_s,geometry:route.geometry,
           depart_time:route.depart_time||null, depart_tz:route.depart_tz||null, archived_at:route.archived_at||null,
+          /* Planned without a start point of its own (assigned to a rep), with an explicit departure zone:
+             the planner timed it from the first stop — the phone and heads-ups do the same, never from the
+             rep's own home (which would add a drive the plan never had). */
+          timed_from_first_stop:!!(!(route.home_base&&isFinite(route.home_base.lat)&&isFinite(route.home_base.lng)) && route.depart_tz),
+          own_visits_only:!!route._own_visits_only,
           assigned_to_rep:route.assigned_to_rep||null, assigned_to_email:route.assigned_to_email||null,
           planned_by:(route.assigned_to_email&&!emailEq(route.assigned_to_email,route.owner_email))
             ?(route.rep_name||route.owner_email||"the office"):null,
