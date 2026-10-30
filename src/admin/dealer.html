@@ -823,6 +823,7 @@ async function genEmail(){
   if(!j||!j.ok){ if(st){ st.style.color="#b45309"; st.textContent=(j&&j.message)||"Couldn't generate a draft — try again."; } return; }
   if(st) st.textContent="";
   COMPOSE.to=to; COMPOSE.name=name; COMPOSE.sig=j.signature||"";
+  COMPOSE.draft_id=(typeof j.draft_id==="string")?j.draft_id:null;   // Smart Email Learning: pairs the sent version with this draft
   COMPOSE.html=j.html||""; COMPOSE.product_url=j.product_url||"";
   if(j.product_warning&&st){ st.style.color="#b45309"; st.textContent=j.product_warning; }
   const subj=$("#cx_subj"); if(subj) subj.value=j.subject||"";
@@ -838,9 +839,9 @@ async function sendEmail(){
   if(!confirm("Send this email to "+to+" from your Outlook?")) return;
   if(msg){ msg.style.color=""; msg.textContent="Sending from your Outlook…"; }
   const btn=$("#cx_send"); if(btn) btn.disabled=true;
-  let j; try{ j=await esapi({action:"send",dealer_id:CUR,to,subject,body_text:body}); }catch(e){ j=null; }
+  let j; try{ j=await esapi({action:"send",dealer_id:CUR,to,subject,body_text:body,draft_id:COMPOSE.draft_id||undefined}); }catch(e){ j=null; }
   if(btn) btn.disabled=false;
-  if(j&&j.ok){ if(msg){ msg.style.color="#1f7a44"; msg.textContent="✓ Sent to "+j.to+" — logged to the timeline."; } const dr=$("#cx_draft"); if(dr) dr.style.display="none"; loadCRM(); loadEmails(); return; }
+  if(j&&j.ok){ COMPOSE.draft_id=null; if(msg){ msg.style.color="#1f7a44"; msg.textContent="✓ Sent to "+j.to+" — logged to the timeline."; } const dr=$("#cx_draft"); if(dr) dr.style.display="none"; loadCRM(); loadEmails(); return; }
   if(j&&j.fallback){ if(msg){ msg.style.color="#b45309"; msg.textContent=(j.message||"Couldn't send from Outlook.")+" Use ‘Open in Outlook’ to send it manually."; } return; }
   if(msg){ msg.style.color="#b42323"; msg.textContent=(j&&j.message)||"Couldn't send."; }
 }

@@ -119,6 +119,7 @@ async function whoami(event){
 // Dealer scope: the same rule as every other endpoint (_scope.js). Reading a dealer's mail
 // or opening a message body requires that dealer to be in the caller's book.
 const SC=require("./_scope.js");
+const EL=require("./_email_learning.js");   // Smart Email Learning, Phase 1 (capture only)
 
 // ---- dealer resolver: learned domains + dnorm name/alias ----
 async function buildResolver(){
@@ -427,6 +428,10 @@ exports.handler = async (event)=>{
       if(dealerId){ try{ await sbSend("POST","dealer_activity",{dealer_id:dealerId,kind:"email",subject:subject,
         detail:"Sent to "+to+(cc.length?" · copied to "+cc.join(", "):""),contact_email:to,actor:fromMailbox},
         {Prefer:"return=minimal"}); }catch(e){} }
+      /* Smart Email Learning, Phase 1: Outlook accepted it — keep exactly what was sent beside the draft it came from (the
+         President's own emails, switch on). The database checks the draft is this sender's and this dealer's and records it
+         once. It never changes the email, the send or this answer. */
+      if(b.draft_id) await EL.recordSend(sbGet, me, {draft_id:b.draft_id, dealer_id:dealerId, subject, body:bodyText, recipient_count:1+cc.length});
       return json(200,{ok:true,to,cc});
     }
 

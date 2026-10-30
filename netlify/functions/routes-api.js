@@ -32,6 +32,7 @@ const TK = require("./_tasks.js");
 const OPP = require("./_opps.js");
 const VAI = require("./_visit_ai.js");
 const UP = require("./_upsert.js");
+const EL = require("./_email_learning.js");   // Smart Email Learning, Phase 1 (capture only)
 const AI_KEY = process.env.ANTHROPIC_API_KEY || "";
 const VISIT_AI_MODEL = process.env.HCPS_VISIT_AI_MODEL || process.env.HCPS_AI_MODEL || "claude-sonnet-5";
 const esc2 = s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
@@ -1761,7 +1762,9 @@ exports.handler = async (event)=>{
       const prev=(loc.report.followup_email&&typeof loc.report.followup_email==="object")?loc.report.followup_email:{};
       const draft={to:cleanS(e.to,200),cc:(Array.isArray(e.cc)?e.cc:[]).map(x=>cleanS(x,200)).filter(Boolean).slice(0,10),
         subject:cleanS(e.subject,300),body:String(e.body||"").slice(0,20000),saved_at:new Date().toISOString(),
-        sent_at:b.sent?new Date().toISOString():(prev.sent_at||null)};
+        sent_at:b.sent?new Date().toISOString():(prev.sent_at||null),
+        // which generated draft this is (Smart Email Learning) — kept so a reopened, saved draft still pairs with its original
+        draft_id:EL.uuidOrNull(e.draft_id)||EL.uuidOrNull(prev.draft_id)};
       await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(loc.report.id)}`,{followup_email:draft},{Prefer:"return=minimal"});
       return json(200,{ok:true,report_id:loc.report.id,email:draft});
     }
@@ -1893,7 +1896,9 @@ exports.handler = async (event)=>{
       const body = `${greet}\n\nThis is ${repName} with HomeCare Provider Services. ${arrive}, and I'd love to stop by for a few minutes to review how things are going and make sure your lines and pricing are set up the way you need.${oppLine}\n\nThe arrival time is an estimate — I'll be moving between accounts that day — but I'll do my best to reach you close to then. If a different time works better, just reply and let me know.\n\nLooking forward to seeing you.`;
       const subject = `HCPS will be in your area${when?` — ${when}`:""}`;
       const signature = `${repName}${me.email?` · ${me.email}`:""}\nHomeCare Provider Services`;
-      return json(200,{ok:true, to:String(d.email||""), subject, body, signature});
+      // Smart Email Learning, Phase 1: keep this heads-up as written (President only, switch on; never fails the draft).
+      const draft_id=await EL.recordDraft(sbGet, me, {template:"previsit", generator:"routes-api", dealer_id, subject, body:EL.asShown(body, signature)});
+      return json(200,{ok:true, draft_id, to:String(d.email||""), subject, body, signature});
     }
 
     // ---------- Email the rep the mobile Scheduled Routes link (for add-to-home-screen) ----------

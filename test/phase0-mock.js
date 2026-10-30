@@ -131,6 +131,13 @@ function createWorld(seed) {
     // seed.missingRpc = ['name'] → 404 PGRST202 (the migration hasn't run); failWrite('POST', 'rpc/<name>', …) applies.
     if (u.startsWith(BASE + '/rest/v1/rpc/')) {
       const fn = u.slice((BASE + '/rest/v1/rpc/').length).split('?')[0];
+      // seed.rpc = { name: (p, db) => ({ status, body }) } — a suite's own emulation of a migration's function
+      // (e.g. test/email-learning.fake.js). Recorded like the others; missingRpc / failWrite still apply.
+      if (seed.rpc && seed.rpc[fn] && !(seed.missingRpc || []).includes(fn)) {
+        if (seed.failWrite) { const st = seed.failWrite('POST', 'rpc/' + fn, body, ''); if (st) return res(st, { code: 'XX000', message: 'forced write failure on rpc/' + fn }); }
+        const out = seed.rpc[fn]((body && body.p) || {}, db); writes.push({ kind: 'rpc', fn, p: (body && body.p) || {} });
+        return res(out.status || 200, out.body);
+      }
       if ((seed.missingRpc || []).includes(fn) || fn !== 'hcps_zoho_capture_event') return res(404, { code: 'PGRST202', message: `Could not find the function public.${fn}(p) in the schema cache` });
       if (seed.failWrite) { const st = seed.failWrite('POST', 'rpc/' + fn, body, ''); if (st) return res(st, { code: 'XX000', message: 'forced write failure on rpc/' + fn }); }
       const p = (body && body.p) || {}; const q = db.zoho_sync_queue = db.zoho_sync_queue || [];
