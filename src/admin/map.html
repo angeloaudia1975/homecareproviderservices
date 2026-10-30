@@ -227,7 +227,7 @@ function shiftWeek(n){ WEEKSTART=new Date(WEEKSTART.getTime()+n*7*864e5); refres
 async function refreshWeek(){
   const p=$("#weekPanel");
   p.innerHTML=`<div class="uhead"><b>Weekly schedule</b><button class="rx" onclick="toggleWeek()">Close</button></div><div id="weekBody">Loading…</div>`;
-  let routes=[]; try{ const r=await api2({action:"list_routes"}); routes=(r&&r.routes)||[]; }catch(e){}
+  let routes=[]; try{ const r=await api2({action:"list_routes"}); routes=((r&&r.routes)||[]).filter(x=>!x.own_visits_only); }catch(e){}   // a reassigned route is listed in the field app only
   const byDate={}, unscheduled=[];
   routes.forEach(rt=>{ if(rt.scheduled_date){ (byDate[rt.scheduled_date]||(byDate[rt.scheduled_date]=[])).push(rt); } else unscheduled.push(rt); });
   const dayName=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
@@ -822,7 +822,7 @@ async function refreshSaved(){
   p.innerHTML=`<div class="uhead"><b>Saved routes</b><label style="font-size:12px;margin-left:auto;margin-right:8px"><input type="checkbox" id="showArch"${SHOW_ARCHIVED?" checked":""} onchange="SHOW_ARCHIVED=this.checked;refreshSaved()"> Show archived</label><button class="rx" onclick="toggleSaved()">Close</button></div><div id="savedList">Loading…</div>`;
   const bsm='padding:4px 9px;font-size:12px';
   try{
-    const r=await api2({action:"list_routes",include_archived:SHOW_ARCHIVED}); const rs=(r&&r.routes)||[];
+    const r=await api2({action:"list_routes",include_archived:SHOW_ARCHIVED}); const rs=((r&&r.routes)||[]).filter(x=>!x.own_visits_only);
     $("#savedList").innerHTML = rs.length ? rs.map(x=>`<div style="display:flex;align-items:center;gap:6px;padding:7px 4px;border-bottom:1px solid #eef1f4">
       <div style="flex:1;min-width:0"><b>${esc(x.name)}</b><br><small style="color:#6b7683">${x.scheduled_date?esc(x.scheduled_date)+" · ":""}${x.stops_count} stop${x.stops_count===1?"":"s"}${x.duration_s?" · "+fmtDur(x.duration_s):""}</small></div>
       <button class="btn" style="${bsm}" onclick="loadSaved('${x.id}')">Open</button>

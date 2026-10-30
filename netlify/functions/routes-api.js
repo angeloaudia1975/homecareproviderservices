@@ -758,7 +758,7 @@ exports.handler = async (event)=>{
       /* A route reassigned after he visited stops on it is still in HIS list — marked own_visits_only —
          so he can open it and finish those visits (route_day shows him only those stops). */
       const ownVisitRoute={};
-      if((!isBoss(me) || workspace) && me.email){
+      if(!isBoss(me) && !b.assigned_to_email && me.email){
         try{
           const vr=await sbGet(`dealer_visit_reports?rep_email=eq.${encodeURIComponent(String(me.email).toLowerCase())}&route_id=not.is.null&select=route_id&order=updated_at.desc&limit=200`);
           const have=new Set((rows||[]).map(r=>r.id));
@@ -841,11 +841,9 @@ exports.handler = async (event)=>{
          report on that route stop (or named by id) reaches the dealer for the visit actions only —
          never the dealer's other records, and never another stop. */
       const OWN_VISIT_ACTIONS=new Set(["visit_checkin","visit_report_get","visit_report_save","visit_end","visit_analyze","visit_approve","visit_followup_set","visit_email_save"]);
-      if(off.length===1 && OWN_VISIT_ACTIONS.has(b.action) && me.email && (b.route_id||b.report_id)){
+      if(off.length===1 && OWN_VISIT_ACTIONS.has(b.action) && me.email && b.route_id){   // the route-stop visit only: a report_id alone would let an old report open NEW off-route visits
         const did1=String(b.dealer_id||""), em=encodeURIComponent(String(me.email).toLowerCase());
-        const q=b.route_id
-          ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(String(b.route_id))}&dealer_id=eq.${encodeURIComponent(did1)}&rep_email=eq.${em}&select=id&limit=1`
-          : `dealer_visit_reports?id=eq.${encodeURIComponent(String(b.report_id))}&dealer_id=eq.${encodeURIComponent(did1)}&rep_email=eq.${em}&select=id&limit=1`;
+        const q=`dealer_visit_reports?route_id=eq.${encodeURIComponent(String(b.route_id))}&dealer_id=eq.${encodeURIComponent(did1)}&rep_email=eq.${em}&select=id&limit=1`;
         let own; try{ own=await sbGet(q); }catch(e){ return json(503,{error:"Couldn't check this visit — try again."}); }
         if(own&&own.length) off=[];
       }
@@ -1465,7 +1463,7 @@ exports.handler = async (event)=>{
             const age=f?Date.now()-Date.parse(f.updated_at||0):0;
             if(bare && age>10*60000){
               try{
-                await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(f.id)}&status=eq.planned&checkin_at=is.null&completed_at=is.null&rep_email=eq.${encodeURIComponent(f.rep_email)}&updated_at=eq.${encodeURIComponent(f.updated_at)}`,
+                await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(f.id)}&status=eq.planned&checkin_at=is.null&ended_at=is.null&completed_at=is.null&rep_email=eq.${encodeURIComponent(f.rep_email)}&updated_at=eq.${encodeURIComponent(f.updated_at)}`,
                   {rep_email:me.email||null,rep_name:me.rep_name||null,updated_at:new Date().toISOString()},{Prefer:"return=minimal"});
                 rows=await sbGet(path); v=rows&&rows[0];
               }catch(e){ return json(503,{error:"Couldn't start this visit — try again."}); }

@@ -289,5 +289,17 @@ async function call(w, who, body, headers) {
     w2.db.dealer_visit_reports.push(Object.assign({}, claim, { rep_email: 'greg@hcps.us', checkin_at: '2026-10-30T14:00:00Z', status: 'checked_in' }));
     assert.strictEqual((await call(w2, 'lori', { action: 'visit_checkin', route_id: 'r-greg', dealer_id: 'd-greg' })).status, 409, 'took over a real check-in');
   });
+  await t('an old report never opens NEW visits at a dealer outside the rep\'s book (report_id without the route stop)', async () => {
+    const w = world(); const rt = w.db.rep_routes.find(r => r.id === 'r-other'); rt.stops = [{ dealer_id: 'd-ang', name: 'RMS' }];
+    const ci = await call(w, 'greg', { action: 'visit_checkin', route_id: 'r-other', dealer_id: 'd-ang' }); assert.ok(ci.j.ok);
+    rt.assigned_to_email = 'lori@hcps.us';
+    const rep = w.db.dealer_visit_reports.find(x => x.route_id === 'r-other' && x.dealer_id === 'd-ang');
+    const n0 = ['dealer_visit_reports', 'dealer_visits', 'dealer_notes', 'dealer_tasks', 'opportunities'].map(t2 => (w.db[t2] || []).length);
+    for (const body of [{ action: 'visit_report_save', status: 'completed', fields: { notes: 'x', follow_ups: ['y'] } }, { action: 'visit_checkin' }, { action: 'visit_end' }]) {
+      const r = await call(w, 'greg', Object.assign({ dealer_id: 'd-ang', report_id: rep.id }, body));
+      assert.strictEqual(r.status, 403, body.action + ' → ' + r.status + ' ' + JSON.stringify(r.j));
+    }
+    assert.deepStrictEqual(['dealer_visit_reports', 'dealer_visits', 'dealer_notes', 'dealer_tasks', 'opportunities'].map(t2 => (w.db[t2] || []).length), n0);
+  });
   console.log(`\nsr-routes-api: ${pass} passed, ${fail} failed`); process.exitCode = fail ? 1 : 0;
 })();
