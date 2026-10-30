@@ -969,14 +969,14 @@ async function draftVisitEmail(i){
     if(g&&g.report){ reportId=reportId||g.report.id; if(g.report.followup_email) saved=g.report.followup_email; }
     attendees=((g&&g.participants)||[]).filter(p=>p&&p.attended!==false).map(p=>({name:p.name_snapshot||"",title:p.title_snapshot||"",email:String(p.email_snapshot||"").trim()}));
   }catch(e){}
-  if(saved&&saved.saved_at&&saved.body){ if(m) m.textContent=""; openDraft(s,saved.subject||"",saved.body||"","","Follow-up email — your saved draft",{visit:true,saved:true,to:saved.to,attendees}); return; }
+  if(saved&&saved.saved_at&&saved.body){ if(m) m.textContent=""; openDraft(s,saved.subject||"",saved.body||"","","Follow-up email — your saved draft",{visit:true,saved:true,to:saved.to,attendees,draft_id:saved.draft_id}); return; }
   const pick=pickVisitRecipients(recipientRows(s),attendees,"");
   let j=null;
   try{ const h={"content-type":"application/json"}; if(TOKEN) h["authorization"]="Bearer "+TOKEN;
     const r=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:h,body:JSON.stringify({action:"draft",dealer_id:s.dealer_id,template:"visit_followup",visit_report_id:reportId,contact_name:pick.greet})});
     j=await r.json().catch(()=>null); }catch(e){ j=null; }
   if(m) m.textContent="";
-  if(j&&j.ok&&j.subject){ openDraft(s,j.subject,j.body||"",j.signature||"","Follow-up email — review before sending",{visit:true,attendees,warnings:j.warnings}); return; }
+  if(j&&j.ok&&j.subject){ openDraft(s,j.subject,j.body||"",j.signature||"","Follow-up email — review before sending",{visit:true,attendees,warnings:j.warnings,draft_id:j.draft_id}); return; }
   if(m){ m.style.color="#b42323"; m.textContent=(j&&(j.message||j.error))||"Couldn't draft the email."; }
 }
 /* WHO A VISIT FOLLOW-UP GOES TO (Phase 1). Pure — tested.
@@ -1007,7 +1007,7 @@ function previsitKey(s){ return "pvdraft_"+String((DAY&&DAY.route&&DAY.route.id)
 async function headsUp(i,fresh){
   const s=DAY.stops[i];
   const saved=fresh?null:obRead(previsitKey(s));
-  if(saved&&saved.body){ openDraft(s,saved.subject||"",saved.body||"","","Pre-visit heads-up — your saved draft",{previsit:true,saved:true,to:saved.to,cc:saved.cc,stop:i}); return; }
+  if(saved&&saved.body){ openDraft(s,saved.subject||"",saved.body||"","","Pre-visit heads-up — your saved draft",{previsit:true,saved:true,to:saved.to,cc:saved.cc,stop:i,draft_id:saved.draft_id}); return; }
   if(!navigator.onLine){ toast("Heads-up needs a connection"); return; }
   const etaEl=$("#eta_"+i); const eta=(etaEl&&etaEl.textContent||"").trim(); const etaTxt=(eta&&eta!=="—")?eta:"";
   /* THE DATE OF THIS STOP, not the date the route starts. On a multi-day route
@@ -1022,7 +1022,7 @@ async function headsUp(i,fresh){
        opened "Hi Jeremiah". */
     contact_name:s.contact_name||""}); }catch(e){ j=null; }
   if(!j||!j.ok){ toast((j&&j.message)||"Couldn't prepare the heads-up"); return; }
-  openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending",{previsit:true,stop:i});
+  openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending",{previsit:true,stop:i,draft_id:j.draft_id});
 }
 /* ---- WHO THE EMAIL GOES TO -------------------------------------------------
    The pre-visit heads-up and the after-visit follow-up are drafted by different code and sent by
@@ -1107,6 +1107,9 @@ function openDraft(s,subject,body,signature,title,opts){
   DRAFT=opts.visit?{visit:true,dealer_id:s.dealer_id,route_id:(DAY&&DAY.route&&DAY.route.id)||null,report_id:(s.visit&&s.visit.id)||(REV&&REV.report_id)||null,
     visit_key:ADHOC()?DAY.route.visit_key:null}
     : {previsit:!!opts.previsit,dealer_id:s.dealer_id,key:opts.previsit?previsitKey(s):null,stop:opts.stop,saved:!!opts.saved};
+  /* Smart Email Learning: which generated draft this is (null when capture is off). It travels with Save draft and Send so
+     the version finally sent can be kept beside the original; it never changes what is sent. */
+  DRAFT.draft_id=(typeof opts.draft_id==="string"&&/^[0-9a-f-]{36}$/i.test(opts.draft_id))?opts.draft_id:null;
   const canSave=!!(opts.visit||opts.previsit);
   const people=rows.length
     ? rows.map((r,i)=>`<label class="rcpt"><input type="checkbox" class="d_p" data-email="${esc(r.email)}" data-name="${esc(r.name)}"${pre(r,i)?" checked":""} onchange="draftWho()">
@@ -1205,7 +1208,8 @@ async function sendDraft(dealer_id,btn){
   if(!r.to){ if(m){m.style.color="#b42323";m.textContent="Pick at least one recipient.";} return; }
   if(m){ m.style.color=""; m.textContent=r.cc.length?`Sending to ${1+r.cc.length} people…`:"Sending…"; }
   if(btn) btn.disabled=true;
-  let j; try{ j=await esapi({action:"send",dealer_id,to:r.to,cc:r.cc,subject,body_text:body}); }catch(e){ j=null; }
+  const draft_id=(DRAFT&&DRAFT.draft_id)||undefined;
+  let j; try{ j=await esapi({action:"send",dealer_id,to:r.to,cc:r.cc,subject,body_text:body,draft_id}); }catch(e){ j=null; }
   if(j&&j.ok){ toast(r.cc.length?`Email sent to ${1+r.cc.length} ✓`:"Email sent ✓");
     // A visit's follow-up is marked sent on the visit, so the summary and Dealer 360 show it went.
     if(DRAFT&&DRAFT.visit){ const d=DRAFT; tryOrQueue(Object.assign(draftSaveBody(d,{to:r.to,cc:r.cc,subject,body}),{sent:true})).then(()=>{ if(REV) REV.email=null; updateStatus(); }); }
@@ -1213,7 +1217,8 @@ async function sendDraft(dealer_id,btn){
     removeDraft(); }
   else { if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't send — you can also send from Dealer 360."; } if(btn) btn.disabled=false; }
 }
-function draftSaveBody(d,email){ const b={action:"visit_email_save",dealer_id:d.dealer_id,email};
+function draftSaveBody(d,email){ email=Object.assign({},email,{draft_id:d.draft_id||null});   // always sent: null clears an old pairing
+  const b={action:"visit_email_save",dealer_id:d.dealer_id,email};
   if(d.report_id) b.report_id=d.report_id; else if(d.route_id) b.route_id=d.route_id; else if(d.visit_key) b.visit_key=d.visit_key; return b; }
 function draftNow(){ const picked=draftPicked(), r=splitRecipients(picked.list);
   return {to:r.to,cc:r.cc,subject:($("#d_sub")||{}).value||"",body:($("#d_body")||{}).value||""}; }
@@ -1226,7 +1231,7 @@ async function copyDraft(){
 async function saveDraft(btn){
   const d=DRAFT; if(!d) return false; const m=$("#d_msg"), e=draftNow();
   if(d.previsit){
-    const rec=Object.assign({},e,{saved_at:new Date().toISOString()}); obWrite(d.key,rec);
+    const rec=Object.assign({},e,{saved_at:new Date().toISOString()},d.draft_id?{draft_id:d.draft_id}:{}); obWrite(d.key,rec);
     const back=obRead(d.key);
     if(!back||back.body!==e.body||back.subject!==e.subject){ if(m){ m.style.color="#b42323"; m.textContent="Couldn't save the draft on this device — copy it before closing."; } return false; }
     d.baseline=draftSnap(e); d.saved=true;

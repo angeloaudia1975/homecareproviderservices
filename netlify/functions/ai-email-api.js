@@ -19,6 +19,7 @@ const H=()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 const { dealerScope, isAdmin, workspaceUser } = require("./_scope.js");
 const { loadStyleGuide, findBanned } = require("./_ai_style.js");
+const EL = require("./_email_learning.js");   // Smart Email Learning, Phase 1: keep the draft as written
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -387,7 +388,11 @@ Do not include markdown or any text outside the JSON.`;
     if(!subject||!body) return json(200,{ok:false,error:"ai_empty",message:"The AI didn't return a usable draft — try again or a different template.",signature});
 
     const html=composeHtml({body, product:PC, imageUrl, productUrl, signature});
-    return json(200,{ok:true, subject, body, html, signature, visit_date:visitDay?visitDay.md:undefined, warnings:warnings.length?warnings:undefined,
+    /* Smart Email Learning, Phase 1: the draft exactly as the editor will show it (body + signature) is kept so it can be
+       compared with what is finally sent. Best-effort: null when capture is off or not the President's; never fails a draft. */
+    const draft_id=await EL.recordDraft(sbGet, me, {template:tmplKey, generator:"ai-email-api", dealer_id:dealerId,
+      subject, body:EL.asShown(body, signature)});
+    return json(200,{ok:true, draft_id, subject, body, html, signature, visit_date:visitDay?visitDay.md:undefined, warnings:warnings.length?warnings:undefined,
       product:PC||null, product_url:productUrl||null, image_url:imageUrl||null,
       product_warning: (PC&&!PC.approved)
         ? `Heads up: this product's content is still "${PC.status||"in review"}". Approve it in Product Content Enrichment & Review before sending.` : null,

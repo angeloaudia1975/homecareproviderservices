@@ -556,6 +556,24 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   page unload with unsaved edits gets the browser's leave-page warning. Save draft: follow-ups on the visit (existing
   `visit_email_save`), pre-visit heads-ups on the device (per user + route stop, cleared on Send) — no new server
   action or permission. Regression: `node test/email-editor.qa.js` (real mouse/keyboard/touch in Chromium).
+- **Smart Email Learning (owner decisions, Angelo 2026-10-30; runbook `docs/email-learning/PHASE1.md`).** HCPS email generators
+  learn from the owner's edits — never automatically. Phase 1 (capture): an HCPS-generated draft (heads-up, visit follow-up,
+  Dealer 360 AI emails) is kept AS WRITTEN (body + signature, exactly as the editor shows it) in `email_drafts`, and only after
+  Outlook answers 202 the version actually sent is kept beside it (recipient COUNT only, never an address). Capture runs only
+  when `phase2_flags.email_learning_capture` is exactly true AND the user is the President — Greg's and Lori's emails are never
+  captured or learned from until he says so. Capture never changes a draft, a send, a recipient or Outlook, and a capture
+  failure never fails either (`_email_learning.js` swallows it). The `draft_id` travels with the editors through Save draft,
+  reopening and Send; the database records a send once, for the same author and dealer, and never changes the original. Email
+  text is kept 12 months, then only masked, non-identifying evidence. Rules: a learned writing rule needs 3 sends across 2+
+  dealers to be SUGGESTED and the owner's approval to be ACTIVE; approved rules layer on top of the AI Communication Style Guide
+  (never replace it); every approval is a numbered profile version with rollback / reset; at most 2 approved, masked examples per
+  email type in a prompt, never whole historical emails; NO email history or edit pair goes to an outside AI service (Phase 4 is
+  deferred until separately authorized); no external model is trained. The AI heads-up (fixed template as fallback), writing
+  styles (Professional & Friendly · Consultative Sales · Brief & Direct), Regenerate-without-losing-edits, the no-invention
+  guards (arrival times, availability, promotions, pricing, purchase history, commitments) and route date / ETA validation
+  (missing / suspicious / unverified → omitted, neutral wording) are Phase 3 and stay OFF in production until reviewed and
+  switched on by the owner. One PR per phase, independent review, CI; synthetic test data only (no real email content in
+  development or CI). Separate from the Scheduled Routes & Territory debugging project.
 - **A replay is a no-op.** Every write from a visit carries `(origin_type, origin_id, origin_key)` against
   a unique index (or a claim PATCH on a null column), so a double tap, an offline resend or a late replay
   never duplicates a visit, note, task, deal, contact, activity row or intent signal — while a genuinely
