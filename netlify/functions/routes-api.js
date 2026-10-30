@@ -620,11 +620,23 @@ exports.handler = async (event)=>{
       /* A rep adds only dealers he may work (security fix, Angelo 2026-10-30): adding another rep's dealer to a
          route never opens it to him, and is refused here so the route never claims it. Stops already on the
          route are kept as they are (a stop with a visit can't be dropped). Management and Relations plan freely. */
+      /* A route the President handed to someone else gets new dealers only from the President: its stops
+         are what that person may work, so an owner (or anyone but the President) adding a stop there would
+         open that dealer to him without the President's say (review M1, 2026-10-30). */
+      let prevIds=new Set(), prevAsg="", prevRow=null;
+      if(b.id){ let pr; try{ pr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=*`); }catch(e){ return json(503,{error:"Couldn't check this route — nothing was saved."}); }
+        for(const x of ((pr&&pr[0]&&pr[0].stops)||[])) if(x&&x.dealer_id) prevIds.add(String(x.dealer_id));
+        prevAsg=String((pr&&pr[0]&&pr[0].assigned_to_email)||"").trim().toLowerCase();
+        prevRow=(pr&&pr[0])||null; }
+      const added=[...new Set(row.stops.map(x=>String((x&&x.dealer_id)||"")).filter(Boolean))].filter(id=>!prevIds.has(id));
+      let grantsAssignee=false;
+      if(added.length && !isBoss(me) && prevAsg && !emailEq(prevAsg,me.email)){
+        try{ grantsAssignee=await RR.authorizedRoute(prevAsg, prevRow, sbGet); }catch(e){ return json(503,{error:"Couldn't check this route — nothing was saved."}); } }
+      if(grantsAssignee){
+        const names=row.stops.filter(x=>x&&added.includes(String(x.dealer_id))).map(x=>x.name||x.dealer_id);
+        return json(403,{error:"assigned_route_locked",dealer_ids:added,stops:names,
+          message:`This route is assigned to someone else, so only the President can add dealers to it: ${names.join(", ")}.`}); }
       if(!SC.seesAllDealers(scopeMe)){
-        let prevIds=new Set();
-        if(b.id){ let pr; try{ pr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=stops`); }catch(e){ return json(503,{error:"Couldn't check this route — nothing was saved."}); }
-          for(const x of ((pr&&pr[0]&&pr[0].stops)||[])) if(x&&x.dealer_id) prevIds.add(String(x.dealer_id)); }
-        const added=[...new Set(row.stops.map(x=>String((x&&x.dealer_id)||"")).filter(Boolean))].filter(id=>!prevIds.has(id));
         let off=[]; if(added.length){ try{ off=await dealersOffReach(scopeMe,added); }catch(e){ return json(503,{error:"Couldn't check these dealers — nothing was saved."}); } }
         if(off.length){ const names=row.stops.filter(x=>x&&off.includes(String(x.dealer_id))).map(x=>x.name||x.dealer_id);
           return json(403,{error:"not_your_dealer",dealer_ids:off,stops:names,
@@ -1424,7 +1436,7 @@ exports.handler = async (event)=>{
       }
       const outStops=(await stopDetails(stops.map(x=>x&&locked.has(String(x.dealer_id))?{...x,_locked:true}:x),vmap)).map((x,i)=>{
         if(!locked.has(String(x.dealer_id))) return x;
-        return {...x, contact_name:"", contact_email:"", contact_phone:"", contacts:[], locked:true,
+        return {...x, contact_name:"", contact_email:"", contact_phone:"", contacts:[], visit:x.visit?{status:x.visit.status||null}:null, locked:true,
           locked_reason:"Not in your book — ask the President to plan a ride-along to work this dealer."};
       });
       const hb=resolveHomeBase(route,me);

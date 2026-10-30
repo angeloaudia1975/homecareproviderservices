@@ -40,12 +40,13 @@ async function authorizedRoutes(myEmail, routes, sbGet){
   const P = await presidents(sbGet, cand.map(assignerOf));
   return cand.filter(r => P.has(assignerOf(r)));
 }
-async function authorizedRoute(myEmail, route, sbGet){ return (await authorizedRoutes(myEmail, [route], sbGet)).length === 1; }
+async function authorizedRoute(myEmail, route, sbGet){ return !!route && !route.archived_at && (await authorizedRoutes(myEmail, [route], sbGet)).length === 1; }
 // Dealer ids reachable through authorized routes (the stops of every route assigned to me by the President).
 async function reachDealerIds(myEmail, sbGet){
   const me = low(myEmail); if(!me) return new Set();
-  const rs = await sbGet(`rep_routes?assigned_to_email=eq.${enc(me)}&select=id,stops,owner_email,assigned_to_email,assigned_by&limit=1000`);
-  const ok = await authorizedRoutes(me, rs, sbGet);
+  // select=* so an archived route can be left out whether or not archived_at exists yet (review L1).
+  const rs = await sbGet(`rep_routes?assigned_to_email=eq.${enc(me)}&select=*&limit=1000`);
+  const ok = await authorizedRoutes(me, (rs || []).filter(r => !r.archived_at), sbGet);
   const out = new Set();
   for(const r of ok) for(const st of (Array.isArray(r.stops) ? r.stops : [])) if(st && st.dealer_id) out.add(String(st.dealer_id));
   return out;
@@ -61,13 +62,14 @@ async function visitGrant(myEmail, dealerId, ref, sbGet){
   const rows = await sbGet(`dealer_visit_reports?${where}&dealer_id=eq.${enc(did)}&rep_email=eq.${enc(me)}&${STARTED}&select=id,route_id,dealer_id,rep_email&limit=1`);
   return (rows && rows[0]) || null;
 }
-/* Where a follow-up may go when the rep's only right is his visit: the dealer's own email, its
-   contacts, and the people recorded at that visit. */
+/* Where an email may go outside the rep's book. On a President-sent route: the dealer's own email and
+   its contacts. When his only right is his visit (reportId): the dealer's own email and the people
+   recorded at THAT visit — not the dealer's whole contact list (review L2). */
 async function allowedRecipients(dealerId, reportId, sbGet){
   const did = String(dealerId || "").trim(), out = new Set();
   const [d, c, p] = await Promise.all([
     sbGet(`dealers?id=eq.${enc(did)}&select=email&limit=1`),
-    sbGet(`dealer_contacts?dealer_id=eq.${enc(did)}&select=email`),
+    reportId ? Promise.resolve([]) : sbGet(`dealer_contacts?dealer_id=eq.${enc(did)}&select=email`),
     reportId ? sbGet(`dealer_visit_participants?visit_report_id=eq.${enc(String(reportId))}&dealer_id=eq.${enc(did)}&select=email_snapshot`) : Promise.resolve([]),
   ]);
   for(const x of (d || [])) if(EMAIL.test(low(x.email))) out.add(low(x.email));

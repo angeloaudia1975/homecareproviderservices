@@ -3797,7 +3797,9 @@ direct-to-main path). Rules it established:
   Command Center Meeting Prep refuse or leave it out. Server-side only, never just the UI. **Follow-up continuity:** the
   rep who personally performed a visit (checked in / ended / completed, his own report) may still draft (AI from that
   visit only — no account history), save and send THAT visit's follow-up after a reassignment, only to the dealer's own
-  email, its contacts and the visit's attendees; nothing else of that dealer opens. Tests: sr-access (+ mutants),
+  email and THAT visit's attendees (not the dealer's whole contact list); nothing else of that dealer opens. Review
+  hardening: only the President adds dealers to a route he handed to someone else (403 `assigned_route_locked`);
+  an archived route opens nothing; a locked stop shows only the status of another rep's visit. Tests: sr-access (+ mutants),
   sr-workflow (full plan → assign → ETA → heads-up → visit → reassign → follow-up → CRM intact), sr-access.qa. Separate
   from Smart Email Learning.
 

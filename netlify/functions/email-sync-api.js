@@ -408,7 +408,7 @@ exports.handler = async (event)=>{
         try{
           const RR=require("./_route_reach.js");
           const rid=String(b.route_id||"").trim();
-          if(rid){ const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=id,stops,owner_email,assigned_to_email,assigned_by&limit=1`);
+          if(rid){ const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=*&limit=1`);
             const route=rr&&rr[0];
             if(route && (Array.isArray(route.stops)?route.stops:[]).some(st=>st&&String(st.dealer_id||"")===dealerId) && await RR.authorizedRoute(me.email, route, sbGet)) grant={kind:"route"}; }
           if(!grant){ const v=await RR.visitGrant(me.email, dealerId, {report_id:b.report_id, route_id:b.route_id}, sbGet); if(v) grant={kind:"visit",report_id:v.id}; }

@@ -199,10 +199,12 @@ const leaks = obj => /rita@rms\.test|615-555-0101|Rita Example/.test(JSON.string
     const other = await call(w, 'ai-email-api', 'greg', { action: 'draft', dealer_id: 'd-ang', template: 'follow_up', visit_report_id: rep.id });
     assert.strictEqual(other.status, 403, 'his visit opened other email types');
   });
-  await t('after reassignment the visiting rep sends the follow-up to the dealer\'s contacts and the visit\'s attendees — and nobody else', async () => {
+  await t('after reassignment the visiting rep sends the follow-up to the visit\'s attendees (and the dealer\'s own email) — not the dealer\'s whole contact list', async () => {
     const { w, rep } = await visitedThenReassigned();
-    const ok = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: 'r-ride', report_id: rep.id, to: 'rita@rms.test', cc: ['sam@rms.test', 'r@rms.test'], subject: 'Following up', body_text: 'Thanks' });
+    const ok = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: 'r-ride', report_id: rep.id, to: 'sam@rms.test', subject: 'Following up', body_text: 'Thanks' });
     assert.ok(ok.j.ok, JSON.stringify(ok.j)); assert.strictEqual(sends(w).length, 1);
+    const notAtVisit = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: 'r-ride', report_id: rep.id, to: 'sam@rms.test', cc: ['rita@rms.test'], subject: 'x', body_text: 'y' });
+    assert.strictEqual(notAtVisit.status, 403, 'a contact who was not at the visit was allowed'); assert.strictEqual(sends(w).length, 1);
     const bad = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', report_id: rep.id, to: 'outsider@gmail.test', subject: 'x', body_text: 'y' });
     assert.strictEqual(bad.status, 403); assert.strictEqual(bad.j.error, 'recipient_not_allowed'); assert.strictEqual(sends(w).length, 1);
     for (const b of [{ action: 'generate_followup', route_id: 'r-ride', dealer_id: 'd-ang' }, { action: 'visit_email_save', route_id: 'r-ride', dealer_id: 'd-ang', email: { to: 'rita@rms.test', subject: 's', body: 'b' } },
@@ -223,6 +225,11 @@ const leaks = obj => /rita@rms\.test|615-555-0101|Rita Example/.test(JSON.string
     w.db.dealer_visit_reports.push(lorisRep);
     const steal = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', report_id: 'vr-lori', to: 'rita@rms.test', subject: 's', body_text: 'b' });
     assert.strictEqual(steal.status, 403, "another rep's visit gave him a send");
+    w.db.dealer_visit_participants.push({ id: 'p-l', visit_report_id: 'vr-lori', dealer_id: 'd-ang', name_snapshot: 'Pat', email_snapshot: 'pat@rms.test', attended: true });
+    const steal2 = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', report_id: 'vr-lori', to: 'pat@rms.test', subject: 's', body_text: 'b' });
+    assert.strictEqual(steal2.status, 403, "another rep's visit gave him a send to its attendee");
+    const stealAi = await call(w, 'ai-email-api', 'greg', { action: 'draft', dealer_id: 'd-ang', template: 'visit_followup', visit_report_id: 'vr-lori' });
+    assert.strictEqual(stealAi.status, 403, "another rep's visit gave him an AI draft");
     const day = await routes(w, 'greg', { action: 'route_day', route_id: 'r-ride' });
     assert.ok(day.j.route.own_visits_only && day.j.stops.length === 1, 'the reassigned route showed him more than his visit');
   });
@@ -239,6 +246,36 @@ const leaks = obj => /rita@rms\.test|615-555-0101|Rita Example/.test(JSON.string
     const r = await routes(w, 'lori', { action: 'route_day', route_id: 'r-ride' });
     assert.ok(leaks(r.j));
     assert.strictEqual(w.db.dealer_visit_reports.find(x => x.id === rep.id).rep_email, 'greg@hcps.us', 'the visit changed hands');
+  });
+  await t('review M1: the owner cannot add dealers to a route the President handed to someone else; a non-President hand-over is unaffected', async () => {
+    const w = selfOnly();
+    w.db.rep_routes.push({ id: 'r-handed', owner_email: 'greg@hcps.us', rep_name: 'Greg Campbell', name: 'Handed', scheduled_date: '2026-11-06',
+      assigned_to_email: 'tom@hcps.us', assigned_to_rep: 'Tom', assigned_by: 'angelo@hcps.us', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }], round_trip: true });
+    const r = await routes(w, 'greg', { action: 'save_route', id: 'r-handed', name: 'Handed', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-greg-branch', name: 'Glasgow North' }] });
+    assert.strictEqual(r.status, 403, JSON.stringify(r.j)); assert.strictEqual(r.j.error, 'assigned_route_locked');
+    assert.strictEqual(w.db.rep_routes.find(x => x.id === 'r-handed').stops.length, 1, 'the stop was added anyway');
+    const reorder = await routes(w, 'greg', { action: 'save_route', id: 'r-handed', name: 'Handed v2', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }] });
+    assert.ok(reorder.j.ok, 'a save without new dealers must still work: ' + JSON.stringify(reorder.j));
+    const pres = await routes(w, 'pres', { action: 'save_route', id: 'r-handed', name: 'Handed', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-greg-branch', name: 'Glasgow North' }] });
+    assert.ok(pres.j.ok, 'the President adds freely: ' + JSON.stringify(pres.j));
+    w.db.rep_routes.find(x => x.id === 'r-handed').assigned_by = 'greg@hcps.us';   // not a President's hand-over: grants nothing, so no lock
+    const own = await routes(w, 'greg', { action: 'save_route', id: 'r-handed', name: 'Handed', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-greg-branch', name: 'Glasgow North' }, { dealer_id: 'd-dir-greg', name: 'Dir' }] });
+    assert.ok(own.j.ok, JSON.stringify(own.j));
+  });
+  await t('review L1: an archived ride-along opens nothing any more', async () => {
+    const w = world(); w.db.rep_routes.find(r => r.id === 'r-ride').archived_at = '2026-11-10T00:00:00Z';
+    const day = await routes(w, 'greg', { action: 'route_day', route_id: 'r-self' });
+    assert.ok(day.j.stops.find(x => x.dealer_id === 'd-ang').locked && !leaks(day.j), 'the archived ride-along still opened the dealer');
+    const send = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: 'r-ride', to: 'rita@rms.test', subject: 's', body_text: 'b' });
+    assert.strictEqual(send.status, 403, JSON.stringify(send.j));
+  });
+  await t('review L3: a locked stop shows only the status of another rep\'s visit there', async () => {
+    const w = selfOnly();
+    w.db.dealer_visit_reports.push({ id: 'vr-x', route_id: 'r-self', dealer_id: 'd-ang', rep_email: 'angelo@hcps.us', rep_name: 'Angelo Audia', status: 'completed',
+      checkin_at: '2026-11-04T15:00:00Z', completed_at: '2026-11-04T16:00:00Z', followup_status: 'pending', ai_suggested_at: '2026-11-04T16:01:00Z' });
+    const day = await routes(w, 'greg', { action: 'route_day', route_id: 'r-self' });
+    const s = day.j.stops.find(x => x.dealer_id === 'd-ang');
+    assert.ok(s.locked, JSON.stringify(s)); assert.deepStrictEqual(s.visit, { status: 'completed' });
   });
   await t('a failed access read refuses (503) instead of guessing', async () => {
     const S = standardSeed({ rep_routes: [], dealer_contacts: [ANG_CONTACT] }); S.failRead = tbl => (tbl === 'rep_routes' ? 500 : 0);
