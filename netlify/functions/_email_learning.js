@@ -40,7 +40,7 @@ function captureAuthor(me){
 const uuidOrNull = v => { const s = String(v == null ? "" : v).trim(); return UUID_RE.test(s) ? s.toLowerCase() : null; };
 // The draft exactly as the editor shows it: body, then the signature after a blank line.
 function asShown(body, signature){
-  const b = String(body == null ? "" : body), s = String(signature == null ? "" : signature).trim();
+  const b = String(body == null ? "" : body), s = String(signature == null ? "" : signature); // untrimmed: exactly as both editors build it
   return s ? `${b}\n\n${s}` : b;
 }
 

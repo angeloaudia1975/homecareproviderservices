@@ -43,6 +43,7 @@ const sends = w => w.outbound.filter(x => x.kind === 'graph' && /sendMail/.test(
   await t('asShown: body, blank line, signature — exactly what the editors put in the message box', () => {
     assert.strictEqual(EL.asShown('Hi,\n\nText', 'Sam\nHCPS'), 'Hi,\n\nText\n\nSam\nHCPS');
     assert.strictEqual(EL.asShown('Hi', ''), 'Hi');
+    assert.strictEqual(EL.asShown('Hi', 'Sam  \n'), 'Hi\n\nSam  \n', 'signature kept untrimmed, as the editors show it');
   });
   await t('lineDiff: unchanged / removed / added lines in order', () => {
     assert.deepStrictEqual(EL.lineDiff('a\nb\nc', 'a\nB\nc'), [{ op: 'same', text: 'a' }, { op: 'del', text: 'b' }, { op: 'add', text: 'B' }, { op: 'same', text: 'c' }]);

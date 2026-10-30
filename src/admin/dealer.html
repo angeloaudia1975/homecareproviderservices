@@ -817,6 +817,7 @@ async function genEmail(){
   const tpl=($("#cx_tpl")||{}).value||"follow_up";
   const st=$("#cx_status"); const gen=$("#cx_gen");
   if(st){ st.style.color=""; st.textContent="Drafting with AI…"; } if(gen) gen.disabled=true;
+  COMPOSE.draft_id=null; // a failed regenerate must never tie hand-written text to the earlier draft
   let j; try{ j=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"draft",dealer_id:CUR,template:tpl,contact_email:to,contact_name:name,
     product: CXPROD.manufacturer?{manufacturer:CXPROD.manufacturer,mfr_name:CXPROD.mfr_name,code:CXPROD.code,image_url:CXPROD.image_url}:null})}).then(r=>r.json()); }catch(e){ j=null; }
   if(gen) gen.disabled=false;
