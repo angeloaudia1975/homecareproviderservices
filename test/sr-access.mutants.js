@@ -17,7 +17,7 @@ const M = {
   no_lock: { file: RA, from: 'locked=new Set(off.filter(id=>!mine(vmap[id])));', to: 'locked=new Set();' },
   lock_keeps_contacts: { file: RA, from: 'return {...x, contact_name:"", contact_email:"", contact_phone:"", contacts:[], visit:x.visit?{status:x.visit.status||null}:null, locked:true,', to: 'return {...x, locked:true,' ,
     also: { from: 'const ids=[...new Set(stops.filter(s=>!s._locked).map(', to: 'const ids=[...new Set(stops.map(' } },
-  owner_adds_to_handed: { file: RA, from: 'if(grantsAssignee){', to: 'if(false){' },
+  owner_adds_to_handed: { file: RA, from: 'if(added.length && !isBoss(me) && handedOver){', to: 'if(false){' },
   archived_still_grants: { file: RR, from: '(rs || []).filter(r => !r.archived_at)', to: '(rs || [])' },
   visit_recipients_all_contacts: { file: RR, from: 'reportId ? Promise.resolve([]) : sbGet(`dealer_contacts', to: 'sbGet(`dealer_contacts' },
   locked_keeps_visit: { file: RA, from: 'visit:x.visit?{status:x.visit.status||null}:null, locked:true,', to: 'locked:true,' },

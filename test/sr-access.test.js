@@ -254,6 +254,17 @@ const leaks = obj => /rita@rms\.test|615-555-0101|Rita Example/.test(JSON.string
     const r = await routes(w, 'greg', { action: 'save_route', id: 'r-handed', name: 'Handed', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-greg-branch', name: 'Glasgow North' }] });
     assert.strictEqual(r.status, 403, JSON.stringify(r.j)); assert.strictEqual(r.j.error, 'assigned_route_locked');
     assert.strictEqual(w.db.rep_routes.find(x => x.id === 'r-handed').stops.length, 1, 'the stop was added anyway');
+    const arch = await routes(w, 'greg', { action: 'archive_route', id: 'r-handed' });
+    assert.ok(arch.j.ok, 'precondition: archive ' + JSON.stringify(arch.j));
+    {   // archive → add → un-archive must not get a stop in
+      const sneak = await routes(w, 'greg', { action: 'save_route', id: 'r-handed', name: 'Handed', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-greg-branch', name: 'Glasgow North' }] });
+      assert.strictEqual(sneak.status, 403, 'archiving opened the route: ' + JSON.stringify(sneak.j));
+      await routes(w, 'greg', { action: 'archive_route', id: 'r-handed', archived: false });
+    }
+    w.db.staff_users.forEach(u => { if (u.email === 'angelo@hcps.us') u.active = false; });
+    const off = await routes(w, 'greg', { action: 'save_route', id: 'r-handed', name: 'Handed', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-greg-branch', name: 'Glasgow North' }] });
+    assert.strictEqual(off.status, 403, 'a switched-off President opened the route: ' + JSON.stringify(off.j));
+    w.db.staff_users.forEach(u => { if (u.email === 'angelo@hcps.us') u.active = true; });
     const reorder = await routes(w, 'greg', { action: 'save_route', id: 'r-handed', name: 'Handed v2', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }] });
     assert.ok(reorder.j.ok, 'a save without new dealers must still work: ' + JSON.stringify(reorder.j));
     const pres = await routes(w, 'pres', { action: 'save_route', id: 'r-handed', name: 'Handed', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-greg-branch', name: 'Glasgow North' }] });

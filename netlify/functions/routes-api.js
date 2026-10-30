@@ -629,10 +629,11 @@ exports.handler = async (event)=>{
         prevAsg=String((pr&&pr[0]&&pr[0].assigned_to_email)||"").trim().toLowerCase();
         prevRow=(pr&&pr[0])||null; }
       const added=[...new Set(row.stops.map(x=>String((x&&x.dealer_id)||"")).filter(Boolean))].filter(id=>!prevIds.has(id));
-      let grantsAssignee=false;
-      if(added.length && !isBoss(me) && prevAsg && !emailEq(prevAsg,me.email)){
-        try{ grantsAssignee=await RR.authorizedRoute(prevAsg, prevRow, sbGet); }catch(e){ return json(503,{error:"Couldn't check this route — nothing was saved."}); } }
-      if(grantsAssignee){
+      /* By the route's SHAPE, not by whether it grants anything right now: archiving it (or the President's
+         account being switched off) for a moment must not let stops in that reopen with it (re-review). Handed
+         over = assigned to someone else by someone other than its owner — only the President does that. */
+      const handedOver=!!(prevRow && prevAsg && !emailEq(prevAsg,me.email) && !emailEq(RR.assignerOf(prevRow),prevRow.owner_email));
+      if(added.length && !isBoss(me) && handedOver){
         const names=row.stops.filter(x=>x&&added.includes(String(x.dealer_id))).map(x=>x.name||x.dealer_id);
         return json(403,{error:"assigned_route_locked",dealer_ids:added,stops:names,
           message:`This route is assigned to someone else, so only the President can add dealers to it: ${names.join(", ")}.`}); }
