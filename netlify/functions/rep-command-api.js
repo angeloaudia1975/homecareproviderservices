@@ -25,6 +25,7 @@ const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 const SC = require("./_scope.js");
+const RR = require("./_route_reach.js");
 const FL = require("./_flags.js");
 const BAI = require("./_brief_ai.js");
 const AC = require("./_account_class.js");
@@ -218,7 +219,15 @@ async function buildDay(me, who, b, workspace, opts){
     const myOpps=(opps||[]).filter(isMineO);
     const stopsToday=todayRoute&&Array.isArray(todayRoute.stops)?todayRoute.stops.filter(s=>s&&s.dealer_id):[];
     const stopsTomorrow=tomorrowRoute&&Array.isArray(tomorrowRoute.stops)?tomorrowRoute.stops.filter(s=>s&&s.dealer_id):[];
-    const prepIds=[...new Set(stopsToday.map(s=>String(s.dealer_id)))].slice(0,30);
+    /* Meeting Prep reads each stop's sales, notes and contacts — only for dealers this person may work: his book,
+       or a route the President sent him on (_route_reach.js). Another rep's dealer on a route he built himself
+       gets no prep (security fix, Angelo 2026-10-30). */
+    let prepIds=[...new Set(stopsToday.map(s=>String(s.dealer_id)))].slice(0,30);
+    if(!SC.seesAllDealers({role:who.role}) || workspace){
+      const asRep={email:who.email,rep_name:who.rep_name,role:"rep"};
+      const off=await SC.dealersOutsideScope(asRep, prepIds, sbGet);
+      if(off.length){ const reach=await RR.reachDealerIds(who.email, sbGet); const no=new Set(off.filter(id=>!reach.has(id))); prepIds=prepIds.filter(id=>!no.has(id)); }
+    }
     const todaysVisits=(myVisits||[]).filter(v=>inDay(v.checkin_at));
 
     // ---- Round 2: route-stop dealers (Meeting Prep) and the visits' own links (parallel) ----

@@ -566,6 +566,16 @@ function stopCard(s,i){
   const navUrl=`https://www.google.com/maps/dir/?api=1&destination=${navQ}`;
   /* Another rep's visit on this stop stays theirs: shown with their name, opened read only. */
   const other=!!v.by_other;
+  /* A stop the rep may not work (another rep's dealer on a route he built himself): name, address and Navigate only —
+     the server sends no contacts for it and refuses every visit and email action (security fix, 2026-10-30). */
+  if(s.locked) return `<div class="stop" id="stop_${i}">
+    <div class="sh"><div class="ord">${i+1}</div>
+      <div class="mid"><div class="nm">${esc(s.name)} <span class="chip">🔒 not in your book</span></div>
+        ${addr?`<div class="sub addr">${esc(addr)}</div>`:(loc?`<div class="sub">${esc(loc)}</div>`:"")}
+        <div class="sub">${esc(s.locked_reason||"Not in your book.")}</div></div>
+      ${ADHOC()?"":`<div class="eta"><div class="t" id="eta_${i}">—</div><div class="l" id="etal_${i}">ETA</div></div>`}</div>
+    <div class="acts"><a class="btn" href="${navUrl}" target="_blank" rel="noopener">🧭 Navigate</a></div>
+    <div class="body" id="body_${i}"></div></div>`;
   const main = other ? (v.approved_at?`<button class="btn wide" onclick="openSummary(${i})">View ${esc(v.rep_name||"their")}'s summary</button>`:`<div class="hint" style="padding:8px 0">Visit in progress by ${esc(v.rep_name||"another rep")} — it stays theirs.</div>`)
     : st==="plan" ? `<button class="btn go xl wide" onclick="checkIn(${i})">▶ Start visit</button>`
     : st==="here" ? `<button class="btn pri wide" onclick="toggleBody(${i})">⏱ Visit in progress</button>`
@@ -1176,7 +1186,7 @@ function openDraft(s,subject,body,signature,title,opts){
   }
   DRAFT=opts.visit?{visit:true,dealer_id:s.dealer_id,route_id:(DAY&&DAY.route&&DAY.route.id)||null,report_id:(s.visit&&s.visit.id)||(REV&&REV.report_id)||null,
     visit_key:ADHOC()?DAY.route.visit_key:null}
-    : {previsit:!!opts.previsit,dealer_id:s.dealer_id,key:opts.previsit?previsitKey(s):null,stop:opts.stop,saved:!!opts.saved};
+    : {previsit:!!opts.previsit,dealer_id:s.dealer_id,route_id:(DAY&&DAY.route&&DAY.route.id)||null,key:opts.previsit?previsitKey(s):null,stop:opts.stop,saved:!!opts.saved};
   /* Smart Email Learning: which generated draft this is (null when capture is off). It travels with Save draft and Send so
      the version finally sent can be kept beside the original; it never changes what is sent. */
   DRAFT.draft_id=(typeof opts.draft_id==="string"&&/^[0-9a-f-]{36}$/i.test(opts.draft_id))?opts.draft_id:null;
@@ -1279,7 +1289,10 @@ async function sendDraft(dealer_id,btn){
   if(m){ m.style.color=""; m.textContent=r.cc.length?`Sending to ${1+r.cc.length} people…`:"Sending…"; }
   if(btn) btn.disabled=true;
   const draft_id=(DRAFT&&DRAFT.draft_id)||undefined;
-  let j; try{ j=await esapi({action:"send",dealer_id,to:r.to,cc:r.cc,subject,body_text:body,draft_id}); }catch(e){ j=null; }
+  /* Which route stop / visit this email belongs to: outside the rep's book the server allows a send only for a stop the
+     President sent him to, or for his own visit — and only to that dealer's own addresses. */
+  const ref={}; if(DRAFT&&DRAFT.route_id) ref.route_id=DRAFT.route_id; if(DRAFT&&DRAFT.report_id) ref.report_id=DRAFT.report_id;
+  let j; try{ j=await esapi(Object.assign({action:"send",dealer_id,to:r.to,cc:r.cc,subject,body_text:body,draft_id},ref)); }catch(e){ j=null; }
   if(j&&j.ok){ toast(r.cc.length?`Email sent to ${1+r.cc.length} ✓`:"Email sent ✓");
     // A visit's follow-up is marked sent on the visit, so the summary and Dealer 360 show it went.
     if(DRAFT&&DRAFT.visit){ const d=DRAFT; tryOrQueue(Object.assign(draftSaveBody(d,{to:r.to,cc:r.cc,subject,body}),{sent:true})).then(()=>{ if(REV) REV.email=null; updateStatus(); }); }

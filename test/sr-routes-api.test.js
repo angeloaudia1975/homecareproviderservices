@@ -84,9 +84,9 @@ async function call(w, who, body, headers) {
     const drop = await call(w, 'greg', { action: 'save_route', id: 'r-greg', name: 'x', stops: [{ dealer_id: 'd-dir-greg', name: 'Directory' }] });
     assert.strictEqual(drop.status, 409); assert.strictEqual(drop.j.error, 'stop_has_visit'); assert.deepStrictEqual(drop.j.stops, ['Glasgow']);
     assert.strictEqual(w.db.rep_routes.find(r => r.id === 'r-greg').stops.length, 2, 'the stop was dropped');
-    const ok1 = await call(w, 'greg', { action: 'save_route', id: 'r-greg', name: 'x', stops: [{ dealer_id: 'd-dir-greg', name: 'Directory' }, { dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-ang', name: 'RMS' }] });
+    const ok1 = await call(w, 'greg', { action: 'save_route', id: 'r-greg', name: 'x', stops: [{ dealer_id: 'd-dir-greg', name: 'Directory' }, { dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-greg-branch', name: 'Glasgow North' }] });
     assert.ok(ok1.j.ok, JSON.stringify(ok1.j));
-    const ok2 = await call(w, 'greg', { action: 'save_route', id: 'r-greg', name: 'x', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-ang', name: 'RMS' }] });
+    const ok2 = await call(w, 'greg', { action: 'save_route', id: 'r-greg', name: 'x', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-greg-branch', name: 'Glasgow North' }] });
     assert.ok(ok2.j.ok, 'dropping a stop WITHOUT a visit must still work');
   });
   await t('reassigned route: the new rep can neither re-check-in, edit, end, approve nor re-email the first rep\'s visit (409, report untouched)', async () => {
