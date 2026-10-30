@@ -183,15 +183,16 @@ else if (cmd === "prune") {
 else if (cmd === "retire" || cmd === "restore") {
   const list = String(arg("skus", "")).split(",").map(x => x.trim()).filter(Boolean);
   const codes = catalog.map(r => r.code);
-  const unknown = list.filter(x => !codes.some(c => L.codeNorm(c) === L.codeNorm(x)));
-  if (!list.length || unknown.length) { console.error(unknown.length ? "not SKUs of this line: " + unknown.join(", ") : "--skus required"); process.exit(2); }
+  const wasRetired = Object.keys(readJson(overridesPath, {})._retired || {});
+  const unknown = list.filter(x => !codes.some(c => L.codeNorm(c) === L.codeNorm(x)) && !(cmd === "restore" && wasRetired.some(k => L.codeNorm(k) === L.codeNorm(x))));
+  if (!list.length || (unknown.length && !flag("added"))) { console.error(unknown.length ? "not SKUs of this line's catalog file: " + unknown.join(", ") + " (a product added in the admin catalog layers: add --added)" : "--skus required"); process.exit(2); }
   if (cmd === "retire" && !arg("reason")) { console.error("--reason required"); process.exit(2); }
   const overrides = readJson(overridesPath, {});
   overrides._retired = overrides._retired || {};
   for (const x of list) {
-    const code = codes.find(c => L.codeNorm(c) === L.codeNorm(x));
+    const code = codes.find(c => L.codeNorm(c) === L.codeNorm(x)) || x;
     if (cmd === "retire") overrides._retired[code] = { reason: arg("reason"), decided: arg("decided", new Date().toISOString().slice(0, 10)), ref: arg("ref", "") };
-    else delete overrides._retired[code];
+    else { const k = Object.keys(overrides._retired).find(k => L.codeNorm(k) === L.codeNorm(code)); if (k) delete overrides._retired[k]; }
   }
   writeJson(overridesPath, overrides);
   const log = L.applyRetired(content.pages || {}, overrides._retired, {});

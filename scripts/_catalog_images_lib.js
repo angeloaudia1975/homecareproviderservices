@@ -167,6 +167,17 @@ function applyRetired(pages, retired, log) {
       say("retired", s.sku);
     } else if (s.retired) { delete s.retired; s.status = "active"; s.disabled = false; say("restored", s.sku); }
   }
+  /* a retired SKU no page lists (a product added in the admin catalog layers, not in the catalog file) is switched
+     off through one holder page whose every entry is off — it shows nothing; it exists only so the storefront and the
+     order server drop those SKUs too */
+  const onPage = new Set(Object.values(pages).flatMap(p => (p.skus || []).map(s => codeNorm(s.sku))));
+  const holderKey = "retired-skus";
+  const loose = keys.filter(k => !onPage.has(codeNorm(k)) || ((pages[holderKey] || {}).skus || []).some(s => codeNorm(s.sku) === codeNorm(k)));
+  if (loose.length) {
+    pages[holderKey] = { page_key: holderKey, name: "Retired SKUs (not shown)", status: "published", disabled: false, description: "", features: [], specs: [], images_gallery: [], image: null,
+      skus: loose.map(k => ({ sku: k, name: "", status: "hidden", disabled: true, image: "", retired: { reason: (retired[k] || {}).reason || "", decided: (retired[k] || {}).decided || "", ref: (retired[k] || {}).ref || "" } })) };
+    say("retired_holder", holderKey);
+  } else if (pages[holderKey]) { delete pages[holderKey]; say("restored", holderKey); }
   return log;
 }
 
