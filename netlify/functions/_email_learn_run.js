@@ -1,5 +1,6 @@
 // HCPS Smart Email Learning — Phase 2: run the analyser over the stored drafts and record the suggestions.
-// Used by email-learning-api ("Look for patterns", the owner's button) and email-learning-purge-cron (daily, only while
+// Newest drafts first, so a cap (10,000) never hides the latest edits.
+// Used by email-learning-api ("Look for patterns", the owner's button — it works whatever the daily switch says: it is the owner's own click) and email-learning-purge-cron (daily, only while
 // phase2_flags.email_learning_suggest is exactly true). Reads only sent, edited drafts whose text is still kept (not purged);
 // the analysis itself is pure code (_email_learn.js) — no AI, nothing leaves HCPS. Records ONLY qualifying suggestions
 // (3+ sends across 2+ dealers; the database checks this again) through hcps_email_rule_note, which never changes the status
@@ -12,7 +13,7 @@ const COLS = "id,email_type,dealer_id,sent_at,edited,original_subject,original_b
 async function loadDrafts(sbGet){
   const out = [];
   for(let off = 0; off < MAX_ROWS; off += PAGE){
-    const rows = await sbGet(`email_drafts?select=${COLS}&sent_at=not.is.null&edited=is.true&content_purged_at=is.null&order=sent_at.asc,id.asc&limit=${PAGE}&offset=${off}`);
+    const rows = await sbGet(`email_drafts?select=${COLS}&sent_at=not.is.null&edited=is.true&content_purged_at=is.null&order=sent_at.desc,id.desc&limit=${PAGE}&offset=${off}`);
     out.push(...rows); if(rows.length < PAGE) return { drafts: out, capped: false };
   }
   return { drafts: out, capped: true };
@@ -33,14 +34,14 @@ async function runAnalysis(sbGet, rpc, opts){
   drafts.forEach(d => { d.dealer = names[d.dealer_id] || null; });
   const res = L.analyze(drafts);
   const summary = { scanned: res.scanned, candidates: res.candidates, suggestions: res.suggestions.length, capped, applied: apply,
-    inserted: 0, updated: 0, unchanged: 0, refused: 0 };
+    inserted: 0, updated: 0, unchanged: 0, already_decided: 0, refused: 0 };
   if(apply){
     for(const s of res.suggestions){
       try{
-        const out = await rpc("hcps_email_rule_note", { rule_key: s.rule_key, email_type: s.email_type, kind: s.kind, pattern: s.pattern,
+        const out = await rpc("hcps_email_rule_note", { rule_key: s.rule_key, pattern_key: s.pattern_key, email_type: s.email_type, kind: s.kind, pattern: s.pattern,
           instruction: s.instruction, examples: s.examples, sends: s.sends, dealers: s.dealers, first_seen: s.first_seen, last_seen: s.last_seen });
         const st = out && out.status;
-        if(st === "inserted") summary.inserted++; else if(st === "updated") summary.updated++; else if(st === "unchanged") summary.unchanged++; else summary.refused++;
+        if(st === "inserted") summary.inserted++; else if(st === "updated") summary.updated++; else if(st === "unchanged") summary.unchanged++; else if(st === "sibling_exists") summary.already_decided++; else summary.refused++;
       }catch(e){ summary.refused++; }
     }
   }

@@ -581,7 +581,9 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   **Phase 2 (learning) — BUILT on branch `email-learning/p2-learning` (2026-10-30; PR, NOT merged, migration NOT run;
   runbook `docs/email-learning/PHASE2.md`).** Rules: the analyser (`_email_learn.js`) is pure code — no AI, nothing leaves HCPS;
   every phrase is MASKED before it is compared or stored (addresses, links, phones, amounts, dates, times, numbers, the dealer's
-  name, people's names → placeholders; anything still holding a digit or "@" is dropped, and the database refuses it); a rule is
+  name, every capitalised word that is not an ordinary sentence opener, the greeted name in any case → placeholders — over-mask
+  rather than under-mask; anything still holding a digit or "@" is dropped, and the database refuses it); an edit already known under
+  any email type never becomes a second rule (`pattern_key`), so a rejected edit never returns; a rule is
   SUGGESTED only for the same masked edit in 3+ sent emails to 2+ dealers (code AND database); only the ACTIVE President decides
   (approve — optionally reworded — / reject / retire / reword), as the verified sign-in, with a reason, from the version on screen;
   a rejected rule is never re-suggested and the analyser never changes a decided rule; every change of the approved set is a

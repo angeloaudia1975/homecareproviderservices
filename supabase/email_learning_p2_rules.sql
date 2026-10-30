@@ -30,6 +30,7 @@ end $$;
 create table if not exists public.email_learning_rules (
   id                     uuid primary key default gen_random_uuid(),
   rule_key               text not null unique check (rule_key ~ '^[0-9a-f]{32}$'),
+  pattern_key            text not null check (pattern_key ~ '^[0-9a-f]{32}$'),   -- the same edit whatever the email type
   email_type             text not null check (email_type in ('all','previsit_headsup','visit_followup','follow_up','dormant_account',
                            'product_intro','reorder_reminder','cross_sell','portal_activation','campaign')),
   kind                   text not null check (kind in ('remove_phrase','replace_phrase','add_phrase','greeting','shorter','longer','subject')),
@@ -53,6 +54,7 @@ create table if not exists public.email_learning_rules (
                                                    and suggested_instruction !~ '@' and instruction !~ '@')
 );
 create index if not exists email_learning_rules_status_ix on public.email_learning_rules(status, updated_at desc);
+create index if not exists email_learning_rules_pattern_ix on public.email_learning_rules(pattern_key);
 
 create table if not exists public.email_learning_profiles (
   version       integer primary key check (version > 0),
@@ -147,21 +149,26 @@ returns jsonb language sql stable security definer set search_path = public, pg_
     from public.email_learning_rules where status = 'approved'
 $$;
 
--- p = { rule_key, email_type, kind, pattern, instruction, examples, sends, dealers, first_seen, last_seen }
+-- p = { rule_key, pattern_key, email_type, kind, pattern, instruction, examples, sends, dealers, first_seen, last_seen }
+-- A new rule is never created for an edit already known under another email type (pattern_key): a rejected, approved or
+-- retired edit is never suggested again in another scope, and the same edit is never suggested twice.
 create or replace function public.hcps_email_rule_note(p jsonb)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
 declare r public.email_learning_rules; v_sends int; v_dealers int; v_instr text := btrim(coalesce(p->>'instruction', ''));
         v_ex jsonb := coalesce(p->'examples', '[]'::jsonb); v_changed boolean;
 begin
-  begin v_sends := (p->>'sends')::int; v_dealers := (p->>'dealers')::int;
-  exception when others then raise exception 'email_rule_bad_request: sends and dealers are numbers'; end;
+  begin v_sends := coalesce((p->>'sends')::int, 0); v_dealers := coalesce((p->>'dealers')::int, 0);
+  exception when others then return jsonb_build_object('ok', false, 'status', 'bad_request'); end;
   if jsonb_typeof(v_ex) <> 'array' then raise exception 'email_rule_bad_request: examples is a list'; end if;
   select * into r from public.email_learning_rules where rule_key = p->>'rule_key' for update;
   if r.id is null then   -- (not FOUND: a later PERFORM would reset it)
     if v_sends < 3 or v_dealers < 2 then return jsonb_build_object('ok', false, 'status', 'below_threshold'); end if;
+    if exists (select 1 from public.email_learning_rules where pattern_key = p->>'pattern_key') then
+      return jsonb_build_object('ok', false, 'status', 'sibling_exists');
+    end if;
     perform set_config('hcps.email_rule_op', 'note', true);
-    insert into public.email_learning_rules (rule_key, email_type, kind, pattern, instruction, suggested_instruction, examples, sends, dealers, first_seen, last_seen)
-    values (p->>'rule_key', p->>'email_type', p->>'kind', p->'pattern', v_instr, v_instr, v_ex, v_sends, v_dealers,
+    insert into public.email_learning_rules (rule_key, pattern_key, email_type, kind, pattern, instruction, suggested_instruction, examples, sends, dealers, first_seen, last_seen)
+    values (p->>'rule_key', p->>'pattern_key', p->>'email_type', p->>'kind', p->'pattern', v_instr, v_instr, v_ex, v_sends, v_dealers,
             nullif(p->>'first_seen', '')::timestamptz, nullif(p->>'last_seen', '')::timestamptz)
     returning * into r;
     insert into public.email_learning_rule_events (rule_id, action, by_email, after)
@@ -202,7 +209,7 @@ begin
   begin v_id := (p->>'rule_id')::uuid; exception when others then return jsonb_build_object('ok', false, 'status', 'not_found'); end;
   perform pg_advisory_xact_lock(hashtext('hcps_email_learning_profile'));
   v_cur := public.hcps_email_rule_version();
-  if coalesce(nullif(p->>'expected_version', ''), '-1')::int <> v_cur then
+  if coalesce(case when p->>'expected_version' ~ '^\d{1,9}$' then (p->>'expected_version')::int end, -1) <> v_cur then
     return jsonb_build_object('ok', false, 'status', 'version_conflict', 'version', v_cur);
   end if;
   select * into r from public.email_learning_rules where id = v_id for update;
@@ -241,10 +248,10 @@ begin
   v_by := public.hcps_email_rule_president(p->>'by');
   if v_by is null then return jsonb_build_object('ok', false, 'status', 'president_only'); end if;
   if length(v_reason) < 3 or length(v_reason) > 500 then return jsonb_build_object('ok', false, 'status', 'reason_required'); end if;
-  begin v_to := (p->>'to_version')::int; exception when others then return jsonb_build_object('ok', false, 'status', 'not_found'); end;
+  v_to := case when p->>'to_version' ~ '^\d{1,9}$' then (p->>'to_version')::int end;
   perform pg_advisory_xact_lock(hashtext('hcps_email_learning_profile'));
   v_cur := public.hcps_email_rule_version();
-  if coalesce(nullif(p->>'expected_version', ''), '-1')::int <> v_cur then
+  if coalesce(case when p->>'expected_version' ~ '^\d{1,9}$' then (p->>'expected_version')::int end, -1) <> v_cur then
     return jsonb_build_object('ok', false, 'status', 'version_conflict', 'version', v_cur);
   end if;
   if v_to is null or v_to < 0 or v_to >= v_cur then return jsonb_build_object('ok', false, 'status', 'not_found'); end if;

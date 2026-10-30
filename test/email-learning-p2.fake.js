@@ -17,7 +17,8 @@ function rpc() {
       const r = t.find(x => x.rule_key === p.rule_key);
       if (!r) {
         if (!(p.sends >= 3 && p.dealers >= 2)) return ok({ ok: false, status: 'below_threshold' });
-        const row = { id: crypto.randomUUID(), rule_key: p.rule_key, email_type: p.email_type, kind: p.kind, pattern: p.pattern, instruction: p.instruction,
+        if (t.some(x => x.pattern_key === p.pattern_key)) return ok({ ok: false, status: 'sibling_exists' });
+        const row = { id: crypto.randomUUID(), rule_key: p.rule_key, pattern_key: p.pattern_key, email_type: p.email_type, kind: p.kind, pattern: p.pattern, instruction: p.instruction,
           suggested_instruction: p.instruction, examples: p.examples || [], sends: p.sends, dealers: p.dealers, first_seen: p.first_seen, last_seen: p.last_seen,
           status: 'suggested', decided_at: null, decided_by: null, decision_reason: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
         t.push(row); ev(db, { rule_id: row.id, action: 'suggested', by_email: 'system:email-learning' });

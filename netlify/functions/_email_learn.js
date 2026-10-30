@@ -21,9 +21,19 @@ const crypto = require("crypto");
 
 const MIN_SENDS = 3, MIN_DEALERS = 2, MAX_EXAMPLES = 3, MAX_PHRASE = 200;
 const KINDS = ["remove_phrase", "replace_phrase", "add_phrase", "greeting", "shorter", "longer", "subject"];
-const KEEP_WORDS = new Set(["I", "HCPS", "Golden", "Technologies", "Strongback", "Ovation", "Bemis", "Climbing", "Steps", "Access4U",
-  "PediFix", "Dalton", "Corsicana", "ABM", "AirAvant", "Ohio", "Medical", "Partner", "Connect", "Academy", "Outlook",
-  "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "OK"]);
+// Capitalised words that may stay: they identify nobody. Manufacturer names are NOT kept (they also appear inside dealer names —
+// "Golden Rule Pharmacy").
+const KEEP_WORDS = new Set(["I", "HCPS", "OK", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]);
+// Ordinary words that open a sentence. Any OTHER capitalised word — at the start of a sentence or inside it — is treated as a name.
+const COMMON_START = new Set(("A About Absolutely Actually After Again All Also An And Any Anything Are As Ask At Attached Based Be Because Before Best Both " +
+  "Bring But By Call Can Could Can't Checking Did Do Does Don't Dropping Each Either Email Even Every Everything Feel Final Following For " +
+  "From Glad Good Great Had Happy Has Have Hello Here Hey Hi Hope Hopefully How However I'd I'll I'm I've If In Is It It's Its Just Kind " +
+  "Last Let Let's Looking Many May Maybe Me More Most My Next No Not Now Of On Once One Only Or Other Our Please Plus Quick Reaching Regards " +
+  "Reply See Sharing Should Since Sincerely So Some Sorry Sounds Stop Stopping Sure Talk Thank Thanks That That's The Then There There's " +
+  "These They This Those Today Tomorrow Unfortunately Until Usually Very Want Wanted We We'll We're We've Welcome Were What When Where " +
+  "Which While Who Why Will With Would Yes Yesterday You You'll You're Your Dear Greetings Morning Afternoon Evening Cheers Warm " +
+  "Visit Contact Note Remember Need Give Take Make Keep Send Share Check Try Use Order Find Join Come Go Hear Know Look Tell Write").split(" "));
+const HONORIFIC = /\b(?:Mr|Mrs|Ms|Mx|Dr|Prof|Rev|Sr|Jr|St)\.?\s+[A-Z][\w'’-]*/g;
 const MONTHS = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
 const GREETING = /^(hi|hello|hey|dear|good\s+(?:morning|afternoon|evening)|greetings)\b/i;
 
@@ -37,6 +47,9 @@ function mask(text, ctx){
   if(dealer && dealer.length >= 3) s = s.replace(new RegExp(escRe(dealer), "gi"), "{dealer}");
   s = s.replace(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi, "{email}")
        .replace(/\b(?:https?:\/\/|www\.)\S+/gi, "{link}")
+       .replace(/\b[\w.+-]+\s+(?:at|\[at\]|\(at\))\s+[\w-]+\s+(?:dot|\[dot\]|\(dot\))\s+[a-z]{2,}\b/gi, "{email}")
+       .replace(/\b[\w-]+\s+(?:dot|\[dot\]|\(dot\))\s+(?:com|net|org|us|biz|info|co|io|edu|gov)\b/gi, "{link}")
+       .replace(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|us|biz|info|co|io|edu|gov|health|care|shop|store|app)\b(?:\/\S*)?/gi, "{link}")
        .replace(/(?:\+?1[\s.-]?)?\(?\b\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/g, "{phone}")
        .replace(/\$\s?\d[\d,]*(?:\.\d+)?/g, "{amount}")
        .replace(new RegExp(`\\b(?:${MONTHS})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?\\b`, "gi"), "{date}")
@@ -44,10 +57,18 @@ function mask(text, ctx){
        .replace(/\b\d{1,2}(?::\d{2})?\s?(?:a\.?m|p\.?m)\b/gi, "{time}")
        .replace(/\b\d{1,2}:\d{2}\b/g, "{time}")
        .replace(/\b\d+(?:[.,]\d+)*\b/g, "{number}");
+  // Names already known for this email (the greeted person, the dealer's words), in any case: "thanks pat".
+  for(const nm of (ctx && ctx.names) || []){ if(nm && nm.length >= 2) s = s.replace(new RegExp(`\\b${escRe(nm)}\\b`, "gi"), "{name}"); }
+  s = s.replace(HONORIFIC, "{name}");
   // A greeting names a person: "Hi Pat," / "Good morning Pat Smith,".
   s = s.replace(/^((?:[Hh]i|[Hh]ello|[Hh]ey|[Dd]ear|[Gg]ood\s+(?:[Mm]orning|[Aa]fternoon|[Ee]vening)|[Gg]reetings)\s+)([A-Z][\w'’-]*(?:\s+[A-Z][\w'’-]*)?)/, "$1{name}");
-  // Any other capitalised word that is not the first word of a sentence is a likely name.
-  s = s.replace(/(?<=[^.!?:]\s)[A-Z][a-zA-Z'’-]+/g, w => (KEEP_WORDS.has(w) ? w : "{name}"));
+  // Every other capitalised word is a likely name — wherever it stands — unless it identifies nobody (KEEP_WORDS) or it is an
+  // ordinary word opening a sentence or a clause after ":" ("Please", "Thanks", "We").
+  s = s.replace(/(^|[.!?:;]\s+|\s)([A-Z][a-zA-Z'’-]*)/g, (m, pre, w) => {
+    if(KEEP_WORDS.has(w)) return m;
+    const opening = pre === "" || /[.!?:;]/.test(pre);
+    return opening && COMMON_START.has(w) ? m : pre + "{name}";
+  });
   s = s.replace(/(\{name\})(\s+\{name\})+/g, "$1");
   return s;
 }
@@ -66,7 +87,7 @@ function units(body, signature){
   const out = [];
   for(const line of b.split("\n")){
     const l = line.trim(); if(!l) continue;
-    for(const s of l.split(/(?<=[.!?])\s+(?=[A-Z"“(])/)){ const u = s.trim(); if(u) out.push(u); }
+    for(const s of l.split(/(?<!\b(?:Mr|Mrs|Ms|Mx|Dr|Prof|Rev|Sr|Jr|St)\.)(?<=[.!?])\s+(?=[A-Z"“(])/)){ const u = s.trim(); if(u) out.push(u); }
   }
   return out;
 }
@@ -89,8 +110,13 @@ function editsOf(d, ctx){
     const k = kind + "|" + JSON.stringify(pattern, Object.keys(pattern).sort());
     if(seen.has(k)) return; seen.add(k); out.push({ kind, pattern });
   };
-  const m = x => mask(x, ctx);
   const A = units(d.original_body, d.signature), B = units(d.sent_body, d.signature);
+  // The person greeted in either version is a name everywhere in this email, in any case ("thanks pat").
+  const names = [];
+  for(const u of [A[0], B[0]]){ const g = String(u || "").match(/^(?:hi|hello|hey|dear|good\s+(?:morning|afternoon|evening)|greetings)\s+([A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+)?)/i);
+    if(g) for(const w of g[1].split(/\s+/)) if(w.length >= 2 && !COMMON_START.has(w[0].toUpperCase() + w.slice(1).toLowerCase())) names.push(w); }
+  const mctx = Object.assign({}, ctx, { names: ((ctx && ctx.names) || []).concat(names) });
+  const m = x => mask(x, mctx);
   const ops = lcsOps(A.map(m).map(norm), B.map(m).map(norm));
   if(ops){
     const firstSame = ops.findIndex(o => o.op === "same");
@@ -180,7 +206,7 @@ function analyze(drafts){
   }
   const all = [...by.values()].map(c => {
     const ratio = median(c.ratios);
-    return { rule_key: c.rule_key, email_type: c.email_type, kind: c.kind, pattern: c.pattern, sends: c.drafts.size, dealers: c.dealerSet.size,
+    return { rule_key: c.rule_key, pattern_key: keyOf("*", c.kind, c.pattern), email_type: c.email_type, kind: c.kind, pattern: c.pattern, sends: c.drafts.size, dealers: c.dealerSet.size,
       examples: c.examples, first_seen: c.first_seen, last_seen: c.last_seen, instruction: instructionOf(c.kind, c.pattern, ratio),
       qualifies: c.drafts.size >= MIN_SENDS && c.dealerSet.size >= MIN_DEALERS };
   });

@@ -44,7 +44,18 @@ const api = (w, b, token) => call(load('email-learning-api.js', w), b, { token: 
     const m = L.mask('Hi Pat Smith, call 615-555-0100 or pat@sampletown.test about $1,250 on March 3rd at 10:30 am — see www.example.test and ask Jennifer at Sampletown Medical about 12 chairs.', { dealer: 'Sampletown Medical' });
     for (const bad of ['Pat', 'Smith', '615', 'pat@', '1,250', 'March', '10:30', 'www.', 'Jennifer', 'Sampletown', '12']) assert.ok(!m.includes(bad), bad + ' in ' + m);
     for (const ph of ['{name}', '{phone}', '{email}', '{amount}', '{date}', '{time}', '{link}', '{dealer}', '{number}']) assert.ok(m.includes(ph), ph + ' missing in ' + m);
-    assert.ok(/Golden/.test(L.mask('Ask about the Golden catalog on Tuesday.')), 'known manufacturer words stay');
+    assert.ok(/Tuesday/.test(L.mask('Ask about the catalog on Tuesday.')), 'weekdays stay');
+  });
+  await t('masking: names at the start of a sentence, after titles or ":", in lowercase, other dealers, bare domains, spelled-out addresses', () => {
+    const cases = [['Pat Jones asked about the chair.', ['Pat', 'Jones']], ['Tom liked the demo.', ['Tom']], ['Mr. Smith will stop by.', ['Smith']],
+      ['Ask for Dr. Lee.', ['Lee']], ['Contact: Mary Baker can help.', ['Mary', 'Baker']], ['Williams Brothers liked it.', ['Williams', 'Brothers']],
+      ['Golden Rule Pharmacy wants a demo.', ['Golden', 'Rule', 'Pharmacy']], ['Visit acmemedical.com today.', ['acmemedical']], ['Write bob at acme dot com.', ['bob', 'acme']]];
+    for (const [txt, bad] of cases) { const m = L.mask(txt); for (const b of bad) assert.ok(!m.includes(b), `${b} survives in "${m}"`); }
+    assert.ok(!/pat/i.test(L.mask('thanks pat', { names: ['Pat'] })));
+    const e = L.editsOf({ original_body: 'Hi pat,\n\nI will be there.', sent_body: 'Hi pat,\n\nI will be there. thanks pat, see you soon!', original_subject: 'a', sent_subject: 'a' }, {});
+    const vals = JSON.stringify(e.map(x => Object.values(x.pattern))); assert.ok(!/pat/i.test(vals), 'the greeted name is masked in any case: ' + vals);
+    for (const ok of ['Please let me know if you have any questions.', 'I hope this email finds you well.', 'Thanks again for your time.'])
+      assert.strictEqual(L.mask(ok), ok, 'ordinary sentences stay readable');
   });
   await t('safe evidence: a digit or "@" left after masking, or only placeholders, is never kept', () => {
     assert.ok(L.safePhrase('I hope this email finds you well'));
@@ -104,6 +115,20 @@ const api = (w, b, token) => call(load('email-learning-api.js', w), b, { token: 
     assert.strictEqual(w.db.email_learning_profiles.length, 0, 'a suggestion never approves');
     const again = await api(w, { action: 'analyze' });
     assert.strictEqual(again.body.summary.inserted, 0); assert.strictEqual(w.db.email_learning_rules.length, r.body.summary.inserted);
+  });
+  await t('a rejected edit does not come back under another email type', async () => {
+    // The edit appears once in each of three types → suggested once for "every type"; the owner rejects it.
+    const mix = [edited(0), edited(1, { email_type: 'visit_followup' }), edited(2, { email_type: 'follow_up' })];
+    const { w } = world({ drafts: mix });
+    await api(w, { action: 'analyze' });
+    const all = w.db.email_learning_rules.filter(x => x.email_type === 'all'); assert.ok(all.length > 0);
+    let v = 0;
+    for (const r of all) { const d = await api(w, { action: 'decide', rule_id: r.id, decision: 'reject', reason: 'Not how I write', expected_version: v }); assert.strictEqual(d.status, 200); }
+    // Later the same edits reach 3 sends / 2 dealers inside visit_followup alone.
+    w.db.email_drafts.push(edited(4, { email_type: 'visit_followup' }), edited(5, { email_type: 'visit_followup' }), edited(7, { email_type: 'visit_followup' }));
+    const r2 = await api(w, { action: 'analyze' });
+    assert.strictEqual(r2.body.summary.inserted, 0, JSON.stringify(r2.body.summary)); assert.ok(r2.body.summary.already_decided > 0);
+    assert.ok(w.db.email_learning_rules.every(x => x.status === 'rejected'));
   });
   await t('dry run: a preview, nothing written', async () => {
     const { S, w } = world({ drafts: three() });

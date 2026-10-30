@@ -28,7 +28,7 @@ const lit = o => `'${JSON.stringify(o).replace(/'/g, "''")}'::jsonb`;
 const call = (fn, o) => JSON.parse(as('service_role', `select public.${fn}(${lit(o)})::text`));
 const PRES = 'owner@hcps.test', REP = 'rep@hcps.test', GONE = 'former@hcps.test';
 const key = n => (n.toString(16) + '0'.repeat(32)).slice(0, 32).replace(/[^0-9a-f]/g, 'a');
-const note = (n, o) => call('hcps_email_rule_note', Object.assign({ rule_key: key(n), email_type: 'previsit_headsup', kind: 'remove_phrase',
+const note = (n, o) => call('hcps_email_rule_note', Object.assign({ rule_key: key(n), pattern_key: key(n + 500), email_type: 'previsit_headsup', kind: 'remove_phrase',
   pattern: { phrase: 'I hope this email finds you well' }, instruction: 'Don\'t write “I hope this email finds you well”.',
   examples: ['− I hope this email finds you well'], sends: 3, dealers: 2, first_seen: '2026-10-01T10:00:00Z', last_seen: '2026-10-20T10:00:00Z' }, o || {}));
 const ver = () => +as('service_role', 'select public.hcps_email_rule_version()');
@@ -98,6 +98,16 @@ try {
     const x = ruleOf(A); assert.strictEqual(x.sends, 6); assert.strictEqual(x.dealers, 3); assert.strictEqual(x.status, 'suggested');
     assert.strictEqual(note(1, { sends: 4, dealers: 2, examples: ['− I hope this email finds you well', '− I hope you are well'] }).status, 'unchanged', 'counts never go down');
     assert.strictEqual(ruleOf(A).sends, 6);
+  });
+  t('the same edit under another email type is never a new rule (a decided edit is never suggested again in another scope)', () => {
+    assert.strictEqual(note(8, { pattern_key: key(501), email_type: 'all' }).status, 'sibling_exists');
+    assert.strictEqual(q(`select count(*) from public.email_learning_rules where pattern_key = '${key(501)}'`), '1');
+  });
+  t('bad input answers a status, never an error', () => {
+    assert.strictEqual(note(9, { dealers: null }).status, 'below_threshold');
+    assert.strictEqual(note(9, { sends: 'many' }).status, 'bad_request');
+    assert.strictEqual(call('hcps_email_rule_decide', { rule_id: A, decision: 'approve', by: PRES, reason: 'Fine by me', expected_version: 'x' }).status, 'version_conflict');
+    assert.strictEqual(call('hcps_email_profile_rollback', { to_version: 'x', by: PRES, reason: 'Fine by me', expected_version: 0 }).status, 'not_found');
   });
   t('non-identifying evidence: a pattern or example holding a digit or "@" is refused', () => {
     refused(() => note(2, { pattern: { phrase: 'Call me at 615 555 0100' } }), /masked_ck/);
