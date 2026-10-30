@@ -443,6 +443,34 @@ async function dealersOffReach(me, ids){
   }
   return off.filter(id=>!onMine.has(id));
 }
+/* ROUTE INTEGRITY (Angelo, 2026-10-30).
+   · A route or a stop that holds a visit record is never deleted or dropped — the visit would be
+     stranded (its later saves refused) or orphaned. Such a route is ARCHIVED instead.
+   · A visit belongs to the rep who made it: once a stop's visit report names a rep, nobody else's
+     request writes to it (reassigning the route moves the plan, never the visits already made).
+   · Arrival times shown to a dealer start from an EXPLICIT departure time, and a one-way route
+     also needs an explicit time zone — nothing is assumed (the field app used to assume 8:00).
+   The archive and departure columns come from supabase/sr_route_integrity.sql; until it runs,
+   `routeSchema()` is false and those two features answer 503 — nothing is silently dropped. */
+const DEPART_TZS=["America/Chicago","America/New_York"];
+const HHMM=/^([01]\d|2[0-3]):[0-5]\d$/;
+let ROUTE_SCHEMA=null;   // per warm function instance
+async function routeSchema(){
+  if(ROUTE_SCHEMA===true) return true;
+  try{ await sbGet("rep_routes?select=archived_at,archived_by,depart_time,depart_tz&limit=1"); ROUTE_SCHEMA=true; }
+  catch(e){ if(/Supabase 400|42703|PGRST204|does not exist/i.test(String(e&&e.message||e))) ROUTE_SCHEMA=false; else throw e; }
+  return ROUTE_SCHEMA;
+}
+/* One logged visit per set of notes. The id of the dealer_visits row is derived from who logged it,
+   the dealer, the exact details and the Chicago day — so a double tap, a retried request or the same
+   notes saved again is the SAME row (insert-or-ignore on the primary key), and nothing after it (note,
+   timeline row, tasks, deals) is written twice. A genuinely new visit differs in its notes or its day. */
+function visitIdFor(parts){
+  const h=require("crypto").createHash("sha256").update(JSON.stringify(parts)).digest("hex");
+  return `${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-${((parseInt(h.slice(16,17),16)&3)|8).toString(16)}${h.slice(17,20)}-${h.slice(20,32)}`;
+}
+function chicagoDay(ms){ return new Intl.DateTimeFormat("en-CA",{timeZone:"America/Chicago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(ms||Date.now())); }
+const canonJ=v=>Array.isArray(v)?"["+v.map(canonJ).join(",")+"]":(v&&typeof v==="object")?"{"+Object.keys(v).sort().map(k=>JSON.stringify(k)+":"+canonJ(v[k])).join(",")+"}":JSON.stringify(v===undefined?null:v);
 // Visit writes are refused for a dealer id that matches no dealer (Phase 1 live finding).
 const VISIT_WRITE_ACTIONS=new Set(["visit_checkin","visit_end","visit_analyze","visit_approve","visit_report_save",
   "visit_followup_set","visit_email_save","log_visit","save_visit"]);
@@ -543,6 +571,16 @@ exports.handler = async (event)=>{
             asgRep=u.rep_name||u.name||null; }
         }
       } else { asgEmail=me.email||null; asgRep=me.rep_name||null; }
+      /* Departure (Angelo, 2026-10-30): a route's arrival times start from an explicit departure time;
+         a one-way route (no home base to leave from) also names its time zone. */
+      // A round trip leaves from a home base (the route's own, or the rep's default) — its zone is that place's.
+      const isRound=b.round_trip!==false;
+      const depTime=HHMM.test(String(b.depart_time||"").trim())?String(b.depart_time).trim():null;
+      const depTz=DEPART_TZS.includes(String(b.depart_tz||""))?String(b.depart_tz):null;
+      if(!isRound && (!depTime||!depTz)) return json(422,{error:"departure_required",
+        message:"A one-way route needs its departure time and time zone — set both before saving."});
+      const schema=await routeSchema();
+      if(!isRound && !schema) return json(503,{error:"schema_update_needed",message:"Saving a one-way route needs the route update (sr_route_integrity.sql) — ask the President."});
       const row={
         owner_email:me.email||null, rep_name:me.rep_name||null, name,
         scheduled_date:(b.scheduled_date&&String(b.scheduled_date).trim())||null,
@@ -552,10 +590,11 @@ exports.handler = async (event)=>{
         geometry:b.geometry||null, notes:(b.notes!=null?String(b.notes):null),
         updated_at:new Date().toISOString(),
       };
+      if(schema){ row.depart_time=depTime; row.depart_tz=isRound?null:depTz; }
       if(asgEmail){ row.assigned_to_email=asgEmail; row.assigned_to_rep=asgRep;
         row.assigned_at=new Date().toISOString(); row.assigned_by=me.email||me.name||null; }
       if(b.id){
-        const cur=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=owner_email,assigned_to_email`).catch(()=>[]);
+        const cur=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=owner_email,assigned_to_email,stops`).catch(()=>[]);
         const own=cur&&cur[0]; if(!own) return json(404,{error:"route not found"});
         if(!canManageRoute(me,own)) return json(403,{error:canViewRoute(me,own)
           ? "This route is assigned to you but owned by whoever planned it — ask them to change it."
@@ -569,6 +608,20 @@ exports.handler = async (event)=>{
            sent) moves it; ownership never moves on a save. */
         if(!isBoss(me) && own.assigned_to_email){ delete row.assigned_to_email; delete row.assigned_to_rep; delete row.assigned_at; delete row.assigned_by; }
         if(own.owner_email){ delete row.owner_email; delete row.rep_name; }
+        /* A stop whose dealer has a visit on this route is never dropped (the visit would be
+           stranded). Reordering, adding stops and changing times are fine. */
+        if(canManageRoute(me,own)){
+          const keep=new Set(row.stops.map(x=>String((x&&x.dealer_id)||"")).filter(Boolean));
+          const gone=(Array.isArray(own.stops)?own.stops:[]).filter(x=>x&&x.dealer_id&&!keep.has(String(x.dealer_id)));
+          if(gone.length){
+            let vr; try{ vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(b.id)}&dealer_id=in.(${gone.map(x=>encodeURIComponent(String(x.dealer_id))).join(",")})&select=dealer_id`); }
+            catch(e){ return json(503,{error:"Couldn't check this route's visits — nothing was saved."}); }
+            const hit=new Set((vr||[]).map(x=>String(x.dealer_id)));
+            const names=gone.filter(x=>hit.has(String(x.dealer_id))).map(x=>x.name||x.dealer_id);
+            if(names.length) return json(409,{error:"stop_has_visit",stops:names,
+              message:`These stops already have a visit on this route and can't be removed: ${names.join(", ")}. Keep them, or archive this route and plan a new one.`});
+          }
+        }
         await sbSend("PATCH",`rep_routes?id=eq.${encodeURIComponent(b.id)}`,row,{Prefer:"return=minimal"});
         return json(200,{ok:true,id:b.id});
       }
@@ -659,6 +712,8 @@ exports.handler = async (event)=>{
       // My Sales Workspace: the President's OWN routes only — assigned to him, or built by him for
       // nobody else (a route he planned for Greg is Greg's day, not his).
       const workspace=SC.workspaceMine(event, me);
+      const schema=await routeSchema().catch(()=>false);
+      if(schema){ path=path.replace("assigned_to_rep&","assigned_to_rep,archived_at,depart_time,depart_tz&"); if(!b.include_archived) path+="&archived_at=is.null"; }
       if(!isBoss(me) || workspace) path+="&"+mineFilter(me);
       else if(b.assigned_to_email){ path+=`&assigned_to_email=eq.${encodeURIComponent(String(b.assigned_to_email).toLowerCase())}`; }
       let rows=await sbGet(path).catch(()=>[]);
@@ -671,11 +726,12 @@ exports.handler = async (event)=>{
       const routes=(rows||[]).map(r=>({id:r.id,name:r.name,scheduled_date:r.scheduled_date,stops_count:(r.stops||[]).length,
         visited:doneBy[r.id]||0, distance_m:r.distance_m,duration_s:r.duration_s,round_trip:r.round_trip,updated_at:r.updated_at,
         assigned_to_rep:r.assigned_to_rep||null, assigned_to_email:r.assigned_to_email||null,
+        archived_at:r.archived_at||null, depart_time:r.depart_time||null, depart_tz:r.depart_tz||null,
         planned_by:(r.assigned_to_email&&!emailEq(r.assigned_to_email,r.owner_email))?(r.rep_name||r.owner_email||"the office"):null,
         mine:emailEq(r.assigned_to_email,me.email)||emailEq(r.owner_email,me.email),
         can_manage:canManageRoute(me,r),
         when:r.scheduled_date?(r.scheduled_date===today?"today":(r.scheduled_date>today?"upcoming":"past")):"saved"}));
-      return json(200,{ok:true,routes,workspace,me:{email:me.email||"",name:me.name||"",rep_name:me.rep_name||"",role:me.role,
+      return json(200,{ok:true,routes,workspace,route_schema:!!schema,me:{email:me.email||"",name:me.name||"",rep_name:me.rep_name||"",role:me.role,
         home_base:me.home_base||null}});
     }
     if(b.action==="get_route"){
@@ -692,8 +748,27 @@ exports.handler = async (event)=>{
       if(!canManageRoute(me,r)) return json(403,{error:canViewRoute(me,r)
         ? "This route was planned for you by the office — it can't be deleted from here."
         : "not your route"});
+      /* Never delete a route that holds a visit record (Angelo, 2026-10-30): the visits would lose
+         their route and every later save on them would be refused. Archive it instead. */
+      let vr; try{ vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(b.id)}&select=id&limit=1`); }
+      catch(e){ return json(503,{error:"Couldn't check this route's visits — nothing was deleted."}); }
+      if(vr&&vr.length) return json(409,{error:"route_has_visits",can_archive:true,
+        message:"This route has visit records, so it can't be deleted. Archive it instead — its visits stay exactly as they are."});
       await sbSend("DELETE",`rep_routes?id=eq.${encodeURIComponent(b.id)}`,null,{Prefer:"return=minimal"});
       return json(200,{ok:true});
+    }
+    // Archive / un-archive: hidden from the route lists, kept whole (stops, visits, calendar).
+    if(b.action==="archive_route"){
+      if(!b.id) return json(400,{error:"id required"});
+      if(!(await routeSchema())) return json(503,{error:"schema_update_needed",message:"Archiving needs the route update (sr_route_integrity.sql) — ask the President."});
+      const rows=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=owner_email,assigned_to_email,archived_at`).catch(()=>null);
+      if(rows===null) return json(503,{error:"Couldn't read the route — try again."});
+      const r=rows[0]; if(!r) return json(404,{error:"route not found"});
+      if(!canManageRoute(me,r)) return json(403,{error:"not your route"});
+      const on=b.archived!==false;
+      await sbSend("PATCH",`rep_routes?id=eq.${encodeURIComponent(b.id)}`,
+        on?{archived_at:new Date().toISOString(),archived_by:me.email||me.name||null}:{archived_at:null,archived_by:null},{Prefer:"return=minimal"});
+      return json(200,{ok:true,archived:on});
     }
 
     /* DEALER SCOPE FOR EVERY DEALER ACTION (Phase 0).
@@ -718,7 +793,6 @@ exports.handler = async (event)=>{
       if(ex===null) return json(503,{error:"Couldn't check the dealer right now — try again."});
       if(!ex) return json(404,{error:"Dealer not found."});
     }
-
     // ---------- Business-case trip packet: per-stop history, contacts, opportunities ----------
     if(b.action==="business_case"){
       const ids=[...new Set((Array.isArray(b.dealer_ids)?b.dealer_ids:[]).filter(Boolean))];
@@ -1039,8 +1113,11 @@ exports.handler = async (event)=>{
     // ---------- Visited log ----------
     if(b.action==="log_visit"){
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
-      const ins=await sbSend("POST","dealer_visits",{dealer_id:b.dealer_id,rep_name:me.rep_name||null,owner_email:me.email||null,visited_at:new Date().toISOString(),notes:(b.notes!=null?String(b.notes):null)},{Prefer:"return=representation"});
-      return json(200,{ok:true,visited_at:(ins&&ins[0]&&ins[0].visited_at)||new Date().toISOString()});
+      const notesL=(b.notes!=null?String(b.notes):null);
+      const idL=visitIdFor(["log_visit",String(me.email||"").toLowerCase(),String(b.dealer_id),notesL,chicagoDay()]);
+      const ins=await sbSend("POST","dealer_visits?on_conflict=id",{id:idL,dealer_id:b.dealer_id,rep_name:me.rep_name||null,owner_email:me.email||null,visited_at:new Date().toISOString(),notes:notesL},{Prefer:"resolution=ignore-duplicates,return=representation"});
+      if(!(ins&&ins[0])) return json(200,{ok:true,already:true});
+      return json(200,{ok:true,visited_at:ins[0].visited_at||new Date().toISOString()});
     }
 
     // ---------- Editable app settings (e.g. the dealer-handout news) ----------
@@ -1196,6 +1273,8 @@ exports.handler = async (event)=>{
           visit: v?{id:v.id||null,status:v.status,checkin_at:v.checkin_at,completed_at:v.completed_at,ended_at:v.ended_at||null,
             duration_min:(v.duration_min!=null?v.duration_min:null),approved_at:v.approved_at||null,
             followup_status:v.followup_status||null,has_suggestion:!!v.ai_suggested_at,
+            /* whose visit this is — another rep's visit is shown read only (attribution guard) */
+            ...(v.rep_email&&!emailEq(v.rep_email,me.email)?{by_other:true,rep_name:v.rep_name||v.rep_email}:{}),
             ...(v.visit_key?{visit_key:v.visit_key}:{})}:null }; });
     }
     if(b.action==="route_day" && !b.route_id && b.dealer_id){
@@ -1239,7 +1318,7 @@ exports.handler = async (event)=>{
       if(!route) return json(200,{ok:true,route:null,stops:[]});
       const stops=Array.isArray(route.stops)?route.stops:[];
       let vmap={};
-      try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=id,dealer_id,status,checkin_at,completed_at,ended_at,duration_min,approved_at,followup_status,ai_suggested_at`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }
+      try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=id,dealer_id,status,checkin_at,completed_at,ended_at,duration_min,approved_at,followup_status,ai_suggested_at,rep_email,rep_name`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }
       catch(e){ try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=dealer_id,status,checkin_at,completed_at`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }catch(_){} }
       const outStops=await stopDetails(stops,vmap);
       const hb=resolveHomeBase(route,me);
@@ -1248,6 +1327,7 @@ exports.handler = async (event)=>{
           home_base:hb, home_base_source:hb?hb.source:null,
           needs_home_base:!hb,
           round_trip:route.round_trip,distance_m:route.distance_m,duration_s:route.duration_s,geometry:route.geometry,
+          depart_time:route.depart_time||null, depart_tz:route.depart_tz||null, archived_at:route.archived_at||null,
           assigned_to_rep:route.assigned_to_rep||null, assigned_to_email:route.assigned_to_email||null,
           planned_by:(route.assigned_to_email&&!emailEq(route.assigned_to_email,route.owner_email))
             ?(route.rep_name||route.owner_email||"the office"):null,
@@ -1265,6 +1345,25 @@ exports.handler = async (event)=>{
            handout exclusions). A replay changes nothing.
        The map page's one-tap log_visit / save_visit (below) are separate, older, online-only
        actions with no outbox; they are unchanged. */
+    /* A VISIT STAYS WITH THE REP WHO MADE IT (Angelo, 2026-10-30). Checked AFTER the caller has been
+       shown to reach the route / report (an outsider still gets the action's own 403/404, never another
+       rep's name): when the route-stop report — or the report named by id — already names another rep,
+       the write is refused. Reassigning a route mid-day, or management working a rep's stop, used to
+       upsert the row with the caller's email and overwrite that rep's report, notes, contacts,
+       follow-ups and email. Reading is unchanged. A read failure refuses (503). */
+    const ATTRIBUTED_WRITES=new Set(["visit_checkin","visit_report_save","visit_end","visit_analyze","visit_approve","visit_followup_set","visit_email_save"]);
+    if(ATTRIBUTED_WRITES.has(b.action) && b.dealer_id){
+      const rid0=String(b.route_id||"").trim(), did0=String(b.dealer_id).trim();
+      let v=null;
+      if(b.report_id){ const x=await reportById(String(b.report_id),did0); if(x.ok) v=x.report; }
+      else if(rid0){ const chk=await routeStopCheck(rid0,did0);
+        if(chk.ok){ let rows; try{ rows=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(rid0)}&dealer_id=eq.${encodeURIComponent(did0)}&select=id,rep_email,rep_name&limit=1`); }
+          catch(e){ return json(503,{error:"Couldn't check who made this visit — try again."}); }
+          v=rows&&rows[0]; } }
+      if(v && v.rep_email && !emailEq(v.rep_email,me.email))
+        return json(409,{error:"visit_belongs_to_other_rep",rep_name:v.rep_name||v.rep_email,
+          message:`This visit was made by ${v.rep_name||v.rep_email}. It stays theirs — you can view it, not change it.`});
+    }
     if(b.action==="visit_checkin"){
       const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
       if(!did) return json(400,{error:"dealer_id required"});
@@ -1830,7 +1929,15 @@ exports.handler = async (event)=>{
       const d=(dr&&dr[0])||{};
       const st=await P.getState(); const env=P.envFor(st.mode,d.is_test);
       const repName=me.name||me.rep_name||"HCPS rep";
-      try{ await sbSend("POST","dealer_visits",{dealer_id,rep_name:me.rep_name||null,owner_email:me.email||null,visited_at:new Date().toISOString(),notes:summary,details,env},{Prefer:"return=minimal"}); }catch(e){}
+      /* The claim: this exact visit (rep + dealer + details + Chicago day) is ONE dealer_visits row.
+         A double tap, a retried request or saving the same notes again finds the row taken and
+         writes nothing more — no second note, timeline row, task or deal. A failed claim saves
+         nothing at all. */
+      const idV=visitIdFor(["save_visit",String(me.email||"").toLowerCase(),String(dealer_id),summary,canonJ(details),chicagoDay()]);
+      let claim;
+      try{ claim=await sbSend("POST","dealer_visits?on_conflict=id",{id:idV,dealer_id,rep_name:me.rep_name||null,owner_email:me.email||null,visited_at:new Date().toISOString(),notes:summary,details,env},{Prefer:"resolution=ignore-duplicates,return=representation"}); }
+      catch(e){ return json(503,{error:"Couldn't save the visit — nothing was saved. Try again."}); }
+      if(!(claim&&claim[0])) return json(200,{ok:true,already:true,tasks:0,opportunities:0,message:"Already saved — this visit was logged once."});
       // Same gap as visit_report_save had: this path also never reached Dealer 360.
       await visitToCrm(dealer_id, details, summary, repName, me.email, new Date().toISOString(), null);
       // follow-up items -> tasks; order-expected & next-visit -> tasks

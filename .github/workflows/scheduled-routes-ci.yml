@@ -18,6 +18,7 @@ on:
       - "netlify/functions/ai-email-api.js"
       - "netlify/functions/email-sync-api.js"
       - "test/sr-*.js"
+      - "supabase/sr_route_integrity.sql"
       - "test/routeclock*.js"
       - "test/recipients*.js"
       - "test/phase0-mock.js"
@@ -62,4 +63,5 @@ jobs:
           for m in keep stale; do SR_MUTANT=$m node test/sr-review.qa.js && { echo "mutant survived: $m"; exit 1; } || true; done
           node test/sr-territory.qa.js
           node test/sr-planner.qa.js
+          node test/sr-consistency.qa.js
           node test/phase2-ui.qa.js

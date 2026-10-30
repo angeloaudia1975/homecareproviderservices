@@ -90,6 +90,15 @@ const sug = who => ({ meeting_summary: 'AI summary for ' + who, products_discuss
     assert.deepStrictEqual(at, ['Dana B']);
     slowA = 0;
   });
+  await R.step('another rep\'s visit on a stop is shown read only, with their name', async () => {
+    const v = w.db.dealer_visit_reports.find(r => r.id === 'vr-b'); v.rep_email = 'lori@hcps.us'; v.rep_name = 'Lori Hunt';
+    await p.reload(); await p.waitForSelector('#stop_1');
+    const card = await p.textContent('#stop_1');
+    assert.ok(/by Lori Hunt/.test(card), card.slice(0, 200));
+    assert.strictEqual(await p.$$eval('#stop_1 button', bs => bs.filter(b => /Review summary|Start visit|End visit/.test(b.textContent)).length), 0, 'a write button is offered on another rep\'s visit');
+    await p.click('#stop_1 .sh');
+    assert.ok(/It stays theirs/.test(await p.textContent('#body_1')));
+  });
   await R.step('no page errors, no dialogs, nothing emailed', async () => { assert.deepStrictEqual(errors, []); assert.strictEqual(w.outbound.filter(x => x.kind === 'graph' || x.kind === 'resend').length, 0); });
   srv.close(); await browser.close();
   R.done('sr-review' + (process.env.SR_MUTANT ? ' (MUTANT ' + process.env.SR_MUTANT + ')' : ''));

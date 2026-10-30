@@ -3733,13 +3733,30 @@ direct-to-main path). Rules it established:
   what is no longer wanted (never delete-all-then-insert); unknown states refused.
 - Tests: `test/sr-*.js` (harness `test/sr-harness.js`), CI `.github/workflows/scheduled-routes-ci.yml` (with mutants); the
   editor's own suite is `test/email-editor.qa.js`. A heads-up with an after-hours time shows the warning in the editor.
-- **Open, needs Angelo's decision:** (a) removing a stop / deleting a route that already has a visit report strands that
-  visit's later saves (refused, quarantined in the outbox) — block it, or let a visit report keep its own route row;
-  (b) reassigning a route mid-day lets the new rep overwrite the previous rep's visit report on the same stop — refuse when
-  `rep_email` differs, or keep the first rep's; (c) the map "Log visit" (`save_visit`) still has no server-side replay
-  protection (the page now sends one save per set of notes); (d) a one-way route (no round trip) has no saved start time —
-  the phone uses the rep's default depart time or 8:00; (e) the 7 AM – 7 PM working day is a default — change it if reps
-  call on dealers outside it.
+- **Data-integrity decisions (Angelo, 2026-10-30 15:22 CT — RULES; PR #68):**
+  (1) **Never delete or drop what holds a visit.** `delete_route` refuses (409 `route_has_visits`) while any
+  `dealer_visit_reports` row names the route — the route is ARCHIVED instead (`archive_route`, owner/President;
+  `archived_at`/`archived_by`; hidden from route lists unless `include_archived`; opening it still shows every visit;
+  restore = `archived:false`). `save_route` refuses (409 `stop_has_visit`, names the stops) to drop a stop whose dealer
+  has a visit on that route; reordering / adding stops / other edits save. A read failure refuses (503), never deletes.
+  (2) **A visit belongs to the rep who made it.** Every visit write (check-in, report save, end, analyze, approve,
+  follow-up status, follow-up email) on a route stop — or on a report named by id — is refused (409
+  `visit_belongs_to_other_rep`) when that report names another rep, management included; reassigning a route moves the
+  plan only. The field app shows such a stop "by <rep>", read only (route_day `visit.by_other`). Reading is unchanged.
+  (3) **7 AM – 7 PM is a WARNING range** for questionable estimates (flag + no time in the heads-up), never a ban on
+  early/late visits.
+  (4) **No assumed departure.** Arrival times start from an explicit departure: `rep_routes.depart_time` (planner
+  start time, saved on every route) or the route home base's `depart_time`; zone = the home base's on a round trip, the
+  saved `depart_tz` (America/Chicago | America/New_York) on a one-way route. `save_route` refuses a one-way route
+  without both (422 `departure_required`); the planner shows a time-zone picker for one-way routes and refuses to save
+  without it. A route with no explicit departure shows "No departure set" and no time in any heads-up — the old 8:00 /
+  first-stop-zone fallback is gone. (5) **Visit logging is idempotent on the server.** `save_visit` / `log_visit`
+  derive the `dealer_visits` id from rep + dealer + exact details + Chicago day and insert-or-ignore on it: a repeat
+  answers `already:true` and writes no second visit, note, timeline row, task or deal; a failed claim saves nothing.
+  Schema: `supabase/sr_route_integrity.sql` (additive: archived_at, archived_by, depart_time, depart_tz + CHECKs; RLS /
+  grants unchanged) — Angelo runs it; until then `archive_route` and one-way saves answer 503 `schema_update_needed`
+  (list_routes reports `route_schema`). Tests: sr-routes-api (13), sr-eta (16 + 9 mutants), sr-consistency (planner =
+  field app = heads-up, two browser zones), sr-review (other rep read only), sr-planner.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.

@@ -72,6 +72,20 @@ function run(srcClock, srcPage, srcApi) {
       eq(R.fmtAbs(it[0].arriveAbs, it[0].tz).replace(/ C[DS]T$/, ''), '9:00 AM', d);
     }
   });
+  const departureOf = new Function('RouteClock', lift(srcPage, 'homeTz') + lift(srcPage, 'departureOf') + '; return departureOf;')(R);
+  t('departure: round trip uses its saved time and the HOME BASE zone', () => {
+    eq(departureOf({ depart_time: '09:15', home_base: HOME }, true), { ok: true, time: '09:15', tz: 'America/Chicago' });
+    eq(departureOf({ home_base: HOME }, true), { ok: true, time: '09:00', tz: 'America/Chicago' }, 'home base time');
+  });
+  t('departure: nothing is assumed — no time → no arrival times (never 8:00)', () => {
+    eq(departureOf({ home_base: { lat: 36.5, lng: -86.6, address: 'x, TN 37048' } }, true), { ok: false, why: 'no_time' });
+    eq(departureOf({ depart_time: '8am', home_base: { lat: 36.5, lng: -86.6 } }, true), { ok: false, why: 'no_time' });
+  });
+  t('departure: a one-way route needs its saved zone; the first stop is never guessed', () => {
+    eq(departureOf({ depart_time: '07:30', round_trip: false }, false), { ok: false, why: 'no_zone' });
+    eq(departureOf({ depart_time: '07:30', depart_tz: 'Mars/Base' }, false), { ok: false, why: 'no_zone' });
+    eq(departureOf({ depart_time: '07:30', depart_tz: 'America/New_York' }, false), { ok: true, time: '07:30', tz: 'America/New_York' });
+  });
   t('server: the heads-up refuses 1:21 AM EST and says why', () => { const w = []; eq(previsitEta('1:21 AM EST', w), ''); if (!/outside business hours/.test(w[0] || '')) throw new Error(JSON.stringify(w)); });
   t('server: normal times pass through, cleaned', () => { eq(previsitEta('12:21 PM EST', []), '12:21 PM EST'); eq(previsitEta(' 9:05  am ', []), '9:05 AM'); eq(previsitEta('7:00 PM CST', []), '7:00 PM CST'); });
   t('server: 7:01 PM, 6:59 AM, 12:00 AM refused; garbage refused; empty is just empty', () => {
@@ -91,6 +105,9 @@ if (process.env.MUTANTS) {
   const M = [
     ['c', 'const firstTz = o.startTz || tzForStop', 'const firstTz = tzForStop'],
     ['p', 'return RouteClock.tzForStop(st, isFinite(hb.lng)?Number(hb.lng):null);', 'return undefined;'],
+    ['p', 'if(!time) return {ok:false,why:"no_time"};', ''],
+    ['p', 'if(!tz) return {ok:false,why:"no_zone"};', ''],
+    ['p', ':(["America/Chicago","America/New_York"].includes(r&&r.depart_tz)?r.depart_tz:null);', ':(r&&r.depart_tz||"America/Chicago");'],
     ['c', 'return m < a || m > b;', 'return false;'],
     ['c', 'return m < a || m > b;', 'return m < a;'],
     ['a', 'if(mins<7*60 || mins>19*60)', 'if(mins<0)'],

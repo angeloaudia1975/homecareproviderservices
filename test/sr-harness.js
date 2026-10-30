@@ -52,7 +52,7 @@ function serve(w, opts) {
       if (name === 'routes-api' && body.action === 'directions') {
         const coords = body.coords || [];
         const legs = opts.legs ? opts.legs(coords) : coords.slice(1).map(() => ({ duration_s: 1800 }));
-        res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: true, legs, geometry: [], distance_m: 0, duration_s: 0 })); return;
+        res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: true, legs, geometry: coords, distance_m: 0, duration_s: legs.reduce((a, l) => a + l.duration_s, 0) })); return;
       }
       const file = path.join(__dirname, '..', 'netlify', 'functions', name + '.js');
       if (!fs.existsSync(file)) { res.writeHead(404); res.end('{}'); return; }
