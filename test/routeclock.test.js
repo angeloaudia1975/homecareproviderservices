@@ -37,6 +37,14 @@ function run(src){
   const leg = m => ({ duration_s: m * 60 });
   const hhmm = (it) => R.fmtAbs(it.arriveAbs, it.tz).replace(/\s[A-Z]{3}$/, '');
 
+  t('a round trip reads its departure in the home base\'s zone, not the first stop\'s (Darrell: an hour early)', () => {
+    // Leave Cottontown, TN (Central) at 08:00, drive 3 h to an Eastern Kentucky stop.
+    const stops = [{ state:'KY', lng:-84.50, visit_min:30 }];
+    const it = R.routeItinerary({ stops, legs:[leg(180)], leadingLeg:true, startDate:'2026-11-03', startMinutes:8*60, startTz:'America/Chicago' });
+    eq(it[0].tz, 'America/New_York', 'stop zone');
+    eq(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit'}).format(new Date(it[0].arriveAbs)), '12:00 PM', 'arrival = 08:00 CST + 3 h = 12:00 EST');
+  });
+
   /* ---- THE ONE THAT MAILED DEALERS 3 AM ---------------------------------- */
   t('an overnight ends the day and the next stop starts next morning', () => {
     const stops = [

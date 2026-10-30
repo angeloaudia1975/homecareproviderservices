@@ -1,0 +1,68 @@
+name: Scheduled Routes & Territory checks
+# The email editor itself is covered by scheduled-routes-email.yml (test/email-editor.qa.js, PR #67).
+# Regression suites for the field app (scheduled-routes.html), the route planner (map.html), the
+# shared route clock, routes-api and Territory Lines. Synthetic data only; every function call is
+# answered by the real handler against the in-memory fake database (test/phase0-mock.js) — nothing
+# reaches Supabase, Graph, Resend or OpenRouteService.
+on:
+  pull_request:
+    paths:
+      - "src/admin/scheduled-routes.html"
+      - "src/admin/map.html"
+      - "src/admin/route-clock.js"
+      - "src/admin/territory.html"
+      - "src/admin/dealer.html"
+      - "src/admin/scheduling-console.html"
+      - "netlify/functions/routes-api.js"
+      - "netlify/functions/territory-api.js"
+      - "netlify/functions/ai-email-api.js"
+      - "netlify/functions/email-sync-api.js"
+      - "test/sr-*.js"
+      - "supabase/sr_route_integrity.sql"
+      - "test/routeclock*.js"
+      - "test/recipients*.js"
+      - "test/phase0-mock.js"
+      - ".github/workflows/scheduled-routes-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  routes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax
+        run: |
+          node --check src/admin/route-clock.js
+          node --check netlify/functions/routes-api.js
+          node --check netlify/functions/territory-api.js
+      - name: Unit suites (with mutants)
+        run: |
+          MUTANTS=1 node test/sr-eta.test.js
+          node test/sr-routes-api.test.js
+          node test/routeclock.test.js
+          node test/routeclock.mutants.js
+          node test/recipients.test.js
+          node test/phase0-outbox.test.js
+          node test/phase0-visits.test.js
+          node test/phase1-visits.test.js
+          node test/phase2-adhoc.test.js
+      - name: Install browser test tools (not site dependencies)
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0 leaflet@1.9.4 leaflet.markercluster@1.5.3
+          npx playwright install --with-deps chromium
+      - name: Browser suites
+        run: |
+          node test/sr-eta.qa.js
+          node test/sr-review.qa.js
+          for m in keep stale; do SR_MUTANT=$m node test/sr-review.qa.js && { echo "mutant survived: $m"; exit 1; } || true; done
+          node test/sr-territory.qa.js
+          node test/sr-planner.qa.js
+          node test/sr-consistency.qa.js
+          node test/phase2-ui.qa.js

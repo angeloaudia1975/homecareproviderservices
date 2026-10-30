@@ -3710,6 +3710,83 @@ source is the committed `.claude/settings.json` (shared project settings; person
   Verified with a fresh headless process reading project settings only (`claude -p --setting-sources project
   --permission-mode default`), before vs after.
 
+## 22. Scheduled Routes, route planner & Territory — field reliability (2026-10-30, PR review requested by Angelo)
+Angelo asked for this batch to go through a PR with independent review and required CI before deployment (not the §7
+direct-to-main path). Rules it established:
+- **The email editor** (pre-visit heads-up + follow-up) follows §16 "Email editors close only on an explicit action"
+  (PR #67, merged first the same day). Other modals that may close on a backdrop tap (dealer.html email viewer + its
+  generic modal, scheduling-console request dialog) close only when the press AND the release are on the backdrop — never
+  `if(e.target===backdrop)` on `click` alone, which a text selection released outside the box triggers.
+- **The visit review keeps the rep's edits** on the phone (`rev_<visit>`) through Close / "review later" / reload until
+  Approve; reopening restores them without a new AI call. An AI answer is applied only to the review that asked for it.
+- **Arrival times:** a round trip's depart time is read in the HOME BASE's zone (`RouteClock.routeItinerary startTz`,
+  `homeTz()`), as the planner always did — reading it in the first stop's zone made every ETA an hour early (live
+  "Darrell Travel": 11:21 AM EST shown, 12:21 PM EST right). A time outside 7:00 AM – 7:00 PM in the stop's zone
+  (`RouteClock.outsideHours`) is flagged on the card + route banner and is NEVER put in a heads-up — left out with a
+  warning on the phone, refused again by `routes-api previsitEta`. The clock still never invents a night: a missing
+  🌙 overnight is fixed in the planner. ETAs repaint after any card re-render; .ics times are UTC (`Z`).
+- **Planner saves:** each stop is saved with the visit length it was timed with (no blank = 30 min on the phone); a Save
+  updates the browser draft's route id (no duplicate routes); deleting the open route detaches the plan; a route opened
+  with no start point is re-saved without one and never overwrites the planner's own home base; "notify" uses the stop's
+  own date; only the newest directions answer paints; one save per logged visit.
+- **Route ownership never moves on a save.** `save_route` PATCH keeps `owner_email`/`rep_name`; a rep's re-save keeps an
+  existing assignment; only the President's explicit `assigned_to_email` moves it. In My Sales Workspace, date-only
+  `route_day` is the President's own route.
+- **Territory Lines saves are confirmed, never assumed:** the tick changes only after the server says ok, a failure puts it
+  back and says "Not saved", 401 → sign-in; "Clear" asks in the page first; `set_state` upserts first and then deletes
+  what is no longer wanted (never delete-all-then-insert); unknown states refused.
+- Tests: `test/sr-*.js` (harness `test/sr-harness.js`), CI `.github/workflows/scheduled-routes-ci.yml` (with mutants); the
+  editor's own suite is `test/email-editor.qa.js`. A heads-up with an after-hours time shows the warning in the editor.
+- **Data-integrity decisions (Angelo, 2026-10-30 15:22 CT — RULES; PR #68):**
+  (1) **Never delete or drop what holds a visit.** `delete_route` refuses (409 `route_has_visits`) while any
+  `dealer_visit_reports` row names the route — the route is ARCHIVED instead (`archive_route`, owner/President;
+  `archived_at`/`archived_by`; hidden from route lists unless `include_archived`; opening it still shows every visit;
+  restore = `archived:false`). `save_route` refuses (409 `stop_has_visit`, names the stops) to drop a stop whose dealer
+  has a visit on that route; reordering / adding stops / other edits save. A read failure refuses (503), never deletes.
+  (2) **A visit belongs to the rep who made it.** Every visit write (check-in, report save, end, analyze, approve,
+  follow-up status, follow-up email) on a route stop — or on a report named by id — is refused (409
+  `visit_belongs_to_other_rep`) when that report names another rep, management included; reassigning a route moves the
+  plan only. The field app shows such a stop "by <rep>", read only (route_day `visit.by_other`). Reading is unchanged.
+  The route stop's own report is ALWAYS checked when a route is named (a report_id never bypasses it). The first write to
+  a stop CLAIMS it (insert-or-ignore of the bare row with the caller's name, then re-read): two reps starting it at once →
+  one wins, the other gets 409, never an overwrite. A request its handler refuses (bad status) claims nothing. A rep
+  whose route was reassigned after he visited a stop keeps working THAT visit (routeStopCheck `own_visit_only`) — he is
+  never stranded; every other stop of the route is the new rep's — `route_day` opens the route for him with ONLY the stops
+  he visited (`own_visits_only`), `list_routes` still lists it for him (marked), and the dealer-scope gate lets his OWN
+  report on that stop reach the dealer for the visit actions only, and only with that route named — a report_id alone
+  never opens a new visit, and a report_id must be that same route-stop report (nothing else of that dealer). Only a
+  REAL visit (checked in, ended or completed) counts as his — a bare claim keeps nothing open to him; the reassigned
+  route shows him no geometry, distance or start point. The planner leaves such routes out of its lists. A bare claim (planned,
+  no check-in, nothing written) untouched for 10 minutes passes to the rep now driving the stop (conditional PATCH on
+  the untouched row); a fresh claim or a real check-in never does. The planner's Log-visit form logs ONE visit: a
+  change made after saving is not applied, and the page says so. An empty claim (status planned, never checked in) does not count as a visit for
+  delete / stop-drop. An archived route is never "today's route" (field app by date, Command Center, Dealer 360 upcoming).
+  (3) **7 AM – 7 PM is a WARNING range** for questionable estimates (flag + no time in the heads-up), never a ban on
+  early/late visits.
+  (4) **No assumed departure.** Arrival times start from an explicit departure: `rep_routes.depart_time` (planner
+  start time, saved on every route) or the route home base's `depart_time`; zone = the home base's on a round trip, the
+  saved `depart_tz` (America/Chicago | America/New_York) on a one-way route. `save_route` refuses a one-way route
+  without both (422 `departure_required`); the planner shows a time-zone picker for one-way routes and refuses to save
+  without it. A route with no explicit departure shows "No departure set" and no time in any heads-up — the old 8:00 /
+  first-stop-zone fallback is gone. The planner's start time starts EMPTY (no 08:00 default): until a start time — and
+  on a route timed from its first stop, a zone — is chosen it shows "No departure set" and no arrival times, and Save is
+  refused. A route saved without a start point keeps its chosen zone. Reassigning a route keeps its departure time
+  (copied into the new start point, or onto the route when the start point is cleared). A route planned WITHOUT a start
+  point of its own but with a saved zone is timed from its first stop everywhere (`route_day timed_from_first_stop`) —
+  never from the viewing rep's own home, and never with that home's default time. Before the SQL runs, a save whose
+  departure only the new columns could hold answers 503 instead of dropping it. Known, accepted: the planner's
+  "next day starts" after a 🌙 overnight defaults to 08:00 (shown and editable on the stop); one-tap log = one per day. (5) **Visit logging is idempotent on the server.** `save_visit` / `log_visit`
+  derive the `dealer_visits` id from rep + dealer + exact details + Chicago day and insert-or-ignore on it: a repeat
+  answers `already:true` and writes no second visit, note, timeline row, task or deal; a failed claim saves nothing.
+  The planner sends a `request_key` per notes form. Every record a logged visit makes has a fixed id / origin key, so a
+  save that fails half-way answers 502 `save_incomplete` and the retry RESUMES it (fills only what is missing,
+  `resumed:true`) — nothing missing, nothing doubled. One-tap "log visit" = one per rep, dealer and Chicago day.
+  Schema: `supabase/sr_route_integrity.sql` (additive: archived_at, archived_by, depart_time, depart_tz + CHECKs; RLS /
+  grants unchanged) — Angelo runs it; until then `archive_route` and one-way saves answer 503 `schema_update_needed`
+  (list_routes reports `route_schema`; a "not installed" answer is re-checked after a minute, a read failure is a 503).
+  Tests: sr-routes-api (29), routeclock (+ mutants), sr-eta (16 + 9 mutants), sr-consistency (planner =
+  field app = heads-up, two browser zones), sr-review (other rep read only), sr-planner.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.

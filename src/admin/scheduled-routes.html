@@ -135,6 +135,10 @@ window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
 let TOKEN=HCPS.token(), ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 /* My Sales Workspace (President working his own book): say so, and offer the way back. */
 if(HCPS.workspace&&HCPS.workspace()){ $("#wsstrip").style.display=""; const fp=$("#fullportal"); if(fp) fp.style.display="none"; }
+/* "Full portal" is the Sales hub for management; a rep or Relations user was sent there and bounced
+   on to their own landing. Send them straight to it. */
+else { const fp=$("#fullportal"), role=String((ME&&ME.role)||"").toLowerCase();
+  if(fp && !["president","admin","owner"].includes(role)) fp.href=(ME&&ME.landing&&/^\/admin\//.test(ME.landing))?ME.landing:"/admin/rep-home.html"; }
 let ROUTES=null, DAY=null, HANDOUT={ordering_url:DealerHandout.ORDERING_URL,updates:DealerHandout.UPDATES.slice()};
 let VSTRUCT={}, VTX={}, REC={};
 function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
@@ -318,7 +322,7 @@ function renderList(){
       <div class="ord cal">${big?"🚗":"📅"}</div>
       <div class="mid"><div class="nm">${esc(r.name||"Route")}</div>
         <div class="sub">${esc(fmtDate(r.scheduled_date))} · ${n} stop${n===1?"":"s"}${drive}${miles}</div>
-        ${r.planned_by?`<div class="sub" style="color:#9db4d0">Planned for you by ${esc(r.planned_by)}</div>`:""}</div>
+        ${r.own_visits_only?`<div class="sub" style="color:#9db4d0">Reassigned — your visits on it only</div>`:(r.planned_by?`<div class="sub" style="color:#9db4d0">Planned for you by ${esc(r.planned_by)}</div>`:"")}</div>
       <div class="eta"><div class="t">${prog}</div><div class="l">visited</div></div>
     </div></div>`; };
   const phone=`<div class="phone">
@@ -532,17 +536,22 @@ function renderDay(){
   let h=`<div style="margin:0 0 10px"><button class="btn sm" onclick="showList()">‹ All routes</button> <a class="btn sm" href="/admin/command-center-rep.html">📋 Command Center</a></div>`;
   h+=`<div class="card"><div class="rsum"><span class="nm">${esc(r.name||"Route")}</span><span class="mt">${esc(fmtDate(r.scheduled_date))}</span></div>
     <div class="mt" style="margin:4px 0 10px;color:var(--gray)">${stops.length} stop${stops.length===1?"":"s"}${drive}${miles} · ${done}/${stops.length} visited</div>
-    ${r.planned_by?`<div class="mt" style="margin:-6px 0 10px;color:var(--gray)">Planned for you by ${esc(r.planned_by)}</div>`:""}
+    ${r.own_visits_only?`<div class="mt" style="margin:-6px 0 10px;color:var(--gray)">This route was reassigned to ${esc(r.assigned_to_rep||"another rep")}. Only the stops you visited are shown, so you can finish them.</div>`:(r.planned_by?`<div class="mt" style="margin:-6px 0 10px;color:var(--gray)">Planned for you by ${esc(r.planned_by)}</div>`:"")}
     ${r.needs_home_base?`<div class="mt" style="margin:-4px 0 10px;padding:9px 11px;border-radius:10px;background:#fff6ec;border:1px solid #f3d6ae;color:#8a5a08">
       <b>No starting point set.</b> Drive times below are between stops only.
       <button class="btn sm" style="margin-top:7px" onclick="showList()">Set my starting point</button></div>`:""}
     ${assignBarHtml(r)}
+    <div id="nodepart" class="mt" hidden style="margin:0 0 10px;padding:9px 11px;border-radius:10px;background:#fff6ec;border:1px solid #f3d6ae;color:#8a5a08"><b>No departure set.</b> <span></span></div>
+    <div id="offhours" class="mt" hidden style="margin:0 0 10px;padding:9px 11px;border-radius:10px;background:#fdecec;border:1px solid #f2c2c2;color:#8a1f1f"><b>Some arrival times fall outside business hours.</b> This usually means a stop that should end the day isn't marked 🌙 overnight in the route planner. Heads-up emails leave those times out.</div>
     <button class="btn sm" onclick="syncCalendar()">📆 Sync to Outlook</button>
     <button class="btn sm" onclick="addToCalendar()">⬇︎ .ics file</button></div>`;
   h+=stops.map((s,i)=>stopCard(s,i)).join("");
   $("#app").innerHTML=h;
+  paintEtas();
+  // A visit approved anywhere (another phone, Dealer 360) no longer needs its kept review here.
+  stops.forEach((s,i)=>{ if(statusOf(s)==="done") dropKeptReview(i); });
   // The stop you are at opens by itself, so the timer and the notes are one glance away.
-  stops.forEach((s,i)=>{ if(statusOf(s)==="here") openBody(i); });
+  stops.forEach((s,i)=>{ if(statusOf(s)==="here"&&!(s.visit&&s.visit.by_other)) openBody(i); });
   startTimers();
 }
 function stopCard(s,i){
@@ -555,14 +564,17 @@ function stopCard(s,i){
   const addr=[s.address,[s.city,s.state].filter(Boolean).join(", "),s.zip].filter(Boolean).join(" · ");
   const navQ=(isFinite(s.lat)&&isFinite(s.lng))?`${s.lat},${s.lng}`:encodeURIComponent([s.address,s.city,s.state,s.zip].filter(Boolean).join(", "));
   const navUrl=`https://www.google.com/maps/dir/?api=1&destination=${navQ}`;
-  const main = st==="plan" ? `<button class="btn go xl wide" onclick="checkIn(${i})">▶ Start visit</button>`
+  /* Another rep's visit on this stop stays theirs: shown with their name, opened read only. */
+  const other=!!v.by_other;
+  const main = other ? (v.approved_at?`<button class="btn wide" onclick="openSummary(${i})">View ${esc(v.rep_name||"their")}'s summary</button>`:`<div class="hint" style="padding:8px 0">Visit in progress by ${esc(v.rep_name||"another rep")} — it stays theirs.</div>`)
+    : st==="plan" ? `<button class="btn go xl wide" onclick="checkIn(${i})">▶ Start visit</button>`
     : st==="here" ? `<button class="btn pri wide" onclick="toggleBody(${i})">⏱ Visit in progress</button>`
     : st==="ended" ? `<button class="btn go xl wide" onclick="openReview(${i})">Review summary →</button>`
     : `<button class="btn wide" onclick="openSummary(${i})">View summary</button>`;
   return `<div class="stop ${cls}" id="stop_${i}">
     <div class="sh" onclick="toggleBody(${i})">
       <div class="ord">${i+1}</div>
-      <div class="mid"><div class="nm">${esc(s.name)} ${chip}</div>
+      <div class="mid"><div class="nm">${esc(s.name)} ${chip}${other?` <span class="chip">by ${esc(v.rep_name||"another rep")}</span>`:""}</div>
         ${addr?`<div class="sub addr">${esc(addr)}</div>`:(loc?`<div class="sub">${esc(loc)}</div>`:"")}
         <div class="sub">${s.contact_name?esc(s.contact_name):""}${s.contact_phone?`${s.contact_name?" · ":""}${esc(s.contact_phone)}`:""}${
           s.visit_min?` · ${esc(String(s.visit_min))} min visit`:""}${v.duration_min!=null&&st!=="plan"&&st!=="here"?` · on site ${esc(String(v.duration_min))} min`:""}</div></div>
@@ -582,6 +594,7 @@ function stopCard(s,i){
 function openBody(i){ const b=$("#body_"+i); if(!b) return; b.classList.add("open"); if(!b.dataset.loaded) loadStopBody(i); }
 function toggleBody(i){ const b=$("#body_"+i); if(!b) return; if(b.classList.contains("open")){ b.classList.remove("open"); return; } openBody(i); }
 function loadStopBody(i){
+  { const s0=DAY.stops[i], b0=$("#body_"+i); if(s0&&s0.visit&&s0.visit.by_other&&b0){ b0.dataset.loaded="1"; b0.innerHTML=`<div class="hint" style="padding:8px 2px">This visit was made by ${esc(s0.visit.rep_name||"another rep")}. It stays theirs — you can view it, not change it.</div>`; return; } }
   const s=DAY.stops[i], b=$("#body_"+i), st=statusOf(s); b.dataset.loaded="1";
   if(st==="here") return visitPanel(i);
   if(st==="ended"){ b.innerHTML=`<div class="hint">Visit ended${s.visit&&s.visit.duration_min!=null?` after ${esc(String(s.visit.duration_min))} min`:""}. Review the summary to save it.</div>
@@ -682,18 +695,62 @@ function fullSheet(title){
   wrap.innerHTML=`<div class="sheet full"><div class="sheethd"><b>${esc(title)}</b><button class="btn sm" onclick="closeReview()">Close</button></div><div id="rv_body"></div></div>`;
   document.body.appendChild(wrap); return wrap;
 }
-function closeReview(){ const w=document.getElementById("rvwrap"); if(w) w.remove(); REV=null; if(DAY) renderDay(); }
-async function openReview(i){
+/* THE REVIEW KEEPS WHAT THE REP CHANGED. Closing the review ("Close" / "Not now — review later")
+   used to throw away every edit — a rewritten summary, added attendees, follow-ups, deals — and
+   reopening asked the AI again from scratch. The edited review is now kept on this phone (per
+   visit) while it is open and when it closes, and reopening brings it back. Nothing reaches
+   Dealer 360 until Approve, exactly as before. */
+function reviewKeyFor(i){ const s=DAY&&DAY.stops&&DAY.stops[i]; return s?"rev_"+vkey(s):""; }
+function reviewToSug(c){
+  const base=(REV&&REV.sug)||emptySuggestion("");
+  const g=Object.assign({},base,c.summary);
+  g.attendees=c.participants.map(p=>({key:p.key,name:p.name,title:p.title,contact_id:p.contact_id,email:p.email||"",add_as_contact:p.add_as_contact}));
+  /* "Make it a task" unticked by the rep stays unticked (duplicate_of is what renders it unticked). */
+  const naOn=!!(($("#rv_na_on")||{}).checked);
+  g.suggested_next_action=Object.assign({},c.summary.suggested_next_action,
+    naOn?{}:{duplicate_of:((base.suggested_next_action||{}).duplicate_of)||"rep_unticked",dup_title:(base.suggested_next_action||{}).dup_title||""});
+  g.follow_ups=c.tasks.filter(t=>t.kind!=="next_action").map(t=>({key:t.key,title:t.title,due_date:t.due_date||"",priority:t.priority,from:"other"}));
+  g.opportunities=c.opportunities.map(o=>Object.assign({},o));
+  delete g.partial; delete g.checks;
+  return g;
+}
+let REV_KEEP_T=null;
+function keepReview(now){
+  if(REV_KEEP_T){ clearTimeout(REV_KEEP_T); REV_KEEP_T=null; }
+  const go=()=>{ if(!REV||REV.done||REV.summaryOnly||!$("#rv_sum")) return;
+    try{ obWrite(reviewKeyFor(REV.i),{sug:reviewToSug(collectReview()),manual:!!REV.manual,report_id:REV.report_id||null,contacts:REV.contacts||[],mfrs:REV.mfrs||[],at:new Date().toISOString()}); }catch(e){} };
+  if(now) go(); else REV_KEEP_T=setTimeout(go,400);
+}
+function dropKeptReview(i){ try{ localStorage.removeItem(obKey(reviewKeyFor(i))); }catch(e){} }
+function closeReview(){ keepReview(true); const w=document.getElementById("rvwrap"); if(w) w.remove(); REV=null; if(DAY) renderDay(); }
+/* Throwing the kept edits away takes a second tap, and needs a connection — offline it would only
+   swap the rep's work for an empty form. */
+function startReviewOver(btn){
+  if(!REV) return;
+  if(!navigator.onLine){ toast("Starting over needs a connection — your edits are kept."); return; }
+  if(btn&&!btn.dataset.armed){ btn.dataset.armed="1"; btn.textContent="Tap again to discard your edits"; btn.style.color="#b42323"; setTimeout(()=>{ if(btn.isConnected){ delete btn.dataset.armed; btn.textContent="Start over from a fresh AI summary"; btn.style.color=""; } },4000); return; }
+  const i=REV.i; dropKeptReview(i); REV=null; openReview(i,true); }
+async function openReview(i,fresh){
   const s=DAY.stops[i], k=vkey(s);
-  fullSheet("Visit summary · "+s.name);
+  const wrap=fullSheet("Visit summary · "+s.name);
+  wrap.addEventListener("input",()=>keepReview()); wrap.addEventListener("change",()=>keepReview());
   const notes=obRead("vnote_"+k)||"", tx=obRead("vtx_"+k)||"";
-  REV={i,manual:false,contacts:[],mfrs:[],report_id:null};
+  const mine=REV={i,manual:false,contacts:[],mfrs:[],report_id:null};
+  const kept=fresh?null:obRead(reviewKeyFor(i));
+  if(kept&&kept.sug){
+    Object.assign(REV,{sug:kept.sug,manual:!!kept.manual,report_id:kept.report_id||null,contacts:kept.contacts||[],mfrs:kept.mfrs||[],restored:true,
+      msg:"Your review edits are back. Nothing is saved to Dealer 360 until you approve."});
+    renderReview(); return;
+  }
   const body=$("#rv_body");
   if(!navigator.onLine){ REV.manual=true; REV.sug=emptySuggestion(notes||tx); REV.msg="You're offline — the AI summary needs a connection. Review by hand now, or come back to it with signal."; renderReview(); return; }
   body.innerHTML=`<div class="msg">✨ Summarizing your notes…<div class="hint" style="margin-top:6px">Suggestions only — nothing is saved until you approve.</div></div>`;
   let j=null;
   try{ j=await rapi(Object.assign({action:"visit_analyze",notes:notes||undefined,transcript:tx||undefined,local_date:todayStr()},vctx(s))); }catch(e){ j=null; }
-  if(!REV) return;
+  /* The answer belongs to the review that asked for it. Closed, or another stop opened meanwhile →
+     it is dropped: it used to fill the NEXT stop's review, and Approve then wrote this dealer's
+     attendees, follow-ups and deals onto that one. */
+  if(REV!==mine) return;
   if(j){ REV.contacts=j.contacts||[]; REV.mfrs=j.manufacturers||[]; REV.report_id=j.report_id||null; }
   if(j&&j.ok&&j.suggestion){ REV.sug=j.suggestion; if(j.suggestion.partial) partialNote(j.suggestion.partial); }
   else { REV.manual=true; REV.err=(j&&j.error)||"no_connection"; REV.sug=emptySuggestion(notes||tx);
@@ -721,12 +778,13 @@ function checksHtml(g){
   return `<div class="rv-checks" id="rv_checks"><b>⚠ Check before approving</b> — ${c.length===1?"this doesn't":"these don't"} line up across the AI's answers or with your notes:<ul>${c.map(x=>`<li>${esc(x.message)}</li>`).join("")}</ul></div>`;
 }
 function noteHtml(){
+  if(REV.restored&&REV.msg) return `<div class="rvnote ok">${esc(REV.msg)}<div style="margin-top:8px">${canRetryAi()?`<button class="btn go wide" id="rv_retry" onclick="tryAiAgain(this)">✨ Try AI again</button><div id="rv_aimsg" class="hint" style="margin:6px 0"></div>`:""}<button class="btn wide" onclick="startReviewOver(this)">Start over from a fresh AI summary</button></div></div>`;
   return REV.msg?`<div class="rvnote">${esc(REV.msg)}${canRetryAi()?`<div style="margin-top:8px"><button class="btn go wide" id="rv_retry" onclick="tryAiAgain(this)">✨ Try AI again</button><div id="rv_aimsg" class="hint" style="margin-top:6px"></div></div>`:""}</div>`
     :`<div class="rvnote ok">Suggested from your notes — edit anything, untick what's wrong. Nothing is saved until you approve.</div>`;
 }
 function reviewHint(item){ return item&&item.review?`<div class="rv-review">⚠ ${esc(item.review)}</div>`:""; }
 async function tryAiAgain(btn){
-  if(!REV) return; const s=DAY.stops[REV.i], k=vkey(s), m=$("#rv_aimsg");
+  if(!REV) return; const mine=REV, s=DAY.stops[REV.i], k=vkey(s), m=$("#rv_aimsg");
   if(!navigator.onLine){ if(m) m.textContent="Still offline — the AI needs a connection."; return; }
   const notes=obRead("vnote_"+k)||"", tx=obRead("vtx_"+k)||"";
   const before=collectReview(), fallback=emptySuggestion(notes||tx).meeting_summary;
@@ -736,7 +794,7 @@ async function tryAiAgain(btn){
   if(btn){ btn.disabled=true; btn.textContent="✨ Summarizing…"; } if(m) m.textContent="";
   let j=null; try{ j=await rapi({action:"visit_analyze",...vctx(s),notes:notes||undefined,transcript:tx||undefined,local_date:todayStr(),refresh:true,
     retry_parts:retryParts.length?retryParts:undefined}); }catch(e){ j=null; }
-  if(!REV) return;
+  if(REV!==mine) return;
   if(j){ REV.contacts=j.contacts||REV.contacts; REV.mfrs=j.manufacturers||REV.mfrs; REV.report_id=j.report_id||REV.report_id; }
   if(!(j&&j.ok&&j.suggestion)){
     REV.err=(j&&j.error)||"no_connection";
@@ -824,7 +882,7 @@ function renderReview(){
       <button class="btn wide" onclick="addOpp()">＋ Add an opportunity</button></div>
     <div class="rv-sec"><h4>Next action</h4>
       <label class="rv-chk"><input type="checkbox" id="rv_na_on"${na.text&&!na.duplicate_of?" checked":""}> Make it a task</label>
-      ${na.duplicate_of?`<div class="hint">Already a follow-up above${na.dup_title?` (“${esc(na.dup_title)}”)`:""} — left unticked so it isn't done twice.</div>`:""}
+      ${na.duplicate_of&&na.duplicate_of!=="rep_unticked"?`<div class="hint">Already a follow-up above${na.dup_title?` (“${esc(na.dup_title)}”)`:""} — left unticked so it isn't done twice.</div>`:""}
       <div id="rv_na_review">${reviewHint(na)}</div>
       <input class="in" id="rv_na" value="${esc(na.text||"")}" placeholder="e.g. Send pricing + literature"><input class="in" type="date" id="rv_na_d" value="${esc(na.due_date||"")}" style="margin-top:6px"></div>
     <button class="btn go xl wide" onclick="approveVisit()">✓ Approve &amp; save</button>
@@ -840,7 +898,7 @@ function attendeeCard(a){
     <div class="rv-top"><label class="rv-chk"><input type="checkbox" class="rv-on" checked></label>
       <div style="flex:1;min-width:0"><input class="in rv-name" value="${esc(a.name||"")}"><input class="in rv-title" value="${esc(a.title||"")}" placeholder="Title" style="margin-top:6px"></div></div>
     ${matched?`<div class="hint ok">✓ On file: ${esc(matched.name||a.name)}</div>`
-      :`<label class="rv-chk"><input type="checkbox" class="rv-new" checked> Add as a new Dealer 360 contact</label><input class="in rv-email" type="email" placeholder="Email (optional)" value="${esc(a.email||"")}">`}
+      :`<label class="rv-chk"><input type="checkbox" class="rv-new"${a.add_as_contact===false?"":" checked"}> Add as a new Dealer 360 contact</label><input class="in rv-email" type="email" placeholder="Email (optional)" value="${esc(a.email||"")}">`}
   </div>`;
 }
 function followCard(f,ai){
@@ -910,6 +968,7 @@ async function approveVisit(){
     notes:obRead("vnote_"+k)||undefined,transcript:obRead("vtx_"+k)||undefined,interest_slugs:(REV.sug&&REV.sug.interest_slugs)||[]},c);
   const res=await tryOrQueue(body); updateStatus();
   if(res.rejected){ if(btn){ btn.disabled=false; btn.textContent="✓ Approve & save"; } if(m){ m.style.color="#b42323"; m.textContent=res.error||"Couldn't save."; } return; }
+  REV.done=true; dropKeptReview(REV.i);
   const j=(res.j)||{}, now=new Date().toISOString();
   s.visit=Object.assign({},s.visit,{status:"completed",approved_at:now,completed_at:now,id:j.report_id||(s.visit&&s.visit.id)||REV.report_id||null,
     followup_status:j.followup_status||((c.tasks.length||c.opportunities.length)?"pending":"none")});
@@ -928,7 +987,7 @@ function finishVisit(){ const s=REV&&DAY.stops[REV.i]; if(s){ const k=vkey(s); o
 
 /* ---- After the visit: summary, follow-up status, email ---- */
 async function openSummary(i){
-  const s=DAY.stops[i]; fullSheet("Visit · "+s.name); REV={i,manual:false,contacts:[],mfrs:[]};
+  const s=DAY.stops[i]; fullSheet("Visit · "+s.name); REV={i,manual:false,contacts:[],mfrs:[],summaryOnly:true};
   const box=$("#rv_body");
   if(!navigator.onLine){ box.innerHTML=`<div class="msg">The full summary needs a connection.</div>${fuChip(s.visit)}`; return; }
   box.innerHTML=`<div class="msg">Loading…</div>`;
@@ -1009,7 +1068,18 @@ async function headsUp(i,fresh){
   const saved=fresh?null:obRead(previsitKey(s));
   if(saved&&saved.body){ openDraft(s,saved.subject||"",saved.body||"","","Pre-visit heads-up — your saved draft",{previsit:true,saved:true,to:saved.to,cc:saved.cc,stop:i,draft_id:saved.draft_id}); return; }
   if(!navigator.onLine){ toast("Heads-up needs a connection"); return; }
-  const etaEl=$("#eta_"+i); const eta=(etaEl&&etaEl.textContent||"").trim(); const etaTxt=(eta&&eta!=="—")?eta:"";
+  /* The time comes from the computed itinerary, never from whatever the card happens to show:
+     tapped before the times finished computing it used to go out with no time; and a time
+     outside business hours (a missing overnight) is never offered to a dealer. */
+  if(!s._arrive){ try{ await computeEtas(); }catch(e){} }
+  const warnings=[];
+  let etaTxt="";
+  if(!s._arrive && DAY._depart && !DAY._depart.ok) warnings.push("This route has no departure "+(DAY._depart.why==="no_zone"?"time zone":"time")+" set, so no arrival time was put in this email. Set it in the route planner, then start a new heads-up.");
+  if(s._arrive){
+    const shown=RouteClock.fmtAbs(s._arrive, s._tz);
+    if(s._offHours) warnings.push(`The estimated arrival (${shown}) is outside business hours, so it was left out of this email. Check the route's 🌙 overnights in the planner, then start a new heads-up.`);
+    else etaTxt=shown;
+  }
   /* THE DATE OF THIS STOP, not the date the route starts. On a multi-day route
      they are different for every stop after the first overnight, and sending a
      dealer day one's date with day three's arrival time is worse than sending
@@ -1022,7 +1092,7 @@ async function headsUp(i,fresh){
        opened "Hi Jeremiah". */
     contact_name:s.contact_name||""}); }catch(e){ j=null; }
   if(!j||!j.ok){ toast((j&&j.message)||"Couldn't prepare the heads-up"); return; }
-  openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending",{previsit:true,stop:i,draft_id:j.draft_id});
+  openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending",{previsit:true,stop:i,draft_id:j.draft_id,warnings:warnings.concat(Array.isArray(j.warnings)?j.warnings:[])});
 }
 /* ---- WHO THE EMAIL GOES TO -------------------------------------------------
    The pre-visit heads-up and the after-visit follow-up are drafted by different code and sent by
@@ -1271,7 +1341,13 @@ async function openHandout(dealer_id){
    Glasgow, which a browser-local clock cannot see. */
 async function computeEtas(){
   const r=DAY.route, stops=DAY.stops||[];
-  const useHome = r.round_trip && r.home_base && isFinite(r.home_base.lat) && isFinite(r.home_base.lng);
+  /* A route planned without a start point of its own, with its departure zone saved, was timed by the
+     planner from its first stop — so it is here too (never from this rep's own home). */
+  const useHome = r.round_trip && !r.timed_from_first_stop && r.home_base && isFinite(r.home_base.lat) && isFinite(r.home_base.lng);
+  /* Departure first: without one there is nothing to compute, and the stops say so (a one-stop
+     one-way route used to skip this and show a blank with no reason). */
+  DAY._depart=departureOf(r,useHome);
+  if(!DAY._depart.ok){ stops.forEach(s=>{ delete s._arrive; delete s._offHours; }); paintEtas(); return; }
   if(!stops.length || stops.some(s=>!(isFinite(s.lat)&&isFinite(s.lng)))) return;
   const coords=[]; if(useHome) coords.push([r.home_base.lng,r.home_base.lat]);
   stops.forEach(s=>coords.push([s.lng,s.lat]));
@@ -1280,11 +1356,17 @@ async function computeEtas(){
   if(legs.length<coords.length-1) return;
   if(typeof RouteClock==="undefined") return;   // no clock, no invented times
 
-  const depart=(r.home_base&&r.home_base.depart_time)||"08:00";
+  /* NOTHING ASSUMED (Angelo, 2026-10-30). The day starts at the route's EXPLICIT departure time —
+     saved by the planner (route.depart_time, else the home base's) — and in an explicit zone: the
+     home base's on a round trip, the saved departure zone on a one-way route. This used to fall back
+     to 8:00 in the first stop's zone, and those invented times reached dealers. Without both, no
+     arrival time is shown or mailed. */
+  const dep=DAY._depart;
   const items=RouteClock.routeItinerary({
     stops, legs, leadingLeg:useHome,
     startDate:(r.scheduled_date||todayStr()),
-    startMinutes:RouteClock.parseTimeMin(depart, 8*60),
+    startMinutes:RouteClock.parseTimeMin(dep.time, 8*60),
+    startTz:dep.tz,
     defaultVisit:30
   });
   if(!items.length) return;
@@ -1296,13 +1378,54 @@ async function computeEtas(){
     stops[k]._tz=it.tz;
     stops[k]._dateISO=it.dateISO;     // the date THIS stop falls on, for the heads-up
     stops[k]._dayIndex=it.dayIndex;
-    const el=$("#eta_"+k);
-    if(el) el.textContent=RouteClock.fmtAbs(it.arriveAbs, it.tz);
+    stops[k]._offHours=RouteClock.outsideHours(it.arriveAbs, it.tz);
+  }
+  paintEtas();
+  try{ cacheDay(dayKey(),DAY); }catch(e){}   // offline, the last computed times still show
+}
+/* THE ZONE THE DAY STARTS IN. A round trip leaves from the home base, so its depart time is that
+   place's wall clock — White House / Cottontown, TN is Central. It used to be read in the FIRST
+   STOP's zone: a 9:00 departure for a Louisville route became 9:00 Eastern (8:00 at home) and
+   every arrival on the route was an hour early (live, 2026-10-30: "Darrell Travel" stop 1 showed
+   11:21 AM EST; the drive is 2 h 21 m from a 9:00 CST start → 12:21 PM EST). Matches the route
+   planner, which has always started its clock in the home base's zone. */
+/* The departure arrival times start from: {ok, time 'HH:MM', tz, why}. Pure — tested in sr-eta.test.js. */
+function departureOf(r,useHome){
+  const ok=t=>/^([01]\d|2[0-3]):[0-5]\d$/.test(String(t||""));
+  /* Leaving from home: the route's time, else that home's own departure time. Timed from the first
+     stop: ONLY the route's own saved time — a home's time belongs to a trip that starts there. */
+  const time=ok(r&&r.depart_time)?r.depart_time:(useHome&&r&&r.home_base&&ok(r.home_base.depart_time)?r.home_base.depart_time:null);
+  const tz=useHome?homeTz(r,true):(["America/Chicago","America/New_York"].includes(r&&r.depart_tz)?r.depart_tz:null);
+  if(!time) return {ok:false,why:"no_time"};
+  if(!tz) return {ok:false,why:"no_zone"};
+  return {ok:true,time,tz};
+}
+function homeTz(r,useHome){
+  const hb=r&&r.home_base; if(!useHome||!hb) return undefined;
+  const st=hb.state||RouteClock.stateFromAddr(hb.address||hb.label||"");
+  return RouteClock.tzForStop(st, isFinite(hb.lng)?Number(hb.lng):null);
+}
+/* Paint the ETAs from what was computed. renderDay() rebuilds every card (closing a review,
+   marking a follow-up…), and the times used to fall back to "—" until the next full reload — a
+   heads-up tapped then went out with no time at all. */
+function paintEtas(){
+  const stops=(DAY&&DAY.stops)||[];
+  for(let k=0;k<stops.length;k++){
+    const s=stops[k]; if(!s._arrive) continue;
+    const el=$("#eta_"+k), lab=$("#etal_"+k);
+    if(el){ el.textContent=RouteClock.fmtAbs(s._arrive, s._tz);
+      el.style.color=s._offHours?"#b42323":""; el.title=s._offHours?"Outside business hours — check this route's overnights in the planner":""; }
     /* On a multi-day route "ETA" alone is a lie of omission — the rep needs to know
        which day, and so does anyone reading over their shoulder. */
-    const lab=$("#etal_"+k);
-    if(lab) lab.textContent = DAY._days>1 ? ("ETA · Day "+(it.dayIndex+1)) : "ETA";
+    if(lab) lab.textContent=(s._offHours?"⚠ after hours · ":"")+(DAY._days>1?("ETA · Day "+((s._dayIndex|0)+1)):"ETA");
   }
+  const oh=$("#offhours"); if(oh) oh.hidden=!stops.some(s=>s._arrive&&s._offHours);
+  const nd=$("#nodepart"), dep=DAY&&DAY._depart;
+  if(nd){ nd.hidden=!(dep&&!dep.ok);
+    if(dep&&!dep.ok) nd.querySelector("span").textContent = dep.why==="no_zone"
+      ? "This one-way route has no departure time zone, so no arrival times are shown or put in heads-up emails. Open it in the route planner and set the time zone beside the start time."
+      : "This route has no departure time, so no arrival times are shown or put in heads-up emails. Open it in the route planner and set the start time."; }
+  if(dep&&!dep.ok) for(let k=0;k<stops.length;k++){ const el=$("#eta_"+k), lab=$("#etal_"+k); if(el){ el.textContent="—"; el.style.color=""; } if(lab) lab.textContent="No departure set"; }
 }
 
 // ---- Direct Outlook sync (Graph); falls back to the .ics download if not permitted yet ----
@@ -1319,7 +1442,10 @@ async function syncCalendar(){
 }
 // ---- Calendar export (.ics): master route event + one event per dealer visit ----
 function icsEsc(s){ return String(s==null?"":s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n"); }
-function icsStamp(ms){ const d=new Date(ms); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"T"+p(d.getHours())+p(d.getMinutes())+"00"; }
+/* UTC with a Z: a floating local time is read in whatever zone the calendar app is set to, so an
+   Eastern stop exported from a Central phone landed an hour off in a calendar set to Eastern. */
+function icsStamp(ms){ const d=new Date(ms); const p=n=>String(n).padStart(2,"0"); return d.getUTCFullYear()+p(d.getUTCMonth()+1)+p(d.getUTCDate())+"T"+p(d.getUTCHours())+p(d.getUTCMinutes())+"00Z"; }
+
 function icsDay(ds){ return String(ds||todayStr()).replace(/-/g,""); }
 function nextDayStr(ds){ const d=new Date((ds||todayStr())+"T00:00:00"); d.setDate(d.getDate()+1); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate()); }
 function routeUrl(id){ return location.origin+"/admin/scheduled-routes.html?route="+encodeURIComponent(id); }
@@ -1334,7 +1460,7 @@ function addToCalendar(){
     const lastArrive=Math.max.apply(null,times); const lastVisit=(stops[stops.length-1]&&stops[stops.length-1].visit_min!=null?stops[stops.length-1].visit_min:30);
     L.push("DTSTART:"+icsStamp(start),"DTEND:"+icsStamp(lastArrive+lastVisit*60000)); }
   else { L.push("DTSTART;VALUE=DATE:"+icsDay(r.scheduled_date),"DTEND;VALUE=DATE:"+nextDayStr(r.scheduled_date)); }
-  const summaryList=stops.map((s,i)=>`${i+1}. ${s.name}${s._arrive?" — "+new Date(s._arrive).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):""}${s.city?", "+s.city+(s.state?" "+s.state:""):""}`).join("\n");
+  const summaryList=stops.map((s,i)=>`${i+1}. ${s.name}${s._arrive?" — "+RouteClock.fmtAbs(s._arrive,s._tz):""}${s.city?", "+s.city+(s.state?" "+s.state:""):""}`).join("\n");
   const masterDesc=(r.round_trip?"Round trip. ":"")+(r.duration_s?Math.round(r.duration_s/60)+" min driving. ":"")+stops.length+" stops.\n\n"+summaryList+"\n\nOpen route: "+routeUrl(r.id);
   L.push("DESCRIPTION:"+icsEsc(masterDesc),"END:VEVENT");
   // Per-dealer visit events (only when we have arrival times)

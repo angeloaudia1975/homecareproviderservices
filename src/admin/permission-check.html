@@ -178,7 +178,7 @@ async function runWorkspace(){
   add("Admin task queue unchanged (company-wide)","company-wide",ta.sees_all?"company-wide":"own only",!!ta.sees_all);
   // Routes.
   const rw=(await call("routes-api",{action:"list_routes"},"POST",WSH)).j||{}, routes=rw.routes||[];
-  const foreign=routes.filter(r=>!r.mine || (r.assigned_to_email && String(r.assigned_to_email).toLowerCase()!==me));
+  const foreign=routes.filter(r=>!r.own_visits_only && (!r.mine || (r.assigned_to_email && String(r.assigned_to_email).toLowerCase()!==me)));
   add("Routes: only your own (none you planned for others)","yours only",routes.length+" routes, "+foreign.length+" not yours",!!rw.workspace&&!foreign.length);
   // Pipeline.
   const pw=(await call("pipeline-api",{action:"board"},"POST",WSH)).j||{}, opps=pw.opportunities||[];
@@ -327,7 +327,7 @@ async function run(){
     await convRow(add,"Conversion report: his own deals only","own",null,[me,String((ME&&ME.rep_name)||"").trim().toLowerCase()].filter(Boolean));
     const routes=((await call("routes-api",{action:"list_routes"})).j||{}).routes||[];
     // Every route listed is one he drives or owns (no one else's — Angelo's or TEST — by any name).
-    const notHis=routes.filter(r=>!(r.mine===true || String(r.assigned_to_email||"").toLowerCase()===me));
+    const notHis=routes.filter(r=>!r.own_visits_only && !(r.mine===true || String(r.assigned_to_email||"").toLowerCase()===me));
     add("No one else's routes in his routes (Angelo / TEST)","none",notHis.length+" of "+routes.length,!notHis.length);
     const tasks=((await call("crm-api",{action:"my_tasks"})).j||{}).tasks||[];
     if(gone("Angelo's task")) add("No TEST-dealer tasks in My Tasks","none","target record no longer exists (Angelo's task)","invalid");
