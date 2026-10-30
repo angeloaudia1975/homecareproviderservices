@@ -51,18 +51,21 @@ exports.handler = async (event) => {
       const filt = [];
       if(b.type){ if(!EL.EMAIL_TYPES.includes(String(b.type))) return json(400, { error: "bad_type" }); filt.push(`email_type=eq.${encodeURIComponent(b.type)}`); }
       if(b.only === "sent") filt.push("sent_at=not.is.null"); else if(b.only === "edited") filt.push("edited=is.true");
-      if(b.before){ const t = Date.parse(String(b.before)); if(!Number.isFinite(t)) return json(400, { error: "bad_before" }); filt.push(`created_at=lt.${encodeURIComponent(new Date(t).toISOString())}`); }
+      // Cursor = the last row's (created_at, id): rows sharing a timestamp are never skipped.
+      if(b.before){ const c = String(b.before).split("|"), t = Date.parse(c[0]), cid = EL.uuidOrNull(c[1]);
+        if(!Number.isFinite(t) || !cid) return json(400, { error: "bad_before" });
+        const at = new Date(t).toISOString(); filt.push(`or=(created_at.lt.${at},and(created_at.eq.${at},id.lt.${cid}))`); }
       let rows;
-      try{ rows = await sbGet(`email_drafts?select=${COLS},original_subject,sent_subject,original_body,sent_body&${filt.join("&")}${filt.length ? "&" : ""}order=created_at.desc&limit=${limit}`); }
+      try{ rows = await sbGet(`email_drafts?select=${COLS},original_subject,sent_subject&${filt.join("&")}${filt.length ? "&" : ""}order=created_at.desc,id.desc&limit=${limit}`); }
       catch(e){ if(notInstalled(e)) return json(503, { error: "not_installed", message: "The Email Learning table isn't installed yet." }); throw e; }
       const ids = [...new Set(rows.map(r => r.dealer_id).filter(Boolean))];
       const names = {};
       if(ids.length){ try{ (await sbGet(`dealers?id=in.(${ids.map(encodeURIComponent).join(",")})&select=id,business_name`)).forEach(d => { names[d.id] = d.business_name; }); }catch(e){} }
       const out = rows.map(r => ({ id: r.id, created_at: r.created_at, email_type: r.email_type, template: r.template, generator: r.generator,
         dealer_id: r.dealer_id, dealer: names[r.dealer_id] || null, sent_at: r.sent_at, edited: r.edited, recipient_count: r.recipient_count,
-        purged: !!r.content_purged_at, subject: r.content_purged_at ? null : (r.sent_subject || r.original_subject),   // what you sent, else the draft's
-        original_chars: r.original_body ? r.original_body.length : null, sent_chars: r.sent_body != null ? r.sent_body.length : null }));
-      return json(200, { ok: true, rows: out, next_before: rows.length === limit ? rows[rows.length - 1].created_at : null });
+        purged: !!r.content_purged_at, subject: r.content_purged_at ? null : (r.sent_subject || r.original_subject) }));   // what you sent, else the draft's
+      const last = rows[rows.length - 1];
+      return json(200, { ok: true, rows: out, next_before: rows.length === limit ? `${last.created_at}|${last.id}` : null });
     }
 
     if(b.action === "get"){
@@ -77,5 +80,5 @@ exports.handler = async (event) => {
         diff: r.sent_at && !r.content_purged_at ? { subject_changed: r.original_subject !== r.sent_subject, body: EL.lineDiff(r.original_body, r.sent_body) } : null });
     }
     return json(400, { error: "unknown_action" });
-  }catch(e){ return json(500, { error: String(e.message || e).slice(0, 200) }); }
+  }catch(e){ console.error("email-learning-api", String(e && e.message || e).slice(0, 300)); return json(500, { error: "server_error", message: "Email Learning couldn't load just now." }); }
 };

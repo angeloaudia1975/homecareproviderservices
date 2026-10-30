@@ -135,7 +135,7 @@ function createWorld(seed) {
       // (e.g. test/email-learning.fake.js). Recorded like the others; missingRpc / failWrite still apply.
       if (seed.rpc && seed.rpc[fn] && !(seed.missingRpc || []).includes(fn)) {
         if (seed.failWrite) { const st = seed.failWrite('POST', 'rpc/' + fn, body, ''); if (st) return res(st, { code: 'XX000', message: 'forced write failure on rpc/' + fn }); }
-        const out = seed.rpc[fn]((body && body.p) || {}, db); writes.push({ kind: 'rpc', fn, p: (body && body.p) || {} });
+        const out = await seed.rpc[fn]((body && body.p) || {}, db); writes.push({ kind: 'rpc', fn, p: (body && body.p) || {} });
         return res(out.status || 200, out.body);
       }
       if ((seed.missingRpc || []).includes(fn) || fn !== 'hcps_zoho_capture_event') return res(404, { code: 'PGRST202', message: `Could not find the function public.${fn}(p) in the schema cache` });
@@ -182,7 +182,8 @@ function createWorld(seed) {
       if (method !== 'GET' && seed.failWrite) { const st = seed.failWrite(method, table, body, qs); if (st) return res(st, { code: 'XX000', message: 'forced write failure on ' + table }); }
       if (method === 'GET') {
         let rows = db[table].filter(filt);
-        if (meta.order) { const [col, dir] = meta.order.split(',')[0].split('.'); rows = rows.slice().sort((a, b) => (dir === 'desc' ? -1 : 1) * cmp(a[col], b[col])); }
+        if (meta.order) { const keys = meta.order.split(',').map(k => k.split('.'));   // every key, as PostgREST does
+          rows = rows.slice().sort((a, b) => { for (const [col, dir] of keys) { const c = cmp(a[col], b[col]); if (c) return (dir === 'desc' ? -1 : 1) * c; } return 0; }); }
         const off = parseInt(meta.offset || '0', 10); const lim = Math.min(parseInt(meta.limit || String(MAX_ROWS), 10), MAX_ROWS);
         rows = rows.slice(off, off + lim);
         return res(200, rows.map(r => project(r, meta.select)));

@@ -12,7 +12,8 @@
 // When: only while phase2_flags.email_learning_capture is exactly true (off = nothing is stored).
 // Where: public.email_drafts (supabase/email_learning_p1_capture.sql), RULE 19 locked; written only
 // by hcps_email_draft_create / hcps_email_draft_record_send (security definer, service_role only).
-// Content is kept 12 months (owner decision 4); the purge keeps no identifying text.
+// Content is kept 12 months (owner decision 4); then email-learning-purge-cron clears all email text (the record keeps only
+// its type, dates, dealer id and the edited flag).
 // Learning itself (comparison, suggestions, approved rules) is Phase 2 — nothing is learned here.
 // ============================================================================
 const { flagOn } = require("./_flags.js");
@@ -43,11 +44,21 @@ function asShown(body, signature){
   return s ? `${b}\n\n${s}` : b;
 }
 
+/* Capture must never hold up a draft or (worse) the answer to a send Outlook already accepted — a slow answer there could
+   make the rep think it failed and send twice. The switch read and the database call together get CAPTURE_MS (default
+   2.5 s; EMAIL_LEARNING_TIMEOUT_MS overrides); past it, capture is simply skipped. */
+function captureMs(){ const n = parseInt(process.env.EMAIL_LEARNING_TIMEOUT_MS, 10); return n > 0 ? n : 2500; }
+function withTimeout(work, onTimeout){
+  let timer;
+  return Promise.race([work.finally(() => clearTimeout(timer)), new Promise(res => { timer = setTimeout(() => res(onTimeout), captureMs()); })]);
+}
+
 function rpcClient(){
   const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE;
   return async (fn, p) => {
     const r = await fetch(`${url}/rest/v1/rpc/${fn}`, { method: "POST",
-      headers: { apikey: key, Authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ p }) });
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ p }),
+      signal: AbortSignal.timeout(captureMs()) });
     const t = await r.text();
     if (!r.ok) throw new Error(`rpc ${fn} ${r.status}: ${t.slice(0, 200)}`);
     return t ? JSON.parse(t) : null;
@@ -56,7 +67,8 @@ function rpcClient(){
 
 /* Keep a freshly generated draft. Returns its id, or null when nothing was kept (switch off, not
    the President, unknown type, no table yet, any error). Never throws. */
-async function recordDraft(sbGet, me, d, rpc){
+async function recordDraft(sbGet, me, d, rpc){ return withTimeout(draftWork(sbGet, me, d, rpc).catch(() => null), null); }
+async function draftWork(sbGet, me, d, rpc){
   try{
     const author = captureAuthor(me); if(!author) return null;
     const type = d && (d.email_type || emailType(d.template)); if(!type || !EMAIL_TYPES.includes(type)) return null;
@@ -72,7 +84,8 @@ async function recordDraft(sbGet, me, d, rpc){
 /* After Outlook accepted the email: keep what was sent beside its draft. The database checks the
    draft belongs to this sender and dealer and was not already recorded. Returns a status string;
    never throws, never changes the send's answer. */
-async function recordSend(sbGet, me, s, rpc){
+async function recordSend(sbGet, me, s, rpc){ return withTimeout(sendWork(sbGet, me, s, rpc).catch(() => "error"), "timeout"); }
+async function sendWork(sbGet, me, s, rpc){
   try{
     const id = uuidOrNull(s && s.draft_id); if(!id) return "no_draft";
     const author = captureAuthor(me); if(!author) return "not_captured";
@@ -97,4 +110,4 @@ function lineDiff(a, b){
   return out;
 }
 
-module.exports = { SWITCH, EMAIL_TYPES, TYPE_OF_TEMPLATE, emailType, captureAuthor, asShown, uuidOrNull, recordDraft, recordSend, lineDiff, rpcClient };
+module.exports = { captureMs, SWITCH, EMAIL_TYPES, TYPE_OF_TEMPLATE, emailType, captureAuthor, asShown, uuidOrNull, recordDraft, recordSend, lineDiff, rpcClient };

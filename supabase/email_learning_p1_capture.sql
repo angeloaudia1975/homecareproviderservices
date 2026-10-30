@@ -11,7 +11,8 @@
 --   hcps_email_draft_create(p)        a new draft (insert)
 --   hcps_email_draft_record_send(p)   the sent version, ONCE, same author, same dealer
 --   hcps_email_draft_purge_expired()  after 12 months (owner decision 4) the subject and body text of
---                                     both versions are cleared; no identifying text is kept
+--                                     both versions are cleared (called daily by email-learning-purge-cron); the
+--                                     record keeps only its type, dates, dealer id and edited flag — no email text
 -- A guard trigger (marker + the owner's rights) refuses every other insert, update, delete or truncate,
 -- and refuses any change to the original draft or to a recorded send.
 -- RULE 19: RLS on, no policies; anon / authenticated / PUBLIC nothing; service_role SELECT only.
@@ -144,7 +145,7 @@ begin
 end $$;
 
 -- After 12 months: clear every text field of both versions (owner decision 4). Masked learning evidence
--- (Phase 2) is kept in its own table and never holds identifying text. Returns how many drafts were cleared.
+-- (Phase 2) is kept in its own table and holds no email text. Returns how many drafts were cleared.
 create or replace function public.hcps_email_draft_purge_expired()
 returns integer language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_n int;

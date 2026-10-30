@@ -1217,7 +1217,7 @@ async function sendDraft(dealer_id,btn){
     removeDraft(); }
   else { if(m){ m.style.color="#b42323"; m.textContent=(j&&j.message)||"Couldn't send — you can also send from Dealer 360."; } if(btn) btn.disabled=false; }
 }
-function draftSaveBody(d,email){ if(d.draft_id) email=Object.assign({},email,{draft_id:d.draft_id});
+function draftSaveBody(d,email){ email=Object.assign({},email,{draft_id:d.draft_id||null});   // always sent: null clears an old pairing
   const b={action:"visit_email_save",dealer_id:d.dealer_id,email};
   if(d.report_id) b.report_id=d.report_id; else if(d.route_id) b.route_id=d.route_id; else if(d.visit_key) b.visit_key=d.visit_key; return b; }
 function draftNow(){ const picked=draftPicked(), r=splitRecipients(picked.list);

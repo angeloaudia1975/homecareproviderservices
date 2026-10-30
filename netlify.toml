@@ -105,6 +105,11 @@
 # a same-day reminder for every SCHEDULED service request, each sent once (tracked in
 # service_requests.reminders). Self-gates: does nothing until GRAPH_* is set; turn off with
 # SCHEDULE_REMINDERS=off.
+# Smart Email Learning retention — daily ~22:17 CT: clears the email text of drafts older than 12 months (owner decision
+# 2026-10-30). Does nothing until supabase/email_learning_p1_capture.sql is installed. Never sends or changes an email.
+[functions."email-learning-purge-cron"]
+  schedule = "17 3 * * *"
+
 [functions."schedule-reminders"]
   schedule = "0 * * * *"
 

@@ -185,8 +185,25 @@ const sends = w => w.outbound.filter(x => x.kind === 'graph' && /sendMail/.test(
     assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.email.draft_id, id);
     r = await call(R7, { action: 'visit_email_save', dealer_id: UA, report_id: 'vr-1', email: { to: 'pat@sampletown.test', subject: 'S2', body: 'B2' } }, { token: 'pres' });
     assert.strictEqual(r.body.email.draft_id, id);
-    r = await call(R7, { action: 'visit_email_save', dealer_id: UA, report_id: 'vr-1', email: { subject: 'S3', body: 'B3', draft_id: 'not-a-uuid' } }, { token: 'pres' });
-    assert.strictEqual(r.body.email.draft_id, id, 'a junk id never replaces the real one');
+    r = await call(R7, { action: 'visit_email_save', dealer_id: UA, report_id: 'vr-1', email: { subject: 'S3', body: 'B3', draft_id: null } }, { token: 'pres' });
+    assert.strictEqual(r.body.email.draft_id, null, 'an explicit null (text from no generated draft) clears the old pairing');
+    r = await call(R7, { action: 'visit_email_save', dealer_id: UA, report_id: 'vr-1', email: { subject: 'S4', body: 'B4', draft_id: 'not-a-uuid' } }, { token: 'pres' });
+    assert.strictEqual(r.body.email.draft_id, null, 'a junk id is never stored');
+  });
+
+  await t('a database that hangs never holds up a send Outlook accepted (or a draft): capture gives up and the answer is unchanged', async () => {
+    const S = standardSeed({ dealers: [{ id: UA, business_name: 'Sampletown Medical', rep_name: 'Angelo Audia', parent_id: null, email: 'pat@sampletown.test' }],
+      app_settings: [{ key: 'phase2_flags', value: { email_learning_capture: true } }] });
+    S.rpc = { hcps_email_draft_create: () => new Promise(() => {}), hcps_email_draft_record_send: () => new Promise(() => {}) };
+    const wh = createWorld(S), ENV = { EMAIL_LEARNING_TIMEOUT_MS: '300' };
+    const Rh = load('routes-api.js', wh, ENV); let t0 = Date.now();
+    const d = await call(Rh, { action: 'previsit_draft', dealer_id: UA, date: '2026-11-09' }, { token: 'pres' });
+    assert.ok(d.body.ok && d.body.subject); assert.strictEqual(d.body.draft_id, null); assert.ok(Date.now() - t0 < 2000, 'draft waited ' + (Date.now() - t0) + ' ms');
+    const Eh = load('email-sync-api.js', wh, ENV); t0 = Date.now();
+    const r = await call(Eh, { action: 'send', dealer_id: UA, to: 'pat@sampletown.test', subject: 'S', body_text: 'B', draft_id: UA }, { token: 'pres' });
+    assert.deepStrictEqual(r.body, { ok: true, to: 'pat@sampletown.test', cc: [] }); assert.strictEqual(sends(wh).length, 1);
+    assert.ok(Date.now() - t0 < 2000, 'send answer waited ' + (Date.now() - t0) + ' ms');
+    E = load('email-sync-api.js', w); R = load('routes-api.js', w);
   });
 
   // ── Dealer 360 AI composer (ai-email-api) ─────────────────────────────────
@@ -224,6 +241,30 @@ const sends = w => w.outbound.filter(x => x.kind === 'graph' && /sendMail/.test(
     assert.ok(g.body.diff.body.some(x => x.op === 'add' && /Tuesday morning/.test(x.text)));
     assert.strictEqual((await call(L, { action: 'get', id: 'nope' }, { token: 'pres' })).status, 400);
     assert.strictEqual((await call(L, { action: 'list', type: 'bogus' }, { token: 'pres' })).status, 400);
+  });
+  await t('owner page: paging by (time, id) never skips or repeats a row, even when drafts share a timestamp', async () => {
+    const same = new Date().toISOString(); w.db.email_drafts.forEach(x => { x.created_at = same; });
+    const seen = []; let before;
+    for (let i = 0; i < 50; i++) {
+      const l = await call(L, { action: 'list', limit: 2, before }, { token: 'pres' });
+      assert.strictEqual(l.status, 200, JSON.stringify(l.body)); seen.push(...l.body.rows.map(x => x.id));
+      if (!l.body.next_before) break; before = l.body.next_before;
+    }
+    assert.strictEqual(seen.length, w.db.email_drafts.length); assert.strictEqual(new Set(seen).size, seen.length);
+    assert.strictEqual((await call(L, { action: 'list', before: 'yesterday' }, { token: 'pres' })).status, 400);
+  });
+  await t('owner page: a server error answers a plain message, never the database\'s text', async () => {
+    const S = standardSeed({ app_settings: [{ key: 'phase2_flags', value: {} }] }); S.failRead = tbl => (tbl === 'email_drafts' ? 500 : 0);
+    const Lf = load('email-learning-api.js', createWorld(S));
+    const r = await call(Lf, { action: 'list' }, { token: 'pres' });
+    assert.strictEqual(r.status, 500); assert.deepStrictEqual(Object.keys(r.body).sort(), ['error', 'message']); assert.ok(!/Supabase|XX000|forced/.test(JSON.stringify(r.body)));
+  });
+  await t('retention: the daily purge calls the purge function; before the migration it skips quietly', async () => {
+    const S = standardSeed({}); S.rpc = { hcps_email_draft_purge_expired: () => ({ status: 200, body: 3 }) };
+    const wp = createWorld(S); let r = await load('email-learning-purge-cron.js', wp).handler({});
+    assert.strictEqual(r.statusCode, 200); assert.deepStrictEqual(JSON.parse(r.body), { ok: true, cleared: 3 });
+    const S2 = standardSeed({}); const r2 = await load('email-learning-purge-cron.js', createWorld(S2)).handler({});
+    assert.deepStrictEqual(JSON.parse(r2.body), { skipped: 'not installed' });
   });
   await t('owner page: GET refused; unknown action refused; no write action exists', async () => {
     assert.strictEqual((await call(L, { action: 'status' }, { token: 'pres', method: 'GET' })).status, 405);

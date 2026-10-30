@@ -1763,8 +1763,10 @@ exports.handler = async (event)=>{
       const draft={to:cleanS(e.to,200),cc:(Array.isArray(e.cc)?e.cc:[]).map(x=>cleanS(x,200)).filter(Boolean).slice(0,10),
         subject:cleanS(e.subject,300),body:String(e.body||"").slice(0,20000),saved_at:new Date().toISOString(),
         sent_at:b.sent?new Date().toISOString():(prev.sent_at||null),
-        // which generated draft this is (Smart Email Learning) — kept so a reopened, saved draft still pairs with its original
-        draft_id:EL.uuidOrNull(e.draft_id)||EL.uuidOrNull(prev.draft_id)};
+        /* which generated draft this is (Smart Email Learning) — kept so a reopened, saved draft still pairs with its original.
+           The field app always sends it (null = this text came from no generated draft, so the old pairing is cleared);
+           only a request without the key (an older cached page) keeps the stored one. */
+        draft_id:Object.prototype.hasOwnProperty.call(e,"draft_id")?EL.uuidOrNull(e.draft_id):EL.uuidOrNull(prev.draft_id)};
       await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(loc.report.id)}`,{followup_email:draft},{Prefer:"return=minimal"});
       return json(200,{ok:true,report_id:loc.report.id,email:draft});
     }
