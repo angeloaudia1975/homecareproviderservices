@@ -569,7 +569,10 @@ async function saveVisit(){
   const id=window._vnDealer; if(!id) return; const details=collectVisitDetails(); const m=$("#vn_msg");
   const sig=id+"|"+JSON.stringify(details);
   if(VN_SAVING) return;
-  if(sig===VN_SAVED_SIG){ if(m)m.textContent="Already saved ✓ — change something to save again."; return; }
+  /* One form = one logged visit. A change made AFTER it was saved is not applied (the server keeps the
+     visit as first saved) — say so plainly instead of inviting a Save that does nothing. */
+  if(VN_SAVED_SIG){ if(m)m.textContent = sig===VN_SAVED_SIG ? "Already saved ✓"
+      : "This visit is already logged — changes made after saving are not applied. Edit it on Dealer 360, or close this form and log a new visit."; return; }
   VN_SAVING=true; if(m)m.textContent="Saving…";
   /* request_key: one per opened Log-visit form — the server makes ONE visit per key (retries,
      double taps and a second Save in the same form never add another). */

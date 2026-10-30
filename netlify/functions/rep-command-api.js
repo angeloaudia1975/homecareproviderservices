@@ -201,7 +201,7 @@ async function buildDay(me, who, b, workspace, opts){
          it does not exist, and the old read is used). */
       sbGet(`rep_routes?scheduled_date=in.(${today},${tomorrow})&or=(owner_email.eq.${E},assigned_to_email.eq.${E})&select=id,name,scheduled_date,stops,owner_email,assigned_to_email,round_trip,home_base,archived_at&order=updated_at.desc&limit=20`)
         .then(rs=>(rs||[]).filter(r=>!r.archived_at))
-        .catch(()=>sbGet(`rep_routes?scheduled_date=in.(${today},${tomorrow})&or=(owner_email.eq.${E},assigned_to_email.eq.${E})&select=id,name,scheduled_date,stops,owner_email,assigned_to_email,round_trip,home_base&order=updated_at.desc&limit=20`)).catch(()=>[]),
+        .catch(e=>/42703|PGRST204|does not exist|Supabase 400/i.test(String(e&&e.message||e))?sbGet(`rep_routes?scheduled_date=in.(${today},${tomorrow})&or=(owner_email.eq.${E},assigned_to_email.eq.${E})&select=id,name,scheduled_date,stops,owner_email,assigned_to_email,round_trip,home_base&order=updated_at.desc&limit=20`):Promise.reject(e)).catch(()=>[]),
       getAll(`dealer_tasks?status=eq.open&or=(${mineTasks})&select=id,dealer_id,title,due_date,priority,source,reason,assigned_rep,assigned_email,origin_type,origin_id,created_at,status`,"id").catch(()=>[]),
       getAll(`dealer_tasks?status=in.(done,dismissed)&done_at=gte.${enc(sinceIso)}&or=(${mineTasks})&select=id,dealer_id,title,due_date,status,origin_type,origin_id,assigned_rep,assigned_email,done_at`,"id").catch(()=>[]),
       getAll(`opportunities?status=eq.open&or=(${mineOpps})&select=id,dealer_id,title,stage,value,expected_close,next_step,next_step_date,origin_type,origin_id,owner_rep,owner_email,created_at,updated_at`,"id").catch(()=>[]),

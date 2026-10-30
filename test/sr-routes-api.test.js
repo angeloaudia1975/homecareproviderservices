@@ -258,5 +258,36 @@ async function call(w, who, body, headers) {
     const del = await call(w, 'greg', { action: 'delete_route', id: 'r-greg' });
     assert.ok(del.j.ok, JSON.stringify(del.j));
   });
+  await t('reassigned after visiting a dealer OUTSIDE his book: the first rep still finishes that visit — and only that visit', async () => {
+    const w = world(); const rt = w.db.rep_routes.find(r => r.id === 'r-other');   // Angelo's route, assigned to Greg
+    rt.stops = [{ dealer_id: 'd-ang', name: 'RMS' }];
+    const ci = await call(w, 'greg', { action: 'visit_checkin', route_id: 'r-other', dealer_id: 'd-ang' });
+    assert.ok(ci.j.ok, 'precondition: ride-along check-in ' + JSON.stringify(ci.j));
+    rt.assigned_to_email = 'lori@hcps.us'; rt.assigned_to_rep = 'Lori Hunt';
+    assert.strictEqual((await call(w, 'greg', { action: 'route_day', route_id: 'r-other' })).status, 200);
+    for (const body of [{ action: 'visit_report_save', status: 'in_progress', fields: { notes: 'finishing' } }, { action: 'visit_end' }, { action: 'visit_report_get' }]) {
+      const r = await call(w, 'greg', Object.assign({ route_id: 'r-other', dealer_id: 'd-ang' }, body));
+      assert.ok(r.status < 300, body.action + ' → ' + r.status + ' ' + JSON.stringify(r.j));
+    }
+    const other = await call(w, 'greg', { action: 'previsit_draft', route_id: 'r-other', dealer_id: 'd-ang' });
+    assert.strictEqual(other.status, 403, 'his old visit opened the rest of the dealer to him');
+    const l = await call(w, 'greg', { action: 'list_routes' });
+    const listed = l.j.routes.find(r => r.id === 'r-other');
+    assert.ok(listed && listed.own_visits_only, 'the reassigned route is gone from his list: ' + JSON.stringify(l.j.routes.map(r => r.id)));
+    const lori = await call(w, 'lori', { action: 'list_routes' });
+    assert.ok(!lori.j.routes.find(r => r.id === 'r-other').own_visits_only);
+  });
+  await t('a bare claim nobody acted on for 10 minutes passes to the rep now driving the stop; a fresh one does not', async () => {
+    const w = world(); w.db.rep_routes.find(r => r.id === 'r-greg').assigned_to_email = 'lori@hcps.us';
+    const claim = { id: 'vr-claim', route_id: 'r-greg', dealer_id: 'd-greg', rep_email: 'greg@hcps.us', rep_name: 'Greg Campbell', status: 'planned', checkin_at: null, fields: {}, updated_at: new Date().toISOString() };
+    w.db.dealer_visit_reports.push(claim);
+    assert.strictEqual((await call(w, 'lori', { action: 'visit_checkin', route_id: 'r-greg', dealer_id: 'd-greg' })).status, 409, 'took a claim Greg may be acting on');
+    claim.updated_at = new Date(Date.now() - 11 * 60000).toISOString();
+    const r = await call(w, 'lori', { action: 'visit_checkin', route_id: 'r-greg', dealer_id: 'd-greg' });
+    assert.ok(r.j.ok, JSON.stringify(r.j)); assert.strictEqual(claim.rep_email, 'lori@hcps.us');
+    const w2 = world(); w2.db.rep_routes.find(r => r.id === 'r-greg').assigned_to_email = 'lori@hcps.us';
+    w2.db.dealer_visit_reports.push(Object.assign({}, claim, { rep_email: 'greg@hcps.us', checkin_at: '2026-10-30T14:00:00Z', status: 'checked_in' }));
+    assert.strictEqual((await call(w2, 'lori', { action: 'visit_checkin', route_id: 'r-greg', dealer_id: 'd-greg' })).status, 409, 'took over a real check-in');
+  });
   console.log(`\nsr-routes-api: ${pass} passed, ${fail} failed`); process.exitCode = fail ? 1 : 0;
 })();

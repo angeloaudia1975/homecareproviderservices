@@ -322,7 +322,7 @@ function renderList(){
       <div class="ord cal">${big?"🚗":"📅"}</div>
       <div class="mid"><div class="nm">${esc(r.name||"Route")}</div>
         <div class="sub">${esc(fmtDate(r.scheduled_date))} · ${n} stop${n===1?"":"s"}${drive}${miles}</div>
-        ${r.planned_by?`<div class="sub" style="color:#9db4d0">Planned for you by ${esc(r.planned_by)}</div>`:""}</div>
+        ${r.own_visits_only?`<div class="sub" style="color:#9db4d0">Reassigned — your visits on it only</div>`:(r.planned_by?`<div class="sub" style="color:#9db4d0">Planned for you by ${esc(r.planned_by)}</div>`:"")}</div>
       <div class="eta"><div class="t">${prog}</div><div class="l">visited</div></div>
     </div></div>`; };
   const phone=`<div class="phone">
@@ -536,7 +536,7 @@ function renderDay(){
   let h=`<div style="margin:0 0 10px"><button class="btn sm" onclick="showList()">‹ All routes</button> <a class="btn sm" href="/admin/command-center-rep.html">📋 Command Center</a></div>`;
   h+=`<div class="card"><div class="rsum"><span class="nm">${esc(r.name||"Route")}</span><span class="mt">${esc(fmtDate(r.scheduled_date))}</span></div>
     <div class="mt" style="margin:4px 0 10px;color:var(--gray)">${stops.length} stop${stops.length===1?"":"s"}${drive}${miles} · ${done}/${stops.length} visited</div>
-    ${r.planned_by?`<div class="mt" style="margin:-6px 0 10px;color:var(--gray)">Planned for you by ${esc(r.planned_by)}</div>`:""}
+    ${r.own_visits_only?`<div class="mt" style="margin:-6px 0 10px;color:var(--gray)">This route was reassigned to ${esc(r.assigned_to_rep||"another rep")}. Only the stops you visited are shown, so you can finish them.</div>`:(r.planned_by?`<div class="mt" style="margin:-6px 0 10px;color:var(--gray)">Planned for you by ${esc(r.planned_by)}</div>`:"")}
     ${r.needs_home_base?`<div class="mt" style="margin:-4px 0 10px;padding:9px 11px;border-radius:10px;background:#fff6ec;border:1px solid #f3d6ae;color:#8a5a08">
       <b>No starting point set.</b> Drive times below are between stops only.
       <button class="btn sm" style="margin-top:7px" onclick="showList()">Set my starting point</button></div>`:""}

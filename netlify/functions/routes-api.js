@@ -755,6 +755,21 @@ exports.handler = async (event)=>{
       else if(b.assigned_to_email){ path+=`&assigned_to_email=eq.${encodeURIComponent(String(b.assigned_to_email).toLowerCase())}`; }
       let rows=await sbGet(path).catch(()=>[]);
       if(workspace) rows=(rows||[]).filter(r=>r.assigned_to_email ? emailEq(r.assigned_to_email,me.email) : emailEq(r.owner_email,me.email));
+      /* A route reassigned after he visited stops on it is still in HIS list — marked own_visits_only —
+         so he can open it and finish those visits (route_day shows him only those stops). */
+      const ownVisitRoute={};
+      if((!isBoss(me) || workspace) && me.email){
+        try{
+          const vr=await sbGet(`dealer_visit_reports?rep_email=eq.${encodeURIComponent(String(me.email).toLowerCase())}&route_id=not.is.null&select=route_id&order=updated_at.desc&limit=200`);
+          const have=new Set((rows||[]).map(r=>r.id));
+          const extra=[...new Set((vr||[]).map(x=>x.route_id).filter(id=>id&&!have.has(id)))].slice(0,50);
+          if(extra.length){
+            const cols=(/select=([^&]+)/.exec(path)||[])[1];
+            const more=await sbGet(`rep_routes?select=${cols}&id=in.(${extra.map(encodeURIComponent).join(",")})${(schema&&!b.include_archived)?"&archived_at=is.null":""}`);
+            for(const r of (more||[])){ ownVisitRoute[r.id]=true; rows.push(r); }
+          }
+        }catch(e){ /* the list still shows his own routes */ }
+      }
       // visited-progress per route (completed visit reports) so the route cards can show 2/5 done.
       const ids=(rows||[]).map(r=>r.id);
       let doneBy={};
@@ -766,6 +781,7 @@ exports.handler = async (event)=>{
         archived_at:r.archived_at||null, depart_time:r.depart_time||null, depart_tz:r.depart_tz||null,
         planned_by:(r.assigned_to_email&&!emailEq(r.assigned_to_email,r.owner_email))?(r.rep_name||r.owner_email||"the office"):null,
         mine:emailEq(r.assigned_to_email,me.email)||emailEq(r.owner_email,me.email),
+        own_visits_only:!!ownVisitRoute[r.id],
         can_manage:canManageRoute(me,r),
         when:r.scheduled_date?(r.scheduled_date===today?"today":(r.scheduled_date>today?"upcoming":"past")):"saved"}));
       return json(200,{ok:true,routes,workspace,route_schema:!!schema,me:{email:me.email||"",name:me.name||"",rep_name:me.rep_name||"",role:me.role,
@@ -820,7 +836,19 @@ exports.handler = async (event)=>{
       "generate_followup","send_followup","notify_visit","previsit_draft","list_handout_exclusions","set_handout_exclusion","set_handout_feature"]);
     if(DEALER_ACTIONS.has(b.action)){
       const want=b.action==="business_case"?(Array.isArray(b.dealer_ids)?b.dealer_ids:[]):[b.dealer_id];
-      const off=await dealersOffReach(scopeMe,want);
+      let off=await dealersOffReach(scopeMe,want);
+      /* The rep whose route was reassigned after he visited a stop keeps working THAT visit: his own
+         report on that route stop (or named by id) reaches the dealer for the visit actions only —
+         never the dealer's other records, and never another stop. */
+      const OWN_VISIT_ACTIONS=new Set(["visit_checkin","visit_report_get","visit_report_save","visit_end","visit_analyze","visit_approve","visit_followup_set","visit_email_save"]);
+      if(off.length===1 && OWN_VISIT_ACTIONS.has(b.action) && me.email && (b.route_id||b.report_id)){
+        const did1=String(b.dealer_id||""), em=encodeURIComponent(String(me.email).toLowerCase());
+        const q=b.route_id
+          ? `dealer_visit_reports?route_id=eq.${encodeURIComponent(String(b.route_id))}&dealer_id=eq.${encodeURIComponent(did1)}&rep_email=eq.${em}&select=id&limit=1`
+          : `dealer_visit_reports?id=eq.${encodeURIComponent(String(b.report_id))}&dealer_id=eq.${encodeURIComponent(did1)}&rep_email=eq.${em}&select=id&limit=1`;
+        let own; try{ own=await sbGet(q); }catch(e){ return json(503,{error:"Couldn't check this visit — try again."}); }
+        if(own&&own.length) off=[];
+      }
       if(off.length) return json(403,{error:"Not your dealer",dealer_ids:off});
     }
     /* A visit is only ever recorded against a dealer that exists — for every role. Management can
@@ -1426,6 +1454,23 @@ exports.handler = async (event)=>{
           const path=`dealer_visit_reports?route_id=eq.${encodeURIComponent(rid0)}&dealer_id=eq.${encodeURIComponent(did0)}&select=id,rep_email,rep_name&limit=1`;
           let rows; try{ rows=await sbGet(path); }catch(e){ return json(503,{error:"Couldn't check who made this visit — try again."}); }
           let v=rows&&rows[0];
+          /* A CLAIM NOBODY ACTED ON is not a visit: a first write that failed, or a stray tap, leaves a bare
+             "planned" row naming its rep. After 10 minutes with no check-in and nothing written, the rep now
+             driving the stop may take it over — by a conditional PATCH that only matches that untouched row,
+             so a claim the other rep is acting on (or two takeovers at once) can never be stolen. */
+          if(foreign(v) && CREATING_WRITES.has(b.action)){
+            let full; try{ full=await sbGet(`dealer_visit_reports?id=eq.${encodeURIComponent(v.id)}&select=id,status,checkin_at,ended_at,completed_at,fields,updated_at,rep_email&limit=1`); }catch(e){ return json(503,{error:"Couldn't check who made this visit — try again."}); }
+            const f=full&&full[0];
+            const bare=f && f.status==="planned" && !f.checkin_at && !f.ended_at && !f.completed_at && !(f.fields&&Object.keys(f.fields).length);
+            const age=f?Date.now()-Date.parse(f.updated_at||0):0;
+            if(bare && age>10*60000){
+              try{
+                await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(f.id)}&status=eq.planned&checkin_at=is.null&completed_at=is.null&rep_email=eq.${encodeURIComponent(f.rep_email)}&updated_at=eq.${encodeURIComponent(f.updated_at)}`,
+                  {rep_email:me.email||null,rep_name:me.rep_name||null,updated_at:new Date().toISOString()},{Prefer:"return=minimal"});
+                rows=await sbGet(path); v=rows&&rows[0];
+              }catch(e){ return json(503,{error:"Couldn't start this visit — try again."}); }
+            }
+          }
           if(foreign(v)) return refuse(v);
           /* First write to a stop: CLAIM it before writing — an insert-or-ignore of the bare row with this
              rep's name, then read who holds it. Two reps starting the same stop at once: one claim wins,

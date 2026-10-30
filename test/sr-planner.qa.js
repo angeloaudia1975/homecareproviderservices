@@ -125,6 +125,11 @@ const R = H.runner();
     const n0 = calls.filter(c => c.body && c.body.action === 'save_visit').length;
     await p.evaluate(async () => { await Promise.all([saveVisit(), saveVisit()]); await saveVisit(); });
     assert.strictEqual(calls.filter(c => c.body && c.body.action === 'save_visit').length - n0, 1);
+    // A change made after it was saved is not silently dropped: the page says so, and sends nothing.
+    await p.evaluate(async () => { if (!document.getElementById('vn_msg')) { const d = document.createElement('div'); d.id = 'vn_msg'; document.body.appendChild(d); }
+      window.collectVisitDetails = () => ({ summary: 'Met Bryant — edited', purpose: 'check-in' }); await saveVisit(); });
+    assert.ok(/already logged — changes made after saving are not applied/.test(await p.textContent('#vn_msg')));
+    assert.strictEqual(calls.filter(c => c.body && c.body.action === 'save_visit').length - n0, 1);
   });
   await R.step('no page errors', async () => assert.deepStrictEqual(errors.filter(e => !/tile|openstreetmap/i.test(e)), []));
   srv.close(); await browser.close();

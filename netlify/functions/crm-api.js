@@ -222,7 +222,7 @@ exports.handler = async (event)=>{
           .catch(()=>sbGet(`dealer_visit_reports?dealer_id=eq.${did}&select=*&order=checkin_at.desc.nullslast&limit=${lim+1}`).catch(()=>[])),
         sbGet(`rep_routes?stops=cs.${encodeURIComponent(JSON.stringify([{dealer_id:String(b.dealer_id)}]))}&scheduled_date=gte.${today}&select=id,name,scheduled_date,rep_name,owner_email,assigned_to_email,assigned_to_rep,archived_at&order=scheduled_date&limit=20`)
           .then(rs=>(rs||[]).filter(r=>!r.archived_at))   // an archived route is not an upcoming visit
-          .catch(()=>sbGet(`rep_routes?stops=cs.${encodeURIComponent(JSON.stringify([{dealer_id:String(b.dealer_id)}]))}&scheduled_date=gte.${today}&select=id,name,scheduled_date,rep_name,owner_email,assigned_to_email,assigned_to_rep&order=scheduled_date&limit=20`)).catch(()=>[]),
+          .catch(e=>/42703|PGRST204|does not exist|Supabase 400/i.test(String(e&&e.message||e))?sbGet(`rep_routes?stops=cs.${encodeURIComponent(JSON.stringify([{dealer_id:String(b.dealer_id)}]))}&scheduled_date=gte.${today}&select=id,name,scheduled_date,rep_name,owner_email,assigned_to_email,assigned_to_rep&order=scheduled_date&limit=20`):Promise.reject(e)).catch(()=>[]),
         sbGet(`service_requests?dealer_id=eq.${did}&start_at=gte.${encodeURIComponent(new Date().toISOString())}&select=id,service,meeting_type,start_at,end_at,rep_name,status&order=start_at&limit=10`).catch(()=>[]),
       ]);
       const rs=(reports||[]).slice(0,lim), more=(reports||[]).length>lim;

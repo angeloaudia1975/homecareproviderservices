@@ -3748,7 +3748,11 @@ direct-to-main path). Rules it established:
   one wins, the other gets 409, never an overwrite. A request its handler refuses (bad status) claims nothing. A rep
   whose route was reassigned after he visited a stop keeps working THAT visit (routeStopCheck `own_visit_only`) — he is
   never stranded; every other stop of the route is the new rep's — `route_day` opens the route for him with ONLY the stops
-  he visited (`own_visits_only`). An empty claim (status planned, never checked in) does not count as a visit for
+  he visited (`own_visits_only`), `list_routes` still lists it for him (marked), and the dealer-scope gate lets his OWN
+  report on that stop reach the dealer for the visit actions only (nothing else of that dealer). A bare claim (planned,
+  no check-in, nothing written) untouched for 10 minutes passes to the rep now driving the stop (conditional PATCH on
+  the untouched row); a fresh claim or a real check-in never does. The planner's Log-visit form logs ONE visit: a
+  change made after saving is not applied, and the page says so. An empty claim (status planned, never checked in) does not count as a visit for
   delete / stop-drop. An archived route is never "today's route" (field app by date, Command Center, Dealer 360 upcoming).
   (3) **7 AM – 7 PM is a WARNING range** for questionable estimates (flag + no time in the heads-up), never a ban on
   early/late visits.
@@ -3773,7 +3777,7 @@ direct-to-main path). Rules it established:
   Schema: `supabase/sr_route_integrity.sql` (additive: archived_at, archived_by, depart_time, depart_tz + CHECKs; RLS /
   grants unchanged) — Angelo runs it; until then `archive_route` and one-way saves answer 503 `schema_update_needed`
   (list_routes reports `route_schema`; a "not installed" answer is re-checked after a minute, a read failure is a 503).
-  Tests: sr-routes-api (24), routeclock (+ mutants), sr-eta (16 + 9 mutants), sr-consistency (planner =
+  Tests: sr-routes-api (26), routeclock (+ mutants), sr-eta (16 + 9 mutants), sr-consistency (planner =
   field app = heads-up, two browser zones), sr-review (other rep read only), sr-planner.
 
 ## Per-page checklist (run before calling a page done)
