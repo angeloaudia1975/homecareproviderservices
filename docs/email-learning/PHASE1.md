@@ -38,6 +38,14 @@ Postcheck (read-only): `supabase/email_learning_p1_postcheck.sql` — sha256 `e2
 Expected code fingerprint (row 2): `f8d609ba82970e7a2c0e4f09299ba17a` when pasted into the SQL editor (Windows line endings),
 `853c4a62d482cd18028e4494563aa6f9` with Unix line endings — both reproduced locally from the committed file.
 
+**Production (verified 2026-10-30 ~15:57 CT):** installed fingerprint `126886da53e09d2c282c3b8b950ae969`. Per function, four match the
+committed file exactly (Windows paste); `hcps_email_draft_guard` is 2205 characters instead of 2218 — the copy Angelo pasted lacked the
+one comment line `  -- UPDATE` inside the guard (13 characters with CR+LF). Reproduced exactly locally (committed file minus that line,
+CRLF → `126886da…`, guard md5 `d205a95992ea8e71b7e3bf84a54c213a`). Logic identical; accepted, not reinstalled. Lesson: a comment line
+inside a function body is part of its fingerprint — the pasted copy must be the committed file byte for byte.
+Postcheck at that time: 4 functions, RLS on / 0 policies, 0 public grants, 2 guard triggers, switch `false`, 0 / 0 / 0 drafts;
+public-key probe 8/8 BLOCKED (run 2026-10-30 from the ordering site's public key). PR #69 merged (main b555ab6) and live.
+
 Rollback: `supabase/email_learning_p1_capture_rollback.sql` — sha256 `a046c0e102ba6234600fcdeaa4de36c0ead0b5f7d1db538e31dc68dcd2eec2b8`.
 Turn the switch off first. It refuses while any draft is stored (removing the owner's email text is its own decision).
 

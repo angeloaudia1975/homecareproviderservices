@@ -574,6 +574,10 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   (missing / suspicious / unverified → omitted, neutral wording) are Phase 3 and stay OFF in production until reviewed and
   switched on by the owner. One PR per phase, independent review, CI; synthetic test data only (no real email content in
   development or CI). Separate from the Scheduled Routes & Territory debugging project.
+  **Phase 1 LIVE (2026-10-30):** migration run by Angelo (install checks 1–6 ok; 7 false only because the switch was already on);
+  switch set back to false by Angelo; postcheck ok; public-key probe 8/8 BLOCKED; PR #69 merged (b555ab6) and live. Installed
+  fingerprint `126886da…` = the committed file without the guard's comment line `-- UPDATE` (accepted; logic identical — see
+  PHASE1.md). Capture is ready but OFF until Angelo turns `email_learning_capture` on.
 - **A replay is a no-op.** Every write from a visit carries `(origin_type, origin_id, origin_key)` against
   a unique index (or a claim PATCH on a null column), so a double tap, an offline resend or a late replay
   never duplicates a visit, note, task, deal, contact, activity row or intent signal — while a genuinely
