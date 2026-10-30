@@ -1,0 +1,35 @@
+name: Scheduled Routes email editor tests
+
+on:
+  pull_request:
+    paths:
+      - 'src/admin/scheduled-routes.html'
+      - 'netlify/functions/routes-api.js'
+      - 'netlify/functions/email-sync-api.js'
+      - 'test/email-editor.qa.js'
+      - 'test/phase1-ui.qa.js'
+      - 'test/recipients.test.js'
+      - '.github/workflows/scheduled-routes-email.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  email-editor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright Chromium
+        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      - name: Recipient rules and field outbox
+        run: |
+          node test/recipients.test.js
+          node test/phase0-outbox.test.js
+      - name: Email editor browser regression
+        run: node test/email-editor.qa.js
+      - name: Phase 1 field-app browser regression
+        run: node test/phase1-ui.qa.js

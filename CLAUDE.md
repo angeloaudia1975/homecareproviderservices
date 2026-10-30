@@ -548,6 +548,14 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   a draft — Edit / Copy / Save draft / Send — and **never sends automatically**. No AI runs on page load
   (one approved exception, 2026-10-03: the Morning Brief is written after the Command Center is on screen
   when today's brief doesn't exist yet — see 2B below).
+- **Email editors close only on an explicit action (Angelo, 2026-10-30).** The Scheduled Routes pre-visit heads-up
+  and after-visit follow-up editors (`openDraft`) have NO backdrop/outside-click or Escape dismissal: a browser fires
+  "click" on the common ancestor of press and release, so a text selection released past the sheet edge used to close
+  the editor and lose the email. Only Close (which asks Keep editing / Save draft & leave / Discard changes when
+  anything — recipients, subject or message — changed since open or last save) or a successful Send close it; a
+  page unload with unsaved edits gets the browser's leave-page warning. Save draft: follow-ups on the visit (existing
+  `visit_email_save`), pre-visit heads-ups on the device (per user + route stop, cleared on Send) — no new server
+  action or permission. Regression: `node test/email-editor.qa.js` (real mouse/keyboard/touch in Chromium).
 - **A replay is a no-op.** Every write from a visit carries `(origin_type, origin_id, origin_key)` against
   a unique index (or a claim PATCH on a null column), so a double tap, an offline resend or a late replay
   never duplicates a visit, note, task, deal, contact, activity row or intent signal — while a genuinely
