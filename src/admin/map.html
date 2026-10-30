@@ -380,7 +380,7 @@ async function saveHome(){
     if(!r||!r.ok){ $("#homeErr").textContent="Couldn't find that address — include the city and state (e.g. …, Cottontown, TN 37048)."; return; }
     const short=q.split(",").slice(-2).join(",").trim()||q;
     const state=String(r.state||stateFromAddr(q)||"").toUpperCase();
-    HOME={q,lat:r.lat,lng:r.lng,short,state}; LOADED_NOHOME=null;   // a start point chosen now belongs to this plan
+    HOME={q,lat:r.lat,lng:r.lng,short,state}; LOADED_NOHOME=null; PLAN_HOME=null;   // a start point chosen now is yours and this plan's
     localStorage.setItem("hcps_home_base",JSON.stringify(HOME));
     closeHome(); drawHome(); renderRoute();
     if(MAP) MAP.setView([HOME.lat,HOME.lng], Math.max(MAP.getZoom(),6));
@@ -393,13 +393,19 @@ function toggleRT(v){ ROUNDTRIP=v; renderRoute(); }
 function hav(a,b){ const R=3958.8,tr=x=>x*Math.PI/180; const dLat=tr(b.lat-a.lat),dLng=tr(b.lng-a.lng);
   const s=Math.sin(dLat/2)**2+Math.cos(tr(a.lat))*Math.cos(tr(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(s)); }
 function effectiveRoute(){
-  if(HOME && ROUNDTRIP && ROUTE.length){ const h={name:"Home base",state:(HOME.state||stateFromAddr(HOME.q)),lat:HOME.lat,lng:HOME.lng,_home:true}; return [h,...ROUTE,h]; }
+  /* A loaded route with no start point of its own is timed and measured from its first stop — its
+     saved miles, drive time and line must not include the planner's own home legs. */
+  if(HOME && ROUNDTRIP && ROUTE.length && !LOADED_NOHOME){ const h={name:"Home base",state:(HOME.state||stateFromAddr(HOME.q)),lat:HOME.lat,lng:HOME.lng,_home:true}; return [h,...ROUTE,h]; }
   return ROUTE.slice();
 }
 function routeMiles(){ const R=effectiveRoute(); let m=0; for(let i=1;i<R.length;i++) m+=hav(R[i-1],R[i]); return m; }
 function addStop(i){ const p=POINTS[i]; if(!p)return; if(inRoute(p)){ ROUTE=ROUTE.filter(s=>s._i!==p._i); } else { if(ROUTE.length>=25){ alert("That's a lot of stops — keep a route under 25 for a workable day."); return; } ROUTE.push(p); } renderRoute(); draw(); if(MAP)MAP.closePopup(); }
 function removeStop(i){ ROUTE.splice(i,1); renderRoute(); draw(); }
-function clearRoute(){ ROUTE=[]; CURRENT_ROUTE_ID=null; LOADED_NOHOME=null; clearDraft(); renderRoute(); draw(); }
+function clearRoute(){ ROUTE=[]; CURRENT_ROUTE_ID=null; LOADED_NOHOME=null; resetPlanHome(); clearDraft(); renderRoute(); draw(); }
+/* The start point of an OPENED route belongs to that plan only. When the plan is cleared the planner
+   goes back to your own home base — a new route must never start from the rep's house you last opened. */
+let PLAN_HOME=null;   // the loaded route's own start point, while that route is the plan
+function resetPlanHome(){ if(!PLAN_HOME) return; PLAN_HOME=null; try{ HOME=JSON.parse(localStorage.getItem("hcps_home_base")||"null"); }catch(e){ HOME=null; } drawHome(); }
 /* A saved route opened WITHOUT a start point (assigning it to a rep with no default clears the
    planner's address on purpose). The planner still times it from your home base so you can see a
    day, but re-saving must not write your address back into the rep's route. null = not that case;
@@ -634,6 +640,9 @@ function saveDraft(){
     localStorage.setItem(DRAFT_KEY(), JSON.stringify({
       v:1, at:Date.now(), stops:ROUTE.map(stopRecord), round_trip:!!ROUNDTRIP,
       route_id:CURRENT_ROUTE_ID||null,
+      /* An opened route's own start point (or its lack of one) travels with the draft, so a round
+         trip to Dealer 360 and a re-save never swaps in this browser's home base. */
+      plan_home:PLAN_HOME||null, nohome:LOADED_NOHOME||null,
       start_date:(($("#startDate")||{}).value||""),
       start_time:(($("#startTime")||{}).value||""),
       visit_min:(($("#visitMin")||{}).value||"")
@@ -668,6 +677,8 @@ function restoreDraft(){
   ROUTE=d.stops.map(hydrateStop);
   ROUNDTRIP=d.round_trip!==false;
   CURRENT_ROUTE_ID=d.route_id||null;
+  if(d.plan_home&&isFinite(d.plan_home.lat)){ PLAN_HOME=d.plan_home; HOME=d.plan_home; }
+  LOADED_NOHOME=d.nohome||null;
   const sd=$("#startDate"); if(sd&&d.start_date) sd.value=d.start_date;
   const st=$("#startTime"); if(st&&d.start_time) st.value=d.start_time;
   const vm=$("#visitMin"); if(vm&&d.visit_min) vm.value=d.visit_min;
@@ -716,7 +727,7 @@ function scheduleRoute(){ if(_routeT) clearTimeout(_routeT); _routeT=setTimeout(
 let ROUTE_SEQ=0;
 async function routeIt(){
   const R=effectiveRoute();
-  if(R.length<2){ if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;} LASTROUTE={distance_m:0,duration_s:0,geometry:null}; updateRouteMeta(); return; }
+  if(R.length<2){ ++ROUTE_SEQ; if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;} LASTROUTE={distance_m:0,duration_s:0,geometry:null}; updateRouteMeta(); return; }
   const coords=R.map(s=>[s.lng,s.lat]);
   /* Only the newest request may paint. Edits in quick succession fire several of these; a slow
      answer for an older stop list used to land last and overwrite the legs the ETAs, the printed
@@ -802,8 +813,8 @@ async function loadSaved(id){
     { const _sd=$("#startDate"); if(_sd) _sd.value=rt.scheduled_date||_sd.value||""; const _st=$("#startTime"); if(_st && rt.home_base && rt.home_base.depart_time) _st.value=rt.home_base.depart_time; }
     /* The route's own start point is used for THIS plan only — it no longer replaces your saved home
        base in this browser (opening a rep's route used to make their house your default). */
-    if(rt.home_base&&rt.home_base.lat!=null){ HOME={q:rt.home_base.address||"",lat:rt.home_base.lat,lng:rt.home_base.lng,short:rt.home_base.label||"",state:rt.home_base.state||stateFromAddr(rt.home_base.address||"")}; ROUNDTRIP=rt.round_trip!==false; LOADED_NOHOME=null; drawHome(); }
-    else { LOADED_NOHOME={round_trip:rt.round_trip!==false}; banner("This route has no start point of its own (the assigned rep sets theirs). Times shown start from your home base; saving keeps it without one."); }
+    if(rt.home_base&&rt.home_base.lat!=null){ HOME={q:rt.home_base.address||"",lat:rt.home_base.lat,lng:rt.home_base.lng,short:rt.home_base.label||"",state:rt.home_base.state||stateFromAddr(rt.home_base.address||"")}; ROUNDTRIP=rt.round_trip!==false; LOADED_NOHOME=null; PLAN_HOME=HOME; drawHome(); }
+    else { resetPlanHome(); LOADED_NOHOME={round_trip:rt.round_trip!==false}; banner("This route has no start point of its own (the assigned rep sets theirs). Times shown start from your home base; saving keeps it without one."); }
     LASTROUTE={distance_m:rt.distance_m||0,duration_s:rt.duration_s||0,geometry:rt.geometry||null};
     renderRoute(); draw();
     if(rt.geometry&&rt.geometry.length){ if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);} if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} ROUTEGEO=L.polyline(rt.geometry.map(c=>[c[1],c[0]]),{color:"#2B4071",weight:5,opacity:.85}).addTo(MAP); try{MAP.fitBounds(ROUTEGEO.getBounds().pad(0.15));}catch(e){} }

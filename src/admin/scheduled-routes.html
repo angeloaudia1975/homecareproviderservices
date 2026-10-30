@@ -547,6 +547,8 @@ function renderDay(){
   h+=stops.map((s,i)=>stopCard(s,i)).join("");
   $("#app").innerHTML=h;
   paintEtas();
+  // A visit approved anywhere (another phone, Dealer 360) no longer needs its kept review here.
+  stops.forEach((s,i)=>{ if(statusOf(s)==="done") dropKeptReview(i); });
   // The stop you are at opens by itself, so the timer and the notes are one glance away.
   stops.forEach((s,i)=>{ if(statusOf(s)==="here") openBody(i); });
   startTimers();
@@ -697,7 +699,11 @@ function reviewKeyFor(i){ const s=DAY&&DAY.stops&&DAY.stops[i]; return s?"rev_"+
 function reviewToSug(c){
   const base=(REV&&REV.sug)||emptySuggestion("");
   const g=Object.assign({},base,c.summary);
-  g.attendees=c.participants.map(p=>({key:p.key,name:p.name,title:p.title,contact_id:p.contact_id,email:p.email||""}));
+  g.attendees=c.participants.map(p=>({key:p.key,name:p.name,title:p.title,contact_id:p.contact_id,email:p.email||"",add_as_contact:p.add_as_contact}));
+  /* "Make it a task" unticked by the rep stays unticked (duplicate_of is what renders it unticked). */
+  const naOn=!!(($("#rv_na_on")||{}).checked);
+  g.suggested_next_action=Object.assign({},c.summary.suggested_next_action,
+    naOn?{}:{duplicate_of:((base.suggested_next_action||{}).duplicate_of)||"rep_unticked",dup_title:(base.suggested_next_action||{}).dup_title||""});
   g.follow_ups=c.tasks.filter(t=>t.kind!=="next_action").map(t=>({key:t.key,title:t.title,due_date:t.due_date||"",priority:t.priority,from:"other"}));
   g.opportunities=c.opportunities.map(o=>Object.assign({},o));
   delete g.partial; delete g.checks;
@@ -712,7 +718,13 @@ function keepReview(now){
 }
 function dropKeptReview(i){ try{ localStorage.removeItem(obKey(reviewKeyFor(i))); }catch(e){} }
 function closeReview(){ keepReview(true); const w=document.getElementById("rvwrap"); if(w) w.remove(); REV=null; if(DAY) renderDay(); }
-function startReviewOver(){ if(!REV) return; const i=REV.i; dropKeptReview(i); REV=null; openReview(i,true); }
+/* Throwing the kept edits away takes a second tap, and needs a connection — offline it would only
+   swap the rep's work for an empty form. */
+function startReviewOver(btn){
+  if(!REV) return;
+  if(!navigator.onLine){ toast("Starting over needs a connection — your edits are kept."); return; }
+  if(btn&&!btn.dataset.armed){ btn.dataset.armed="1"; btn.textContent="Tap again to discard your edits"; btn.style.color="#b42323"; setTimeout(()=>{ if(btn.isConnected){ delete btn.dataset.armed; btn.textContent="Start over from a fresh AI summary"; btn.style.color=""; } },4000); return; }
+  const i=REV.i; dropKeptReview(i); REV=null; openReview(i,true); }
 async function openReview(i,fresh){
   const s=DAY.stops[i], k=vkey(s);
   const wrap=fullSheet("Visit summary · "+s.name);
@@ -761,7 +773,7 @@ function checksHtml(g){
   return `<div class="rv-checks" id="rv_checks"><b>⚠ Check before approving</b> — ${c.length===1?"this doesn't":"these don't"} line up across the AI's answers or with your notes:<ul>${c.map(x=>`<li>${esc(x.message)}</li>`).join("")}</ul></div>`;
 }
 function noteHtml(){
-  if(REV.restored&&REV.msg) return `<div class="rvnote ok">${esc(REV.msg)}<div style="margin-top:8px"><button class="btn wide" onclick="startReviewOver()">Start over from a fresh AI summary</button></div></div>`;
+  if(REV.restored&&REV.msg) return `<div class="rvnote ok">${esc(REV.msg)}<div style="margin-top:8px">${canRetryAi()?`<button class="btn go wide" id="rv_retry" onclick="tryAiAgain(this)">✨ Try AI again</button><div id="rv_aimsg" class="hint" style="margin:6px 0"></div>`:""}<button class="btn wide" onclick="startReviewOver(this)">Start over from a fresh AI summary</button></div></div>`;
   return REV.msg?`<div class="rvnote">${esc(REV.msg)}${canRetryAi()?`<div style="margin-top:8px"><button class="btn go wide" id="rv_retry" onclick="tryAiAgain(this)">✨ Try AI again</button><div id="rv_aimsg" class="hint" style="margin-top:6px"></div></div>`:""}</div>`
     :`<div class="rvnote ok">Suggested from your notes — edit anything, untick what's wrong. Nothing is saved until you approve.</div>`;
 }
@@ -865,7 +877,7 @@ function renderReview(){
       <button class="btn wide" onclick="addOpp()">＋ Add an opportunity</button></div>
     <div class="rv-sec"><h4>Next action</h4>
       <label class="rv-chk"><input type="checkbox" id="rv_na_on"${na.text&&!na.duplicate_of?" checked":""}> Make it a task</label>
-      ${na.duplicate_of?`<div class="hint">Already a follow-up above${na.dup_title?` (“${esc(na.dup_title)}”)`:""} — left unticked so it isn't done twice.</div>`:""}
+      ${na.duplicate_of&&na.duplicate_of!=="rep_unticked"?`<div class="hint">Already a follow-up above${na.dup_title?` (“${esc(na.dup_title)}”)`:""} — left unticked so it isn't done twice.</div>`:""}
       <div id="rv_na_review">${reviewHint(na)}</div>
       <input class="in" id="rv_na" value="${esc(na.text||"")}" placeholder="e.g. Send pricing + literature"><input class="in" type="date" id="rv_na_d" value="${esc(na.due_date||"")}" style="margin-top:6px"></div>
     <button class="btn go xl wide" onclick="approveVisit()">✓ Approve &amp; save</button>
@@ -881,7 +893,7 @@ function attendeeCard(a){
     <div class="rv-top"><label class="rv-chk"><input type="checkbox" class="rv-on" checked></label>
       <div style="flex:1;min-width:0"><input class="in rv-name" value="${esc(a.name||"")}"><input class="in rv-title" value="${esc(a.title||"")}" placeholder="Title" style="margin-top:6px"></div></div>
     ${matched?`<div class="hint ok">✓ On file: ${esc(matched.name||a.name)}</div>`
-      :`<label class="rv-chk"><input type="checkbox" class="rv-new" checked> Add as a new Dealer 360 contact</label><input class="in rv-email" type="email" placeholder="Email (optional)" value="${esc(a.email||"")}">`}
+      :`<label class="rv-chk"><input type="checkbox" class="rv-new"${a.add_as_contact===false?"":" checked"}> Add as a new Dealer 360 contact</label><input class="in rv-email" type="email" placeholder="Email (optional)" value="${esc(a.email||"")}">`}
   </div>`;
 }
 function followCard(f,ai){

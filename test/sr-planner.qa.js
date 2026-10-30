@@ -59,6 +59,25 @@ const R = H.runner();
     assert.strictEqual(r.owner_email, 'angelo@hcps.us');
     assert.strictEqual(r.stops[0].visit_min, 40);
   });
+  await R.step('opened route with no start point → Dealer 360 and back → Save still writes no start point and no home miles', async () => {
+    await p.evaluate(() => loadSaved('r-nohome')); await p.waitForTimeout(400);
+    const legsHaveHome = await p.evaluate(() => effectiveRoute().some(x => x._home));
+    assert.strictEqual(legsHaveHome, false, 'the planner home is in the measured route');
+    await p.reload(); await p.waitForFunction(() => typeof saveRouteGo === 'function'); await p.waitForTimeout(600);
+    await p.evaluate(async () => { if (typeof restoreDraft === 'function' && !ROUTE.length) { restoreDraft(); renderRoute(); }
+      if (!document.getElementById('rname')) { const d = document.createElement('div'); d.innerHTML = '<input id="rname"><input id="rdate"><div id="rerr"></div>'; document.body.appendChild(d); }
+      document.getElementById('rname').value = 'Assigned, no start'; await saveRouteGo(); });
+    assert.strictEqual(await p.evaluate(() => CURRENT_ROUTE_ID), 'r-nohome', 'the draft lost the route id');
+    assert.strictEqual(saved('r-nohome').home_base, null, 'after a page round trip the planner home was written in');
+  });
+  await R.step('clearing an opened route returns the planner to its own home base', async () => {
+    w.db.rep_routes.push({ id: 'r-greghome', owner_email: 'greg@hcps.us', rep_name: 'Greg Campbell', name: 'Greg start', scheduled_date: '2026-11-11', round_trip: true,
+      home_base: { label: 'Glasgow', address: '1 Main St, Glasgow, KY 42141', lat: 37.0, lng: -85.9, depart_time: '07:30' }, stops: [{ dealer_id: 'd-greg', name: 'Glasgow', lat: 36.99, lng: -85.91 }] });
+    await p.evaluate(() => loadSaved('r-greghome')); await p.waitForTimeout(300);
+    assert.strictEqual(await p.evaluate(() => HOME && HOME.q), '1 Main St, Glasgow, KY 42141');
+    await p.evaluate(() => clearRoute());
+    assert.strictEqual(await p.evaluate(() => HOME && HOME.q), HOME.q, 'a new plan would start from the rep’s house');
+  });
   await R.step('a new route: Save stamps the default visit length and teaches the draft its id — saving again updates, never duplicates', async () => {
     await p.evaluate(() => { clearRoute(); const vm = document.getElementById('visitMin'); if (!vm) throw new Error('no visitMin: ' + document.body.innerHTML.slice(0, 300)); vm.value = '45';
       ROUTE = [{ _i: 'x1', dealer_id: 'd-ang', name: 'Retail Medical Solutions', city: 'Lawrenceburg', state: 'TN', lat: 35.24, lng: -87.33 },

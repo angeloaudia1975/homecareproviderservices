@@ -13,9 +13,9 @@ const R = H.runner();
 const TODAY = H.dayStr(0);
 
 const sug = who => ({ meeting_summary: 'AI summary for ' + who, products_discussed: [], dealer_interests: [], dealer_concerns: [], objections: [], competitors: [], pricing_requests: [],
-  samples_requested: [], literature_requested: [], training_requested: [], attendees: [{ name: who === 'A' ? 'Bryant Smith' : 'Dana B', title: '' }],
+  samples_requested: [], literature_requested: [], training_requested: [], attendees: who === 'A' ? [{ name: 'Bryant Smith', title: '' }, { name: 'Pat New', title: 'Buyer' }] : [{ name: 'Dana B', title: '' }],
   rep_commitments: [], dealer_commitments: [], follow_ups: [{ title: 'AI follow-up for ' + who, due_date: '', priority: 'normal', from: 'other' }], opportunities: [],
-  suggested_next_action: { text: '', due_date: '' }, interest_slugs: [], poor_fit_slugs: [] });
+  suggested_next_action: { text: who === 'A' ? 'Call back Friday' : '', due_date: '' }, interest_slugs: [], poor_fit_slugs: [] });
 
 (async () => {
   const browser = await H.chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
@@ -42,6 +42,9 @@ const sug = who => ({ meeting_summary: 'AI summary for ' + who, products_discuss
     await p.fill('#rv_sum', 'My own summary of the Glasgow visit.');
     await p.click('#rv_body button:has-text("Add a follow-up")');
     await p.locator('#rv_fu .rv-card .rv-t').last().fill('Send the brochure');
+    // the rep declines "add as a new contact" for the AI's attendee
+    await p.locator('#rv_at .rv-card', { hasText: '' }).locator('.rv-new').first().uncheck();
+    await p.uncheck('#rv_na_on');
     const n = analyses();
     await p.click('#rv_body button:has-text("review later")');
     await p.waitForFunction(() => !document.getElementById('rvwrap'));
@@ -51,6 +54,9 @@ const sug = who => ({ meeting_summary: 'AI summary for ' + who, products_discuss
     assert.ok(fus.includes('Send the brochure') && fus.includes('AI follow-up for A'), JSON.stringify(fus));
     assert.strictEqual(analyses(), n, 'reopening asked the AI again');
     assert.ok(/edits are back/.test(await p.textContent('#rv_body')));
+    assert.strictEqual(await p.locator('#rv_at .rv-card .rv-new').first().isChecked(), false, '"add as contact" came back ticked');
+    assert.strictEqual(await p.isChecked('#rv_na_on'), false, '"make it a task" came back ticked');
+    assert.strictEqual(await p.inputValue('#rv_na'), 'Call back Friday');
   });
   await R.step('the kept review survives a reload; Approve saves the edited version and clears it', async () => {
     await p.reload(); await p.waitForSelector('#stop_0');
@@ -60,6 +66,8 @@ const sug = who => ({ meeting_summary: 'AI summary for ' + who, products_discuss
     const rep = w.db.dealer_visit_reports.find(r => r.id === 'vr-a');
     assert.ok(rep.approved_at, 'not approved');
     assert.ok(w.db.dealer_tasks.some(t => t.dealer_id === 'd-greg' && t.title === 'Send the brochure'), 'the added follow-up was not created');
+    assert.ok(!w.db.dealer_tasks.some(t => t.dealer_id === 'd-greg' && t.title === 'Call back Friday'), 'the unticked next action became a task');
+    assert.ok(!(w.db.dealer_contacts || []).some(c => c.name === 'Pat New'), 'the declined contact was created');
     const left = await p.evaluate(() => Object.keys(localStorage).filter(k => /rev_/.test(k) && /d-greg/.test(k)).length);
     assert.strictEqual(left, 0, 'the kept review was not cleared after approval');
     await p.click('.rv-done button:has-text("Done")');
