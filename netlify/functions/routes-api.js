@@ -760,13 +760,13 @@ exports.handler = async (event)=>{
       const ownVisitRoute={};
       if(!isBoss(me) && !b.assigned_to_email && me.email){
         try{
-          const vr=await sbGet(`dealer_visit_reports?rep_email=eq.${encodeURIComponent(String(me.email).toLowerCase())}&route_id=not.is.null&select=route_id&order=updated_at.desc&limit=200`);
+          const vr=await sbGet(`dealer_visit_reports?rep_email=eq.${encodeURIComponent(String(me.email).toLowerCase())}&route_id=not.is.null&or=(checkin_at.not.is.null,ended_at.not.is.null,completed_at.not.is.null)&select=route_id&order=updated_at.desc&limit=200`);
           const have=new Set((rows||[]).map(r=>r.id));
           const extra=[...new Set((vr||[]).map(x=>x.route_id).filter(id=>id&&!have.has(id)))].slice(0,50);
           if(extra.length){
             const cols=(/select=([^&]+)/.exec(path)||[])[1];
             const more=await sbGet(`rep_routes?select=${cols}&id=in.(${extra.map(encodeURIComponent).join(",")})${(schema&&!b.include_archived)?"&archived_at=is.null":""}`);
-            for(const r of (more||[])){ ownVisitRoute[r.id]=true; rows.push(r); }
+            for(const r of (more||[])){ ownVisitRoute[r.id]=true; rows.push({...r, distance_m:null, duration_s:null}); }
           }
         }catch(e){ /* the list still shows his own routes */ }
       }
@@ -843,9 +843,10 @@ exports.handler = async (event)=>{
       const OWN_VISIT_ACTIONS=new Set(["visit_checkin","visit_report_get","visit_report_save","visit_end","visit_analyze","visit_approve","visit_followup_set","visit_email_save"]);
       if(off.length===1 && OWN_VISIT_ACTIONS.has(b.action) && me.email && b.route_id){   // the route-stop visit only: a report_id alone would let an old report open NEW off-route visits
         const did1=String(b.dealer_id||""), em=encodeURIComponent(String(me.email).toLowerCase());
-        const q=`dealer_visit_reports?route_id=eq.${encodeURIComponent(String(b.route_id))}&dealer_id=eq.${encodeURIComponent(did1)}&rep_email=eq.${em}&select=id&limit=1`;
+        const q=`dealer_visit_reports?route_id=eq.${encodeURIComponent(String(b.route_id))}&dealer_id=eq.${encodeURIComponent(did1)}&rep_email=eq.${em}&or=(checkin_at.not.is.null,ended_at.not.is.null,completed_at.not.is.null)&select=id&limit=1`;
         let own; try{ own=await sbGet(q); }catch(e){ return json(503,{error:"Couldn't check this visit — try again."}); }
-        if(own&&own.length) off=[];
+        // ...and only for THAT report: a report_id naming any other report of his is not covered.
+        if(own&&own.length && (!b.report_id || String(b.report_id)===String(own[0].id))) off=[];
       }
       if(off.length) return json(403,{error:"Not your dealer",dealer_ids:off});
     }
@@ -1278,7 +1279,7 @@ exports.handler = async (event)=>{
       if(!ownsRoute(r)){
         /* Reassigned mid-day: the rep who already made a visit on this stop keeps working THAT visit
            (finish, approve, follow-up, queued offline saves) — it is his, whoever drives the rest. */
-        let mine=null; try{ mine=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&select=rep_email&limit=1`); }catch(e){ return {ok:false,status:503,error:"Couldn't check this visit — try again."}; }
+        let mine=null; try{ mine=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&or=(checkin_at.not.is.null,ended_at.not.is.null,completed_at.not.is.null)&select=rep_email&limit=1`); }catch(e){ return {ok:false,status:503,error:"Couldn't check this visit — try again."}; }
         if(!(mine&&mine[0]&&emailEq(mine[0].rep_email,me.email))) return {ok:false,status:403,error:"not your route"};
         return {ok:true,route:r,own_visit_only:true};
       }
@@ -1378,11 +1379,12 @@ exports.handler = async (event)=>{
         if(route && !ownsRoute(route)){
           /* Reassigned after he visited some stops: he still opens the route — but only the stops he
              visited, so he can finish, approve and follow them up. Everything else is the new rep's. */
-          let mine; try{ mine=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&rep_email=eq.${encodeURIComponent(String(me.email||"").toLowerCase())}&select=dealer_id`); }
+          let mine; try{ mine=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&rep_email=eq.${encodeURIComponent(String(me.email||"").toLowerCase())}&or=(checkin_at.not.is.null,ended_at.not.is.null,completed_at.not.is.null)&select=dealer_id`); }
           catch(e){ return json(503,{error:"Couldn't open this route — try again."}); }
           const ids=new Set((mine||[]).map(x=>String(x.dealer_id)));
           if(!ids.size) return json(403,{error:"not your route"});
-          route={...route, stops:(Array.isArray(route.stops)?route.stops:[]).filter(x=>x&&ids.has(String(x.dealer_id))), _own_visits_only:true};
+          route={...route, stops:(Array.isArray(route.stops)?route.stops:[]).filter(x=>x&&ids.has(String(x.dealer_id))), _own_visits_only:true,
+                 geometry:null, distance_m:null, duration_s:null, home_base:null};   // the new rep's day is not his to see
         }
       } else {
         const date=(b.date&&/^\d{4}-\d{2}-\d{2}$/.test(b.date))?b.date:new Date().toISOString().slice(0,10);

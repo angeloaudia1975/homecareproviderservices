@@ -3750,7 +3750,9 @@ direct-to-main path). Rules it established:
   never stranded; every other stop of the route is the new rep's — `route_day` opens the route for him with ONLY the stops
   he visited (`own_visits_only`), `list_routes` still lists it for him (marked), and the dealer-scope gate lets his OWN
   report on that stop reach the dealer for the visit actions only, and only with that route named — a report_id alone
-  never opens a new visit (nothing else of that dealer). The planner leaves such routes out of its lists. A bare claim (planned,
+  never opens a new visit, and a report_id must be that same route-stop report (nothing else of that dealer). Only a
+  REAL visit (checked in, ended or completed) counts as his — a bare claim keeps nothing open to him; the reassigned
+  route shows him no geometry, distance or start point. The planner leaves such routes out of its lists. A bare claim (planned,
   no check-in, nothing written) untouched for 10 minutes passes to the rep now driving the stop (conditional PATCH on
   the untouched row); a fresh claim or a real check-in never does. The planner's Log-visit form logs ONE visit: a
   change made after saving is not applied, and the page says so. An empty claim (status planned, never checked in) does not count as a visit for
@@ -3778,7 +3780,7 @@ direct-to-main path). Rules it established:
   Schema: `supabase/sr_route_integrity.sql` (additive: archived_at, archived_by, depart_time, depart_tz + CHECKs; RLS /
   grants unchanged) — Angelo runs it; until then `archive_route` and one-way saves answer 503 `schema_update_needed`
   (list_routes reports `route_schema`; a "not installed" answer is re-checked after a minute, a read failure is a 503).
-  Tests: sr-routes-api (27), routeclock (+ mutants), sr-eta (16 + 9 mutants), sr-consistency (planner =
+  Tests: sr-routes-api (29), routeclock (+ mutants), sr-eta (16 + 9 mutants), sr-consistency (planner =
   field app = heads-up, two browser zones), sr-review (other rep read only), sr-planner.
 
 ## Per-page checklist (run before calling a page done)

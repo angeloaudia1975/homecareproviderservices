@@ -301,5 +301,28 @@ async function call(w, who, body, headers) {
     }
     assert.deepStrictEqual(['dealer_visit_reports', 'dealer_visits', 'dealer_notes', 'dealer_tasks', 'opportunities'].map(t2 => (w.db[t2] || []).length), n0);
   });
+  await t('a route-stop visit is no ticket to any OTHER report of his at that dealer (report_id must be that visit)', async () => {
+    const w = world(); const rt = w.db.rep_routes.find(r => r.id === 'r-other'); rt.stops = [{ dealer_id: 'd-ang', name: 'RMS' }];
+    w.db.dealer_visit_reports.push({ id: 'vr-old', route_id: null, dealer_id: 'd-ang', rep_email: 'greg@hcps.us', rep_name: 'Greg Campbell', status: 'ended', checkin_at: '2026-09-01T14:00:00Z', ended_at: '2026-09-01T15:00:00Z', fields: { notes: 'old' }, updated_at: '2026-09-01T15:00:00Z' });
+    assert.ok((await call(w, 'greg', { action: 'visit_checkin', route_id: 'r-other', dealer_id: 'd-ang' })).j.ok);
+    rt.assigned_to_email = 'lori@hcps.us';
+    const T = ['dealer_visits', 'dealer_notes', 'dealer_tasks', 'opportunities']; const n0 = T.map(t2 => (w.db[t2] || []).length);
+    for (const body of [{ action: 'visit_report_get' }, { action: 'visit_approve', summary: { meeting_summary: 'x' }, tasks: [{ title: 't' }], opportunities: [{ title: 'o' }] },
+      { action: 'visit_email_save', email: { subject: 's', body: 'b' } }, { action: 'visit_followup_set', status: 'complete' }, { action: 'visit_analyze', notes: 'x' }]) {
+      const r = await call(w, 'greg', Object.assign({ route_id: 'r-other', dealer_id: 'd-ang', report_id: 'vr-old' }, body));
+      assert.strictEqual(r.status, 403, body.action + ' → ' + r.status + ' ' + JSON.stringify(r.j));
+    }
+    assert.deepStrictEqual(T.map(t2 => (w.db[t2] || []).length), n0, 'CRM rows written');
+    const own = w.db.dealer_visit_reports.find(x => x.route_id === 'r-other');
+    assert.strictEqual((await call(w, 'greg', { action: 'visit_report_get', route_id: 'r-other', dealer_id: 'd-ang', report_id: own.id })).status, 200, 'his own route-stop report by id');
+  });
+  await t('a bare claim is not "his visit": it does not keep a reassigned route open to him', async () => {
+    const w = world(); const rt = w.db.rep_routes.find(r => r.id === 'r-other'); rt.stops = [{ dealer_id: 'd-ang', name: 'RMS' }];
+    w.db.dealer_visit_reports.push({ id: 'vr-b', route_id: 'r-other', dealer_id: 'd-ang', rep_email: 'greg@hcps.us', status: 'planned', checkin_at: null, fields: {}, updated_at: new Date().toISOString() });
+    rt.assigned_to_email = 'lori@hcps.us';
+    assert.strictEqual((await call(w, 'greg', { action: 'route_day', route_id: 'r-other' })).status, 403);
+    assert.strictEqual((await call(w, 'greg', { action: 'visit_checkin', route_id: 'r-other', dealer_id: 'd-ang' })).status, 403);
+    assert.ok(!(await call(w, 'greg', { action: 'list_routes' })).j.routes.some(r => r.id === 'r-other'));
+  });
   console.log(`\nsr-routes-api: ${pass} passed, ${fail} failed`); process.exitCode = fail ? 1 : 0;
 })();
