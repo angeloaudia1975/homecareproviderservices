@@ -263,11 +263,11 @@ const sends = w => w.outbound.filter(x => x.kind === 'graph' && /sendMail/.test(
   await t('retention: the daily purge calls the purge function; before the migration it skips quietly', async () => {
     const S = standardSeed({}); S.rpc = { hcps_email_draft_purge_expired: () => ({ status: 200, body: 3 }) };
     const wp = createWorld(S); let r = await load('email-learning-purge-cron.js', wp).handler({});
-    assert.strictEqual(r.statusCode, 200); assert.deepStrictEqual(JSON.parse(r.body), { ok: true, cleared: 3 });
+    assert.strictEqual(r.statusCode, 200); assert.deepStrictEqual(JSON.parse(r.body), { ok: true, cleared: 3, learning: 'switch off' });
     const S2 = standardSeed({}); const r2 = await load('email-learning-purge-cron.js', createWorld(S2)).handler({});
-    assert.deepStrictEqual(JSON.parse(r2.body), { skipped: 'not installed' });
+    assert.deepStrictEqual(JSON.parse(r2.body), { ok: true, purge: 'not installed', learning: 'switch off' });
   });
-  await t('owner page: GET refused; unknown action refused; no write action exists', async () => {
+  await t('owner page: GET refused; unknown action refused; no capture write action exists', async () => {
     assert.strictEqual((await call(L, { action: 'status' }, { token: 'pres', method: 'GET' })).status, 405);
     for (const a of ['create', 'record_send', 'delete', 'purge', 'approve']) assert.strictEqual((await call(L, { action: a }, { token: 'pres' })).status, 400, a);
   });

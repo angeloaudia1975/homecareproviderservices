@@ -578,6 +578,16 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   switch set back to false by Angelo; postcheck ok; public-key probe 8/8 BLOCKED; PR #69 merged (b555ab6) and live. Installed
   fingerprint `126886da…` = the committed file without the guard's comment line `-- UPDATE` (accepted; logic identical — see
   PHASE1.md). Capture is ready but OFF until Angelo turns `email_learning_capture` on.
+  **Phase 2 (learning) — BUILT on branch `email-learning/p2-learning` (2026-10-30; PR, NOT merged, migration NOT run;
+  runbook `docs/email-learning/PHASE2.md`).** Rules: the analyser (`_email_learn.js`) is pure code — no AI, nothing leaves HCPS;
+  every phrase is MASKED before it is compared or stored (addresses, links, phones, amounts, dates, times, numbers, the dealer's
+  name, people's names → placeholders; anything still holding a digit or "@" is dropped, and the database refuses it); a rule is
+  SUGGESTED only for the same masked edit in 3+ sent emails to 2+ dealers (code AND database); only the ACTIVE President decides
+  (approve — optionally reworded — / reject / retire / reword), as the verified sign-in, with a reason, from the version on screen;
+  a rejected rule is never re-suggested and the analyser never changes a decided rule; every change of the approved set is a
+  numbered, insert-only version (restore / reset create a new one). Daily analysis only while `phase2_flags.email_learning_suggest`
+  is exactly true (off). **Approved rules change NO email in Phase 2** — no generator reads them (test-enforced); Phase 3 applies
+  them behind its own switch.
 - **A replay is a no-op.** Every write from a visit carries `(origin_type, origin_id, origin_key)` against
   a unique index (or a claim PATCH on a null column), so a double tap, an offline resend or a late replay
   never duplicates a visit, note, task, deal, contact, activity row or intent signal — while a genuinely
