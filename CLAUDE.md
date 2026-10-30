@@ -3688,6 +3688,41 @@ source is the committed `.claude/settings.json` (shared project settings; person
   Verified with a fresh headless process reading project settings only (`claude -p --setting-sources project
   --permission-mode default`), before vs after.
 
+## 22. Scheduled Routes, route planner & Territory — field reliability (2026-10-30, PR review requested by Angelo)
+Angelo asked for this batch to go through a PR with independent review and required CI before deployment (not the §7
+direct-to-main path). Rules it established:
+- **The email editor** (pre-visit heads-up + follow-up) follows §16 "Email editors close only on an explicit action"
+  (PR #67, merged first the same day). Other modals that may close on a backdrop tap (dealer.html email viewer + its
+  generic modal, scheduling-console request dialog) close only when the press AND the release are on the backdrop — never
+  `if(e.target===backdrop)` on `click` alone, which a text selection released outside the box triggers.
+- **The visit review keeps the rep's edits** on the phone (`rev_<visit>`) through Close / "review later" / reload until
+  Approve; reopening restores them without a new AI call. An AI answer is applied only to the review that asked for it.
+- **Arrival times:** a round trip's depart time is read in the HOME BASE's zone (`RouteClock.routeItinerary startTz`,
+  `homeTz()`), as the planner always did — reading it in the first stop's zone made every ETA an hour early (live
+  "Darrell Travel": 11:21 AM EST shown, 12:21 PM EST right). A time outside 7:00 AM – 7:00 PM in the stop's zone
+  (`RouteClock.outsideHours`) is flagged on the card + route banner and is NEVER put in a heads-up — left out with a
+  warning on the phone, refused again by `routes-api previsitEta`. The clock still never invents a night: a missing
+  🌙 overnight is fixed in the planner. ETAs repaint after any card re-render; .ics times are UTC (`Z`).
+- **Planner saves:** each stop is saved with the visit length it was timed with (no blank = 30 min on the phone); a Save
+  updates the browser draft's route id (no duplicate routes); deleting the open route detaches the plan; a route opened
+  with no start point is re-saved without one and never overwrites the planner's own home base; "notify" uses the stop's
+  own date; only the newest directions answer paints; one save per logged visit.
+- **Route ownership never moves on a save.** `save_route` PATCH keeps `owner_email`/`rep_name`; a rep's re-save keeps an
+  existing assignment; only the President's explicit `assigned_to_email` moves it. In My Sales Workspace, date-only
+  `route_day` is the President's own route.
+- **Territory Lines saves are confirmed, never assumed:** the tick changes only after the server says ok, a failure puts it
+  back and says "Not saved", 401 → sign-in; "Clear" asks in the page first; `set_state` upserts first and then deletes
+  what is no longer wanted (never delete-all-then-insert); unknown states refused.
+- Tests: `test/sr-*.js` (harness `test/sr-harness.js`), CI `.github/workflows/scheduled-routes-ci.yml` (with mutants); the
+  editor's own suite is `test/email-editor.qa.js`. A heads-up with an after-hours time shows the warning in the editor.
+- **Open, needs Angelo's decision:** (a) removing a stop / deleting a route that already has a visit report strands that
+  visit's later saves (refused, quarantined in the outbox) — block it, or let a visit report keep its own route row;
+  (b) reassigning a route mid-day lets the new rep overwrite the previous rep's visit report on the same stop — refuse when
+  `rep_email` differs, or keep the first rep's; (c) the map "Log visit" (`save_visit`) still has no server-side replay
+  protection (the page now sends one save per set of notes); (d) a one-way route (no round trip) has no saved start time —
+  the phone uses the rep's default depart time or 8:00; (e) the 7 AM – 7 PM working day is a default — change it if reps
+  call on dealers outside it.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.

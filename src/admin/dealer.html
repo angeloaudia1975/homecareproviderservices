@@ -975,7 +975,11 @@ function emModalEnsure(){
     +'<div id="emMeta" class="hint" style="margin:3px 0 0"></div></div>'
     +'<button type="button" onclick="emClose()" title="Close (Esc)" style="flex:none;border:1px solid var(--line);background:#f6f8fa;border-radius:8px;width:30px;height:30px;font-size:15px;cursor:pointer;color:var(--gray)">✕</button></div>'
     +'<div id="emBody"></div></div>';
-  wrap.addEventListener("click",function(e){ if(e.target===wrap) emClose(); });
+  /* Close only when the press AND the release are on the backdrop: a text selection released
+     outside the box used to count as a backdrop click and close it (same defect as the Scheduled
+     Routes email editor, 2026-10-30). */
+  let emDown=false; wrap.addEventListener("pointerdown",function(e){ emDown=(e.target===wrap); });
+  wrap.addEventListener("click",function(e){ const ok=emDown&&e.target===wrap; emDown=false; if(ok) emClose(); });
   document.body.appendChild(wrap);
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") emClose(); });
 }
@@ -1645,7 +1649,8 @@ function xsModalEnsure(){
     +'<button type="button" onclick="closeModal()" title="Close (Esc)" style="flex:none;border:1px solid var(--line);background:#f6f8fa;border-radius:8px;width:30px;height:30px;font-size:15px;cursor:pointer;color:var(--gray)">✕</button></div>'
     +'<div id="xsBody" style="padding:15px 16px"></div>'
     +'<div id="xsFoot" style="display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);background:#fafbfc"></div></div>';
-  w.addEventListener("click",e=>{ if(e.target===w) closeModal(); });
+  let xsDown=false; w.addEventListener("pointerdown",e=>{ xsDown=(e.target===w); });   // see emModalEnsure
+  w.addEventListener("click",e=>{ const ok=xsDown&&e.target===w; xsDown=false; if(ok) closeModal(); });
   document.body.appendChild(w);
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
 }

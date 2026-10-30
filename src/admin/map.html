@@ -380,7 +380,7 @@ async function saveHome(){
     if(!r||!r.ok){ $("#homeErr").textContent="Couldn't find that address — include the city and state (e.g. …, Cottontown, TN 37048)."; return; }
     const short=q.split(",").slice(-2).join(",").trim()||q;
     const state=String(r.state||stateFromAddr(q)||"").toUpperCase();
-    HOME={q,lat:r.lat,lng:r.lng,short,state};
+    HOME={q,lat:r.lat,lng:r.lng,short,state}; LOADED_NOHOME=null;   // a start point chosen now belongs to this plan
     localStorage.setItem("hcps_home_base",JSON.stringify(HOME));
     closeHome(); drawHome(); renderRoute();
     if(MAP) MAP.setView([HOME.lat,HOME.lng], Math.max(MAP.getZoom(),6));
@@ -399,7 +399,12 @@ function effectiveRoute(){
 function routeMiles(){ const R=effectiveRoute(); let m=0; for(let i=1;i<R.length;i++) m+=hav(R[i-1],R[i]); return m; }
 function addStop(i){ const p=POINTS[i]; if(!p)return; if(inRoute(p)){ ROUTE=ROUTE.filter(s=>s._i!==p._i); } else { if(ROUTE.length>=25){ alert("That's a lot of stops — keep a route under 25 for a workable day."); return; } ROUTE.push(p); } renderRoute(); draw(); if(MAP)MAP.closePopup(); }
 function removeStop(i){ ROUTE.splice(i,1); renderRoute(); draw(); }
-function clearRoute(){ ROUTE=[]; CURRENT_ROUTE_ID=null; clearDraft(); renderRoute(); draw(); }
+function clearRoute(){ ROUTE=[]; CURRENT_ROUTE_ID=null; LOADED_NOHOME=null; clearDraft(); renderRoute(); draw(); }
+/* A saved route opened WITHOUT a start point (assigning it to a rep with no default clears the
+   planner's address on purpose). The planner still times it from your home base so you can see a
+   day, but re-saving must not write your address back into the rep's route. null = not that case;
+   otherwise {round_trip} as loaded. */
+let LOADED_NOHOME=null;
 async function optimize(){
   if(ROUTE.length<2){ renderRoute(); return; }
   const home=(HOME&&ROUNDTRIP)?{lat:HOME.lat,lng:HOME.lng}:null;
@@ -450,6 +455,8 @@ function tzOffMin(tz,d){ // minutes east of UTC for tz at instant d (negative in
 function tzShort(tz,d){ try{ const s=new Intl.DateTimeFormat("en-US",{timeZone:tz,timeZoneName:"short"}).formatToParts(d||new Date()).find(x=>x.type==="timeZoneName"); return (s&&s.value)||""; }catch(e){ return ""; } }
 function localToAbs(y,mo,dd,minutes,tz){ const guess=new Date(Date.UTC(y,mo,dd,12,0,0)); const off=tzOffMin(tz,guess); return Date.UTC(y,mo,dd,0,0,0)+minutes*60000-off*60000; }
 function fmtAbs(ms,tz){ const d=new Date(ms); const t=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour:"numeric",minute:"2-digit"}).format(d); const z=tzShort(tz,d); return t+(z?" "+z:""); }
+function isoDateIn(ms,tz){ try{ const p=new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date(ms)).reduce((a,x)=>{a[x.type]=x.value;return a;},{}); return p.year+"-"+p.month+"-"+p.day; }catch(e){ return ""; } }
+function offHours(ms,tz){ try{ const p=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour12:false,hour:"2-digit",minute:"2-digit"}).formatToParts(new Date(ms)).reduce((a,x)=>{a[x.type]=x.value;return a;},{}); let h=parseInt(p.hour,10); if(h===24)h=0; const m=h*60+parseInt(p.minute,10); return m<7*60||m>19*60; }catch(e){ return false; } }
 function fmtAbsDay(ms,tz){ return new Intl.DateTimeFormat("en-US",{timeZone:tz,weekday:"short",month:"short",day:"numeric"}).format(new Date(ms)); }
 function minToTimeVal(min){ min=Math.max(0,Math.min(1439,Math.round(min||0))); return String(Math.floor(min/60)).padStart(2,"0")+":"+String(min%60).padStart(2,"0"); }
 function defaultVisit(){ return Math.max(0,parseInt((($("#visitMin")||{}).value),10)||0); }
@@ -488,9 +495,11 @@ function computeItinerary(){
 function updateVisit(i,v){ if(ROUTE[i]){ ROUTE[i].visit_min=Math.max(0,parseInt(v,10)||0); renderRoute(); } }
 function toggleOvernight(i,c){ if(ROUTE[i]){ ROUTE[i].overnight=!!c; renderRoute(); } }
 function updateNextStart(i,v){ if(ROUTE[i]){ ROUTE[i].next_start_min=parseTimeMin(v); renderRoute(); } }
-async function notifyDealer(id,name){
+/* The date THIS stop falls on. On a multi-day route the start date is day one's, and a dealer on
+   day three used to be told day one. */
+async function notifyDealer(id,name,stopDate){
   if(!id){ banner("This stop has no linked dealer to notify."); return; }
-  const date=(($("#startDate")||{}).value||"");
+  const date=(/^\d{4}-\d{2}-\d{2}$/.test(stopDate||"")?stopDate:"")||(($("#startDate")||{}).value||"");
   if(!confirm(`Send an "upcoming visit" email to ${name||"this dealer"}${date?" for "+date:""}?`)) return;
   try{ const r=await api2({action:"notify_visit",dealer_id:id,date});
     if(r&&r.ok&&r.sent) banner("Visit notice sent ✓");
@@ -535,12 +544,22 @@ function openVisitNotes(id,name){
 }
 function vnVal(id){ const e=document.getElementById(id); return e?String(e.value||"").trim():""; }
 function collectVisitDetails(){ return {summary:vnVal("vn_summary"),products:vnVal("vn_products"),pricing:vnVal("vn_pricing"),samples:vnVal("vn_samples"),opportunities:vnVal("vn_opps"),follow_ups:vnVal("vn_followups"),orders_expected:vnVal("vn_orders"),concerns:vnVal("vn_concerns"),next_visit:vnVal("vn_next")}; }
+/* ONE SAVE PER LOGGED VISIT. save_visit creates a visit, a note, tasks and deals each time it is
+   called, so a double tap — or tapping Save again on the same notes — used to create everything
+   twice. A save in flight ignores further taps, and the exact same details for the same dealer are
+   not sent again. */
+let VN_SAVING=false, VN_SAVED_SIG=null;
 async function saveVisit(){
-  const id=window._vnDealer; if(!id) return; const details=collectVisitDetails(); const m=$("#vn_msg"); if(m)m.textContent="Saving…";
+  const id=window._vnDealer; if(!id) return; const details=collectVisitDetails(); const m=$("#vn_msg");
+  const sig=id+"|"+JSON.stringify(details);
+  if(VN_SAVING) return;
+  if(sig===VN_SAVED_SIG){ if(m)m.textContent="Already saved ✓ — change something to save again."; return; }
+  VN_SAVING=true; if(m)m.textContent="Saving…";
   try{ const r=await api2({action:"save_visit",dealer_id:id,summary:details.summary,details});
-    if(r&&r.ok){ if(m)m.textContent=`Saved ✓ — ${r.tasks||0} task(s)${r.opportunities?`, ${r.opportunities} opportunity(ies)`:""} created.`; }
-    else if(m) m.textContent=(r&&r.message)||"Couldn't save.";
+    if(r&&r.ok){ VN_SAVED_SIG=sig; if(m)m.textContent=`Saved ✓ — ${r.tasks||0} task(s)${r.opportunities?`, ${r.opportunities} opportunity(ies)`:""} created.`; }
+    else if(m) m.textContent=(r&&(r.message||r.error))||"Couldn't save.";
   }catch(e){ if(m)m.textContent="Couldn't save — try again."; }
+  finally{ VN_SAVING=false; }
 }
 async function genFollowup(){
   const id=window._vnDealer; if(!id) return; const details=collectVisitDetails(); const m=$("#vn_msg"); if(m)m.textContent="Generating…";
@@ -571,12 +590,15 @@ function itineraryListHtml(){
       html+=`<li class="homeli"><span class="n" style="background:#16202e">🏠</span><span class="nm"><b>${isStart?"Start — Home base":"Return — Home base"}</b><br><small>${esc(HOME?(HOME.short||HOME.q||""):"")}${t}</small></span></li>`;
     } else {
       stopNo++; routeIdx++; const ri=routeIdx, vv=(node.visit_min!=null?node.visit_min:defaultVisit());
-      const arr=hasTimes?`<b style="color:#2B4071">${esc(fmtAbs(it.arriveAbs,it.tz))}</b>`:"";
+      /* An arrival outside the working day (7 AM – 7 PM, the stop's own zone) is almost always a
+         missing 🌙 overnight — flagged here where the route is built, and never sent to a dealer. */
+      const off=hasTimes&&offHours(it.arriveAbs,it.tz);
+      const arr=hasTimes?`<b style="color:${off?"#b42323":"#2B4071"}"${off?` title="Outside business hours — mark the stop that ends the day as overnight"`:""}>${off?"⚠ ":""}${esc(fmtAbs(it.arriveAbs,it.tz))}</b>`:"";
       const dep=hasTimes?`<span style="${mut}"> · departs ${esc(fmtAbs(it.departAbs,it.tz))}</span>`:"";
       html+=`<li><span class="n">${stopNo}</span><span class="nm"><b>${esc(node.name)}</b> ${arr}<br><small>${esc([node.city,node.state].filter(Boolean).join(", "))}</small>`
         +`<div style="margin-top:3px;font-size:12px">Visit <input type="number" min="0" step="5" value="${vv}" style="width:52px" onchange="updateVisit(${ri},this.value)"> min${dep}`
         +` &nbsp;<label style="${mut}"><input type="checkbox" ${node.overnight?"checked":""} onchange="toggleOvernight(${ri},this.checked)"> 🌙 overnight</label>`
-        +(node.dealer_id?` &nbsp;<a href="#" onclick="notifyDealer('${jesc(node.dealer_id)}','${jesc(node.name||"")}');return false" style="${mut};text-decoration:none" title="Email this dealer that you'll be in their area">✉ notify</a>`:"")
+        +(node.dealer_id?` &nbsp;<a href="#" onclick="notifyDealer('${jesc(node.dealer_id)}','${jesc(node.name||"")}','${hasTimes?jesc(isoDateIn(it.arriveAbs,it.tz)):""}');return false" style="${mut};text-decoration:none" title="Email this dealer that you'll be in their area">✉ notify</a>`:"")
         +(node.dealer_id?` &nbsp;<a href="#" onclick="openVisitNotes('${jesc(node.dealer_id)}','${jesc(node.name||"")}');return false" style="${mut};text-decoration:none" title="Log the visit &amp; generate a follow-up">📝 log visit</a>`:"")
         +(node.dealer_id?` &nbsp;<a href="#" onclick="printDealerHandout('${jesc(node.dealer_id)}');return false" style="${mut};text-decoration:none" title="Print this dealer's leave-behind handout">🖨 handout</a>`:"")
         +`</div>`
@@ -691,12 +713,18 @@ function updateRouteMeta(){
   const el=$("#rmeta"); if(el) el.textContent=`${ROUTE.length} stops${drive}${useHome?" · round trip":""}`;
 }
 function scheduleRoute(){ if(_routeT) clearTimeout(_routeT); _routeT=setTimeout(routeIt,600); }
+let ROUTE_SEQ=0;
 async function routeIt(){
   const R=effectiveRoute();
   if(R.length<2){ if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;} LASTROUTE={distance_m:0,duration_s:0,geometry:null}; updateRouteMeta(); return; }
   const coords=R.map(s=>[s.lng,s.lat]);
+  /* Only the newest request may paint. Edits in quick succession fire several of these; a slow
+     answer for an older stop list used to land last and overwrite the legs the ETAs, the printed
+     sheet and the saved route are all built from. */
+  const seq=++ROUTE_SEQ;
   try{
     const r=await api2({action:"directions",coords});
+    if(seq!==ROUTE_SEQ) return;
     if(r&&r.ok&&r.geometry&&r.geometry.length){
       if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);ROUTEGEO=null;}
       if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;}
@@ -732,14 +760,20 @@ function saveRouteDialog(){
 async function saveRouteGo(){
   const name=(($("#rname")||{}).value||"").trim(); if(!name){ $("#rerr").textContent="Enter a name."; return; }
   const date=(($("#rdate")||{}).value||"").trim()||(($("#startDate")||{}).value||"").trim();
-  const stops=ROUTE.map(s=>({dealer_id:s.dealer_id||"",name:s.name||"",address:s.address||"",city:s.city||"",state:s.state||"",zip:s.zip||"",lat:s.lat,lng:s.lng,visit_min:(s.visit_min!=null?s.visit_min:null),overnight:!!s.overnight,next_start_min:(s.next_start_min!=null?s.next_start_min:null)}));
+  /* Each stop is saved with the visit length the planner timed it with. A stop left on the page's
+     "default visit" used to be saved blank, and the field app then timed it at 30 min — so with a
+     45-min default the rep's phone and the printed plan disagreed from the first such stop on. */
+  const stops=ROUTE.map(s=>({dealer_id:s.dealer_id||"",name:s.name||"",address:s.address||"",city:s.city||"",state:s.state||"",zip:s.zip||"",lat:s.lat,lng:s.lng,visit_min:stopVisit(s),overnight:!!s.overnight,next_start_min:(s.next_start_min!=null?s.next_start_min:null)}));
   $("#rerr").textContent="Saving…";
   try{
     const r=await api2({action:"save_route",id:CURRENT_ROUTE_ID||undefined,name,scheduled_date:date||null,
-      home_base:(HOME&&ROUNDTRIP)?{label:HOME.short||"",address:HOME.q||"",lat:HOME.lat,lng:HOME.lng,depart_time:(($("#startTime")||{}).value||"08:00")}:null,
-      round_trip:!!(HOME&&ROUNDTRIP),stops,distance_m:LASTROUTE.distance_m,duration_s:LASTROUTE.duration_s,geometry:LASTROUTE.geometry});
-    if(r&&r.ok){ CURRENT_ROUTE_ID=r.id; closeHome(); banner("Route saved ✓"); }
-    else { $("#rerr").textContent=(r&&r.message)||"Couldn't save."; }
+      home_base:(HOME&&ROUNDTRIP&&!LOADED_NOHOME)?{label:HOME.short||"",address:HOME.q||"",lat:HOME.lat,lng:HOME.lng,depart_time:(($("#startTime")||{}).value||"08:00")}:null,
+      round_trip:LOADED_NOHOME?LOADED_NOHOME.round_trip:!!(HOME&&ROUNDTRIP),stops,distance_m:LASTROUTE.distance_m,duration_s:LASTROUTE.duration_s,geometry:LASTROUTE.geometry});
+    /* The draft kept in this browser must learn the saved id too: it used to keep route_id:null, so
+       leaving for Dealer 360 and coming back restored an "unsaved" plan and the next Save created a
+       second copy of the route. */
+    if(r&&r.ok){ CURRENT_ROUTE_ID=r.id; saveDraft(); closeHome(); banner("Route saved ✓"); }
+    else { $("#rerr").textContent=(r&&(r.message||r.error))||"Couldn't save."; }
   }catch(e){ $("#rerr").textContent="Couldn't save — try again."; }
 }
 function toggleSaved(){ const p=$("#savedPanel"); if(!p.hidden){ p.hidden=true; return; } p.hidden=false; refreshSaved(); }
@@ -760,10 +794,16 @@ async function refreshSaved(){
 async function loadSaved(id){
   try{
     const r=await api2({action:"get_route",id}); const rt=r&&r.route; if(!rt) return;
-    ROUTE=(rt.stops||[]).map((s,idx)=>({_i:"sv"+idx,dealer_id:s.dealer_id||"",name:s.name||"",address:s.address||"",city:s.city||"",state:s.state||"",zip:s.zip||"",lat:s.lat,lng:s.lng,visit_min:(s.visit_min!=null?s.visit_min:undefined),overnight:!!s.overnight,next_start_min:(s.next_start_min!=null?s.next_start_min:undefined)}));
+    /* Stops are matched back to their map pins (as a restored draft is), so a pin already on the
+       route lights up and a click on it removes the stop — the old "sv0…" ids matched no pin, and a
+       click added the same dealer a second time. Per-stop visit minutes / overnights are kept. */
+    ROUTE=(rt.stops||[]).map((s,idx)=>hydrateStop({dealer_id:s.dealer_id||"",name:s.name||"",address:s.address||"",city:s.city||"",state:s.state||"",zip:s.zip||"",lat:s.lat,lng:s.lng,visit_min:(s.visit_min!=null?s.visit_min:undefined),overnight:!!s.overnight,next_start_min:(s.next_start_min!=null?s.next_start_min:undefined)},idx));
     CURRENT_ROUTE_ID=rt.id;
     { const _sd=$("#startDate"); if(_sd) _sd.value=rt.scheduled_date||_sd.value||""; const _st=$("#startTime"); if(_st && rt.home_base && rt.home_base.depart_time) _st.value=rt.home_base.depart_time; }
-    if(rt.home_base&&rt.home_base.lat!=null){ HOME={q:rt.home_base.address||"",lat:rt.home_base.lat,lng:rt.home_base.lng,short:rt.home_base.label||""}; ROUNDTRIP=rt.round_trip!==false; localStorage.setItem("hcps_home_base",JSON.stringify(HOME)); drawHome(); }
+    /* The route's own start point is used for THIS plan only — it no longer replaces your saved home
+       base in this browser (opening a rep's route used to make their house your default). */
+    if(rt.home_base&&rt.home_base.lat!=null){ HOME={q:rt.home_base.address||"",lat:rt.home_base.lat,lng:rt.home_base.lng,short:rt.home_base.label||"",state:rt.home_base.state||stateFromAddr(rt.home_base.address||"")}; ROUNDTRIP=rt.round_trip!==false; LOADED_NOHOME=null; drawHome(); }
+    else { LOADED_NOHOME={round_trip:rt.round_trip!==false}; banner("This route has no start point of its own (the assigned rep sets theirs). Times shown start from your home base; saving keeps it without one."); }
     LASTROUTE={distance_m:rt.distance_m||0,duration_s:rt.duration_s||0,geometry:rt.geometry||null};
     renderRoute(); draw();
     if(rt.geometry&&rt.geometry.length){ if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);} if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} ROUTEGEO=L.polyline(rt.geometry.map(c=>[c[1],c[0]]),{color:"#2B4071",weight:5,opacity:.85}).addTo(MAP); try{MAP.fitBounds(ROUTEGEO.getBounds().pad(0.15));}catch(e){} }
@@ -771,7 +811,13 @@ async function loadSaved(id){
     const sp=$("#savedPanel"); if(sp) sp.hidden=true;
   }catch(e){}
 }
-async function delSaved(id,name){ if(!confirm('Delete route "'+name+'"?')) return; try{ await api2({action:"delete_route",id}); refreshSaved(); }catch(e){} }
+async function delSaved(id,name){ if(!confirm('Delete route "'+name+'"?')) return;
+  try{ const r=await api2({action:"delete_route",id});
+    /* Deleting the route that is open in the planner: the plan stays on screen, but it is no longer
+       that saved route — the next Save makes a new one instead of failing against a deleted id. */
+    if(r&&r.ok!==false&&String(CURRENT_ROUTE_ID||"")===String(id)){ CURRENT_ROUTE_ID=null; saveDraft(); banner("Route deleted — the plan is still here; Save makes it a new route."); }
+    else if(r&&r.ok===false) banner(r.message||r.error||"Couldn't delete the route.");
+    refreshSaved(); }catch(e){ banner("Couldn't delete the route."); } }
 /* ---------- print route sheet (business-case packet comes next phase) ---------- */
 function parseTimeMin(v){ const m=/^(\d{1,2}):(\d{2})$/.exec(String(v||"").trim()); if(!m)return 8*60; return (+m[1])*60+(+m[2]); }
 function fmtClock(min){ min=Math.round(((min%1440)+1440)%1440); let h=Math.floor(min/60),m=min%60; const ap=h<12?"AM":"PM"; let hh=h%12; if(hh===0)hh=12; return `${hh}:${String(m).padStart(2,"0")} ${ap}`; }

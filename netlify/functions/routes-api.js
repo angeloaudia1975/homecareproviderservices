@@ -455,6 +455,19 @@ async function dealerExists(id){
    in this order and never falls back to the creator: whatever the route itself records,
    then the viewing rep's own saved default. If neither exists the map asks rather than
    guessing — an unset start is a question, not a licence to use the admin's address. */
+/* The arrival time a pre-visit heads-up may carry. Pure — tested in test/sr-eta.test.js.
+   Returns the cleaned time, or "" (and a warning) when it is not a readable clock time or falls
+   outside 7:00 AM – 7:00 PM, the working day the field app also uses. */
+function previsitEta(raw, warnings){
+  const t=String(raw==null?"":raw).replace(/\s+/g," ").trim();
+  if(!t) return "";
+  const m=/^(\d{1,2}):(\d{2})\s?([AaPp])\.?[Mm]\.?(?:\s([A-Z]{2,5}))?$/.exec(t);
+  if(!m || +m[1]<1 || +m[1]>12 || +m[2]>59){ if(warnings) warnings.push("The arrival time couldn't be read, so it was left out."); return ""; }
+  const mins=((+m[1])%12+(/[Pp]/.test(m[3])?12:0))*60+(+m[2]);
+  if(mins<7*60 || mins>19*60){ if(warnings) warnings.push(`The estimated arrival (${t}) is outside business hours, so it was left out of this email.`); return ""; }
+  return `${+m[1]}:${m[2]} ${/[Pp]/.test(m[3])?"PM":"AM"}${m[4]?" "+m[4]:""}`;
+}
+
 function resolveHomeBase(route, me){
   const rb=route&&route.home_base;
   if(rb && isFinite(rb.lat) && isFinite(rb.lng)) return {...rb, source:"route"};
@@ -548,6 +561,13 @@ exports.handler = async (event)=>{
           : "not your route"});
         // Re-saving must not silently drop an existing assignment.
         if(!asgEmail && own.assigned_to_email){ delete row.assigned_to_email; delete row.assigned_to_rep; }
+        /* …nor change it, nor change who planned the route. A rep re-saving his own route used to
+           re-assign it to himself (undoing the President's hand-over to someone else), and the
+           President re-saving a rep's route became its owner — the rep then lost the right to edit
+           it and "Planned for you by" changed. Only an explicit assignment (President, assigned_to_email
+           sent) moves it; ownership never moves on a save. */
+        if(!isBoss(me) && own.assigned_to_email){ delete row.assigned_to_email; delete row.assigned_to_rep; delete row.assigned_at; delete row.assigned_by; }
+        if(own.owner_email){ delete row.owner_email; delete row.rep_name; }
         await sbSend("PATCH",`rep_routes?id=eq.${encodeURIComponent(b.id)}`,row,{Prefer:"return=minimal"});
         return json(200,{ok:true,id:b.id});
       }
@@ -1207,8 +1227,12 @@ exports.handler = async (event)=>{
         if(route && !ownsRoute(route)) return json(403,{error:"not your route"});
       } else {
         const date=(b.date&&/^\d{4}-\d{2}-\d{2}$/.test(b.date))?b.date:new Date().toISOString().slice(0,10);
-        const own=isBoss(me)?"":"&"+mineFilter(me);
-        const rows=await sbGet(`rep_routes?scheduled_date=eq.${date}${own}&select=*&order=updated_at.desc&limit=1`).catch(()=>[]);
+        /* Same rule as list_routes: in My Sales Workspace the President's day is HIS route — not the
+           most recently edited route of whichever rep happens to drive that date. */
+        const ws=SC.workspaceMine(event, me);
+        const own=(isBoss(me)&&!ws)?"":"&"+mineFilter(me);
+        let rows=await sbGet(`rep_routes?scheduled_date=eq.${date}${own}&select=*&order=updated_at.desc&limit=${ws?50:1}`).catch(()=>[]);
+        if(ws) rows=(rows||[]).filter(r=>r.assigned_to_email ? emailEq(r.assigned_to_email,me.email) : emailEq(r.owner_email,me.email));
         route=(rows&&rows[0])||null;
       }
       if(!route) return json(200,{ok:true,route:null,stops:[]});
@@ -1877,7 +1901,11 @@ exports.handler = async (event)=>{
       const repName=me.name||me.rep_name||"your HCPS representative";
       const dateStr=String(b.date||"").trim();
       const when = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? prettyDate(dateStr) : "";
-      const eta = String(b.eta||"").trim();
+      /* A time a dealer can be told, or none. The phone already leaves out an arrival outside the
+         working day; this is the second lock, so no caller (an old cached app, another page) can
+         put "around 1:21 AM" in front of a customer. Accepts "h:mm AM/PM" with an optional zone. */
+      const warnings=[];
+      const eta = previsitEta(b.eta, warnings);
       const opp = String(b.opportunity||"").trim();
       /* GREET THE PERSON THE ROUTE SAYS WE ARE VISITING.
          This read the dealer record's contact_name while the stop card, the TO
@@ -1893,7 +1921,7 @@ exports.handler = async (event)=>{
       const body = `${greet}\n\nThis is ${repName} with HomeCare Provider Services. ${arrive}, and I'd love to stop by for a few minutes to review how things are going and make sure your lines and pricing are set up the way you need.${oppLine}\n\nThe arrival time is an estimate — I'll be moving between accounts that day — but I'll do my best to reach you close to then. If a different time works better, just reply and let me know.\n\nLooking forward to seeing you.`;
       const subject = `HCPS will be in your area${when?` — ${when}`:""}`;
       const signature = `${repName}${me.email?` · ${me.email}`:""}\nHomeCare Provider Services`;
-      return json(200,{ok:true, to:String(d.email||""), subject, body, signature});
+      return json(200,{ok:true, to:String(d.email||""), subject, body, signature, warnings});
     }
 
     // ---------- Email the rep the mobile Scheduled Routes link (for add-to-home-screen) ----------
