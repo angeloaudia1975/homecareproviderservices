@@ -150,5 +150,68 @@ async function call(w, who, body, headers) {
     const r = await call(w, 'greg', { action: 'log_visit', dealer_id: 'd-greg', notes: 'stopped by' });
     assert.ok(r.j.already); assert.strictEqual(w.db.dealer_visits.length, 1);
   });
+  await t('reassigned mid-day: the rep who already made the visit can still finish, approve and follow it up (not stranded)', async () => {
+    const w = world(); const rt = w.db.rep_routes.find(r => r.id === 'r-other');   // the President's route, driven by Greg
+    const v0 = visit({ route_id: 'r-other', status: 'in_progress' }); w.db.dealer_visit_reports.push(v0);
+    rt.assigned_to_email = 'lori@hcps.us'; rt.assigned_to_rep = 'Lori Hunt';          // handed to Lori after Greg's visit
+    for (const body of [{ action: 'visit_report_save', status: 'in_progress', fields: { notes: 'Greg finishing' } }, { action: 'visit_end' },
+      { action: 'visit_followup_set', status: 'complete' }]) {
+      const r = await call(w, 'greg', Object.assign({ route_id: 'r-other', dealer_id: 'd-greg' }, body));
+      assert.ok(r.status < 300, body.action + ' stranded the first rep: ' + r.status + ' ' + JSON.stringify(r.j));
+    }
+    assert.strictEqual(w.db.dealer_visit_reports.filter(x => x.route_id === 'r-other').length, 1);
+    assert.strictEqual(w.db.dealer_visit_reports.find(x => x.route_id === 'r-other').rep_email, 'greg@hcps.us');
+    const other = await call(w, 'greg', { action: 'visit_checkin', route_id: 'r-other', dealer_id: 'd-ang' });
+    assert.strictEqual(other.status, 403, 'a stop he never visited is still Lori\'s');
+  });
+  await t('a report_id naming another report never bypasses the route stop\'s owner', async () => {
+    const w = world(); const v0 = visit({}); w.db.dealer_visit_reports.push(v0);
+    w.db.dealer_visit_reports.push({ id: 'vr-lori-old', dealer_id: 'd-greg', rep_email: 'lori@hcps.us', rep_name: 'Lori Hunt', status: 'completed', fields: {} });
+    w.db.rep_routes.find(r => r.id === 'r-greg').assigned_to_email = 'lori@hcps.us';
+    const before = JSON.stringify(w.db.dealer_visit_reports.find(x => x.id === v0.id));
+    const r = await call(w, 'lori', { action: 'visit_report_save', route_id: 'r-greg', dealer_id: 'd-greg', report_id: 'vr-lori-old', status: 'completed', fields: { notes: 'overwrite' } });
+    assert.strictEqual(r.status, 409, JSON.stringify(r.j));
+    assert.strictEqual(JSON.stringify(w.db.dealer_visit_reports.find(x => x.id === v0.id)), before);
+  });
+  await t('two reps starting the same stop at the same moment: one claims it, the other is refused — never an overwrite', async () => {
+    const w = world(); const rt = w.db.rep_routes.find(r => r.id === 'r-greg'); rt.assigned_to_email = 'lori@hcps.us';   // owner Greg, driven by Lori: both reach it
+    const [a, b] = await Promise.all([call(w, 'greg', { action: 'visit_checkin', route_id: 'r-greg', dealer_id: 'd-greg' }),
+                                      call(w, 'lori', { action: 'visit_checkin', route_id: 'r-greg', dealer_id: 'd-greg' })]);
+    const rows = w.db.dealer_visit_reports.filter(x => x.route_id === 'r-greg' && x.dealer_id === 'd-greg');
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual([a.status < 300, b.status < 300].filter(Boolean).length, 1, JSON.stringify([a, b]));
+    const won = a.status < 300 ? 'greg@hcps.us' : 'lori@hcps.us';
+    assert.strictEqual([a, b].find(x => x.status >= 300).j.error, 'visit_belongs_to_other_rep');
+    assert.strictEqual(rows[0].rep_email, won, 'the stop names the rep who lost the claim');
+  });
+  await t('an invalid save on an untouched stop claims nothing', async () => {
+    const w = world();
+    const r = await call(w, 'greg', { action: 'visit_report_save', route_id: 'r-greg', dealer_id: 'd-greg', status: 'bogus' });
+    assert.strictEqual(r.status, 400); assert.strictEqual(w.db.dealer_visit_reports.length, 0);
+  });
+  await t('logging a visit that fails half-way is resumed by the retry — nothing missing, nothing doubled', async () => {
+    const S = standardSeed({ rep_routes: [], dealer_visit_reports: [] }); let failing = true;
+    S.failWrite = (m, table) => (failing && m === 'POST' && table === 'dealer_tasks') ? 500 : 0;
+    const w = createWorld(S);
+    const body = { action: 'save_visit', dealer_id: 'd-greg', request_key: 'k-123', summary: 'Met Bryant', details: { summary: 'Met Bryant', follow_ups: ['Send pricing'], opportunities: ['2 lift chairs'] } };
+    const first = await call(w, 'greg', body);
+    assert.strictEqual(first.status, 502, JSON.stringify(first.j)); assert.strictEqual(first.j.error, 'save_incomplete');
+    failing = false;
+    const second = await call(w, 'greg', body); assert.ok(second.j.ok && second.j.resumed, JSON.stringify(second.j));
+    const third = await call(w, 'greg', body); assert.ok(third.j.already, JSON.stringify(third.j));
+    const n = t2 => (w.db[t2] || []).filter(x => x.dealer_id === 'd-greg').length;
+    assert.deepStrictEqual([n('dealer_visits'), n('dealer_notes'), n('dealer_tasks'), n('opportunities')], [1, 1, 1, 1]);
+  });
+  await t('reassigning a route keeps its departure time (start point replaced or cleared)', async () => {
+    const w = world(); const rt = w.db.rep_routes.find(r => r.id === 'r-greg');
+    rt.home_base = { label: 'Greg home', lat: 36.9, lng: -86.4, depart_time: '07:15' };
+    w.db.staff_users.forEach(u => { if (u.email === 'lori@hcps.us') u.home_base = { label: 'Lori home', lat: 36.1, lng: -86.8 }; });
+    const r = await call(w, 'pres', { action: 'assign_route', id: 'r-greg', assigned_to_email: 'lori@hcps.us' });
+    assert.ok(r.j.ok, JSON.stringify(r.j)); assert.strictEqual(rt.home_base.label, 'Lori home'); assert.strictEqual(rt.home_base.depart_time, '07:15');
+    w.db.staff_users.forEach(u => { if (u.email === 'greg@hcps.us') u.home_base = null; });
+    rt.owner_email = 'angelo@hcps.us';
+    const r2 = await call(w, 'pres', { action: 'assign_route', id: 'r-greg', assigned_to_email: 'greg@hcps.us' });
+    assert.ok(r2.j.ok); assert.strictEqual(rt.home_base, null); assert.strictEqual(rt.depart_time, '07:15', 'the departure went with the start point');
+  });
   console.log(`\nsr-routes-api: ${pass} passed, ${fail} failed`); process.exitCode = fail ? 1 : 0;
 })();

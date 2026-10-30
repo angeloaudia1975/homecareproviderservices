@@ -31,14 +31,14 @@ end $$;
 create index if not exists rep_routes_active_idx on public.rep_routes (scheduled_date) where archived_at is null;
 commit;
 
--- Check (the last statement's result is what the editor shows): every value must be true.
+-- Check (the last statement's result is what the editor shows): columns_added and checks_added must
+-- be true. rls_on and policy_count are reported for comparison with before the run — this file changes
+-- neither (no grant, policy or RLS statement). Safe to re-run: every step is "if not exists".
 select
   (select count(*) = 4 from information_schema.columns
      where table_schema = 'public' and table_name = 'rep_routes'
        and column_name in ('archived_at','archived_by','depart_time','depart_tz'))           as columns_added,
   (select count(*) = 2 from pg_constraint
      where conname in ('rep_routes_depart_time_chk','rep_routes_depart_tz_chk'))           as checks_added,
-  (select relrowsecurity from pg_class where oid = 'public.rep_routes'::regclass)          as rls_still_on,
-  (select count(*) = 0 from pg_policies where schemaname = 'public' and tablename = 'rep_routes') as still_no_policies,
-  (select count(*) = 0 from public.rep_routes
-     where archived_at is not null or depart_time is not null or depart_tz is not null)    as no_row_changed;
+  (select relrowsecurity from pg_class where oid = 'public.rep_routes'::regclass)          as rls_on,
+  (select count(*) from pg_policies where schemaname = 'public' and tablename = 'rep_routes') as policy_count;

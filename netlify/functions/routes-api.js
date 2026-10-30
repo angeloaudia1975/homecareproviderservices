@@ -291,8 +291,11 @@ function visitNoteBody(fields, transcript){
   return [spoken, struct].filter(Boolean).join("\n\n") || null;
 }
 
-async function visitToCrm(did, fields, transcript, repName, repEmail, whenIso, existingNoteId){
+async function visitToCrm(did, fields, transcript, repName, repEmail, whenIso, existingNoteId, ids){
   if(existingNoteId) return null;
+  /* ids = {noteId, activityId}: fixed ids (insert-or-ignore) for a caller that may run twice — the map's
+     Log visit. Then a failure is THROWN instead of swallowed, so the caller can report it and retry. */
+  if(ids&&ids.noteId) return visitToCrmKeyed(did, fields, transcript, repName, repEmail, whenIso, ids);
   const summary = visitNoteBody(fields, transcript);
   if(!summary) return null;
   const when = whenIso ? new Date(whenIso) : new Date();
@@ -319,6 +322,22 @@ async function visitToCrm(did, fields, transcript, repName, repEmail, whenIso, e
       created_at:whenIso||new Date().toISOString()},{Prefer:"return=minimal"});
   }catch(e){}
   return noteId;
+}
+
+async function visitToCrmKeyed(did, fields, transcript, repName, repEmail, whenIso, ids){
+  const summary = visitNoteBody(fields, transcript);
+  if(!summary) return null;
+  const when = whenIso ? new Date(whenIso) : new Date();
+  const body = `🚗 Dealer visit — ${isNaN(when)?"":when.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}\n${summary}`;
+  const base={id:ids.noteId, dealer_id:did, author_email:repEmail||null, author_name:repName||null, body:body.slice(0,4000), created_at:whenIso||new Date().toISOString()};
+  const opt={Prefer:"resolution=ignore-duplicates,return=minimal"};
+  try{ await sbSend("POST","dealer_notes?on_conflict=id",Object.assign({kind:"visit"},base),opt); }
+  catch(e){ if(!/PGRST204|Could not find the 'kind' column/i.test(String(e&&e.message||e))) throw e;
+            await sbSend("POST","dealer_notes?on_conflict=id",base,opt); }
+  await sbSend("POST","dealer_activity?on_conflict=id",{id:ids.activityId, dealer_id:did, kind:"visit",
+    subject:`Dealer visit${fields&&fields.purpose?` — ${String(fields.purpose).slice(0,120)}`:""}`,
+    detail:summary.slice(0,2000), actor:repName||repEmail||null, created_at:whenIso||new Date().toISOString()},opt);
+  return ids.noteId;
 }
 
 function buildFollowup(dealerName,repName,details){
@@ -455,10 +474,14 @@ async function dealersOffReach(me, ids){
 const DEPART_TZS=["America/Chicago","America/New_York"];
 const HHMM=/^([01]\d|2[0-3]):[0-5]\d$/;
 let ROUTE_SCHEMA=null;   // per warm function instance
+let ROUTE_SCHEMA_AT=0;
+/* true = installed (cached for the warm instance) · false = not installed (re-checked after a minute,
+   so running the SQL is picked up without a redeploy) · throws on a read failure (callers answer 503). */
 async function routeSchema(){
   if(ROUTE_SCHEMA===true) return true;
+  if(ROUTE_SCHEMA===false && Date.now()-ROUTE_SCHEMA_AT<60000) return false;
   try{ await sbGet("rep_routes?select=archived_at,archived_by,depart_time,depart_tz&limit=1"); ROUTE_SCHEMA=true; }
-  catch(e){ if(/Supabase 400|42703|PGRST204|does not exist/i.test(String(e&&e.message||e))) ROUTE_SCHEMA=false; else throw e; }
+  catch(e){ if(/Supabase 400|42703|PGRST204|does not exist/i.test(String(e&&e.message||e))){ ROUTE_SCHEMA=false; ROUTE_SCHEMA_AT=Date.now(); } else throw e; }
   return ROUTE_SCHEMA;
 }
 /* One logged visit per set of notes. The id of the dealer_visits row is derived from who logged it,
@@ -577,9 +600,12 @@ exports.handler = async (event)=>{
       const isRound=b.round_trip!==false;
       const depTime=HHMM.test(String(b.depart_time||"").trim())?String(b.depart_time).trim():null;
       const depTz=DEPART_TZS.includes(String(b.depart_tz||""))?String(b.depart_tz):null;
+      /* A one-way route needs its departure time AND zone. (A round trip saved without a start point
+         is not refused — older screens save those — but it shows "No departure set" until a zone is
+         saved: nothing is assumed; the planner itself asks for the zone.) */
       if(!isRound && (!depTime||!depTz)) return json(422,{error:"departure_required",
         message:"A one-way route needs its departure time and time zone — set both before saving."});
-      const schema=await routeSchema();
+      let schema; try{ schema=await routeSchema(); }catch(e){ return json(503,{error:"Couldn't check the route table — try again. Nothing was saved."}); }
       if(!isRound && !schema) return json(503,{error:"schema_update_needed",message:"Saving a one-way route needs the route update (sr_route_integrity.sql) — ask the President."});
       const row={
         owner_email:me.email||null, rep_name:me.rep_name||null, name,
@@ -590,7 +616,7 @@ exports.handler = async (event)=>{
         geometry:b.geometry||null, notes:(b.notes!=null?String(b.notes):null),
         updated_at:new Date().toISOString(),
       };
-      if(schema){ row.depart_time=depTime; row.depart_tz=isRound?null:depTz; }
+      if(schema){ const hasHome=!!(b.home_base && isFinite(Number(b.home_base.lat))); row.depart_time=depTime; row.depart_tz=(isRound&&hasHome)?null:depTz; }
       if(asgEmail){ row.assigned_to_email=asgEmail; row.assigned_to_rep=asgRep;
         row.assigned_at=new Date().toISOString(); row.assigned_by=me.email||me.name||null; }
       if(b.id){
@@ -654,10 +680,19 @@ exports.handler = async (event)=>{
          CLEARED rather than left pointing at whoever planned it, and their map asks them
          to set one. Silently keeping the admin's address is the bug being fixed. */
       let home_note=null;
+      /* The route's departure time is part of the plan, not of the start address: it survives a
+         reassignment (the old start point carried it, and replacing that point used to drop it). */
+      const okT=t=>HHMM.test(String(t||""));
+      const oldDep=okT(route.depart_time)?route.depart_time:(route.home_base&&okT(route.home_base.depart_time)?route.home_base.depart_time:null);
       if(u.home_base && isFinite(u.home_base.lat) && isFinite(u.home_base.lng)){
-        patch.home_base=u.home_base; home_note="start point set to the rep's own default";
+        patch.home_base=(oldDep&&!okT(u.home_base.depart_time))?{...u.home_base,depart_time:oldDep}:u.home_base;
+        home_note="start point set to the rep's own default";
       } else if(route.home_base && !emailEq(route.owner_email,email)){
         patch.home_base=null; home_note="start point cleared — this rep has no default yet, so their map will ask";
+        if(oldDep && !okT(route.depart_time)){
+          let sch=false; try{ sch=await routeSchema(); }catch(e){ return json(503,{error:"Couldn't check the route table — try again. Nothing was changed."}); }
+          if(sch) patch.depart_time=oldDep;   // keep it on the route itself once the start point goes
+        }
       }
       await sbSend("PATCH",`rep_routes?id=eq.${encodeURIComponent(id)}`,patch,{Prefer:"return=minimal"});
       return json(200,{ok:true,assigned_to_email:email,assigned_to_rep:patch.assigned_to_rep,home_note});
@@ -760,7 +795,8 @@ exports.handler = async (event)=>{
     // Archive / un-archive: hidden from the route lists, kept whole (stops, visits, calendar).
     if(b.action==="archive_route"){
       if(!b.id) return json(400,{error:"id required"});
-      if(!(await routeSchema())) return json(503,{error:"schema_update_needed",message:"Archiving needs the route update (sr_route_integrity.sql) — ask the President."});
+      let sch; try{ sch=await routeSchema(); }catch(e){ return json(503,{error:"Couldn't check the route table — try again."}); }
+      if(!sch) return json(503,{error:"schema_update_needed",message:"Archiving needs the route update (sr_route_integrity.sql) — ask the President."});
       const rows=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=owner_email,assigned_to_email,archived_at`).catch(()=>null);
       if(rows===null) return json(503,{error:"Couldn't read the route — try again."});
       const r=rows[0]; if(!r) return json(404,{error:"route not found"});
@@ -1114,7 +1150,8 @@ exports.handler = async (event)=>{
     if(b.action==="log_visit"){
       if(!b.dealer_id) return json(400,{error:"dealer_id required"});
       const notesL=(b.notes!=null?String(b.notes):null);
-      const idL=visitIdFor(["log_visit",String(me.email||"").toLowerCase(),String(b.dealer_id),notesL,chicagoDay()]);
+      const subL=/^[A-Za-z0-9_-]{8,64}$/.test(String(b.request_key||""))?String(b.request_key):null;
+      const idL=visitIdFor(subL?["log_visit",String(me.email||"").toLowerCase(),String(b.dealer_id),subL]:["log_visit",String(me.email||"").toLowerCase(),String(b.dealer_id),notesL,chicagoDay()]);
       const ins=await sbSend("POST","dealer_visits?on_conflict=id",{id:idL,dealer_id:b.dealer_id,rep_name:me.rep_name||null,owner_email:me.email||null,visited_at:new Date().toISOString(),notes:notesL},{Prefer:"resolution=ignore-duplicates,return=representation"});
       if(!(ins&&ins[0])) return json(200,{ok:true,already:true});
       return json(200,{ok:true,visited_at:ins[0].visited_at||new Date().toISOString()});
@@ -1210,7 +1247,13 @@ exports.handler = async (event)=>{
       const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=id,scheduled_date,owner_email,assigned_to_email,stops&limit=1`).catch(()=>[]);
       const r=rr&&rr[0];
       if(!r) return {ok:false,status:404,error:"route not found"};
-      if(!ownsRoute(r)) return {ok:false,status:403,error:"not your route"};
+      if(!ownsRoute(r)){
+        /* Reassigned mid-day: the rep who already made a visit on this stop keeps working THAT visit
+           (finish, approve, follow-up, queued offline saves) — it is his, whoever drives the rest. */
+        let mine=null; try{ mine=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(rid)}&dealer_id=eq.${encodeURIComponent(did)}&select=rep_email&limit=1`); }catch(e){ return {ok:false,status:503,error:"Couldn't check this visit — try again."}; }
+        if(!(mine&&mine[0]&&emailEq(mine[0].rep_email,me.email))) return {ok:false,status:403,error:"not your route"};
+        return {ok:true,route:r,own_visit_only:true};
+      }
       const onRoute=(Array.isArray(r.stops)?r.stops:[]).some(st=>st&&String(st.dealer_id||"")===String(did));
       if(!onRoute && !SC.seesAllDealers(scopeMe)) return {ok:false,status:403,error:"That dealer isn't a stop on this route."};
       return {ok:true,route:r};
@@ -1352,17 +1395,34 @@ exports.handler = async (event)=>{
        upsert the row with the caller's email and overwrite that rep's report, notes, contacts,
        follow-ups and email. Reading is unchanged. A read failure refuses (503). */
     const ATTRIBUTED_WRITES=new Set(["visit_checkin","visit_report_save","visit_end","visit_analyze","visit_approve","visit_followup_set","visit_email_save"]);
+    const CREATING_WRITES=new Set(["visit_checkin","visit_report_save","visit_end","visit_approve"]);
     if(ATTRIBUTED_WRITES.has(b.action) && b.dealer_id){
       const rid0=String(b.route_id||"").trim(), did0=String(b.dealer_id).trim();
-      let v=null;
-      if(b.report_id){ const x=await reportById(String(b.report_id),did0); if(x.ok) v=x.report; }
-      else if(rid0){ const chk=await routeStopCheck(rid0,did0);
-        if(chk.ok){ let rows; try{ rows=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(rid0)}&dealer_id=eq.${encodeURIComponent(did0)}&select=id,rep_email,rep_name&limit=1`); }
-          catch(e){ return json(503,{error:"Couldn't check who made this visit — try again."}); }
-          v=rows&&rows[0]; } }
-      if(v && v.rep_email && !emailEq(v.rep_email,me.email))
-        return json(409,{error:"visit_belongs_to_other_rep",rep_name:v.rep_name||v.rep_email,
+      const foreign=v=>v && v.rep_email && !emailEq(v.rep_email,me.email);
+      const refuse=v=>json(409,{error:"visit_belongs_to_other_rep",rep_name:v.rep_name||v.rep_email,
           message:`This visit was made by ${v.rep_name||v.rep_email}. It stays theirs — you can view it, not change it.`});
+      // A report named by id (checked only once the caller may reach it).
+      if(b.report_id){ const x=await reportById(String(b.report_id),did0); if(x.ok && foreign(x.report)) return refuse(x.report); }
+      // The route stop's own report — ALWAYS, whatever report_id says: the route-stop writes upsert on
+      // (route_id, dealer_id), so that row is the one a write would change.
+      if(rid0){ const chk=await routeStopCheck(rid0,did0);
+        if(chk.ok){
+          const path=`dealer_visit_reports?route_id=eq.${encodeURIComponent(rid0)}&dealer_id=eq.${encodeURIComponent(did0)}&select=id,rep_email,rep_name&limit=1`;
+          let rows; try{ rows=await sbGet(path); }catch(e){ return json(503,{error:"Couldn't check who made this visit — try again."}); }
+          let v=rows&&rows[0];
+          if(foreign(v)) return refuse(v);
+          /* First write to a stop: CLAIM it before writing — an insert-or-ignore of the bare row with this
+             rep's name, then read who holds it. Two reps starting the same stop at once: one claim wins,
+             the other is refused, and the later upserts only ever touch a row that names their caller. */
+          const malformed = b.action==="visit_report_save" && !VISIT_STATUSES.includes(String(b.status||"in_progress"));
+          if(!v && CREATING_WRITES.has(b.action) && !malformed){   // a request its own handler refuses claims nothing
+            try{ await sbSend("POST","dealer_visit_reports?on_conflict=route_id,dealer_id",{route_id:rid0,dealer_id:did0,rep_email:me.email||null,rep_name:me.rep_name||null,status:"planned",scheduled_date:(chk.route&&chk.route.scheduled_date)||null,updated_at:new Date().toISOString()},{Prefer:"resolution=ignore-duplicates,return=minimal"});
+                 rows=await sbGet(path); }
+            catch(e){ return json(503,{error:"Couldn't start this visit — try again."}); }
+            v=rows&&rows[0];
+            if(foreign(v)) return refuse(v);
+          }
+        } }
     }
     if(b.action==="visit_checkin"){
       const rid=String(b.route_id||"").trim()||null, did=String(b.dealer_id||"").trim();
@@ -1929,28 +1989,42 @@ exports.handler = async (event)=>{
       const d=(dr&&dr[0])||{};
       const st=await P.getState(); const env=P.envFor(st.mode,d.is_test);
       const repName=me.name||me.rep_name||"HCPS rep";
-      /* The claim: this exact visit (rep + dealer + details + Chicago day) is ONE dealer_visits row.
-         A double tap, a retried request or saving the same notes again finds the row taken and
-         writes nothing more — no second note, timeline row, task or deal. A failed claim saves
-         nothing at all. */
-      const idV=visitIdFor(["save_visit",String(me.email||"").toLowerCase(),String(dealer_id),summary,canonJ(details),chicagoDay()]);
+      /* ONE VISIT, EVERY RECORD ONCE (Angelo, 2026-10-30). The visit's id comes from who logged it,
+         the dealer and the page's submission key (the Log-visit form makes one when it opens; an older
+         page without one falls back to the exact details + Chicago day). Every record the visit makes
+         is keyed off that id — the dealer_visits row, the Dealer 360 note and timeline row (fixed ids),
+         the tasks and deals (origin keys on their unique indexes) — and each is insert-or-ignore. So a
+         double tap or a retry writes nothing twice, and a save interrupted half-way is FINISHED by the
+         next attempt instead of being reported "already saved". Any failure is reported, never hidden. */
+      const subKey=/^[A-Za-z0-9_-]{8,64}$/.test(String(b.request_key||""))?String(b.request_key):null;
+      const idV=visitIdFor(subKey?["save_visit",String(me.email||"").toLowerCase(),String(dealer_id),subKey]
+                                 :["save_visit",String(me.email||"").toLowerCase(),String(dealer_id),summary,canonJ(details),chicagoDay()]);
+      const when=new Date().toISOString();
       let claim;
-      try{ claim=await sbSend("POST","dealer_visits?on_conflict=id",{id:idV,dealer_id,rep_name:me.rep_name||null,owner_email:me.email||null,visited_at:new Date().toISOString(),notes:summary,details,env},{Prefer:"resolution=ignore-duplicates,return=representation"}); }
+      try{ claim=await sbSend("POST","dealer_visits?on_conflict=id",{id:idV,dealer_id,rep_name:me.rep_name||null,owner_email:me.email||null,visited_at:when,notes:summary,details,env},{Prefer:"resolution=ignore-duplicates,return=representation"}); }
       catch(e){ return json(503,{error:"Couldn't save the visit — nothing was saved. Try again."}); }
-      if(!(claim&&claim[0])) return json(200,{ok:true,already:true,tasks:0,opportunities:0,message:"Already saved — this visit was logged once."});
-      // Same gap as visit_report_save had: this path also never reached Dealer 360.
-      await visitToCrm(dealer_id, details, summary, repName, me.email, new Date().toISOString(), null);
-      // follow-up items -> tasks; order-expected & next-visit -> tasks
-      const tasks=[];
-      for(const f of followupList(details.follow_ups)){ const t=String(f).trim(); if(t) tasks.push({dealer_id,title:`Follow-up: ${t.slice(0,120)}`,detail:"From dealer visit",source:"visit",reason:"visit_followup",priority:"normal",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env}); }
-      if(String(details.orders_expected||"").trim()) tasks.push({dealer_id,title:`Expected order — ${d.business_name||"dealer"}`,detail:String(details.orders_expected).slice(0,200),source:"visit",reason:"visit_order",priority:"high",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env});
-      if(/^\d{4}-\d{2}-\d{2}$/.test(String(details.next_visit||""))) tasks.push({dealer_id,title:`Next visit — ${d.business_name||"dealer"}`,detail:"Scheduled from visit notes",due_date:details.next_visit,source:"visit",reason:"visit_next",priority:"normal",assigned_rep:me.rep_name||null,created_by:repName,status:"open",env});
-      // Same keys on every row (see visit_report_save) — the next-visit task is the only one with a date.
-      let tCreated=0; if(tasks.length){ try{ await sbSend("POST","dealer_tasks",tasks.map(x=>Object.assign({due_date:null},x)),{Prefer:"return=minimal"}); tCreated=tasks.length; }catch(e){} }
-      // manufacturer opportunities -> opportunities (pipeline)
-      const oppRows=followupList(details.opportunities).map(x=>String(x).trim()).filter(Boolean).map(x=>({dealer_id,title:x.slice(0,140),stage:"identified",source:"visit",owner_rep:me.rep_name||null,created_by:repName,notes:"From dealer visit",status:"open"}));
-      let oCreated=0; if(oppRows.length){ try{ await sbSend("POST","opportunities",oppRows,{Prefer:"return=minimal"}); oCreated=oppRows.length; }catch(e){} }
-      return json(200,{ok:true,tasks:tCreated,opportunities:oCreated});
+      const repeat=!(claim&&claim[0]);
+      let visitedAt=when;
+      if(repeat){ const ex=await sbGet(`dealer_visits?id=eq.${encodeURIComponent(idV)}&select=visited_at,owner_email&limit=1`).catch(()=>null);
+        if(ex&&ex[0]){ visitedAt=ex[0].visited_at||when; if(!emailEq(ex[0].owner_email,me.email)) return json(409,{error:"Not your visit."}); } }
+      try{
+        // Dealer 360 note + timeline row, with ids derived from the visit (never a second copy).
+        await visitToCrm(dealer_id, details, summary, repName, me.email, visitedAt, null,
+          {noteId:visitIdFor([idV,"note"]), activityId:visitIdFor([idV,"activity"])});
+        const ctx={sbGet,sbSend,me,env,source:"visit",origin:{type:"map_visit",id:idV},created_by:repName};
+        const tasks=[];
+        followupList(details.follow_ups).forEach((f,i)=>{ const t=String(f).trim(); if(t) tasks.push({dealer_id,title:`Follow-up: ${t.slice(0,120)}`,detail:"From dealer visit",reason:"visit_followup",priority:"normal",key:"fu"+i}); });
+        if(String(details.orders_expected||"").trim()) tasks.push({dealer_id,title:`Expected order — ${d.business_name||"dealer"}`,detail:String(details.orders_expected).slice(0,200),reason:"visit_order",priority:"high",key:"order"});
+        if(/^\d{4}-\d{2}-\d{2}$/.test(String(details.next_visit||""))) tasks.push({dealer_id,title:`Next visit — ${d.business_name||"dealer"}`,detail:"Scheduled from visit notes",due_date:details.next_visit,reason:"visit_next",priority:"normal",key:"next"});
+        const tr=tasks.length?await TK.createTasks(tasks,ctx):{created:[]};
+        const opps=followupList(details.opportunities).map(x=>String(x).trim()).filter(Boolean).map((x,i)=>({dealer_id,title:x.slice(0,140),stage:"identified",notes:"From dealer visit",key:"op"+i}));
+        const orr=opps.length?await OPP.createOpportunities(opps,ctx):{created:[]};
+        const nT=(tr.created||[]).length, nO=(orr.created||[]).length;
+        if(repeat && !nT && !nO) return json(200,{ok:true,already:true,tasks:0,opportunities:0,message:"Already saved — this visit was logged once."});
+        return json(200,{ok:true,tasks:nT,opportunities:nO,...(repeat?{resumed:true}:{})});
+      }catch(e){
+        return json(502,{error:"save_incomplete",message:"The visit was saved but some of its records could not be written. Tap Save again to finish — nothing will be duplicated."});
+      }
     }
     if(b.action==="generate_followup"){
       const details=(b.details&&typeof b.details==="object")?b.details:{};

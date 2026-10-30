@@ -3743,6 +3743,11 @@ direct-to-main path). Rules it established:
   follow-up status, follow-up email) on a route stop — or on a report named by id — is refused (409
   `visit_belongs_to_other_rep`) when that report names another rep, management included; reassigning a route moves the
   plan only. The field app shows such a stop "by <rep>", read only (route_day `visit.by_other`). Reading is unchanged.
+  The route stop's own report is ALWAYS checked when a route is named (a report_id never bypasses it). The first write to
+  a stop CLAIMS it (insert-or-ignore of the bare row with the caller's name, then re-read): two reps starting it at once →
+  one wins, the other gets 409, never an overwrite. A request its handler refuses (bad status) claims nothing. A rep
+  whose route was reassigned after he visited a stop keeps working THAT visit (routeStopCheck `own_visit_only`) — he is
+  never stranded; every other stop of the route is the new rep's.
   (3) **7 AM – 7 PM is a WARNING range** for questionable estimates (flag + no time in the heads-up), never a ban on
   early/late visits.
   (4) **No assumed departure.** Arrival times start from an explicit departure: `rep_routes.depart_time` (planner
@@ -3750,12 +3755,19 @@ direct-to-main path). Rules it established:
   saved `depart_tz` (America/Chicago | America/New_York) on a one-way route. `save_route` refuses a one-way route
   without both (422 `departure_required`); the planner shows a time-zone picker for one-way routes and refuses to save
   without it. A route with no explicit departure shows "No departure set" and no time in any heads-up — the old 8:00 /
-  first-stop-zone fallback is gone. (5) **Visit logging is idempotent on the server.** `save_visit` / `log_visit`
+  first-stop-zone fallback is gone. The planner's start time starts EMPTY (no 08:00 default): until a start time — and
+  on a route timed from its first stop, a zone — is chosen it shows "No departure set" and no arrival times, and Save is
+  refused. A route saved without a start point keeps its chosen zone. Reassigning a route keeps its departure time
+  (copied into the new start point, or onto the route when the start point is cleared). (5) **Visit logging is idempotent on the server.** `save_visit` / `log_visit`
   derive the `dealer_visits` id from rep + dealer + exact details + Chicago day and insert-or-ignore on it: a repeat
   answers `already:true` and writes no second visit, note, timeline row, task or deal; a failed claim saves nothing.
+  The planner sends a `request_key` per notes form. Every record a logged visit makes has a fixed id / origin key, so a
+  save that fails half-way answers 502 `save_incomplete` and the retry RESUMES it (fills only what is missing,
+  `resumed:true`) — nothing missing, nothing doubled. One-tap "log visit" = one per rep, dealer and Chicago day.
   Schema: `supabase/sr_route_integrity.sql` (additive: archived_at, archived_by, depart_time, depart_tz + CHECKs; RLS /
   grants unchanged) — Angelo runs it; until then `archive_route` and one-way saves answer 503 `schema_update_needed`
-  (list_routes reports `route_schema`). Tests: sr-routes-api (13), sr-eta (16 + 9 mutants), sr-consistency (planner =
+  (list_routes reports `route_schema`; a "not installed" answer is re-checked after a minute, a read failure is a 503).
+  Tests: sr-routes-api (19), routeclock (+ mutants), sr-eta (16 + 9 mutants), sr-consistency (planner =
   field app = heads-up, two browser zones), sr-review (other rep read only), sr-planner.
 
 ## Per-page checklist (run before calling a page done)

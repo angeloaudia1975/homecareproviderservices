@@ -47,6 +47,7 @@ jobs:
           MUTANTS=1 node test/sr-eta.test.js
           node test/sr-routes-api.test.js
           node test/routeclock.test.js
+          node test/routeclock.mutants.js
           node test/recipients.test.js
           node test/phase0-outbox.test.js
           node test/phase0-visits.test.js

@@ -72,8 +72,12 @@ const MUTANTS = [
     to:   '      const tz = TZ_E;' },
 
   { name: 'read the start time in the machine\'s zone instead of the first stop\'s',
-    from: '    const firstTz = tzForStop(stops[0].state, stops[0].lng);',
-    to:   '    const firstTz = TZ_E;' },
+    from: '    const firstTz = o.startTz || tzForStop(stops[0].state, stops[0].lng);',
+    to:   '    const firstTz = o.startTz || TZ_E;' },
+
+  { name: 'ignore the home base\'s zone (read a round trip\'s departure in the first stop\'s zone)',
+    from: '    const firstTz = o.startTz || tzForStop(stops[0].state, stops[0].lng);',
+    to:   '    const firstTz = tzForStop(stops[0].state, stops[0].lng);' },
 
   { name: 'drop the Kentucky longitude split, making Glasgow Eastern',
     from: '    if (st === "KY") return (lng != null && lng < -85.9) ? TZ_C : TZ_E;',

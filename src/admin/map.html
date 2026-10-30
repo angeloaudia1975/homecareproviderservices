@@ -123,7 +123,7 @@
     <div class="rhead"><b>Route plan</b> <span class="m" id="rmeta"></span><button class="rx" onclick="clearRoute()">Clear</button></div>
     <div class="rdraft" id="rdraft" hidden></div>
     <div class="rtrow" id="rtRow" style="display:none"><label><input type="checkbox" id="rtChk" checked onchange="toggleRT(this.checked)"> Round trip — start &amp; end at home base</label></div>
-    <div class="rtrow"><label style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">Start <input type="date" id="startDate" style="width:auto" onchange="renderRoute()"> at <input type="time" id="startTime" value="08:00" style="width:auto" onchange="renderRoute()"><select id="startTz" style="width:auto" onchange="renderRoute()" title="Departure time zone — required for a one-way route" hidden><option value="">time zone…</option><option value="America/Chicago">Central</option><option value="America/New_York">Eastern</option></select> · default visit <input type="number" id="visitMin" value="30" min="0" step="5" style="width:52px" onchange="renderRoute()"> min</label></div>
+    <div class="rtrow"><label style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">Start <input type="date" id="startDate" style="width:auto" onchange="renderRoute()"> at <input type="time" id="startTime" value="" style="width:auto" onchange="renderRoute()"><select id="startTz" style="width:auto" onchange="renderRoute()" title="Departure time zone — required for a one-way route" hidden><option value="">time zone…</option><option value="America/Chicago">Central</option><option value="America/New_York">Eastern</option></select> · default visit <input type="number" id="visitMin" value="30" min="0" step="5" style="width:52px" onchange="renderRoute()"> min</label></div>
     <ol id="rlist"></ol>
     <div class="ractions">
       <button class="btn" onclick="optimize()">Optimize order</button>
@@ -173,7 +173,7 @@ const MFRNAMES={access4u:"Access4U","airavant-bongorx":"AIRAVANT / BongoRx",cors
 const mfrLabelSlug=s=>MFRNAMES[s]||String(s||"").split("-").map(w=>w?w[0].toUpperCase()+w.slice(1):w).join(" ");
 function isDue(p){ if(!p||!p.last_visit) return true; return (Date.now()-new Date(p.last_visit).getTime())>90*864e5; }
 async function markVisited(id,i){
-  try{ const r=await api2({action:"log_visit",dealer_id:id}); if(r&&r.ok){ if(POINTS[i])POINTS[i].last_visit=r.visited_at; banner("Visit logged ✓"); MAP&&MAP.closePopup(); draw(); } }catch(e){ banner("Couldn't log visit."); }
+  try{ const r=await api2({action:"log_visit",dealer_id:id}); if(r&&r.ok&&r.already){ banner("Already logged today ✓"); MAP&&MAP.closePopup(); return; } if(r&&r.ok){ if(POINTS[i])POINTS[i].last_visit=r.visited_at; banner("Visit logged ✓"); MAP&&MAP.closePopup(); draw(); } }catch(e){ banner("Couldn't log visit."); }
 }
 async function loadSettings(){
   try{ const r=await api2({action:"get_settings",key:"handout"}); if(r&&r.ok&&r.value){ HANDOUT={ordering_url:r.value.ordering_url||ORDERING_URL, updates:Array.isArray(r.value.updates)&&r.value.updates.length?r.value.updates:HANDOUT_UPDATES.slice()}; } }catch(e){}
@@ -501,6 +501,10 @@ function computeItinerary(){
   }
   return items;
 }
+/* Times are shown only from an explicit departure: a start time, and on a one-way route its zone.
+   Nothing is assumed (the start time used to default to 08:00, so an unset plan showed confident
+   times the field app and heads-ups would never use). */
+function departureSet(){ return /^\d{2}:\d{2}$/.test(((($("#startTime")||{}).value)||"").trim()) && (!oneWay() || !!(($("#startTz")||{}).value)); }
 // One-way = the plan does not leave from a home base (no home, round trip off, or a route opened without one).
 function oneWay(){ return !(HOME&&ROUNDTRIP&&!LOADED_NOHOME); }
 function syncTzPicker(){ const z=$("#startTz"); if(z) z.hidden=!oneWay(); }
@@ -522,7 +526,7 @@ async function notifyDealer(id,name,stopDate){
 /* ---------- visit notes & follow-up (Phase 4) ---------- */
 function openVisitNotes(id,name){
   if(!id){ banner("This stop has no linked dealer."); return; }
-  window._vnDealer=id;
+  window._vnDealer=id; window._vnKey=null; VN_SAVED_SIG=null;   // a newly opened form is a new visit
   $("#homeEdit").innerHTML=`<div class="homeov"><div class="homecard vnbox" style="max-width:560px;max-height:90vh;overflow:auto">
     <style>.vnbox textarea,.vnbox input{width:100%;box-sizing:border-box;font-family:inherit;font-size:12.5px;padding:5px 7px;border:1px solid #dde3e8;border-radius:6px;margin:0}.vnbox input[type=date]{width:auto}.vnl{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:#5b6672;margin:8px 0 2px;font-weight:700}.vngrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}</style>
     <b>Visit notes — ${esc(name||"")}</b>
@@ -567,10 +571,14 @@ async function saveVisit(){
   if(VN_SAVING) return;
   if(sig===VN_SAVED_SIG){ if(m)m.textContent="Already saved ✓ — change something to save again."; return; }
   VN_SAVING=true; if(m)m.textContent="Saving…";
-  try{ const r=await api2({action:"save_visit",dealer_id:id,summary:details.summary,details});
+  /* request_key: one per opened Log-visit form — the server makes ONE visit per key (retries,
+     double taps and a second Save in the same form never add another). */
+  if(!window._vnKey) window._vnKey="vn"+Date.now().toString(36)+Math.random().toString(36).slice(2,10);
+  try{ const r=await api2({action:"save_visit",dealer_id:id,summary:details.summary,details,request_key:window._vnKey});
     if(r&&r.ok&&r.already){ VN_SAVED_SIG=sig; if(m)m.textContent=r.message||"Already saved — this visit was logged once."; }
     else if(r&&r.ok){ VN_SAVED_SIG=sig; if(m)m.textContent=`Saved ✓ — ${r.tasks||0} task(s)${r.opportunities?`, ${r.opportunities} opportunity(ies)`:""} created.`; }
     else if(m) m.textContent=(r&&(r.message||r.error))||"Couldn't save.";
+    if(r&&r.error==="save_incomplete") VN_SAVED_SIG=null;   // let the rep tap Save again to finish
   }catch(e){ if(m)m.textContent="Couldn't save — try again."; }
   finally{ VN_SAVING=false; }
 }
@@ -592,8 +600,9 @@ async function sendFollowup(){
 }
 function copyFollowup(){ const t=($("#fu_body")||{}).value||""; try{ navigator.clipboard.writeText(t); banner("Copied ✓"); }catch(e){ banner("Select the text to copy."); } }
 function itineraryListHtml(){
-  const items=computeItinerary(); const hasTimes=(LASTROUTE.legs||[]).length>0;
+  const items=computeItinerary(); const hasTimes=(LASTROUTE.legs||[]).length>0 && departureSet();
   const mut="color:#6b7683;font-size:11px"; let html="",stopNo=0,routeIdx=-1,lastDay=0;
+  if((LASTROUTE.legs||[]).length>0 && !departureSet()) html+=`<li id="nodepartHint" style="list-style:none;margin:0 0 6px;font-size:12px;color:#8a5d12;background:#fdf4e6;border-radius:6px;padding:5px 8px">No departure set — choose the start time${oneWay()?" and its time zone":""} above to see arrival times.</li>`;
   for(let k=0;k<items.length;k++){
     const it=items[k],node=it.node;
     if(it.dayIndex>lastDay){ lastDay=it.dayIndex; html+=`<li style="list-style:none;margin:7px 0 2px"><span style="display:inline-block;background:#eef2f6;color:#2B4071;font-weight:700;font-size:11px;border-radius:6px;padding:2px 8px">Day ${it.dayIndex+1}${hasTimes?" · "+esc(fmtAbsDay(it.arriveAbs,it.tz)):""}</span></li>`; }
@@ -833,7 +842,7 @@ async function loadSaved(id){
     /* The route's own start point is used for THIS plan only — it no longer replaces your saved home
        base in this browser (opening a rep's route used to make their house your default). */
     if(rt.home_base&&rt.home_base.lat!=null){ HOME={q:rt.home_base.address||"",lat:rt.home_base.lat,lng:rt.home_base.lng,short:rt.home_base.label||"",state:rt.home_base.state||stateFromAddr(rt.home_base.address||"")}; ROUNDTRIP=rt.round_trip!==false; LOADED_NOHOME=null; PLAN_HOME=HOME; drawHome(); }
-    else { resetPlanHome(); LOADED_NOHOME={round_trip:rt.round_trip!==false}; banner("This route has no start point of its own (the assigned rep sets theirs). Times shown start from your home base; saving keeps it without one."); }
+    else { resetPlanHome(); LOADED_NOHOME={round_trip:rt.round_trip!==false}; banner("This route has no start point of its own (the assigned rep sets theirs). Times start at the first stop from the departure time and zone above; saving keeps it without one."); }
     LASTROUTE={distance_m:rt.distance_m||0,duration_s:rt.duration_s||0,geometry:rt.geometry||null};
     renderRoute(); draw();
     if(rt.geometry&&rt.geometry.length){ if(ROUTEGEO){MAP.removeLayer(ROUTEGEO);} if(ROUTELINE){MAP.removeLayer(ROUTELINE);ROUTELINE=null;} ROUTEGEO=L.polyline(rt.geometry.map(c=>[c[1],c[0]]),{color:"#2B4071",weight:5,opacity:.85}).addTo(MAP); try{MAP.fitBounds(ROUTEGEO.getBounds().pad(0.15));}catch(e){} }
@@ -865,7 +874,7 @@ function fmtClock(min){ min=Math.round(((min%1440)+1440)%1440); let h=Math.floor
 function nowStamp(){ const d=new Date(); return d.toLocaleDateString(undefined,{weekday:"short",year:"numeric",month:"short",day:"numeric"})+" · "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}); }
 function routeSheetHtml(title){
   const items=computeItinerary();
-  const hasTimes=(LASTROUTE.legs||[]).length>0;
+  const hasTimes=(LASTROUTE.legs||[]).length>0 && departureSet();
   const {minutes:startMin}=routeStartParts();
   const rows=[]; let stopNo=0,lastDay=0,endItem=null;
   for(let k=0;k<items.length;k++){
@@ -917,7 +926,7 @@ async function printPacket(){
 }
 // Cover page for the visit package: the time-zone itinerary + territory promotions.
 function packetCover(){
-  const items=computeItinerary(); const hasTimes=(LASTROUTE.legs||[]).length>0;
+  const items=computeItinerary(); const hasTimes=(LASTROUTE.legs||[]).length>0 && departureSet();
   let rows="",stopNo=0,lastDay=0;
   for(let k=0;k<items.length;k++){ const it=items[k],node=it.node;
     if(it.dayIndex>lastDay){ lastDay=it.dayIndex; rows+=`<tr class="dy"><td colspan="4">Day ${it.dayIndex+1}${hasTimes?" — "+esc(fmtAbsDay(it.arriveAbs,it.tz)):""}</td></tr>`; }

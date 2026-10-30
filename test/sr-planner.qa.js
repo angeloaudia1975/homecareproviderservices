@@ -47,8 +47,26 @@ const R = H.runner();
     await p.goto(`${B}/admin/map.html`); await p.waitForFunction(() => typeof loadSaved === 'function' && typeof L !== 'undefined');
     await p.waitForTimeout(500);
   });
+  await R.step('a route with no departure shows NO arrival times and cannot be saved until the start time and zone are chosen', async () => {
+    await p.evaluate(() => loadSaved('r-nohome')); await p.waitForTimeout(400);
+    await p.evaluate(() => { LASTROUTE.legs = [{ duration_s: 600, distance_m: 9000 }]; });
+    assert.strictEqual(await p.evaluate(() => document.getElementById('startTime').value), '', 'a start time was assumed');
+    assert.strictEqual(await p.evaluate(() => departureSet()), false);
+    const html = await p.evaluate(() => itineraryListHtml());
+    assert.ok(/No departure set/.test(html), 'no hint'); assert.ok(!/\d:\d\d [AP]M/.test(html), 'a time was shown without a departure: ' + html.slice(0, 300));
+    const before = JSON.stringify(saved('r-nohome'));
+    await p.evaluate(async () => { if (!document.getElementById('rname')) { const d = document.createElement('div'); d.innerHTML = '<input id="rname"><input id="rdate"><div id="rerr"></div>'; document.body.appendChild(d); }
+      document.getElementById('rname').value = 'Assigned, no start'; await saveRouteGo(); });
+    assert.ok(/start time/i.test(await p.evaluate(() => document.getElementById('rerr').textContent)));
+    await p.evaluate(async () => { document.getElementById('startTime').value = '08:30'; await saveRouteGo(); });
+    assert.ok(/time zone/i.test(await p.evaluate(() => document.getElementById('rerr').textContent)), 'saved a route timed from its first stop without a zone');
+    assert.strictEqual(JSON.stringify(saved('r-nohome')), before, 'a refused save wrote something');
+    await p.evaluate(() => { document.getElementById('startTz').value = 'America/Chicago'; renderRoute(); });
+    assert.ok(/\d:\d\d [AP]M/.test(await p.evaluate(() => itineraryListHtml())), 'times not shown once the departure is set');
+  });
   await R.step('opening a route with no start point and re-saving keeps it without one (the planner home is not written in)', async () => {
     await p.evaluate(() => loadSaved('r-nohome')); await p.waitForTimeout(400);
+    await p.evaluate(() => { document.getElementById('startTime').value = '08:30'; document.getElementById('startTz').value = 'America/Chicago'; });
     assert.strictEqual(await p.evaluate(() => JSON.parse(localStorage.getItem('hcps_home_base')).q), HOME.q, 'personal home base changed');
     await p.evaluate(async () => { if (!document.getElementById('rname')) { const d = document.createElement('div'); d.innerHTML = '<input id="rname"><input id="rdate"><div id="rerr"></div>'; document.body.appendChild(d); }
       document.getElementById('rname').value = 'Assigned, no start'; await saveRouteGo(); });
@@ -58,6 +76,7 @@ const R = H.runner();
     assert.strictEqual(r.assigned_to_email, 'greg@hcps.us', 'the assignment was dropped');
     assert.strictEqual(r.owner_email, 'angelo@hcps.us');
     assert.strictEqual(r.stops[0].visit_min, 40);
+    assert.deepStrictEqual([r.depart_time, r.depart_tz], ['08:30', 'America/Chicago'], 'the explicit departure was not saved');
   });
   await R.step('opened route with no start point → Dealer 360 and back → Save still writes no start point and no home miles', async () => {
     await p.evaluate(() => loadSaved('r-nohome')); await p.waitForTimeout(400);
