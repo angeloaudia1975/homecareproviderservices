@@ -682,11 +682,19 @@ function renderCompose(){
       <textarea id="cx_body" rows="10" placeholder="The AI draft appears here — review and edit before sending." style="width:100%"></textarea>
       <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
         <button class="btn sm orange" id="cx_send" onclick="sendEmail()">✅ Approve &amp; send</button>
+        <span id="cx_stylewrap"></span>
         <button class="btn sm" onclick="genEmail()">↻ Regenerate</button>
         <button class="btn sm" onclick="openInOutlook()">↗ Open in Outlook</button>
         <span id="cx_msg" class="hint" style="margin:0"></span>
       </div>
       <div class="hint" style="margin-top:4px">Review &amp; edit above, then Approve &amp; send — it goes from your Outlook and logs to the timeline.</div>
+      <div id="cx_alt" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:9px;background:#f7f9fc;padding:9px 11px">
+        <div class="hint" style="margin:0 0 4px"><b>New suggestion</b> — your edited text above is unchanged.</div>
+        <div id="cx_alt_warn"></div>
+        <div id="cx_alt_sub" style="font-weight:700;margin:0 0 4px"></div>
+        <div id="cx_alt_body" style="white-space:pre-wrap;font-size:13px;line-height:1.45;max-height:260px;overflow:auto"></div>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm" onclick="cxAltKeep()">Keep my text</button><button class="btn sm orange" onclick="cxAltUse()">Use this version</button></div>
+      </div>
     </div>`;
 }
 /* ── Situation-driven product picker ─────────────────────────────────────────
@@ -817,12 +825,20 @@ async function genEmail(){
   const tpl=($("#cx_tpl")||{}).value||"follow_up";
   const st=$("#cx_status"); const gen=$("#cx_gen");
   if(st){ st.style.color=""; st.textContent="Drafting with AI…"; } if(gen) gen.disabled=true;
-  COMPOSE.draft_id=null; // a failed regenerate must never tie hand-written text to the earlier draft
-  let j; try{ j=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"draft",dealer_id:CUR,template:tpl,contact_email:to,contact_name:name,
+  /* Phase 3 (only when the server said writing styles are on): a regenerate over EDITED text is a suggestion beside it —
+     the rep's text stays until they choose the new one, and it keeps the draft id it came from. */
+  const subjEl=$("#cx_subj"), bodyEl=$("#cx_body"), drEl=$("#cx_draft");
+  const edited=!!(COMPOSE.styles && drEl && drEl.style.display!=="none" && subjEl && bodyEl
+    && (subjEl.value!==COMPOSE.genSubj || bodyEl.value!==COMPOSE.genBody));
+  const style=COMPOSE.styles?((($("#cx_style")||{}).value)||undefined):undefined;
+  if(!edited) COMPOSE.draft_id=null; // a failed regenerate must never tie hand-written text to the earlier draft
+  let j; try{ j=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"draft",dealer_id:CUR,template:tpl,contact_email:to,contact_name:name,style,
     product: CXPROD.manufacturer?{manufacturer:CXPROD.manufacturer,mfr_name:CXPROD.mfr_name,code:CXPROD.code,image_url:CXPROD.image_url}:null})}).then(r=>r.json()); }catch(e){ j=null; }
   if(gen) gen.disabled=false;
   if(!j||!j.ok){ if(st){ st.style.color="#b45309"; st.textContent=(j&&j.message)||"Couldn't generate a draft — try again."; } return; }
   if(st) st.textContent="";
+  cxStyles(j);
+  if(edited){ cxAltShow(j, to, name); return; }
   COMPOSE.to=to; COMPOSE.name=name; COMPOSE.sig=j.signature||"";
   COMPOSE.draft_id=(typeof j.draft_id==="string")?j.draft_id:null;   // Smart Email Learning: pairs the sent version with this draft
   COMPOSE.html=j.html||""; COMPOSE.product_url=j.product_url||"";
@@ -830,6 +846,37 @@ async function genEmail(){
   const subj=$("#cx_subj"); if(subj) subj.value=j.subject||"";
   const body=$("#cx_body"); if(body) body.value=(j.body||"")+(j.signature?("\n\n"+j.signature):"");
   const dr=$("#cx_draft"); if(dr) dr.style.display="";
+  COMPOSE.genSubj=subj?subj.value:""; COMPOSE.genBody=body?body.value:"";
+  cxWarn(j.warnings);
+}
+/* Phase 3 helpers: the style picker (shown only when the server reports writing styles on), warnings the no-invention
+   guards found, and the suggestion box for a regenerate over edited text. */
+function cxStyles(j){
+  const f=(j&&j.features)||{}; COMPOSE.styles=f.styles===true;
+  const w=$("#cx_stylewrap"); if(!w) return;
+  if(!COMPOSE.styles||!Array.isArray(f.style_list)){ w.innerHTML=""; return; }
+  const cur=(($("#cx_style")||{}).value)||j.style||"";
+  w.innerHTML=`<select id="cx_style" aria-label="Writing style" style="min-width:150px">${f.style_list.map(x=>`<option value="${esc(x.key)}"${x.key===cur?" selected":""}>${esc(x.label)}</option>`).join("")}</select>`;
+}
+function cxWarn(list){
+  const st=$("#cx_status"); if(!st||!Array.isArray(list)||!list.length) return;
+  st.style.color="#b45309"; st.textContent=list.join(" ");
+}
+function cxAltShow(j, to, name){
+  COMPOSE.alt={subject:j.subject||"", body:(j.body||"")+(j.signature?("\n\n"+j.signature):""), draft_id:(typeof j.draft_id==="string")?j.draft_id:null,
+    sig:j.signature||"", html:j.html||"", product_url:j.product_url||"", to, name};
+  const box=$("#cx_alt"); if(!box) return;
+  $("#cx_alt_sub").textContent=COMPOSE.alt.subject; $("#cx_alt_body").textContent=COMPOSE.alt.body;
+  const w=$("#cx_alt_warn"); if(w){ w.innerHTML=""; (Array.isArray(j.warnings)?j.warnings:[]).forEach(x=>{ const d=document.createElement("div"); d.className="hint"; d.style.color="#b45309"; d.textContent=x; w.appendChild(d); }); }
+  box.style.display="";
+}
+function cxAltKeep(){ COMPOSE.alt=null; const b=$("#cx_alt"); if(b) b.style.display="none"; }
+function cxAltUse(){
+  const a=COMPOSE.alt; if(!a) return;
+  const subj=$("#cx_subj"), body=$("#cx_body"); if(subj) subj.value=a.subject; if(body) body.value=a.body;
+  COMPOSE.draft_id=a.draft_id; COMPOSE.sig=a.sig; COMPOSE.html=a.html; COMPOSE.product_url=a.product_url; COMPOSE.to=a.to; COMPOSE.name=a.name;
+  COMPOSE.genSubj=a.subject; COMPOSE.genBody=a.body; COMPOSE.alt=null;
+  const b=$("#cx_alt"); if(b) b.style.display="none";
 }
 async function sendEmail(){
   const to=($("#cx_to")||{}).value||COMPOSE.to;

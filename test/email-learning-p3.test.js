@@ -3,7 +3,7 @@
    current numbered version's snapshot is what applies; the type's own rules first, then "every type"; at most 2 masked
    examples; wording that is not plain text (digits except a percentage, "@", links, other characters) is left out; a
    retired rule is left out; any read failure = not applied, never an error; the style guide stays first and wins; and no
-   email generator uses this module yet.
+   email generator reads it any other way than approvedFor.
      node test/email-learning-p3.test.js */
 const assert = require('assert');
 const fs = require('fs');
@@ -106,11 +106,29 @@ const ON = { email_learning_apply: true };
     assert.ok(/never copy a placeholder/i.test(r.addendum));
     assert.strictEqual(A.promptAddendum([], []), '');
   });
-  await t('no email generator uses this module yet (Phase 3 wiring is a separate, reviewed step)', () => {
+  await t('only the two reviewed generators use it, each through approvedFor (which holds the switch + President rule)', () => {
     const dir = path.join(__dirname, '..', 'netlify', 'functions');
     const users = fs.readdirSync(dir).filter(f => f.endsWith('.js') && f !== '_email_rules_apply.js')
-      .filter(f => /_email_rules_apply/.test(fs.readFileSync(path.join(dir, f), 'utf8')));
-    assert.deepStrictEqual(users, []);
+      .filter(f => /_email_rules_apply/.test(fs.readFileSync(path.join(dir, f), 'utf8'))).sort();
+    assert.deepStrictEqual(users, ['ai-email-api.js', 'routes-api.js']);
+    for (const f of users) {
+      const src = fs.readFileSync(path.join(dir, f), 'utf8');
+      assert.ok(/RA\.approvedFor\(sbGet, me,/.test(src), f + ' reads the rules through approvedFor with the verified sign-in');
+      assert.ok(!/RA\.(rulesFor|promptAddendum|examplesFor)\(/.test(src), f + ' never builds rule text around the switch');
+    }
+  });
+  await t('recordShape: only for the President\'s own draft id; never throws; a failing database records nothing', async () => {
+    const seen = [];
+    const rpc = async (fn, p) => { seen.push([fn, p]); return { ok: true, status: 'recorded' }; };
+    const ID = '0e000000-0000-4000-8000-00000000000e';
+    assert.deepStrictEqual(await A.recordShape(PRES, ID, { profile_version: 3, style: 'brief_direct', ai: true }, rpc), { ok: true, status: 'recorded' });
+    assert.deepStrictEqual(seen[0], ['hcps_email_draft_shape', { draft_id: ID, author_email: 'owner@hcps.test', profile_version: 3, style: 'brief_direct', ai: true }]);
+    assert.strictEqual(await A.recordShape({ email: 'greg@hcps.test', role: 'rep' }, ID, { ai: true }, rpc), null);
+    assert.strictEqual(await A.recordShape(PRES, 'not-an-id', { ai: true }, rpc), null);
+    assert.strictEqual(seen.length, 1);
+    await A.recordShape(PRES, ID, { profile_version: 0, style: 7 }, rpc);
+    assert.deepStrictEqual(seen[1][1], { draft_id: ID, author_email: 'owner@hcps.test', profile_version: null, style: null, ai: false });
+    assert.strictEqual(await A.recordShape(PRES, ID, { ai: true }, async () => { throw new Error('down'); }), null);
   });
   console.log(`\nEmail learning P3 (apply): ${pass} passed, ${fail} failed`);
   process.exitCode = fail ? 1 : 0;

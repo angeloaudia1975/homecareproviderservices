@@ -6,8 +6,8 @@
 // outside AI service except the generator's own prompt, which already goes there today; Phase 3 stays OFF in production
 // until reviewed and switched on by the owner.
 //
-// This module only READS and BUILDS TEXT. It is not connected to any generator yet (that is a later, separately reviewed
-// step), so no draft and no sent email changes because it exists.
+// It READS and BUILDS TEXT; its one write is recordShape (which version / style shaped a kept draft — best-effort, never
+// changes a draft). Generators that use it: ai-email-api (Dealer 360 + visit follow-ups) and routes-api (the AI heads-up).
 //
 // It is active only when ALL of these hold — otherwise it answers { active:false, reason } and the caller writes the
 // draft exactly as today:
@@ -103,4 +103,20 @@ async function approvedFor(sbGet, me, emailType, flags){
   }catch(e){ return off("unreadable"); }
 }
 
-module.exports = { SWITCH_APPLY, MAX_RULES, MAX_EXAMPLES, cleanLine, rulesFor, examplesFor, promptAddendum, approvedFor };
+/* Record which approved version and writing style shaped a kept draft (email_draft_shapes, Phase 3 SQL). Only for the
+   President's own kept drafts; best-effort: not installed, a timeout or any error is simply nothing recorded. */
+async function recordShape(me, draft_id, shape, rpc){
+  try{
+    const EL = require("./_email_learning.js");
+    const author = EL.captureAuthor(me), id = EL.uuidOrNull(draft_id);
+    if(!author || !id) return null;
+    const p = { draft_id: id, author_email: author,
+      profile_version: Number.isInteger(shape && shape.profile_version) && shape.profile_version > 0 ? shape.profile_version : null,
+      style: shape && typeof shape.style === "string" ? shape.style : null, ai: !!(shape && shape.ai) };
+    const call = rpc || EL.rpcClient();
+    return await Promise.race([call("hcps_email_draft_shape", p).catch(() => null),
+      new Promise(res => setTimeout(() => res(null), EL.captureMs()))]);
+  }catch(e){ return null; }
+}
+
+module.exports = { recordShape, SWITCH_APPLY, MAX_RULES, MAX_EXAMPLES, cleanLine, rulesFor, examplesFor, promptAddendum, approvedFor };

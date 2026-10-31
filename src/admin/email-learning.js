@@ -13,7 +13,7 @@
     product_intro: "Product introduction", reorder_reminder: "Reorder reminder", cross_sell: "Cross-sell", portal_activation: "Portal activation", campaign: "Campaign" };
   const WHEN = t => t ? new Date(t).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" }) : "—";
   let ST = null, ROWS = [], NEXT = null, F = { type: "", only: "all" }, OPEN = null, ERR = "";
-  let TAB = "emails", RULES = null, VERSIONS = null, VER = 0, MSG = "", FORM = null, BUSY = false;
+  let REDACT_READY = false, TAB = "emails", RULES = null, VERSIONS = null, VER = 0, MSG = "", FORM = null, BUSY = false;
   const KIND = { remove_phrase: "You delete", replace_phrase: "You rewrite", add_phrase: "You add", greeting: "Greeting", shorter: "Length", longer: "Length", subject: "Subject line" };
   const ACT = { approve: "Approved a rule", retire: "Retired a rule", edit: "Reworded a rule", rollback: "Restored an earlier version", reset: "Reset — no rules" };
 
@@ -100,7 +100,7 @@
     const r = await api({ action: "rules" });
     if (r.status === 401) { gate(); return; }
     if (r.status === 503) { RULES = "not_installed"; } else if (r.status !== 200) { RULES = null; MSG = (r.body && (r.body.message || r.body.error)) || "Couldn't load the rules."; }
-    else { RULES = r.body.rules; VER = r.body.version; }
+    else { RULES = r.body.rules; VER = r.body.version; REDACT_READY = r.body.redact_ready === true; }
     renderRules();
   }
   function ruleCard(x) {
@@ -109,16 +109,21 @@
     const scope = x.email_type === "all" ? "Every email type" : (TYPE[x.email_type] || x.email_type);
     const open = FORM && FORM.id === x.id;
     let actions = "";
-    if (x.status === "suggested") actions = `<button class="go" data-act="approve" data-id="${esc(x.id)}" type="button">Approve…</button> <button class="go sec" data-act="reject" data-id="${esc(x.id)}" type="button">Reject…</button>`;
+    // Phase 3 Redact (President only, checked again on the server and in the database): removes the evidence for good.
+    const red = REDACT_READY && !x.redacted_at ? ` <button class="go sec" data-act="redact" data-id="${esc(x.id)}" type="button" style="color:#b42323">Redact…</button>` : "";
+    if (x.redacted_at) actions = "";
+    else if (x.status === "suggested") actions = `<button class="go" data-act="approve" data-id="${esc(x.id)}" type="button">Approve…</button> <button class="go sec" data-act="reject" data-id="${esc(x.id)}" type="button">Reject…</button>`;
     else if (x.status === "approved") actions = `<button class="go sec" data-act="edit" data-id="${esc(x.id)}" type="button">Reword…</button> <button class="go sec" data-act="retire" data-id="${esc(x.id)}" type="button">Retire…</button>`;
     else actions = `<button class="go sec" data-act="approve" data-id="${esc(x.id)}" type="button">Approve…</button>`;
+    if (!x.redacted_at) actions += red;
     const form = open ? `<div class="el-form" id="el-form">
         ${FORM.act === "approve" || FORM.act === "edit" ? `<label class="hint" for="el-instr">Wording (what HCPS will be told)</label><textarea id="el-instr" rows="2" maxlength="300">${esc(FORM.act === "edit" ? x.instruction : (x.status === "suggested" ? x.suggested_instruction : x.instruction))}</textarea>` : ""}
-        <label class="hint" for="el-reason">Reason (required)</label><input id="el-reason" type="text" maxlength="500" placeholder="${FORM.act === "reject" ? "e.g. Only for that one dealer" : "e.g. This is how I write"}">
-        <div class="el-flt" style="margin:8px 0 0"><button class="go" id="el-save" type="button"${BUSY ? " disabled" : ""}>${{ approve: "Approve rule", reject: "Reject", retire: "Retire rule", edit: "Save wording" }[FORM.act]}</button>
+        ${FORM.act === "redact" ? `<div class="hint" style="color:#b42323;margin:0 0 6px">Redact removes this rule's masked phrase, examples and wording for good — here, in its history and in every saved version. ${x.status === "approved" ? "It stops being used at once (a new version is saved). " : ""}It can't be undone, and the same edit is never suggested again.</div>` : ""}
+        <label class="hint" for="el-reason">Reason (required)</label><input id="el-reason" type="text" maxlength="500" placeholder="${FORM.act === "reject" ? "e.g. Only for that one dealer" : FORM.act === "redact" ? "e.g. Holds a customer's name" : "e.g. This is how I write"}">
+        <div class="el-flt" style="margin:8px 0 0"><button class="go" id="el-save" type="button"${BUSY ? " disabled" : ""}>${{ approve: "Approve rule", reject: "Reject", retire: "Retire rule", edit: "Save wording", redact: "Redact for good" }[FORM.act]}</button>
         <button class="go sec" id="el-cancel" type="button">Cancel</button></div></div>` : "";
     return `<div class="el-rule s-${esc(x.status)}" data-rule="${esc(x.id)}"><div class="r1"><span class="subj">${esc(x.instruction)}</span>
-        <span class="el-tag t-${x.status === "approved" ? "same" : x.status === "suggested" ? "edited" : "draft"}">${esc({ suggested: "Suggested", approved: "Approved", rejected: "Rejected", retired: "Retired" }[x.status])}</span></div>
+        <span class="el-tag t-${x.status === "approved" ? "same" : x.status === "suggested" ? "edited" : "draft"}">${esc(x.redacted_at ? "Redacted" : { suggested: "Suggested", approved: "Approved", rejected: "Rejected", retired: "Retired" }[x.status])}</span></div>
       <div class="hint">${esc(KIND[x.kind] || x.kind)} · ${esc(scope)} · ${ev}${x.decided_by ? " · " + esc(x.status) + " " + esc(WHEN(x.decided_at)) + (x.decision_reason ? " — “" + esc(x.decision_reason) + "”" : "") : ""}</div>
       ${ex}
       <div class="el-flt" style="margin:8px 0 0">${actions}</div>${form}</div>`;
@@ -132,7 +137,7 @@
       const g = s => RULES.filter(x => x.status === s);
       const sect = (h, list, empty) => `<h2 class="el-h">${esc(h)} <span class="hint">(${list.length})</span></h2>${list.length ? list.map(ruleCard).join("") : `<div class="empty">${esc(empty)}</div>`}`;
       inner = `<div class="note">When you make the same edit in ${esc((ST.thresholds || {}).sends || 3)}+ sent emails to ${esc((ST.thresholds || {}).dealers || 2)}+ different dealers, it shows up here as a suggestion.
-          Nothing is used until you approve it, and <b>approved rules don't change any email yet</b> — that comes in Phase 3, which you switch on separately.
+          Nothing is used until you approve it. Approved rules shape your own AI drafts only while <b>Apply learned rules</b> is switched on (${ST && ST.phase3 && ST.phase3.apply ? "on" : "off"}); the AI Communication Style Guide always comes first.
           Phrases are masked: names, dealers, dates, numbers and addresses never appear. The comparison runs inside HCPS — no AI service sees your emails.</div>
         <div class="el-flt"><button class="go" id="el-analyze" type="button"${BUSY ? " disabled" : ""}>Look for patterns now</button>
           <span class="hint">Automatic daily check: ${L.suggest_on ? "on" : "off"} · approved set: version ${esc(VER)}</span></div>
@@ -158,10 +163,12 @@
     const reason = ($("#el-reason").value || "").trim(), instr = $("#el-instr") ? $("#el-instr").value : undefined;
     if (reason.length < 3) { MSG = "Give a short reason first."; renderRules(); return; }
     BUSY = true; renderRules();
-    const r = await api({ action: "decide", rule_id: FORM.id, decision: FORM.act, reason, instruction: instr, expected_version: VER, expected_status: FORM.status });
+    const r = FORM.act === "redact"
+      ? await api({ action: "redact", rule_id: FORM.id, reason, expected_version: VER, expected_status: FORM.status })
+      : await api({ action: "decide", rule_id: FORM.id, decision: FORM.act, reason, instruction: instr, expected_version: VER, expected_status: FORM.status });
     BUSY = false;
-    if (r.status === 200) { MSG = { approve: "Approved", reject: "Rejected", retire: "Retired", edit: "Wording saved" }[FORM.act] + (r.body.version !== VER ? ` — approved set is now version ${r.body.version}.` : "."); FORM = null; await refreshStatus(); await loadRules(); }
-    else { MSG = (r.body && (r.body.message || ({ not_allowed: "That change isn't possible for this rule any more — reload.", president_only: "Only the President can decide.", bad_instruction: "Check the wording (3–300 characters, no email address, link or number — a percentage is fine)." })[r.body.status] || r.body.error)) || "Couldn't save."; renderRules(); }
+    if (r.status === 200) { MSG = { approve: "Approved", reject: "Rejected", retire: "Retired", edit: "Wording saved", redact: "Redacted" }[FORM.act] + (r.body.version !== VER ? ` — approved set is now version ${r.body.version}.` : "."); FORM = null; await refreshStatus(); await loadRules(); }
+    else { MSG = (r.body && (r.body.message || ({ not_allowed: "That change isn't possible for this rule any more — reload.", president_only: "Only the President can decide.", redacted: "This rule has been redacted — it can't be changed.", bad_instruction: "Check the wording (3–300 characters, no email address, link or number — a percentage is fine)." })[r.body.status] || r.body.error)) || "Couldn't save."; renderRules(); }
   }
   async function refreshStatus() { const s = await api({ action: "status" }); if (s.status === 200) ST = s.body; }
 

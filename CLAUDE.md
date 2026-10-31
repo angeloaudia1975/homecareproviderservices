@@ -609,6 +609,24 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   `e566e3410ea75bf69ea5f57518ae675a` (= the expected Windows-paste fingerprint), RLS 3 / 0 policies, 0 public grants, 6 guard
   triggers, switch absent, 0 / 0 / 0 rows, row 8 `true / true / false`; public-key probe (storefront publishable key, verified on a
   public table first) 18/18 BLOCKED (401); live page shows Learned rules / Versions (version 0). Never rerun or roll back it.
+  **Phase 3 — BUILT on branch `email-learning/p3-apply` (PR #72; Angelo's approval 2026-10-31 14:02 CT for the normal verified
+  development + merge process; runbook `docs/email-learning/PHASE3.md`).** Rules: three switches, each OFF unless exactly `true`,
+  and NOT switched on in production without Angelo's final authorization — `email_learning_apply` (approved rules in the
+  President's own AI drafts, after the style guide, through `_email_rules_apply.approvedFor` only — ai-email-api + routes-api,
+  test-enforced), `email_styles` (Professional & Friendly · Consultative Sales · Brief & Direct + Regenerate + the guards on
+  Dealer 360 / follow-up drafts + the heads-up date/time checks), `email_ai_headsup` (AI heads-up, fixed template as fallback).
+  All off = today's prompts and heads-up word for word. A style never adds a fact. Regenerate is a SUGGESTION beside the rep's
+  text — never replaces it unless the rep taps "Use this version" ("Back to my previous text" restores); the draft id follows
+  the text in the editor. The no-invention guards (`_draft_guards.js`, pure, no AI): every time, zone, date, (heads-up)
+  weekday, $ amount, %, promotion, stock/shipping claim, purchase-history claim and commitment must be in the generator's own
+  input; one rewrite, then heads-up → template, Dealer 360 → "Check before sending" warnings. The heads-up (AI or template)
+  reads no more of the dealer than the template (no account data in its prompt) and the PR #71 access rules are unchanged; its
+  day must be today…120 days ahead (Chicago), its time must carry a known US zone, name a day and not have passed — else left
+  out, neutral wording. **Redact** (President only, `hcps_email_rule_redact`): removes a rule's masked pattern, examples and
+  wordings for good, also in its events and version snapshots; approved → retired (new version), suggested → rejected; the
+  row stays so the edit is never suggested, refreshed, approved or restored again. SQL `email_learning_p3_shapes_redact.sql`
+  (+ `email_draft_shapes`, RULE 19 locked) replaces the Phase 2 guard / note / decide, so the Phase 2 postcheck row 2 changes
+  by design — use `email_learning_p3_postcheck.sql`; Angelo runs it; code works without it (shapes skipped, Redact 503).
 - **A replay is a no-op.** Every write from a visit carries `(origin_type, origin_id, origin_key)` against
   a unique index (or a claim PATCH on a null column), so a double tap, an offline resend or a late replay
   never duplicates a visit, note, task, deal, contact, activity row or intent signal — while a genuinely

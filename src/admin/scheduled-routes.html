@@ -1094,7 +1094,13 @@ async function draftVisitEmail(i){
     const r=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:h,body:JSON.stringify({action:"draft",dealer_id:s.dealer_id,template:"visit_followup",visit_report_id:reportId,contact_name:pick.greet})});
     j=await r.json().catch(()=>null); }catch(e){ j=null; }
   if(m) m.textContent="";
-  if(j&&j.ok&&j.subject){ openDraft(s,j.subject,j.body||"",j.signature||"","Follow-up email — review before sending",{visit:true,attendees,warnings:j.warnings,draft_id:j.draft_id}); return; }
+  const regen=async style=>{ let r=null;
+    try{ const h={"content-type":"application/json"}; if(TOKEN) h["authorization"]="Bearer "+TOKEN;
+      const x=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:h,body:JSON.stringify({action:"draft",dealer_id:s.dealer_id,template:"visit_followup",visit_report_id:reportId,contact_name:pick.greet,style})});
+      r=await x.json().catch(()=>null); }catch(e){ r=null; }
+    return r&&r.ok&&r.subject?{subject:r.subject,body:r.body||"",signature:r.signature||"",draft_id:r.draft_id,warnings:r.warnings}:{error:(r&&(r.message||r.error))||"Couldn't write a new version."}; };
+  if(j&&j.ok&&j.subject){ openDraft(s,j.subject,j.body||"",j.signature||"","Follow-up email — review before sending",{visit:true,attendees,warnings:j.warnings,draft_id:j.draft_id,
+    features:j.features,style:j.style,regen}); return; }
   if(m){ m.style.color="#b42323"; m.textContent=(j&&(j.message||j.error))||"Couldn't draft the email."; }
 }
 /* WHO A VISIT FOLLOW-UP GOES TO (Phase 1). Pure — tested.
@@ -1145,13 +1151,19 @@ async function headsUp(i,fresh){
      nothing. Falls back to the route date only before the ETAs have computed. */
   const when = s._dateISO || (DAY.route&&DAY.route.scheduled_date) || "";
   toast("Preparing heads-up…");
-  let j; try{ j=await rapi({action:"previsit_draft",dealer_id:s.dealer_id,date:when,eta:etaTxt,
+  const req={action:"previsit_draft",dealer_id:s.dealer_id,date:when,eta:etaTxt,
     /* the contact the card shows and the TO field uses — the draft used to greet
        whoever was on the dealer record instead, which is how a note to Steve Lyons
        opened "Hi Jeremiah". */
-    contact_name:s.contact_name||""}); }catch(e){ j=null; }
+    contact_name:s.contact_name||""};
+  let j; try{ j=await rapi(req); }catch(e){ j=null; }
   if(!j||!j.ok){ toast((j&&j.message)||"Couldn't prepare the heads-up"); return; }
-  openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending",{previsit:true,stop:i,draft_id:j.draft_id,warnings:warnings.concat(Array.isArray(j.warnings)?j.warnings:[])});
+  /* Phase 3 (only when the server says a switch is on): a writing style and Regenerate. A regenerated heads-up is a
+     suggestion shown beside the rep's text — it replaces nothing unless the rep chooses it. */
+  const regen=async style=>{ let r; try{ r=await rapi(Object.assign({},req,{style})); }catch(e){ r=null; }
+    return r&&r.ok?{subject:r.subject||"",body:r.body||"",signature:r.signature||"",draft_id:r.draft_id,warnings:r.warnings}:{error:(r&&r.message)||"Couldn't write a new version."}; };
+  openDraft(s, j.subject||"", j.body||"", j.signature||"", "Pre-visit heads-up — review before sending",{previsit:true,stop:i,draft_id:j.draft_id,warnings:warnings.concat(Array.isArray(j.warnings)?j.warnings:[]),
+    features:j.features,style:j.style,regen});
 }
 /* ---- WHO THE EMAIL GOES TO -------------------------------------------------
    The pre-visit heads-up and the after-visit follow-up are drafted by different code and sent by
@@ -1240,6 +1252,10 @@ function openDraft(s,subject,body,signature,title,opts){
      the version finally sent can be kept beside the original; it never changes what is sent. */
   DRAFT.draft_id=(typeof opts.draft_id==="string"&&/^[0-9a-f-]{36}$/i.test(opts.draft_id))?opts.draft_id:null;
   const canSave=!!(opts.visit||opts.previsit);
+  /* Phase 3: style + Regenerate, only when the server reported a switch on for this draft. */
+  const F=opts.features||{}, canRegen=typeof opts.regen==="function"&&!!(F.styles||F.ai);
+  DRAFT.regen=canRegen?opts.regen:null; DRAFT.alt=null; DRAFT.undo=null;
+  const styles=Array.isArray(F.style_list)?F.style_list:[];
   const people=rows.length
     ? rows.map((r,i)=>`<label class="rcpt"><input type="checkbox" class="d_p" data-email="${esc(r.email)}" data-name="${esc(r.name)}"${pre(r,i)?" checked":""} onchange="draftWho()">
         <span><b>${esc(r.name||r.email)}</b>${r.title?` <span class="hint">· ${esc(r.title)}</span>`:""}${r.source==="attendee"?` <span class="hint">· at the meeting</span>`:""}${r.source==="account"?` <span class="hint">· account email</span>`:""}<br><span class="hint">${esc(r.email)}</span></span></label>`).join("")
@@ -1257,6 +1273,18 @@ function openDraft(s,subject,body,signature,title,opts){
     <div id="d_who" class="hint" style="margin-top:6px"></div>
     <label class="fl">Subject</label><input class="in" id="d_sub" value="${esc(subject)}">
     <label class="fl">Message</label><textarea class="in" id="d_body" style="min-height:200px">${esc(full)}</textarea>
+    ${canRegen?`<div class="save-row" style="margin-top:8px" id="d_regenrow">
+      ${F.styles&&styles.length?`<select class="in" id="d_style" aria-label="Writing style" style="flex:1">${styles.map(x=>`<option value="${esc(x.key)}"${x.key===opts.style?" selected":""}>${esc(x.label)}</option>`).join("")}</select>`:""}
+      <button class="btn wide" id="d_regen" onclick="draftRegen(this)">↻ Regenerate</button></div>
+      <div class="hint" style="margin-top:4px">Regenerate writes a new suggestion below — your text stays as it is unless you choose the new one.</div>
+      <div id="d_alt" hidden style="margin-top:10px;border:1px solid #cfd8e3;border-radius:10px;padding:10px;background:#f7f9fc">
+        <div class="hint" style="margin:0 0 6px"><b>New suggestion</b> — your text above is unchanged.</div>
+        <div id="d_alt_warn"></div>
+        <div class="hint" style="margin:0">Subject</div><div id="d_alt_sub" style="font-weight:600;margin:0 0 6px"></div>
+        <div id="d_alt_body" style="white-space:pre-wrap;font-size:14px;line-height:1.45;max-height:240px;overflow:auto"></div>
+        <div class="save-row" style="margin-top:8px"><button class="btn wide" onclick="draftAltKeep()">Keep my text</button><button class="btn wide" id="d_use" style="font-weight:700" onclick="draftAltUse()">Use this version</button></div>
+      </div>
+      <button class="btn wide" id="d_undo" hidden style="margin-top:8px" onclick="draftUndo()">↶ Back to my previous text</button>`:""}
     <div class="hint" style="margin-top:6px">Nothing sends until you tap Send. It goes from your Outlook.${opts.previsit?" Save draft keeps it on this device.":""}</div>
     ${canSave?`<div class="save-row" style="margin-top:12px">
       <button class="btn wide" onclick="copyDraft()">⧉ Copy</button>
@@ -1278,6 +1306,41 @@ function openDraft(s,subject,body,signature,title,opts){
   draftWho();
   // What "unchanged" means: the email as it opened, after the greeting was matched to the recipient.
   DRAFT.baseline=draftSnap(draftNow());
+}
+/* ---- Phase 3: Regenerate without losing the rep's edits ----
+   The new version is a SUGGESTION in its own box. The subject and message the rep is editing are never touched unless the rep
+   taps "Use this version" — and even then the previous text is kept for "Back to my previous text". The draft id follows the
+   text that is actually in the editor, so a send is always paired with the draft it came from. */
+async function draftRegen(btn){
+  if(!DRAFT||!DRAFT.regen) return;
+  const st=($("#d_style")||{}).value||undefined, m=$("#d_msg");
+  if(btn) btn.disabled=true; if(m){ m.style.color=""; m.textContent="Writing a new version…"; }
+  let r; try{ r=await DRAFT.regen(st); }catch(e){ r={error:"Couldn't write a new version."}; }
+  if(btn) btn.disabled=false;
+  if(!DRAFT) return;
+  if(!r||r.error){ if(m){ m.style.color="#b42323"; m.textContent=(r&&r.error)||"Couldn't write a new version."; } return; }
+  if(m) m.textContent="";
+  DRAFT.alt={subject:r.subject||"", body:(r.body||"")+(r.signature?`\n\n${r.signature}`:""), draft_id:(typeof r.draft_id==="string"&&/^[0-9a-f-]{36}$/i.test(r.draft_id))?r.draft_id:null};
+  const box=$("#d_alt"); if(!box) return;
+  $("#d_alt_sub").textContent=DRAFT.alt.subject; $("#d_alt_body").textContent=DRAFT.alt.body;
+  const w=$("#d_alt_warn"); if(w){ w.innerHTML=""; (Array.isArray(r.warnings)?r.warnings:[]).forEach(x=>{ const d=document.createElement("div"); d.className="rvnote"; d.textContent=x; w.appendChild(d); }); }
+  box.hidden=false; try{ box.scrollIntoView({block:"nearest"}); }catch(e){}
+}
+function draftAltKeep(){ if(DRAFT) DRAFT.alt=null; const b=$("#d_alt"); if(b) b.hidden=true; }
+function draftAltUse(){
+  if(!DRAFT||!DRAFT.alt) return;
+  const sub=$("#d_sub"), body=$("#d_body"); if(!sub||!body) return;
+  DRAFT.undo={subject:sub.value, body:body.value, draft_id:DRAFT.draft_id};
+  sub.value=DRAFT.alt.subject; body.value=DRAFT.alt.body; DRAFT.draft_id=DRAFT.alt.draft_id;
+  DRAFT.alt=null; const b=$("#d_alt"); if(b) b.hidden=true;
+  const u=$("#d_undo"); if(u) u.hidden=false;
+  draftWho();   // the greeting follows whoever is ticked
+}
+function draftUndo(){
+  if(!DRAFT||!DRAFT.undo) return;
+  const sub=$("#d_sub"), body=$("#d_body"); if(!sub||!body) return;
+  sub.value=DRAFT.undo.subject; body.value=DRAFT.undo.body; DRAFT.draft_id=DRAFT.undo.draft_id; DRAFT.undo=null;
+  const u=$("#d_undo"); if(u) u.hidden=true;
 }
 /* ---- Unsaved-change protection ---- */
 function draftSnap(e){ return JSON.stringify([e.to,e.cc,e.subject,e.body]); }
