@@ -4,10 +4,10 @@
 const { spawnSync } = require('child_process');
 const fs = require('fs'), os = require('os'), path = require('path');
 // Phase 1 and Phase 2 tables run one after the other (each with its own control).
-const TABLES = [path.join(__dirname, 'email-learning.mutants.table.js'), path.join(__dirname, 'email-learning-p2.mutants.table.js')];
+const TABLES = [path.join(__dirname, 'email-learning.mutants.table.js'), path.join(__dirname, 'email-learning-p2.mutants.table.js'), path.join(__dirname, 'email-learning-p3.mutants.table.js')];
 const SQLF = { sql: [path.join(__dirname, '..', 'supabase', 'email_learning_p1_capture.sql'), 'EL1_SQL'],
                sql2: [path.join(__dirname, '..', 'supabase', 'email_learning_p2_rules.sql'), 'EL2_SQL'] };
-const SUITES = { js: 'email-learning-p1.test.js', pg: 'email-learning-p1.pg.test.js', js2: 'email-learning-p2.test.js', pg2: 'email-learning-p2.pg.test.js' };
+const SUITES = { js: 'email-learning-p1.test.js', pg: 'email-learning-p1.pg.test.js', js2: 'email-learning-p2.test.js', pg2: 'email-learning-p2.pg.test.js', js3: 'email-learning-p3.test.js' };
 function run(suite, env) {
   const r = spawnSync(process.execPath, [path.join(__dirname, SUITES[suite])], { env, encoding: 'utf8', timeout: 300000 });
   const out = (r.stdout || '') + (r.stderr || '');
