@@ -15,6 +15,7 @@ module.exports = {
   retired_kept: { file: AP, suite: 'js3', from: 'const live = rules.filter(r => Object.prototype.hasOwnProperty.call(byId, r.id));', to: 'const live = rules;' },
   throws_on_failure: { file: AP, suite: 'js3', from: '  }catch(e){ return off("unreadable"); }', to: '  }catch(e){ throw e; }' },
   no_fact_guard: { file: AP, suite: 'js3', from: '    "Never invent a name, date, time, price, product, promotion or commitment to satisfy a preference.",\n', to: '' },
+  run_keeps_redacted: { file: '_email_learn_run.js', suite: 'js2', from: 'const kept = res.suggestions.filter(s => !gone.has(s.rule_key) && !gone.has(s.pattern_key));', to: 'const kept = res.suggestions;' },
   shape_any_author: { file: AP, suite: 'js3', from: 'if(!author || !id) return null;', to: 'if(!id) return null;' },
 
   CONTROL_G: { file: DG, suite: 'js3g', control: true, from: 'const WEEKDAYS =', to: '/* control */ const WEEKDAYS =' },
@@ -27,6 +28,10 @@ module.exports = {
   availability_ok: { file: DG, suite: 'js3g', from: '  if(!A.families.availability) for(', to: '  if(false) for(' },
   history_ok: { file: DG, suite: 'js3g', from: '  if(!A.history) for(', to: '  if(false) for(' },
   commitments_ok: { file: DG, suite: 'js3g', from: '    if(!root || !root[1].test(A.src)) add(', to: '    if(false) add(' },
+  no_reldays: { file: DG, suite: 'js3g', from: '    for(const r of relDays(text)) if(', to: '    for(const r of []) if(' },
+  no_spoken_times: { file: DG, suite: 'js3g', from: '  for(const m of t.matchAll(SPOKEN_RE))', to: '  for(const m of [])' },
+  no_24h_times: { file: DG, suite: 'js3g', from: '  for(const m of t.matchAll(TIME24_RE))', to: '  for(const m of [])' },
+  no_money_words: { file: DG, suite: 'js3g', from: '  for(const m of t.matchAll(MONEY_WORDS_RE))', to: '  for(const m of [])' },
   no_nfkc: { file: DG, suite: 'js3g', from: '.normalize("NFKC")', to: '' },
   st_unknown_passes: { file: ST, suite: 'js3g', from: '? k : DEFAULT_STYLE; }', to: '? k : (k || DEFAULT_STYLE); }' },
   st_no_fact_line: { file: ST, suite: 'js3g', from: ' The style changes only how the email reads; it never adds a fact, product, price, date, promotion or commitment.', to: '' },
@@ -63,5 +68,6 @@ module.exports = {
   s_guard_events_open: { file: 'sql3', suite: 'pg3', from: "    if tg_op = 'UPDATE' and v_op = 'redact' and (to_jsonb(new) - array['before','after']) = (to_jsonb(old) - array['before','after']) then return new; end if;", to: "    if tg_op = 'UPDATE' and v_op = 'redact' then return new; end if;" },
   s_shape_any_author: { file: 'sql3', suite: 'pg3', from: "  if not exists (select 1 from public.email_drafts where id = v_id and author_email = v_author) then", to: "  if not exists (select 1 from public.email_drafts where id = v_id) then" },
   s_shape_found: { file: 'sql3', suite: 'pg3', from: "case when v_n > 0 then 'recorded' else 'exists' end", to: "case when found then 'recorded' else 'exists' end" },
+  s_shape_any_version: { file: 'sql3', suite: 'pg3', from: "  if v_ver is not null and not exists (select 1 from public.email_learning_profiles where version = v_ver) then", to: "  if false then" },
   s_shape_writable: { file: 'sql3', suite: 'pg3', from: "grant select on table public.email_draft_shapes to service_role;", to: "grant select, insert on table public.email_draft_shapes to service_role;" },
 };

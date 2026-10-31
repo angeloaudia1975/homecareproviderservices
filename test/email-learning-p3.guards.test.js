@@ -47,7 +47,7 @@ const B = body => ({ subject: 'Subject', body });
   await t('prices and percentages: only amounts the facts hold, however they are written', () => {
     const f = { source: ['Total sales on file: $12,345', 'up 30% on last year'] };
     assert.deepStrictEqual(kinds(B('over $12,345 so far, up 30 percent'), f), []);
-    assert.deepStrictEqual(kinds(B('save $50 — 10% off'), f).sort(), ['percent:10%', 'price:$50', 'promotion:10% off'].sort());
+    assert.deepStrictEqual(kinds(B('save $50 — 10% off'), f).sort(), ['percent:10%', 'price:$50', 'promotion:10% off', 'promotion:save $'].sort());
     assert.deepStrictEqual(kinds(B('a $1.5k order'), { source: ['$1,500'] }), []);
   });
   await t('promotions, stock and shipping: only when the facts speak of them', () => {
@@ -70,7 +70,22 @@ const B = body => ({ subject: 'Subject', body });
   });
   await t('typographic quotes and full-width characters do not hide a claim', () => {
     assert.deepStrictEqual(kinds(B('I’ll bring samples'), {}), ["commitment:I'll bring"]);
-    assert.deepStrictEqual(kinds(B('save ＄５０'), {}), ['price:$50']);
+    assert.deepStrictEqual(kinds(B('save ＄５０'), {}).sort(), ['price:$50', 'promotion:save $']);
+  });
+  await t('review M1: the forms that used to slip through are findings now', () => {
+    const f = { source: ['Wednesday, November 4'], dates: ['2026-11-04'], times: ['11:30 AM CST'], weekdays: true };
+    const has = (txt, kind) => assert.ok(kinds(B(txt), f).some(k => k.startsWith(kind + ':')), `${txt} → ${JSON.stringify(kinds(B(txt), f))}`);
+    for (const x of ['at 14:30', 'at 11.45am', "at 3 o'clock", 'at two thirty', 'half past two', 'nine in the morning']) has(x, 'time');
+    for (const x of ['on the 5th', 'tomorrow', 'next week', 'this weekend']) has(x, 'date');
+    has('see you Thurs.', 'weekday');
+    for (const x of ['1,200 bucks', 'fifty dollars', 'a few hundred bucks']) has(x, 'price');
+    has('15 pct off', 'percent');
+    for (const x of ['a 2-for-1 deal', 'special savings', 'complimentary freight', 'at no extra cost', 'buy one, get one']) has(x, 'promotion');
+    for (const x of ['I give you my word', 'rest assured', 'without fail']) has(x, 'commitment');
+    assert.deepStrictEqual(kinds(B('around 11:30 AM CST on Wednesday, November 4, an estimate'), f), [], 'the given day and time stay clean');
+    assert.deepStrictEqual(kinds(B('the 4th works'), f), [], 'the given day as an ordinal');
+    assert.deepStrictEqual(kinds(B('Would Tuesday or next week suit?'), {}), [], 'outside the heads-up a proposed day is a next step');
+    assert.deepStrictEqual(kinds(B('up 30% on last year, 11:30 visits'), { source: ['up 30% on last year', '11:30 AM CST'] }), []);
   });
   await t('the rewrite note names each finding; the warnings tell the rep what to check', () => {
     const p = DG.check(B('Free freight and $50 off'), {}).problems;

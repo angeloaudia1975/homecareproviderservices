@@ -108,12 +108,14 @@ try {
   });
   t('a shape: once, for the draft\'s own author only; bad input is a status', () => {
     { const r = call('hcps_email_draft_shape', { draft_id: PD[0], author_email: PRES, profile_version: 2, style: 'brief_direct', ai: true }); assert.strictEqual(r.status, 'recorded', JSON.stringify(r)); }
-    assert.strictEqual(call('hcps_email_draft_shape', { draft_id: PD[0], author_email: PRES, profile_version: 9, style: 'consultative', ai: false }).status, 'exists');
+    assert.strictEqual(call('hcps_email_draft_shape', { draft_id: PD[0], author_email: PRES, profile_version: 1, style: 'consultative', ai: false }).status, 'exists');
     assert.strictEqual(q(`select profile_version || '/' || style || '/' || ai from public.email_draft_shapes where draft_id = '${PD[0]}'`), '2/brief_direct/true', 'the first record stands');
     assert.strictEqual(call('hcps_email_draft_shape', { draft_id: REPD, author_email: PRES, ai: true }).status, 'not_found', 'another author\'s draft');
     assert.strictEqual(call('hcps_email_draft_shape', { draft_id: PD[1], author_email: PRES, style: 'shouty', ai: true }).status, 'bad_request');
     assert.strictEqual(call('hcps_email_draft_shape', { draft_id: 'nope', author_email: PRES, ai: true }).status, 'bad_request');
-    assert.strictEqual(call('hcps_email_draft_shape', { draft_id: PD[1], author_email: PRES, profile_version: 0, ai: false }).status, 'recorded');
+    assert.strictEqual(call('hcps_email_draft_shape', { draft_id: PD[1], author_email: PRES, profile_version: 99, ai: true }).status, 'bad_request', 'a version that does not exist');
+    assert.strictEqual(call('hcps_email_draft_shape', { draft_id: PD[1], author_email: PRES, profile_version: 0, ai: 'maybe' }).status, 'recorded');
+    assert.strictEqual(q(`select ai::text from public.email_draft_shapes where draft_id = '${PD[1]}'`), 'false', 'anything but true is false');
     assert.strictEqual(q(`select coalesce(profile_version::text,'null') from public.email_draft_shapes where draft_id = '${PD[1]}'`), 'null', 'version 0 is no version');
     refused(() => q(`update public.email_draft_shapes set style = 'consultative' where draft_id = '${PD[0]}'`), /email_shape_guard/);
     refused(() => q(`delete from public.email_draft_shapes where draft_id = '${PD[0]}'`), /email_shape_guard/);

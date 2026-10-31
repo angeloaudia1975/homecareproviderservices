@@ -1254,7 +1254,7 @@ function openDraft(s,subject,body,signature,title,opts){
   const canSave=!!(opts.visit||opts.previsit);
   /* Phase 3: style + Regenerate, only when the server reported a switch on for this draft. */
   const F=opts.features||{}, canRegen=typeof opts.regen==="function"&&!!(F.styles||F.ai);
-  DRAFT.regen=canRegen?opts.regen:null; DRAFT.alt=null; DRAFT.undo=null;
+  DRAFT.regen=canRegen?opts.regen:null; DRAFT.alt=null; DRAFT.undo=null; DRAFT.warnings=Array.isArray(opts.warnings)?opts.warnings.slice():[];
   const styles=Array.isArray(F.style_list)?F.style_list:[];
   const people=rows.length
     ? rows.map((r,i)=>`<label class="rcpt"><input type="checkbox" class="d_p" data-email="${esc(r.email)}" data-name="${esc(r.name)}"${pre(r,i)?" checked":""} onchange="draftWho()">
@@ -1264,7 +1264,7 @@ function openDraft(s,subject,body,signature,title,opts){
   const wrap=document.createElement("div"); wrap.className="modal"; wrap.id="draftwrap";   // no backdrop dismissal — see above
   wrap.innerHTML=`<div class="sheet">
     <h3>${esc(title||"Email — review before sending")}</h3>
-    ${(opts.warnings||[]).map(w=>`<div class="rvnote">${esc(w)}</div>`).join("")}
+    <div id="d_warn">${(opts.warnings||[]).map(w=>`<div class="rvnote">${esc(w)}</div>`).join("")}</div>
     <label class="fl">To</label>
     ${pickNote?`<div class="hint" style="margin:0 0 6px;color:#8a5a08">${esc(pickNote)}</div>`:""}
     <div id="d_people">${people}</div>
@@ -1320,27 +1320,36 @@ async function draftRegen(btn){
   if(!DRAFT) return;
   if(!r||r.error){ if(m){ m.style.color="#b42323"; m.textContent=(r&&r.error)||"Couldn't write a new version."; } return; }
   if(m) m.textContent="";
-  DRAFT.alt={subject:r.subject||"", body:(r.body||"")+(r.signature?`\n\n${r.signature}`:""), draft_id:(typeof r.draft_id==="string"&&/^[0-9a-f-]{36}$/i.test(r.draft_id))?r.draft_id:null};
+  DRAFT.alt={warnings:Array.isArray(r.warnings)?r.warnings.slice():[], subject:r.subject||"", body:(r.body||"")+(r.signature?`\n\n${r.signature}`:""), draft_id:(typeof r.draft_id==="string"&&/^[0-9a-f-]{36}$/i.test(r.draft_id))?r.draft_id:null};
   const box=$("#d_alt"); if(!box) return;
   $("#d_alt_sub").textContent=DRAFT.alt.subject; $("#d_alt_body").textContent=DRAFT.alt.body;
   const w=$("#d_alt_warn"); if(w){ w.innerHTML=""; (Array.isArray(r.warnings)?r.warnings:[]).forEach(x=>{ const d=document.createElement("div"); d.className="rvnote"; d.textContent=x; w.appendChild(d); }); }
   box.hidden=false; try{ box.scrollIntoView({block:"nearest"}); }catch(e){}
 }
+/* The warnings at the top always belong to the text in the editor: they change with "Use this version" and come back with
+   "Back to my previous text" (review M2). */
+function draftShowWarnings(list){ const box=$("#d_warn"); if(!box) return; box.innerHTML="";
+  (list||[]).forEach(x=>{ const d=document.createElement("div"); d.className="rvnote"; d.textContent=x; box.appendChild(d); }); }
 function draftAltKeep(){ if(DRAFT) DRAFT.alt=null; const b=$("#d_alt"); if(b) b.hidden=true; }
 function draftAltUse(){
   if(!DRAFT||!DRAFT.alt) return;
   const sub=$("#d_sub"), body=$("#d_body"); if(!sub||!body) return;
-  DRAFT.undo={subject:sub.value, body:body.value, draft_id:DRAFT.draft_id};
+  DRAFT.undo={subject:sub.value, body:body.value, draft_id:DRAFT.draft_id, warnings:DRAFT.warnings, label:"prev"};
   sub.value=DRAFT.alt.subject; body.value=DRAFT.alt.body; DRAFT.draft_id=DRAFT.alt.draft_id;
+  DRAFT.warnings=DRAFT.alt.warnings; draftShowWarnings(DRAFT.warnings);
   DRAFT.alt=null; const b=$("#d_alt"); if(b) b.hidden=true;
-  const u=$("#d_undo"); if(u) u.hidden=false;
+  const u=$("#d_undo"); if(u){ u.hidden=false; u.textContent="↶ Back to my previous text"; }
   draftWho();   // the greeting follows whoever is ticked
 }
+/* Undo SWAPS: the text now in the editor (edits made after "Use this version" included) becomes the other side, so going
+   back and forth never loses anything (review L5). */
 function draftUndo(){
   if(!DRAFT||!DRAFT.undo) return;
   const sub=$("#d_sub"), body=$("#d_body"); if(!sub||!body) return;
-  sub.value=DRAFT.undo.subject; body.value=DRAFT.undo.body; DRAFT.draft_id=DRAFT.undo.draft_id; DRAFT.undo=null;
-  const u=$("#d_undo"); if(u) u.hidden=true;
+  const now={subject:sub.value, body:body.value, draft_id:DRAFT.draft_id, warnings:DRAFT.warnings, label:DRAFT.undo.label==="new"?"prev":"new"};
+  sub.value=DRAFT.undo.subject; body.value=DRAFT.undo.body; DRAFT.draft_id=DRAFT.undo.draft_id;
+  DRAFT.warnings=DRAFT.undo.warnings||[]; draftShowWarnings(DRAFT.warnings); DRAFT.undo=now;
+  const u=$("#d_undo"); if(u) u.textContent=now.label==="new"?"↷ Back to the new version":"↶ Back to my previous text";
 }
 /* ---- Unsaved-change protection ---- */
 function draftSnap(e){ return JSON.stringify([e.to,e.cc,e.subject,e.body]); }

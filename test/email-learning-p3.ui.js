@@ -38,6 +38,7 @@ function world(flags) {
   let n = 0;
   S.ai = body => {
     const p = body.messages[0].content; n++;
+    if (/pre-visit heads-up/.test(p) && /Brief & Direct/.test(p)) return { subject: 'Free freight!', body: 'Hi Pat,\n\nFree freight on every order this week, I promise.' };   // invents → the guards refuse it
     if (/pre-visit heads-up/.test(p)) {
       const day = (p.match(/- Visit day: ([^\n]+)/) || [])[1] || '', eta = (p.match(/- Estimated arrival: (.+?) —/) || [])[1] || '';
       const d = /not confirmed/.test(day) ? '' : day;
@@ -113,7 +114,7 @@ const draftId = page => page.evaluate(() => (window.DRAFT || (typeof DRAFT !== '
       const first = await draftId(p); assert.ok(/^[0-9a-f-]{36}$/.test(first || ''), 'a draft id');
       const mine = (await p.inputValue('#d_body')) + '\n\nMY OWN EDIT';
       await p.fill('#d_body', mine);
-      await p.selectOption('#d_style', 'brief_direct');
+      await p.selectOption('#d_style', 'consultative');
       await p.click('#d_regen'); await p.waitForSelector('#d_alt', { state: 'visible' });
       assert.strictEqual(await p.inputValue('#d_body'), mine, 'the rep\'s text is untouched by Regenerate');
       assert.strictEqual(await draftId(p), first);
@@ -127,6 +128,16 @@ const draftId = page => page.evaluate(() => (window.DRAFT || (typeof DRAFT !== '
       assert.strictEqual((await p.inputValue('#d_body')).trim(), alt.trim());
       const second = await draftId(p); assert.ok(second && second !== first, 'the id follows the chosen version');
       await p.click('#d_undo'); assert.strictEqual(await p.inputValue('#d_body'), mine); assert.strictEqual(await draftId(p), first);
+      await p.click('#d_undo'); assert.strictEqual((await p.inputValue('#d_body')).trim(), alt.trim(), 'Undo swaps: the new version is one tap away');
+      assert.strictEqual(await draftId(p), second);
+      await p.click('#d_undo'); assert.strictEqual(await p.inputValue('#d_body'), mine);
+      // review M2: the warnings at the top follow the version in the editor
+      await p.selectOption('#d_style', 'brief_direct'); await p.click('#d_regen'); await p.waitForSelector('#d_alt', { state: 'visible' });
+      assert.ok(/couldn't confirm/.test(await p.textContent('#d_alt_warn')), 'the suggestion shows why it is the standard heads-up');
+      const topBefore = await p.textContent('#d_warn');
+      await p.click('#d_use'); assert.ok(/couldn't confirm/.test(await p.textContent('#d_warn')), 'its warnings move to the top');
+      await p.click('#d_undo'); assert.strictEqual(await p.textContent('#d_warn'), topBefore, 'and go away again with the previous text');
+      assert.strictEqual(await p.inputValue('#d_body'), mine);
       // touch targets + no horizontal scroll
       for (const sel of ['#d_regen', '#d_style']) { const h = await p.$eval(sel, b => b.getBoundingClientRect().height); assert.ok(h >= 40, sel + ' ' + h); }
       const o = await p.evaluate(() => ({ sw: document.documentElement.scrollWidth, w: window.innerWidth })); assert.ok(o.sw <= o.w + 1, `horizontal scroll ${o.sw} > ${o.w}`);

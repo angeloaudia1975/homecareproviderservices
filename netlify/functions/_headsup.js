@@ -19,8 +19,11 @@ const DG = require("./_draft_guards.js");
 
 const TERRITORY_TZ = "America/Chicago";
 const MAX_AHEAD_DAYS = 120;
-const ZONE_TZ = { EST: [-5], EDT: [-4], CST: [-6], CDT: [-5], MST: [-7], MDT: [-6], PST: [-8], PDT: [-7],
-  ET: "America/New_York", CT: "America/Chicago", MT: "America/Denver", PT: "America/Los_Angeles" };
+/* Each label is read through its region's real clock on that date (review L4): a summer time labelled "EST" is still
+   Eastern wall time, so the "already passed" check is never an hour off. */
+const ZONE_TZ = { EST: "America/New_York", EDT: "America/New_York", ET: "America/New_York", CST: "America/Chicago", CDT: "America/Chicago",
+  CT: "America/Chicago", MST: "America/Denver", MDT: "America/Denver", MT: "America/Denver", PST: "America/Los_Angeles",
+  PDT: "America/Los_Angeles", PT: "America/Los_Angeles" };
 
 function prettyDate(iso){
   const p = String(iso).split("-").map(Number);
@@ -57,7 +60,7 @@ function checkEta(eta, iso, warnings, now){
   if(!iso){ warnings.push(`The arrival time (${t}) was left out because the email doesn't name a day.`); return ""; }
   const mins = ((+m[1]) % 12 + (m[3] === "PM" ? 12 : 0)) * 60 + (+m[2]);
   const [y, mo, d] = iso.split("-").map(Number), wall = Date.UTC(y, mo - 1, d) + mins * 60000;
-  const z = ZONE_TZ[m[4]], off = Array.isArray(z) ? z[0] * 60 : zoneOffset(z, wall);
+  const off = zoneOffset(ZONE_TZ[m[4]], wall);
   const at = wall - off * 60000;
   if(at <= (now == null ? Date.now() : now)){ warnings.push(`The estimated arrival (${t} on ${prettyDate(iso)}) has already passed, so it was left out.`); return ""; }
   return t;

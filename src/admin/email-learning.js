@@ -15,7 +15,7 @@
   let ST = null, ROWS = [], NEXT = null, F = { type: "", only: "all" }, OPEN = null, ERR = "";
   let REDACT_READY = false, TAB = "emails", RULES = null, VERSIONS = null, VER = 0, MSG = "", FORM = null, BUSY = false;
   const KIND = { remove_phrase: "You delete", replace_phrase: "You rewrite", add_phrase: "You add", greeting: "Greeting", shorter: "Length", longer: "Length", subject: "Subject line" };
-  const ACT = { approve: "Approved a rule", retire: "Retired a rule", edit: "Reworded a rule", rollback: "Restored an earlier version", reset: "Reset — no rules" };
+  const ACT = { approve: "Approved a rule", retire: "Retired a rule", edit: "Reworded a rule", rollback: "Restored an earlier version", reset: "Reset — no rules", redact: "Redacted a rule" };
 
   async function api(p) {
     const r = await fetch("/.netlify/functions/email-learning-api", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + TOKEN }, body: JSON.stringify(p) });
@@ -190,7 +190,7 @@
         const cur = v.version === VER;
         return `<div class="el-rule"><div class="r1"><span class="subj">Version ${esc(v.version)}${cur ? " · current" : ""}</span><span class="hint">${esc(WHEN(v.created_at))}</span></div>
           <div class="hint">${esc(ACT[v.action] || v.action)}${v.from_version != null && (v.action === "rollback") ? " " + esc(v.from_version) : ""} · ${esc((v.rules || []).length)} approved rule${(v.rules || []).length === 1 ? "" : "s"} · “${esc(v.reason)}”</div>
-          ${(v.rules || []).length ? `<div class="el-ex">${v.rules.map(x => `<div>${esc(x.instruction)}</div>`).join("")}</div>` : ""}
+          ${(v.rules || []).length ? `<div class="el-ex">${v.rules.map(x => `<div>${x.redacted ? "<i>Redacted rule</i>" : esc(x.instruction)}</div>`).join("")}</div>` : ""}
           ${cur ? "" : `<div class="el-flt" style="margin:8px 0 0"><button class="go sec" data-ver="${esc(v.version)}" type="button">Restore this version…</button></div>`}
           ${open ? restoreForm() : ""}</div>`;
       };

@@ -847,7 +847,7 @@ async function genEmail(){
   const body=$("#cx_body"); if(body) body.value=(j.body||"")+(j.signature?("\n\n"+j.signature):"");
   const dr=$("#cx_draft"); if(dr) dr.style.display="";
   COMPOSE.genSubj=subj?subj.value:""; COMPOSE.genBody=body?body.value:"";
-  cxWarn(j.warnings);
+  if(j.features&&j.features.checked) cxWarn(j.warnings);   // only for drafts the Phase 3 guards checked (off = as before)
 }
 /* Phase 3 helpers: the style picker (shown only when the server reports writing styles on), warnings the no-invention
    guards found, and the suggestion box for a regenerate over edited text. */
@@ -864,7 +864,7 @@ function cxWarn(list){
 }
 function cxAltShow(j, to, name){
   COMPOSE.alt={subject:j.subject||"", body:(j.body||"")+(j.signature?("\n\n"+j.signature):""), draft_id:(typeof j.draft_id==="string")?j.draft_id:null,
-    sig:j.signature||"", html:j.html||"", product_url:j.product_url||"", to, name};
+    sig:j.signature||"", html:j.html||"", product_url:j.product_url||"", to, name, warnings:Array.isArray(j.warnings)?j.warnings:[]};
   const box=$("#cx_alt"); if(!box) return;
   $("#cx_alt_sub").textContent=COMPOSE.alt.subject; $("#cx_alt_body").textContent=COMPOSE.alt.body;
   const w=$("#cx_alt_warn"); if(w){ w.innerHTML=""; (Array.isArray(j.warnings)?j.warnings:[]).forEach(x=>{ const d=document.createElement("div"); d.className="hint"; d.style.color="#b45309"; d.textContent=x; w.appendChild(d); }); }
@@ -876,6 +876,8 @@ function cxAltUse(){
   const subj=$("#cx_subj"), body=$("#cx_body"); if(subj) subj.value=a.subject; if(body) body.value=a.body;
   COMPOSE.draft_id=a.draft_id; COMPOSE.sig=a.sig; COMPOSE.html=a.html; COMPOSE.product_url=a.product_url; COMPOSE.to=a.to; COMPOSE.name=a.name;
   COMPOSE.genSubj=a.subject; COMPOSE.genBody=a.body; COMPOSE.alt=null;
+  // the status line belongs to the text in the editor: the chosen version's findings replace the old ones (review M2)
+  const st=$("#cx_status"); if(st){ st.style.color=""; st.textContent=""; } cxWarn(a.warnings);
   const b=$("#cx_alt"); if(b) b.style.display="none";
 }
 async function sendEmail(){

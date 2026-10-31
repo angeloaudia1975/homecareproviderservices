@@ -67,9 +67,12 @@ begin
   if not exists (select 1 from public.email_drafts where id = v_id and author_email = v_author) then
     return jsonb_build_object('ok', false, 'status', 'not_found');
   end if;
+  if v_ver is not null and not exists (select 1 from public.email_learning_profiles where version = v_ver) then
+    return jsonb_build_object('ok', false, 'status', 'bad_request');   -- only a version that exists
+  end if;
   perform set_config('hcps.email_shape_op', 'create', true);
   insert into public.email_draft_shapes (draft_id, author_email, profile_version, style, ai)
-  values (v_id, v_author, v_ver, v_style, coalesce((p->>'ai')::boolean, false))
+  values (v_id, v_author, v_ver, v_style, coalesce(p->>'ai', '') = 'true')
   on conflict (draft_id) do nothing;
   get diagnostics v_n = row_count;   -- (not FOUND: the PERFORM below would reset it)
   perform set_config('hcps.email_shape_op', '', true);

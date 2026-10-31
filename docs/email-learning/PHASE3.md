@@ -32,9 +32,12 @@ Turning a switch off returns that feature to today's behaviour at once, with no 
 4. **Regenerate without losing edits.** Field app (heads-up and visit follow-up): Regenerate writes a SUGGESTION in a box
    below; the rep's subject and message are untouched until "Use this version"; "Back to my previous text" restores them.
    Dealer 360: a regenerate over EDITED text is a suggestion (Keep my text / Use this version); unedited text is replaced as
-   before. The draft id always follows the text in the editor, so a send pairs with the draft it came from. The editor still
+   before. The draft id AND the warnings always follow the text in the editor, so a send pairs with the draft it came from;
+   "Back to my previous text" swaps (the other version stays one tap away), so nothing is lost. The editor still
    closes only on an explicit action (2026-10-30 rule).
-5. **No-invention guards** (`_draft_guards.js`, pure, no AI). Every time, zone, date, (heads-up: weekday), dollar amount,
+5. **No-invention guards** (`_draft_guards.js`, pure, no AI). Every time (incl. 24-hour, "11.30am", "3 o'clock", spelled
+   out), zone, date, (heads-up: weekday incl. "Thurs.", and relative days "tomorrow" / "next week" / "the 5th"), dollar amount
+   (incl. "bucks" and amounts in words),
    percentage, promotion, stock / shipping claim, purchase-history claim and commitment (guarantee, warranty, price match,
    "I'll bring", risk-free …) must be in what the generator was given. One rewrite naming the findings; then: heads-up →
    template; Dealer 360 / follow-up → shown with "Check before sending: …" for each remaining finding. They over-flag rather
@@ -42,13 +45,16 @@ Turning a switch off returns that feature to today's behaviour at once, with no 
    follow-up).
 6. **Date / ETA validation** (heads-up, with either heads-up switch on): the day must be a real date from today (Chicago) to
    120 days ahead; the arrival time must carry a known US zone (EST/EDT/CST/CDT/MST/MDT/PST/PDT/ET/CT/MT/PT), must name a day,
-   and must not already have passed. Anything else is left out with a warning and neutral wording. `previsitEta` (7 AM – 7 PM)
+   and must not already have passed (each label read through its region's real clock on that date). Anything else is left out with a warning and neutral wording. `previsitEta` (7 AM – 7 PM)
    and `RouteClock.outsideHours` stay the first locks.
 7. **Redact** (President only; `hcps_email_rule_redact`, owner page "Redact…"). Removes a rule's masked pattern, examples and
    both wordings for good — also in its events and every version snapshot (which keeps id / type / kind + `"redacted":true`).
    An approved rule is retired in a new version; a suggested one is rejected. The row and its key stay, so the edit is never
-   suggested, refreshed (note), approved, edited or restored (decide / rollback) again. The page offers Redact only after the
-   Phase 3 SQL is installed.
+   suggested, refreshed (note), approved, edited or restored (decide / rollback) again, and the analyser leaves it out of
+   previews too. The page offers Redact only after the Phase 3 SQL is installed. Kept on purpose (review L1): the owner's own
+   free-text decision reasons, and the rule's `rule_key` / `pattern_key` (truncated SHA-256 of the masked pattern, readable
+   only by the server role) — without the key the same edit would be suggested again. The emails themselves stay in
+   `email_drafts` until the 12-month purge (Redact is about rule evidence).
 
 ## SQL (Angelo runs it; NOT run yet)
 `supabase/email_learning_p3_shapes_redact.sql` — adds `email_draft_shapes` (RULE 19 locked) + `hcps_email_draft_shape`, the
@@ -59,7 +65,11 @@ restores the Phase 2 functions byte for byte. Read-only `email_learning_p3_postc
 after this migration, by design** — use the Phase 3 postcheck. Code works before the SQL: shapes are best-effort (skipped),
 Redact answers 503 "needs the Phase 3 database update", the rules list falls back without the redaction columns.
 
-Fingerprints and checksums: see "Release record" below (filled at the reviewed head).
+## Release record
+- `email_learning_p3_shapes_redact.sql` sha256 `e3754e83fe81b01b897e7d3acf5d6605974db0122f7a950494f6e9d85f8a894e`
+  (8 install checks); rollback `b5187ef3…ec2a`; postcheck `604843b2…5c23`; probe `ace7e2d5…de83` (20 checks).
+- Expected postcheck row 2 (10 functions): **`a36686c04ff4aaf806d65b10980edaa5`** when pasted from Windows into the SQL
+  editor (CRLF, the way Phases 1 and 2 were installed) / `2006d5024c4a1cd5c44922683d4cf3a8` with Unix line endings.
 
 ## Tests (synthetic data only)
 - `test/email-learning-p3.test.js` — rules applied (switch, President, version, order, examples, plain text, retired,
