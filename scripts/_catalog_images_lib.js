@@ -69,7 +69,9 @@ function cleanPages(pages, shop, log) {
   for (const p of all) {
     const gal = p.images_gallery || [];
     /* 2. a tiny photo is dropped when the page has a real one */
-    const big = gal.filter(g => { const f = fileOf(p && shop, g.url); return !f || longSide(dims(f)) >= MIN_SIDE; });
+    /* an image a person approved (content-overrides _images: the owner's own files, imported with --min-side) is never
+       dropped for being small — the owner chose it */
+    const big = gal.filter(g => { if (g.approved) return true; const f = fileOf(p && shop, g.url); return !f || longSide(dims(f)) >= MIN_SIDE; });
     if (big.length && big.length < gal.length) { say("tiny_removed", p.page_key); p.images_gallery = gal.filter(g => big.includes(g)); }
     /* 3. duplicates inside one gallery (same picture, other size): keep the largest */
     const kept = [];
@@ -139,7 +141,7 @@ function applyApproved(pages, approved, shop, log) {
       const pageWide = all.size <= 1 || [...all].every(c => skus.has(c));
       if (pageWide) {
         if (isDup(u)) { say("approved_duplicate", p.page_key); continue; }
-        p.images_gallery = (p.images_gallery || []).concat([{ url: u, primary: false, caption: "", source: it.source || "approved image", note: it.note || "" }]);
+        p.images_gallery = (p.images_gallery || []).concat([{ url: u, primary: false, caption: "", source: it.source || "approved image", note: it.note || "", approved: true }]);
         known.push(u);
       } else for (const s of p.skus) if (skus.has(codeNorm(s.sku)) && !s.image) { s.image = u; s.image_source = it.source || "approved image"; }
     }

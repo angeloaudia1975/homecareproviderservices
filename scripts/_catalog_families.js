@@ -93,6 +93,14 @@ function applyFamilies(pages, catalog, rules, log) {
     const lead = leadKey ? pages[leadKey] : null;
     const entries = {};
     for (const k of srcKeys) for (const s of pages[k].skus || []) entries[codeNorm(s.sku)] = s;
+    /* "option_photos": a member that came from its own product page keeps that page's photo as its OPTION photo
+       (a gate stays pictured as the gate inside an accessories family); a member whose page had no photo has none —
+       the family photo shows, never another option's picture */
+    const optPhoto = {};
+    if (rule.option_photos) for (const k of srcKeys) { const pg = pages[k]; if (k === rule.key) continue;
+      const allMembers = (pg.skus || []).every(s => members.some(r => codeNorm(r.code) === codeNorm(s.sku)));
+      const prim = pg.image || ((pg.images_gallery || []).find(g => g.primary) || (pg.images_gallery || [])[0] || {}).url;
+      if (allMembers && prim) for (const s of pg.skus || []) optPhoto[codeNorm(s.sku)] = prim; }
     const page = lead ? clone(lead) : { manufacturer: "", status: "published", description: "", features: [], specs: [], images_gallery: [], image: null, documents: [], videos: [] };
     page.page_key = rule.key; page.name = rule.name;
     if (rule.description) page.description = rule.description;
@@ -114,15 +122,19 @@ function applyFamilies(pages, catalog, rules, log) {
       const prev = entries[codeNorm(r.code)] || {};
       const label = Object.values(axes).join(" · ");
       return { e: Object.assign({}, prev, { sku: r.code, name: r.name, size: label || prev.size || r.name, axes, specs: specRows(rule, r),
-        status: prev.status || "active", disabled: !!prev.disabled, image: prev.image || "", images: prev.images || [], source: prev.source || "" }), keys };
+        status: prev.status || "active", disabled: !!prev.disabled, image: prev.image || optPhoto[codeNorm(r.code)] || "", images: prev.images || [], source: prev.source || "" }), keys };
     });
     const nAx = (rule.axes || []).length;
-    skus.sort((a, b) => { for (let i = 0; i < nAx; i++) { const d = (a.keys[i] || 0) - (b.keys[i] || 0); if (d) return d; } return 0; });
+    const ord = Array.isArray(rule.order) ? rule.order.map(codeNorm) : null;   /* an explicit option order, when given */
+    if (ord) skus.forEach(x => { const i = ord.indexOf(codeNorm(x.e.sku)); x.keys = [i < 0 ? 1e9 : i]; });
+    skus.sort((a, b) => { for (let i = 0; i < (ord ? 1 : nAx); i++) { const d = (a.keys[i] || 0) - (b.keys[i] || 0); if (d) return d; } return 0; });
     page.skus = skus.map(x => x.e); page.sku_count = page.skus.length;
     /* photos: the lead's gallery first, then the other merged pages' (never a page outside the family) */
     const gal = [], seen = new Set();
     for (const k of [leadKey].concat(srcKeys.filter(k => k !== leadKey))) for (const g of ((pages[k] || {}).images_gallery || [])) if (g && g.url && !seen.has(g.url)) { seen.add(g.url); gal.push(Object.assign({}, g, { primary: false })); }
-    if (gal.length) { const pi = Math.max(0, gal.findIndex(g => g.url === (lead && lead.image))); gal[pi].primary = true; gal.unshift(gal.splice(pi, 1)[0]); }
+    /* the family's hero: rule.primary_image when it is in the gallery, else the lead page's photo */
+    if (gal.length) { let pi = rule.primary_image ? gal.findIndex(g => g.url === rule.primary_image) : -1;
+      if (pi < 0) pi = Math.max(0, gal.findIndex(g => g.url === (lead && lead.image))); gal[pi].primary = true; gal.unshift(gal.splice(pi, 1)[0]); }
     page.images_gallery = gal; page.image = gal.length ? gal[0].url : (lead && lead.image) || null;
     page.card_image = page.image || undefined;
     /* the members leave their old pages; a page left with no SKU is removed */

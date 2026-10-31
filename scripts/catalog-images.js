@@ -97,8 +97,8 @@ else if (cmd === "import") {
   for (const it of items) {
     if (!known.has(L.codeNorm(it.sku))) continue;
     if (!it.buf) { report.rejected.push({ sku: it.sku, from: it.from, why: "could not be downloaded or read" }); continue; }
-    const s = flag("dry-run") ? (() => { const t = path.join(os.tmpdir(), "hcps-dry"); fs.writeFileSync(t, it.buf); const d = L.dims(t); return L.longSide(d) >= L.MIN_SIDE ? { url: "(dry run)", size: d.join("x") } : { error: L.longSide(d) ? "too small (" + d.join("x") + ")" : "not an image" }; })()
-      : L.storeImage(it.buf, assetsDir, assetsUrl);
+    const s = flag("dry-run") ? (() => { const t = path.join(os.tmpdir(), "hcps-dry"); fs.writeFileSync(t, it.buf); const d = L.dims(t); return L.longSide(d) >= (arg("min-side") ? Number(arg("min-side")) : L.MIN_SIDE) ? { url: "(dry run)", size: d.join("x") } : { error: L.longSide(d) ? "too small (" + d.join("x") + ")" : "not an image" }; })()
+      : L.storeImage(it.buf, assetsDir, assetsUrl, arg("min-side") ? { minSide: Number(arg("min-side")) } : undefined);
     if (s.error) { report.rejected.push({ sku: it.sku, from: it.from, why: s.error }); continue; }
     const list = approved[it.sku] = approved[it.sku] || [];
     if (!list.some(x => x.url === s.url)) list.push({ url: s.url, source: it.source, note: it.note });
