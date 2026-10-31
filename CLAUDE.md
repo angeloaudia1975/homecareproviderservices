@@ -605,6 +605,10 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   Angelo runs it; expected postcheck row 2 `e566e341…` (Windows paste) / `eb5db477…` (Unix), row 8 `true / true / false`; then the
   18-check public-key probe. `email_learning_suggest` stays OFF. Open LOW (Phase 3): a President-only Redact decision for lowercase
   names / spelled-out addresses that still reach a rule.
+  **Phase 2 INSTALLED + VERIFIED (2026-10-31 ~13:10 CT):** Angelo ran the migration (9/9 install checks ok); postcheck row 2 =
+  `e566e3410ea75bf69ea5f57518ae675a` (= the expected Windows-paste fingerprint), RLS 3 / 0 policies, 0 public grants, 6 guard
+  triggers, switch absent, 0 / 0 / 0 rows, row 8 `true / true / false`; public-key probe (storefront publishable key, verified on a
+  public table first) 18/18 BLOCKED (401); live page shows Learned rules / Versions (version 0). Never rerun or roll back it.
 - **A replay is a no-op.** Every write from a visit carries `(origin_type, origin_id, origin_key)` against
   a unique index (or a claim PATCH on a null column), so a double tap, an offline resend or a late replay
   never duplicates a visit, note, task, deal, contact, activity row or intent signal — while a genuinely

@@ -105,3 +105,11 @@ MEDIUM-1, LOW-2, LOW-4 verified closed. Fixed after it (JS + read-only postcheck
 a "{word}" that is not a real placeholder ("{jordan}", "{at}") is refused; postcheck row 8 proves the plain-text rule under the
 production collation. Open, recorded: deliberately obfuscated ASCII addresses ("patATacmeDOTcom") — same class as LOW-1, Redact in
 Phase 3; decision reasons are the owner's own free text (3–500 characters) and are stored as he types them.
+
+## Installed and verified in production (2026-10-31 ~13:10 CT)
+Migration run by Angelo (sha256 `f440d45c…efa1`): install checks 9/9 ok. Postcheck: 7 functions, row 2 =
+`e566e3410ea75bf69ea5f57518ae675a` (Windows paste, as expected), RLS 3 / 0 policies, 0 anon / authenticated / PUBLIC grants,
+6 guard triggers, `email_learning_suggest` absent (OFF), 0 / 0 / 0 rules / approved / versions, row 8 `true / true / false`.
+Public-key probe (storefront publishable key, verified on a public table first): 18/18 BLOCKED (HTTP 401). Live page: Learned
+rules and Versions render (current version 0). Never rerun or roll back the migration. The daily switch stays OFF until Angelo
+turns it on; "Look for patterns now" is available to him.
