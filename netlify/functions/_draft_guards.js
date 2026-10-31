@@ -30,12 +30,13 @@ const clean = s => String(s == null ? "" : s).normalize("NFKC").replace(/[‘’
 // ---- extractors (each returns [{ key, text }]) ----
 const TIME_RE = /\b(1[0-2]|0?[1-9])(?:[:.]([0-5]\d))?\s?([ap])\.?\s?m\b\.?|\b(noon|midnight)\b/gi;
 // a 24-hour clock or a bare "h:mm" (no am/pm): "14:30", "11.30" — read as that clock time
-const TIME24_RE = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b(?!\s?[ap]\.?\s?m\b)(?!\s?%)/gi;
+// (not part of an amount, phone number or other number, and not a measurement: "$12.50", "555-12.30", "20.25 inches")
+const TIME24_RE = /(?<![\d$.,:\-])\b([01]?\d|2[0-3])[:.]([0-5]\d)\b(?![.,]\d)(?!\s?[ap]\.?\s?m\b)(?!\s?(?:%|"|in\b|inch|ft\b|feet|mm\b|cm\b|lbs?\b|oz\b|mix|ratio))/gi;
 const NUMWORD = ["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve"];
 // "3 o'clock", "eleven thirty", "half past two", "quarter to ten", "nine in the morning" — the hour is all that can be compared
 const SPOKEN_RE = new RegExp("\\b(\\d{1,2}|" + NUMWORD.slice(1).join("|") + ")\\s?o['’]?\\s?clock\\b|\\b(" + NUMWORD.slice(1).join("|")
   + ")(?:[\\s-](?:fifteen|thirty|forty[\\s-]five|o[\\s-]?five|ten|twenty|forty|fifty))?\\s(?:in the (?:morning|afternoon|evening)|a\\.?m\\b|p\\.?m\\b)|\\b(?:half|quarter) (?:past|to|after) (\\d{1,2}|"
-  + NUMWORD.slice(1).join("|") + ")\\b|\\b(" + NUMWORD.slice(1).join("|") + ")[\\s-](?:fifteen|thirty|forty[\\s-]five)\\b", "gi");
+  + NUMWORD.slice(1).join("|") + ")\\b|\\b(" + NUMWORD.slice(1).join("|") + ")[\\s-](?:fifteen|thirty|forty[\\s-]five)\\b(?![\\s-]?(?:day|minute|hour|week|month|year|count|pack|percent))", "gi");
 const hourOf = w => { const n = /^\d+$/.test(w) ? +w : NUMWORD.indexOf(String(w).toLowerCase()); return n >= 1 && n <= 12 ? n : null; };
 function times(s){
   const out = [], t = clean(s);
@@ -61,11 +62,11 @@ function dates(s){
   for(const m of t.matchAll(SLASH_RE)){ const mo = +m[1], d = +m[2]; if(mo >= 1 && mo <= 12 && d >= 1 && d <= 31) out.push({ key: `${mo}-${d}`, year: m[3] ? +m[3] : null, text: m[0] }); }
   return out;
 }
-const WEEKDAY_RE = /\b(Sun|Mon|Tues?|Wed(?:nes)?|Thu(?:rs?)?|Fri|Sat(?:ur)?)day\b|\b(?:Mon|Tues?|Wed|Thu(?:rs?)?|Fri|Sat|Sun)\b\.?(?=[\s,.)]|$)/g;
+const WEEKDAY_RE = /\b(Sun|Mon|Tues?|Wed(?:nes)?|Thu(?:rs?)?|Fri|Sat(?:ur)?)day\b|\b(?:Mon|Tues?|Wed|Thu(?:rs?)?|Fri|Sat|Sun)\.(?=[\s,)]|$)/g;   // an abbreviation only with its dot ("Sun Medical" is a name)
 function weekdays(s){ const out = []; for(const m of clean(s).replace(/\b(sun|mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?)day\b/gi, w => w[0].toUpperCase() + w.slice(1).toLowerCase()).matchAll(WEEKDAY_RE)){
   const w = m[0].toLowerCase(); out.push({ key: WEEKDAYS.find(x => x.startsWith(w.slice(0, 3))), text: m[0] }); } return out; }
 // Relative days ("tomorrow", "next week", "this Friday", "the 5th") — checked only where an exact day is the fact (the heads-up).
-const RELDAY_RE = /\b(today|tonight|tomorrow|yesterday|day after tomorrow|this (?:morning|afternoon|evening|week|weekend|month)|next (?:week|month|weekend|(?:mon|tues|wednes|thurs|fri|satur|sun)day)|later this week|early next week|end of (?:the )?(?:week|month))\b|\bthe (\d{1,2})(?:st|nd|rd|th)\b/gi;
+const RELDAY_RE = /\b(today|tonight|tomorrow|yesterday|day after tomorrow|this (?:morning|afternoon|evening|week|weekend|month)|next (?:week|month|weekend|(?:mon|tues|wednes|thurs|fri|satur|sun)day)|later this week|early next week|end of (?:the )?(?:week|month))\b|\bthe (\d{1,2})(?:st|nd|rd|th)\b(?!\s+(?:floor|suite|street|st\b|avenue|ave\b|edition|generation|gen\b|model|row|aisle|bay|unit))/gi;
 function relDays(s){ return [...clean(s).matchAll(RELDAY_RE)].map(m => ({ day: m[2] ? +m[2] : null, text: m[0] })); }
 // The weekday of an ISO date (a calendar date: computed at noon UTC, no time zone involved).
 function weekdayOf(y, mo, d){ const t = Date.UTC(y, mo - 1, d, 12); return Number.isFinite(t) ? WEEKDAYS[new Date(t).getUTCDay()] : null; }
@@ -88,7 +89,7 @@ function percents(s){ const out = []; for(const m of clean(s).matchAll(PCT_RE)) 
 // ---- word families: a claim of the family needs the family in the source ----
 const FAMILIES = {
   promotion: { label: "promotion or discount",
-    re: /\b(promo(?:tion|tional|tions|s)?|discount(?:s|ed|ing)?|special (?:offer|pricing|price|deal|savings?)s?|rebates?|coupons?|free (?:shipping|freight|delivery|samples?|trial|gift|units?|of charge)|complimentary (?:shipping|freight|delivery|samples?|units?)|limited[- ]time|on sale|clearance|percent off|pct off|half off|introductory (?:price|pricing|offer)|bonus (?:units?|offer)|(?:exclusive|limited|special|seasonal|holiday) (?:offer|deal|pricing)|buy (?:one|\d+),? get (?:one|\d+)|bogo|\d+[- ]for[- ]\d+|(?:great|best|special|better) (?:deal|price|pricing)|lowest price|savings|save (?:up to|\$|\d)|at no (?:extra )?(?:cost|charge)|no charge|markdowns?|price (?:drop|cut|reduction)|incentives?)\b|\b\d{1,3}(?:\.\d+)?\s?% off/gi },
+    re: /\b(promo(?:tion|tional|tions|s)?|discount(?:s|ed|ing)?|special (?:offer|pricing|price|deal|savings?)s?|rebates?|coupons?|free (?:shipping|freight|delivery|samples?|trial|gift|units?|of charge)|complimentary (?:shipping|freight|delivery|samples?|units?)|limited[- ]time|on sale|clearance|percent off|pct off|half off|introductory (?:price|pricing|offer)|bonus (?:units?|offer)|(?:exclusive|limited|special|seasonal|holiday) (?:offer|deal|pricing)|buy (?:one|\d+),? get (?:one|\d+)|bogo|\d+[- ]for[- ]\d+|(?:great|best|special|better) (?:deal|price|pricing)|lowest price|(?:seasonal|extra|exclusive|holiday|big|huge) savings|savings of|save (?:up to|\$|\d)|at no (?:extra )?(?:cost|charge)|no charge|markdowns?|price (?:drop|cut|reduction)|incentive (?:program|pricing|offer))\b|\b\d{1,3}(?:\.\d+)?\s?% off/gi },
   availability: { label: "stock or shipping claim",
     re: /\b(in stock|out of stock|back in stock|stocked|on hand|inventory|available (?:today|immediately|right away)|ships? (?:today|tomorrow|same[- ]day|next[- ]day|within|in \d)|same[- ]day (?:shipping|delivery)|next[- ]day (?:shipping|delivery)|lead times?|back[- ]?order(?:s|ed)?|ready to ship|in short supply|selling out|sold out)\b/gi },
   history: { label: "purchase-history claim",

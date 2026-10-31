@@ -78,6 +78,8 @@ const B = body => ({ subject: 'Subject', body });
     for (const x of ['at 14:30', 'at 11.45am', "at 3 o'clock", 'at two thirty', 'half past two', 'nine in the morning']) has(x, 'time');
     for (const x of ['on the 5th', 'tomorrow', 'next week', 'this weekend']) has(x, 'date');
     has('see you Thurs.', 'weekday');
+    for (const x of ['$12.50 each', 'call 615-555-12.30', '20.25 inches', 'order two thirty-day trials', 'Sun Medical liked it', 'the 2nd floor', 'real savings for your patients'])
+      assert.deepStrictEqual(kinds(B(x), Object.assign({}, f, { source: f.source.concat(['$12.50']) })), [], 'no false finding: ' + x);
     for (const x of ['1,200 bucks', 'fifty dollars', 'a few hundred bucks']) has(x, 'price');
     has('15 pct off', 'percent');
     for (const x of ['a 2-for-1 deal', 'special savings', 'complimentary freight', 'at no extra cost', 'buy one, get one']) has(x, 'promotion');
