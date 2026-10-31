@@ -37,6 +37,7 @@ const COMMON_START = new Set(("A About Absolutely Actually After Again All Also 
   "Feel Kindly Again Hoping Wondering Just Quickly Unfortunately Fortunately Honestly Ideally Typically Currently Recently Finally").split(" "));
 // Characters a stored phrase may hold: printable ASCII and typographic quotes, dashes, the ellipsis, "→" and "−" (used in examples).
 const ALLOWED_TEXT = /^[\x20-\x7E‘’“”–—…→−]*$/;
+const PLACEHOLDER = /\{(?:email|link|phone|amount|date|time|number|dealer|name)\}/g;
 const HONORIFIC = /\b(?:Mr|Mrs|Ms|Mx|Dr|Prof|Rev|Sr|Jr|St)\.?\s+\p{Lu}[\p{L}\p{M}\p{N}_'’-]*/gu;
 const MONTHS = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
 const GREETING = /^(hi|hello|hey|dear|good\s+(?:morning|afternoon|evening)|greetings)\b/i;
@@ -89,7 +90,9 @@ function safePhrase(s){
   const t = String(s || "");
   if(!(t.length >= 3 && t.length <= MAX_PHRASE && !/[0-9@]/.test(t) && /[a-z]{2}/i.test(t.replace(/\{[a-z]+\}/g, "")))) return false;
   if(!ALLOWED_TEXT.test(t) || /\p{N}/u.test(t)) return false;   // no other digit form, "＠" or symbol outside the allowed set
-  const bare = t.replace(/\{[a-z]+\}/g, " ");
+  // Only the real placeholders are stripped; any other "{word}" ("{jordan}", "{at}") is refused.
+  if(/[{}]/.test(t.replace(PLACEHOLDER, ""))) return false;
+  const bare = t.replace(PLACEHOLDER, " ");
   if(/[([{<]\s*(?:at|dot)\s*[)\]}>]|[_-]\s*(?:at|dot)\s*[_-]/i.test(bare)) return false;
   const re = /\b[A-Z][A-Za-z'’_-]*/g; let mm;
   while((mm = re.exec(bare))){

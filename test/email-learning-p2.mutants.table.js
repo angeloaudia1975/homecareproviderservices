@@ -67,5 +67,6 @@ module.exports = {
   no_underscore_at: { file: LN, suite: 'js2', from: '|<\\s*at\\s*>|[_-]+\\s*at\\s*[_-]+)', to: '|<\\s*at\\s*>)' },
   sql_any_chars: { file: 'sql2', suite: 'pg2', from: "and pattern::text !~ '[^ -~‘’“”–—…→−]' and examples::text !~ '[^ -~‘’“”–—…→−]'", to: "and true" },
   sql_decide_any_chars: { file: 'sql2', suite: 'pg2', from: " or v_instr ~ '[^ -~‘’“”–—…→−]') then", to: ") then" },
+  any_brace_word_ok: { file: LN, suite: 'js2', from: '  if(/[{}]/.test(t.replace(PLACEHOLDER, ""))) return false;', to: '' },
   sql_rollback_keeps_others: { file: 'sql2', suite: 'pg2', from: "               or (s.instruction is null and x.status = 'approved')", to: '' },
 };

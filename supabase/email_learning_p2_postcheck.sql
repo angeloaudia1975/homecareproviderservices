@@ -17,6 +17,9 @@ select * from (
   union all select 5, 'guard triggers', count(*)::text, count(*) = 6
     from pg_trigger where tgrelid in ('public.email_learning_rules'::regclass,'public.email_learning_profiles'::regclass,'public.email_learning_rule_events'::regclass) and not tgisinternal
   union all select 6, 'suggestion switch', coalesce((select value->>'email_learning_suggest' from public.app_settings where key = 'phase2_flags'), 'absent'), true
+  union all select 8, 'plain-text rule works under this database''s collation (é and ５ refused, → − “ ” — kept)',
+         ('é' ~ '[^ -~‘’“”–—…→−]')::text || ' / ' || ('５' ~ '[^ -~‘’“”–—…→−]')::text || ' / ' || ('a→b − “c” — d…' ~ '[^ -~‘’“”–—…→−]')::text,
+         ('é' ~ '[^ -~‘’“”–—…→−]') and ('５' ~ '[^ -~‘’“”–—…→−]') and not ('a→b − “c” — d…' ~ '[^ -~‘’“”–—…→−]')
   union all select 7, 'rules suggested / approved / versions', (select count(*) filter (where status = 'suggested') || ' / ' || count(*) filter (where status = 'approved') from public.email_learning_rules)
          || ' / ' || (select count(*) from public.email_learning_profiles), true
 ) c order by n;

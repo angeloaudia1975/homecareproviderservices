@@ -76,7 +76,8 @@ const api = (w, b, token) => {
       ['Write pat -at- acme -dot- com today.', /pat|acme/], ['See acme。com for more.', /acme/], ['Write pat｛at｝acme｛dot｝com.', /pat|acme/], ['Ask Sa\u200brah at the desk.', /Sa|rah/]]) {
       const m = L.mask(x); assert.ok(!leak.test(m), x + ' → ' + m);
     }
-    for (const x of ['Call ５５５ today please.', 'Mail pat＠acme please.', 'Ask for Ρat soon.', 'Call me ①②③ soon.']) assert.ok(!L.safePhrase(x), x);
+    for (const x of ['Call ５５５ today please.', 'Mail pat＠acme please.', 'Ask for Ρat soon.', 'Call me ①②③ soon.', 'Email pat {at} acme today.', 'Call {jordan} at the desk.']) assert.ok(!L.safePhrase(x), x);
+    assert.ok(!L.safePhrase(L.mask('Email pat｛at｝acme today.')), 'full-width braces');
     assert.ok(L.safePhrase(L.mask("As discussed, I've attached the sheet.")) && /I've/.test(L.mask("As discussed, I've attached the sheet.")), 'I\'ve is not a name');
     for (const x of ['Call ５５５ １２３ ４５６７', 'Write pat＠acme', 'Ask for José']) assert.strictEqual(L.cleanInstruction(x), null, x);
     // fail closed: anything still looking like a name or a non-ASCII letter is never kept as evidence

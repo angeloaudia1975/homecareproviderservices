@@ -40,7 +40,8 @@ PUBLIC, service_role SELECT only). Writes only through `hcps_email_rule_note`, `
 refused). Every UPDATE has a WHERE clause; no DELETE. Install ends with 9 checks (all ok = true; check 8 = the suggestion switch was
 not turned on by the migration; check 9 = one rule per edit, unique `pattern_key`).
 
-Postcheck (read-only): `supabase/email_learning_p2_postcheck.sql` — sha256 `86d0ac92ef71e9761cb5332e6023d0b82838fa4461b564e9decb8378bf57678b`.
+Postcheck (read-only): `supabase/email_learning_p2_postcheck.sql` — sha256 `bcdc6c17aba78133c2ee2ffe23d23af400039c13d07242fb43009f5b8bed78a8` (row 8 = the plain-text rule works under the
+production collation: expect `true / true / false`, ok = true); earlier `86d0ac92…`.
 Expected code fingerprint (row 2): `e566e3410ea75bf69ea5f57518ae675a` when pasted into the SQL editor (Windows line endings),
 `eb5db477787b5e3fbcafccc4d779e189` with Unix line endings — both reproduced locally. **A comment line inside a function body is part of
 the fingerprint (Phase 1 lesson): paste the committed file byte for byte.** Per function (Windows paste):
@@ -68,7 +69,7 @@ Turning the switch off stops the daily check; decided rules stay as they are.
 ## Tests (synthetic data only)
 `test/email-learning-p2.test.js` (21, real handlers), `test/email-learning-p2.pg.test.js` (28, Postgres 16 incl. true concurrency for
 decisions AND for two analysis runs, a role given write rights, drafts that must not count), `test/email-learning-p2.ui.js` (11,
-Chromium, 360 / 390 / 768 / 1280), mutants `test/email-learning.mutants.js` (Phase 1 + 2: 76/76 killed, both controls clean).
+Chromium, 360 / 390 / 768 / 1280), mutants `test/email-learning.mutants.js` (Phase 1 + 2: 77/77 killed, both controls clean).
 Phase 1 suites unchanged and passing.
 
 ## Independent review (2026-10-30)
@@ -98,3 +99,9 @@ Phase 1 suites unchanged and passing.
   masker without a dictionary catches it. Proposed remedy: a President-only **Redact** decision (blank the pattern and examples,
   keep the row and log the event). Until then the owner rejects such a suggestion; the text stays in the rejected row.
 - LOW (open): an "every type" rule stops refreshing its counts once a single type also qualifies (evidence only, no security).
+
+## Third exact-head review (2026-10-31, head bdc4b68) — verdict GO
+MEDIUM-1, LOW-2, LOW-4 verified closed. Fixed after it (JS + read-only postcheck only; the migration is unchanged, sha `f440d45c…`):
+a "{word}" that is not a real placeholder ("{jordan}", "{at}") is refused; postcheck row 8 proves the plain-text rule under the
+production collation. Open, recorded: deliberately obfuscated ASCII addresses ("patATacmeDOTcom") — same class as LOW-1, Redact in
+Phase 3; decision reasons are the owner's own free text (3–500 characters) and are stored as he types them.
