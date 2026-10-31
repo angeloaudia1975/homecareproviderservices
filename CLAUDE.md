@@ -1659,6 +1659,19 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   that SKU. Description clamped to 3 lines (never a scrollbox); "Choose options" for families, quantity + Add to cart for a
   single SKU. No decorative controls: no stock / quick-ship / new / favourite on cards (no trustworthy per-family data).
   Test: ordering `test/catalog-v2.test.js`.
+- **ABM Respiratory Care commercial rules (owner, 2026-10-27, re-confirmed 2026-10-31 — supersedes the older "ABM named-account
+  prices are never a base dealer price" note for ABM only).** The Williams Brothers columns of ABM's 2026 BiWaze Clear and BiWaze
+  Cough schedules are the standard HCPS dealer prices (dealer-specific discounts only where authorized); MSRP only where ABM
+  prints one (20 of 42), otherwise none; BK281 and BC22480 MOQ 20; BC21274 = 3-pack; BK536 only with BK367, max 2 per system;
+  freight = actual cost on every order ("Actual shipping charges apply to all orders."), no free freight; no prescription or patient
+  fields in B2B ordering. Verified 2026-10-31 in the preview: 42/42 dealer price + MSRP equal the lists (compared by hash, no
+  figures copied). Open with the owner: whether BC21275 (Cough extended warranty) must ship with a BC20113 like BK536 — the
+  Cough list says only "maximum 2 years extended", so no cart rule is invented.
+- **ABM image library (owner ZIP, 2026-10-31).** A photo goes on a SKU only on exact part-number evidence or visually confirmed
+  identity; a component photo (trach adapter, mouthpiece, Aerogen nebulizer) is never a circuit's photo; a BiWaze Clear photo
+  is never used for a BiWaze Cough part (or the reverse); a manual cover is used only for that manual's own SKU; two different
+  photos under one name (the two "Aerogen power cable" files) are held until the owner says which is BK389. Audit table:
+  ordering `docs/catalog/abm-image-library-2026-10-31.md`.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
