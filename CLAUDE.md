@@ -1703,6 +1703,13 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     the published catalog file (all 10 entitled lines verified 2026-10-31).
   · **Two synthetic dealer configurations are part of the gate** (ordering test/entitlement-matrix.test.js): catalog-layers,
     catalog-feed and the storefront answer exactly a dealer's own lines on every manufacturer; pending / none / forged → 401.
+  **RELEASED 2026-10-31 ~16:15 CT:** ordering PRs #14 (hub buttons, main 3858601), #15 (quote rules, c0dc488), #12 (catalog,
+  76049d8) and admin PR #73 (423c6fd) — all Netlify "Published". Live checks as the TEST sandbox dealer (staff view-as link, no
+  order placed): 10 lines load, every SKU priced (1,367), 0 broken images; 3 / 2 / 1 cards at 1440 / 820 / 390 px, no
+  overflow; server = browser on Access4U / ABM / Dalton; ABM MOQ, BK536 and BC21275 rules enforced by the server; SKU search
+  lands on the variant; quote + Add / Remove work, "MSRP not provided", no Ohio Medical; public files and content carry no
+  prices; price tables refuse the public key; mc_verify (save:false) PASS on Climbing Steps, Strongback, Ovation, Bemis.
+  Known, pre-existing: the quote picker lists only the first 500 products, so Ovation and PediFix items cannot be added.
 - **ABM Respiratory Care commercial rules (owner, 2026-10-27, re-confirmed 2026-10-31 — supersedes the older "ABM named-account
   prices are never a base dealer price" note for ABM only).** The Williams Brothers columns of ABM's 2026 BiWaze Clear and BiWaze
   Cough schedules are the standard HCPS dealer prices (dealer-specific discounts only where authorized); MSRP only where ABM
