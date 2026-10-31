@@ -110,7 +110,8 @@ function optionAxesOf(label){
 const AXIS_ORDER=['Size','Color','Side','Variant'];
 function optionAxes(variants){
   const seen={}, order=[];
-  (variants||[]).forEach(v=>{ const ax=optionAxesOf(variantLabel(v));
+  const authored=(variants||[]).length>0 && (variants||[]).every(v=>v&&v._axes&&Object.keys(v._axes).length);
+  (variants||[]).forEach(v=>{ const ax=axesOf(v);
     Object.keys(ax).forEach(k=>{ if(!seen[k]){seen[k]=[];order.push(k);} 
       if(seen[k].indexOf(ax[k])<0) seen[k].push(ax[k]); }); });
   /* ONE PRODUCT, ONE AXIS NAME. optionAxesOf decides "Size" or "Variant" per SKU, from whether
@@ -129,22 +130,34 @@ function optionAxes(variants){
     return (ia<0?99:ia)-(ib<0?99:ib) || order.indexOf(a)-order.indexOf(b); });
   const varying={}, fixed={};
   keys.forEach(k=>{ const vals=seen[k];
-    if(k==='Size') vals.sort((x,y)=>variantSizeRank(x)-variantSizeRank(y)||x.localeCompare(y));
+    /* authored axes keep the family's own order (the SKUs arrive sorted by length, width, rise …) */
+    if(authored){ /* first-seen order */ }
+    else if(k==='Size') vals.sort((x,y)=>variantSizeRank(x)-variantSizeRank(y)||x.localeCompare(y));
     else vals.sort((x,y)=>x.localeCompare(y));
     (vals.length>1?varying:fixed)[k]=vals; });
   return {varying:varying, fixed:fixed, keys:keys};
 }
 function resolveVariant(variants, want, changed){
   const list=variants||[];
-  const axOf=v=>optionAxesOf(variantLabel(v));
+  const axOf=v=>axesOf(v);
   const exact=list.find(v=>{ const a=axOf(v);
     return Object.keys(want).every(k=>String(a[k]||'')===String(want[k]||'')); });
   if(exact) return exact;
-  if(changed){ const near=list.find(v=>String(axOf(v)[changed]||'')===String(want[changed]||''));
-    if(near) return near; }
+  if(changed){
+    /* the nearest real SKU that keeps the choice just made: most other choices kept, then the closest value on each
+       (a 7 ft section switched to 48" lands on the 6 ft 48", not on the 1 ft) */
+    const cands=list.filter(v=>String(axOf(v)[changed]||'')===String(want[changed]||''));
+    if(cands.length){
+      const pos={}; list.forEach(v=>{ const a=axOf(v); Object.keys(a).forEach(k=>{ pos[k]=pos[k]||[]; if(pos[k].indexOf(a[k])<0) pos[k].push(a[k]); }); });
+      const score=v=>{ const a=axOf(v); let keep=0, dist=0; Object.keys(want).forEach(k=>{ if(k===changed) return;
+        if(String(a[k]||'')===String(want[k]||'')) keep++; else dist+=Math.abs((pos[k]||[]).indexOf(a[k])-(pos[k]||[]).indexOf(want[k])); }); return [keep,dist]; };
+      return cands.slice().sort((x,y)=>{ const sx=score(x), sy=score(y); return (sy[0]-sx[0])||(sx[1]-sy[1]); })[0];
+    } }
   return list[0]||null;
 }
 function sortVariants(list){
+  /* a family page's own order (length, width, rise …), when every SKU has one */
+  if(list.length && list.every(v=>typeof v._axisOrder==='number')) return list.slice().sort((a,b)=>a._axisOrder-b._axisOrder);
   return list.map((v,i)=>({v:v,i:i,l:variantLabel(v)}))
     .sort((a,b)=>{ const ra=variantSizeRank(a.l), rb=variantSizeRank(b.l);
       if(ra!==rb) return ra-rb;
@@ -152,6 +165,7 @@ function sortVariants(list){
       return c || a.i-b.i; })
     .map(x=>x.v);
 }
+function axesOf(v){ return (v&&v._axes&&Object.keys(v._axes).length)?v._axes:optionAxesOf(variantLabel(v)); }
 /* ---- END VERBATIM ---- */
 module.exports = { groupKeyOf, groupDisplayName, stripProductPrefix, variantLabel, variantSizeRank,
-  optionAxesOf, optionAxes, resolveVariant, sortVariants };
+  optionAxesOf, optionAxes, resolveVariant, sortVariants, axesOf };

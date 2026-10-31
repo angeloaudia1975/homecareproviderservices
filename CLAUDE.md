@@ -1670,7 +1670,7 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   historical orders, sales, commissions, dealer account numbers (`dealer_manufacturers` — do NOT run the old
   `retire_complete_medical.sql` delete without Angelo's decision, it would erase them) and its commission-report capture
   profile (final statements may still arrive). Never re-add it to ordering unless Angelo says it is represented again.
-- **Catalog layout = Option 2 (owner directive, 2026-10-31; PRIVATE PREVIEW only until he approves).** One shared catalog view
+- **Catalog layout = Option 2 (owner directive, 2026-10-31; APPROVED for production by the owner 2026-10-31 15:39 CT).** One shared catalog view
   for every manufacturer, in the ordering repo's `public/index.html` (`renderProducts` / `cardHtml` / `cv*`, CSS `#catalog-v2`):
   compact manufacturer banner (logo, name, one line, Products = family cards · SKUs · Categories), sticky left sidebar (line
   search, categories + subcategories with card counts from the data, manufacturer switch, brand only when a line has 2+,
@@ -1682,6 +1682,27 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   that SKU. Description clamped to 3 lines (never a scrollbox); "Choose options" for families, quantity + Add to cart for a
   single SKU. No decorative controls: no stock / quick-ship / new / favourite on cards (no trustworthy per-family data).
   Test: ordering `test/catalog-v2.test.js`.
+- **Release authorization 2026-10-31 15:39 CT (owner) — Option 2 + ABM to production, in this order:** (1) live hub-button
+  fix alone (ordering PR #14); (2) quote rules (PR #15); (3) ABM final decisions; (4) release gate; (5) publish through PRs;
+  (6) one consolidated report. A failed gate stops only the affected deployment. RULES recorded with it:
+  · **Customer MSRP Quotes show only a manufacturer MSRP.** No MSRP → "MSRP not provided", left out of the total — never a
+    2× dealer-cost estimate and never the dealer price in its place (`quoteMsrp` / `quoteMsrpHtml`, ordering test
+    quote-rules). The showroom planner and purchase reports keep their own labelled estimate (not quotes).
+  · **An inactive line is not offered on new quotes** (manufacturers.json `"quotable": false`; Ohio Medical / GCE). Items
+    already on a quote stay on it. The storefront ignores the field.
+  · **ABM:** the 42-SKU catalog is approved with its image exceptions (register in ordering
+    docs/catalog/abm-image-library-2026-10-31.md). Unverified photos stay unassigned — never guess which Aerogen cable photo
+    is BK389 or whether "BV Filter.jpg" is BK281 or BC22480. No BC21275 purchase restriction (none printed). Extended
+    warranties keep the documented maximum ("maximum 2 years extended"). BK388 keeps ABM's price-list name/description
+    until the document-title difference ("Hospital and Long-Term Care") is reconciled; its photo is the guide printed
+    "BK388 Rev 5.0". Missing photos are sourced from official ABM material and never block an otherwise valid order.
+  · **Publication = merge + regenerate the live server copies** (`_shop_engine.js`, `_shop_picker.js` incl. `axesOf`,
+    `_shop_render.js`, `_hcps_email.js`) from the published page; admin deploys first (the new engine is a superset of the
+    old page), then the ordering site. Content for every non-frozen line comes from the static content files (only the four
+    frozen lines have product_content rows); prices go live only where catalog_file_commercial holds the exact identity of
+    the published catalog file (all 10 entitled lines verified 2026-10-31).
+  · **Two synthetic dealer configurations are part of the gate** (ordering test/entitlement-matrix.test.js): catalog-layers,
+    catalog-feed and the storefront answer exactly a dealer's own lines on every manufacturer; pending / none / forged → 401.
 - **ABM Respiratory Care commercial rules (owner, 2026-10-27, re-confirmed 2026-10-31 — supersedes the older "ABM named-account
   prices are never a base dealer price" note for ABM only).** The Williams Brothers columns of ABM's 2026 BiWaze Clear and BiWaze
   Cough schedules are the standard HCPS dealer prices (dealer-specific discounts only where authorized); MSRP only where ABM
