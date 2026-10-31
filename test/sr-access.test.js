@@ -34,7 +34,8 @@ function world(extra) {
 }
 // The same world without the President's ride-along: Greg has NO authorized way to Angelo's dealer.
 function selfOnly(extra) { const w = world(extra); w.db.rep_routes = w.db.rep_routes.filter(r => r.id !== 'r-ride'); return w; }
-function today() { const d = new Date(); const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
+// The Command Center's day is Chicago's (a UTC 'today' fails every evening after 7 PM CT).
+function today() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
 async function call(w, fn, who, body, headers) {
   const mod = load(fn + '.js', w, { ANTHROPIC_API_KEY: 'k' });
   const r = await mod.handler({ httpMethod: 'POST', headers: Object.assign({ authorization: 'Bearer ' + who }, headers || {}), body: JSON.stringify(body) });
@@ -42,6 +43,10 @@ async function call(w, fn, who, body, headers) {
   return { status: r.statusCode, j };
 }
 const routes = (w, who, b) => call(w, 'routes-api', who, b);
+async function assignA(w, id, email) {   // review, then confirm with the review's code
+  const rv = await routes(w, 'pres', { action: 'assign_route', id, assigned_to_email: email, review: true });
+  return rv.j.review_code ? routes(w, 'pres', { action: 'assign_route', id, assigned_to_email: email, review_code: rv.j.review_code }) : rv;
+}
 const sends = w => w.outbound.filter(x => x.kind === 'graph' && /sendMail/.test(x.url));
 const leaks = obj => /rita@rms\.test|615-555-0101|Rita Example/.test(JSON.stringify(obj));
 
@@ -109,7 +114,7 @@ const leaks = obj => /rita@rms\.test|615-555-0101|Rita Example/.test(JSON.string
   await t('Command Center Meeting Prep leaves out the other rep\'s stop on a self-built route', async () => {
     const w = selfOnly();
     w.db.monthly_sales = [{ dealer_id: 'd-ang', period: '2026-09', amount: 1234, product_name: 'Lift chair' }, { dealer_id: 'd-greg', period: '2026-09', amount: 50, product_name: 'Cane' }];
-    const r = await call(w, 'rep-command-api', 'greg', { action: 'today' });
+    const r = await call(w, 'rep-command-api', 'greg', { action: 'today', date: today() });
     assert.strictEqual(r.status, 200, JSON.stringify(r.j).slice(0, 300));
     const ids = (r.j.prep || []).map(p => p.dealer_id || p.id);
     assert.ok(!JSON.stringify(r.j.prep || []).includes('Retail Medical') && !leaks(r.j.prep || []), 'prep for d-ang: ' + JSON.stringify(r.j.prep).slice(0, 300));
@@ -158,7 +163,7 @@ const leaks = obj => /rita@rms\.test|615-555-0101|Rita Example/.test(JSON.string
   });
   await t('reassignment: the President moving the ride-along to Lori closes it to Greg (no visit yet)', async () => {
     const w = world();
-    assert.ok((await routes(w, 'pres', { action: 'assign_route', id: 'r-ride', assigned_to_email: 'lori@hcps.us' })).j.ok);
+    assert.ok((await assignA(w, 'r-ride', 'lori@hcps.us')).j.ok);
     assert.strictEqual((await routes(w, 'greg', { action: 'previsit_draft', route_id: 'r-ride', dealer_id: 'd-ang' })).status, 403);
     assert.strictEqual((await routes(w, 'greg', { action: 'route_day', route_id: 'r-ride' })).status, 403);
     assert.strictEqual((await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: 'r-ride', to: 'rita@rms.test', subject: 's', body_text: 'b' })).status, 403);
@@ -180,7 +185,7 @@ const leaks = obj => /rita@rms\.test|615-555-0101|Rita Example/.test(JSON.string
     const rep = w.db.dealer_visit_reports.find(x => x.route_id === 'r-ride' && x.dealer_id === 'd-ang');
     Object.assign(rep, { status: 'completed', ended_at: '2026-11-05T16:00:00Z', completed_at: '2026-11-05T16:05:00Z', approved_at: '2026-11-05T16:06:00Z', summary: { meeting_summary: 'Rita wants the PR519 sheet.' } });
     w.db.dealer_visit_participants.push({ id: 'p1', visit_report_id: rep.id, dealer_id: 'd-ang', name_snapshot: 'Sam Buyer', email_snapshot: 'sam@rms.test', attended: true });
-    assert.ok((await routes(w, 'pres', { action: 'assign_route', id: 'r-ride', assigned_to_email: 'lori@hcps.us' })).j.ok);
+    assert.ok((await assignA(w, 'r-ride', 'lori@hcps.us')).j.ok);
     return { w, rep };
   }
   await t('after reassignment the visiting rep still drafts the follow-up (AI, visit-only — no account history in the prompt)', async () => {
@@ -201,9 +206,16 @@ const leaks = obj => /rita@rms\.test|615-555-0101|Rita Example/.test(JSON.string
   });
   await t('after reassignment the visiting rep sends the follow-up to the visit\'s attendees (and the dealer\'s own email) — not the dealer\'s whole contact list', async () => {
     const { w, rep } = await visitedThenReassigned();
-    const ok = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: 'r-ride', report_id: rep.id, to: 'sam@rms.test', subject: 'Following up', body_text: 'Thanks' });
+    // Rita is a dealer contact on file (created by someone else) and was at the visit: verified.
+    w.db.dealer_visit_participants.push({ id: 'p2', visit_report_id: rep.id, dealer_id: 'd-ang', contact_id: 'c-ang', name_snapshot: 'Rita Example', email_snapshot: 'rita@rms.test', attended: true });
+    const ok = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: 'r-ride', report_id: rep.id, to: 'rita@rms.test', subject: 'Following up', body_text: 'Thanks' });
     assert.ok(ok.j.ok, JSON.stringify(ok.j)); assert.strictEqual(sends(w).length, 1);
-    const notAtVisit = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: 'r-ride', report_id: rep.id, to: 'sam@rms.test', cc: ['rita@rms.test'], subject: 'x', body_text: 'y' });
+    // Sam's address was only typed in as an attendee: recorded, but NOT a recipient on its own.
+    const typed = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: 'r-ride', report_id: rep.id, to: 'rita@rms.test', cc: ['sam@rms.test'], subject: 'x', body_text: 'y' });
+    assert.strictEqual(typed.status, 403, 'a typed attendee address was allowed'); assert.deepStrictEqual(typed.j.recipients, ['sam@rms.test']); assert.strictEqual(sends(w).length, 1);
+    // A dealer contact on file who was NOT at this visit is not a recipient of this visit's follow-up.
+    w.db.dealer_contacts.push({ id: 'c-other', dealer_id: 'd-ang', name: 'Oscar', email: 'oscar@rms.test' });
+    const notAtVisit = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', report_id: rep.id, to: 'oscar@rms.test', subject: 'x', body_text: 'y' });
     assert.strictEqual(notAtVisit.status, 403, 'a contact who was not at the visit was allowed'); assert.strictEqual(sends(w).length, 1);
     const bad = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', report_id: rep.id, to: 'outsider@gmail.test', subject: 'x', body_text: 'y' });
     assert.strictEqual(bad.status, 403); assert.strictEqual(bad.j.error, 'recipient_not_allowed'); assert.strictEqual(sends(w).length, 1);
@@ -211,6 +223,69 @@ const leaks = obj => /rita@rms\.test|615-555-0101|Rita Example/.test(JSON.string
       { action: 'send_followup', route_id: 'r-ride', dealer_id: 'd-ang', body: 'Thanks' }, { action: 'visit_report_get', route_id: 'r-ride', dealer_id: 'd-ang' }]) {
       const r = await routes(w, 'greg', b); assert.ok(r.status < 300, b.action + ' → ' + r.status + ' ' + JSON.stringify(r.j));
     }
+  });
+  await t('attendee verification: a contact the rep created himself is not verified; the President approves an attendee for that visit only', async () => {
+    const { w, rep } = await visitedThenReassigned();
+    // Greg recorded "Pat" with a new address and created her as a contact from his own visit (contacts_added).
+    w.db.dealer_contacts.push({ id: 'c-pat', dealer_id: 'd-ang', name: 'Pat New', email: 'pat@outside.test' });
+    rep.summary = Object.assign({}, rep.summary, { contacts_added: ['c-pat'] });
+    w.db.dealer_visit_participants.push({ id: 'p3', visit_report_id: rep.id, dealer_id: 'd-ang', contact_id: 'c-pat', name_snapshot: 'Pat New', email_snapshot: 'pat@outside.test', attended: true });
+    const self = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', report_id: rep.id, to: 'pat@outside.test', subject: 's', body_text: 'b' });
+    assert.strictEqual(self.status, 403, 'a contact he created himself became a recipient');
+    // The review lists who is verified, approved or unverified (rep may read his own visit's list).
+    const rv = await routes(w, 'greg', { action: 'followup_recipients', report_id: rep.id });
+    assert.ok(rv.j.ok, JSON.stringify(rv.j)); assert.ok(!rv.j.can_approve);
+    assert.deepStrictEqual(rv.j.people.map(p => p.email + ':' + p.status).sort(), ['pat@outside.test:unverified', 'sam@rms.test:unverified']);
+    // Greg cannot approve; Lori (another rep's reach) cannot read it; the President must give a reason.
+    assert.strictEqual((await routes(w, 'greg', { action: 'approve_recipient', report_id: rep.id, email: 'sam@rms.test', reason: 'met him' })).status, 403);
+    assert.strictEqual((await routes(w, 'pres', { action: 'approve_recipient', report_id: rep.id, email: 'sam@rms.test' })).status, 400);
+    // Only a recorded attendee of THIS visit can be approved.
+    const notAtt = await routes(w, 'pres', { action: 'approve_recipient', report_id: rep.id, email: 'stranger@x.test', reason: 'phone call' });
+    assert.strictEqual(notAtt.status, 400); assert.strictEqual(notAtt.j.error, 'not_an_attendee');
+    const ap = await routes(w, 'pres', { action: 'approve_recipient', report_id: rep.id, email: 'sam@rms.test', reason: 'Confirmed Sam is the buyer by phone' });
+    assert.ok(ap.j.ok, JSON.stringify(ap.j)); assert.ok(ap.j.people.some(p => p.email === 'sam@rms.test' && p.status === 'approved'));
+    const contactsBefore = JSON.stringify(w.db.dealer_contacts);
+    const sent = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', report_id: rep.id, to: 'sam@rms.test', subject: 'Following up', body_text: 'Thanks' });
+    assert.ok(sent.j.ok, JSON.stringify(sent.j));
+    assert.strictEqual(JSON.stringify(w.db.dealer_contacts), contactsBefore, 'approving changed a dealer contact');
+    // The approval is for that visit only: another of his visits there does not inherit it.
+    const other = { id: 'vr-greg-2', route_id: null, dealer_id: 'd-ang', rep_email: 'greg@hcps.us', checkin_at: '2026-11-07T15:00:00Z', status: 'checked_in', summary: {} };
+    w.db.dealer_visit_reports.push(other);
+    w.db.dealer_visit_participants.push({ id: 'p4', visit_report_id: other.id, dealer_id: 'd-ang', name_snapshot: 'Sam Buyer', email_snapshot: 'sam@rms.test', attended: true });
+    const elsewhere = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', report_id: other.id, to: 'sam@rms.test', subject: 's', body_text: 'b' });
+    assert.strictEqual(elsewhere.status, 403, 'an approval leaked to another visit');
+    // Re-approving the visit keeps the President's approval (the rep's input can't drop or forge it).
+    const re = await routes(w, 'greg', { action: 'visit_approve', route_id: 'r-ride', dealer_id: 'd-ang', summary: { meeting_summary: 'x', approved_recipients: [{ email: 'evil@x.test' }] } });
+    const r2 = w.db.dealer_visit_reports.find(x => x.id === rep.id);
+    assert.deepStrictEqual((r2.summary.approved_recipients || []).map(x => x.email), ['sam@rms.test'], 'approvals changed by the rep: ' + JSON.stringify(re.j).slice(0, 200));
+  });
+  await t('ride-along: contacts the rep created himself from his visits are not recipients either', async () => {
+    const w = world();
+    w.db.dealer_contacts.push({ id: 'c-mine', dealer_id: 'd-ang', name: 'Typed', email: 'typed@outside.test' });
+    w.db.dealer_visit_reports.push({ id: 'vr-old', route_id: 'r-ride', dealer_id: 'd-ang', rep_email: 'greg@hcps.us', checkin_at: '2026-11-01T15:00:00Z', status: 'completed', summary: { contacts_added: ['c-mine'] } });
+    const r = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: 'r-ride', to: 'typed@outside.test', subject: 's', body_text: 'b' });
+    assert.strictEqual(r.status, 403, JSON.stringify(r.j));
+    const ok = await call(w, 'email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: 'r-ride', to: 'rita@rms.test', subject: 's', body_text: 'b' });
+    assert.ok(ok.j.ok, 'a legitimate ride-along email to a contact on file was refused: ' + JSON.stringify(ok.j));
+  });
+  await t('assignment review: the President sees the stops and the dealers outside the rep\'s book before confirming; a stop added after the review needs a new one', async () => {
+    const w = selfOnly();
+    w.db.rep_routes.push({ id: 'r-plan', owner_email: 'angelo@hcps.us', rep_name: 'Angelo Audia', name: 'TN day', scheduled_date: '2026-11-09',
+      stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-ang', name: 'RMS', city: 'Nashville', state: 'TN' }], round_trip: true });
+    const noReview = await routes(w, 'pres', { action: 'assign_route', id: 'r-plan', assigned_to_email: 'greg@hcps.us' });
+    assert.strictEqual(noReview.status, 409); assert.strictEqual(noReview.j.error, 'review_required');
+    assert.ok(!w.db.rep_routes.find(r => r.id === 'r-plan').assigned_to_email, 'assigned without a review');
+    const rv = await routes(w, 'pres', { action: 'assign_route', id: 'r-plan', assigned_to_email: 'greg@hcps.us', review: true });
+    assert.ok(rv.j.ok && rv.j.review_code, JSON.stringify(rv.j));
+    assert.deepStrictEqual(rv.j.stops.map(s => s.dealer_id + ':' + s.outside_book), ['d-greg:false', 'd-ang:true']);
+    assert.strictEqual(rv.j.outside_count, 1); assert.ok(!w.db.rep_routes.find(r => r.id === 'r-plan').assigned_to_email, 'the review assigned it');
+    w.db.rep_routes.find(r => r.id === 'r-plan').stops.push({ dealer_id: 'd-none', name: 'Late add' });
+    const stale = await routes(w, 'pres', { action: 'assign_route', id: 'r-plan', assigned_to_email: 'greg@hcps.us', review_code: rv.j.review_code });
+    assert.strictEqual(stale.status, 409, 'a stale review was accepted'); assert.ok(stale.j.stops.some(s => s.dealer_id === 'd-none'));
+    const ok = await routes(w, 'pres', { action: 'assign_route', id: 'r-plan', assigned_to_email: 'greg@hcps.us', review_code: stale.j.review_code });
+    assert.ok(ok.j.ok, JSON.stringify(ok.j)); assert.strictEqual(w.db.rep_routes.find(r => r.id === 'r-plan').assigned_to_email, 'greg@hcps.us');
+    const rep = await routes(w, 'greg', { action: 'assign_route', id: 'r-plan', assigned_to_email: 'greg@hcps.us', review: true });
+    assert.strictEqual(rep.status, 403, 'a rep reviewed an assignment');
   });
   await t('...but his old visit opens nothing else: heads-up, packet, new visits, Dealer-wide email, other dealers', async () => {
     const { w, rep } = await visitedThenReassigned();

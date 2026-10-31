@@ -30,6 +30,10 @@ async function call(fn, who, body) {
   return { status: r.statusCode, j };
 }
 const R = (who, b) => call('routes-api', who, b);
+async function assignW(who, id, email) {   // review, then confirm with the review's code
+  const rv = await R(who, { action: 'assign_route', id, assigned_to_email: email, review: true });
+  return rv.j.review_code ? R(who, { action: 'assign_route', id, assigned_to_email: email, review_code: rv.j.review_code }) : rv;
+}
 const sends = () => w.outbound.filter(x => x.kind === 'graph' && /sendMail/.test(x.url));
 const DATE = '2026-11-05';
 
@@ -46,7 +50,7 @@ const DATE = '2026-11-05';
       assert.strictEqual(row.owner_email, 'angelo@hcps.us'); assert.strictEqual(row.assigned_to_email, 'greg@hcps.us'); assert.strictEqual(row.assigned_by, 'angelo@hcps.us');
     });
     await step('2 explicit assignment (assign_route) keeps the plan and its departure', async () => {
-      const a = await R('pres', { action: 'assign_route', id: routeId, assigned_to_email: 'greg@hcps.us' });
+      const a = await assignW('pres', routeId, 'greg@hcps.us');
       assert.ok(a.j.ok, JSON.stringify(a.j));
       const row = w.db.rep_routes.find(x => x.id === routeId); assert.strictEqual(row.stops.length, 2);
     });
@@ -92,7 +96,7 @@ const DATE = '2026-11-05';
       assert.ok(crmBefore.notes >= 1 && crmBefore.tasks >= 1 && crmBefore.opps >= 1 && crmBefore.parts >= 1, JSON.stringify(crmBefore));
     });
     await step('8 the President reassigns the route to Lori', async () => {
-      assert.ok((await R('pres', { action: 'assign_route', id: routeId, assigned_to_email: 'lori@hcps.us' })).j.ok);
+      assert.ok((await assignW('pres', routeId, 'lori@hcps.us')).j.ok);
     });
     await step('9 Greg still writes and sends THAT visit\'s follow-up (AI draft from the visit; to Rita; saved on the visit)', async () => {
       const d = await call('ai-email-api', 'greg', { action: 'draft', dealer_id: 'd-ang', template: 'visit_followup', visit_report_id: report.id, contact_name: 'Rita' });

@@ -483,16 +483,63 @@ async function openAssign(id){
       <option value="">— not assigned —</option>
       ${REPS.map(x=>`<option value="${esc(x.email)}"${x.email===cur?" selected":""}>${esc(x.rep_name||x.name)}${x.has_home_base?"":" (no start point set)"}</option>`).join("")}
     </select>
-    <button class="btn sm pri" style="margin-left:6px" onclick="doAssign('${jesc(id)}')">Save</button>
+    <button class="btn sm pri" style="margin-left:6px" onclick="doAssign('${jesc(id)}')">Review</button>
     <div id="asgmsg" class="mt" style="color:var(--gray);margin-top:6px"></div>`;
 }
+/* Assigning opens every stop's dealer to that rep, so the President first reviews the stops — which dealers are outside
+   the rep's own book — and confirms exactly that list (owner decision 2026-10-30). Unassigning needs no review. */
 async function doAssign(id){
   const sel=$("#asgsel"), m=$("#asgmsg"); if(!sel) return;
-  if(m) m.textContent="Saving…";
-  try{ const j=await rapi({action:"assign_route",id,assigned_to_email:sel.value||""});
+  const email=sel.value||"";
+  if(!email) return confirmAssign(id,"",null);
+  if(m) m.textContent="Checking the stops…";
+  let j=null; try{ j=await rapi({action:"assign_route",id,assigned_to_email:email,review:true}); }catch(e){ j=null; }
+  if(!j||!j.review_code){ if(m) m.textContent=(j&&(j.message||j.error))||"Couldn't check the stops — check your signal."; return; }
+  showAssignReview(id,email,j);
+}
+function showAssignReview(id,email,j){
+  const m=$("#asgmsg"); if(!m) return;
+  m.innerHTML=`<div style="color:var(--navy)"><b>Before you confirm — ${esc((j.assignee&&j.assignee.name)||email)} will work these stops:</b></div>
+    ${(j.stops||[]).length?`<ol style="margin:6px 0 0 18px;padding:0">${j.stops.map(x=>`<li style="margin:3px 0">${esc(x.name||x.dealer_id)}${x.city?` · ${esc(x.city)}${x.state?", "+esc(x.state):""}`:""}
+      ${x.outside_book?` — <b style="color:#b4651a">not in their book: this opens it to them</b>`:` — <span style="color:#1d7a3a">in their book</span>`}</li>`).join("")}</ol>`
+      :`<div style="margin-top:4px">This route has no stops.</div>`}
+    <div style="margin-top:6px">${esc(j.message||"")}</div>
+    <button class="btn sm pri" style="margin-top:8px" onclick="confirmAssign('${jesc(id)}','${jesc(email)}','${jesc(j.review_code)}')">Confirm assignment</button>
+    <button class="btn sm" style="margin-top:8px;margin-left:6px" onclick="openAssign('${jesc(id)}')">Cancel</button>`;
+}
+async function confirmAssign(id,email,code){
+  const m=$("#asgmsg"); if(m) m.textContent="Saving…";
+  try{ const j=await rapi(Object.assign({action:"assign_route",id,assigned_to_email:email},code?{review_code:code}:{}));
     if(j&&j.ok){ if(m) m.textContent="✓ Saved"+(j.home_note?" — "+j.home_note:""); openRoute(id); return; }
-    if(m) m.textContent=(j&&j.error)||"Couldn't assign that."; }
+    if(j&&j.review_code){ showAssignReview(id,email,j); if(m) m.insertAdjacentHTML("afterbegin",`<div style="color:#b42323;margin-bottom:6px">The stops changed since your review — check them again.</div>`); return; }
+    if(m) m.textContent=(j&&(j.message||j.error))||"Couldn't assign that."; }
   catch(e){ if(m) m.textContent="Couldn't assign — check your signal."; }
+}
+
+/* ── Follow-up recipients of another rep's visit (President; owner decision 2026-10-30) ──────────────────
+   An address the rep typed for an attendee is recorded but is not a recipient until it is a dealer contact on file
+   (that he did not create himself) or the President approves it here, for this visit only, with a reason. */
+async function openRecipients(i){
+  const s=DAY.stops[i], box=$("#rcp_"+i); if(!box||!s||!s.visit) return;
+  box.innerHTML=`<div class="mt" style="color:var(--gray)">Loading…</div>`;
+  let j=null; try{ j=await rapi({action:"followup_recipients",report_id:s.visit.id}); }catch(e){ j=null; }
+  if(!j||!j.ok){ box.innerHTML=`<div class="mt" style="color:#b42323">${esc((j&&(j.message||j.error))||"Couldn't load the recipients — check your signal.")}</div>`; return; }
+  const lbl={verified:"✓ verified contact",approved:"✓ approved by the President",unverified:"not verified"};
+  box.innerHTML=`<div class="mt" style="margin-top:8px;padding:10px 12px;border-radius:10px;background:#f4f7fb;border:1px solid var(--line)">
+    <div style="color:var(--gray)">Who ${esc(j.rep_name||"the rep")} may send this visit's follow-up to${j.dealer_email?` — always the dealer's email on file (${esc(j.dealer_email)})`:""}:</div>
+    ${(j.people||[]).length?(j.people||[]).map((p,k)=>`<div style="margin-top:8px"><b>${esc(p.name||p.email)}</b> · ${esc(p.email)} — <span style="color:${p.status==="unverified"?"#b4651a":"#1d7a3a"}">${lbl[p.status]||esc(p.status)}</span>
+      ${p.status==="unverified"&&j.can_approve?`<div style="margin-top:6px"><input id="rcpwhy_${i}_${k}" class="btn" style="max-width:100%;min-width:220px;text-align:left;font-size:16px" placeholder="Why this address is right (required)">
+        <button class="btn sm pri" style="margin-top:6px" onclick="approveRecipient(${i},'${jesc(p.email)}','rcpwhy_${i}_${k}')">Approve for this visit</button></div>`:""}</div>`).join("")
+      :`<div class="mt" style="margin-top:6px">No attendee email addresses were recorded for this visit.</div>`}
+    <div id="rcpmsg_${i}" class="mt" style="margin-top:6px"></div></div>`;
+}
+async function approveRecipient(i,email,inputId){
+  const s=DAY.stops[i], inp=$("#"+inputId), m=$("#rcpmsg_"+i), reason=String((inp&&inp.value)||"").trim();
+  if(reason.length<3){ if(m){ m.style.color="#b42323"; m.textContent="Give a short reason first."; } return; }
+  if(m){ m.style.color=""; m.textContent="Saving…"; }
+  let j=null; try{ j=await rapi({action:"approve_recipient",report_id:s.visit.id,email,reason}); }catch(e){ j=null; }
+  if(j&&j.ok){ toast("Approved for this visit ✓"); openRecipients(i); return; }
+  if(m){ m.style.color="#b42323"; m.textContent=(j&&(j.message||j.error))||"Couldn't approve — check your signal."; }
 }
 
 /* ── VISIT MODE (Phase 1) ─────────────────────────────────────────────────────────────────
@@ -604,7 +651,8 @@ function stopCard(s,i){
 function openBody(i){ const b=$("#body_"+i); if(!b) return; b.classList.add("open"); if(!b.dataset.loaded) loadStopBody(i); }
 function toggleBody(i){ const b=$("#body_"+i); if(!b) return; if(b.classList.contains("open")){ b.classList.remove("open"); return; } openBody(i); }
 function loadStopBody(i){
-  { const s0=DAY.stops[i], b0=$("#body_"+i); if(s0&&s0.visit&&s0.visit.by_other&&b0){ b0.dataset.loaded="1"; b0.innerHTML=`<div class="hint" style="padding:8px 2px">This visit was made by ${esc(s0.visit.rep_name||"another rep")}. It stays theirs — you can view it, not change it.</div>`; return; } }
+  { const s0=DAY.stops[i], b0=$("#body_"+i); if(s0&&s0.visit&&s0.visit.by_other&&b0){ b0.dataset.loaded="1"; b0.innerHTML=`<div class="hint" style="padding:8px 2px">This visit was made by ${esc(s0.visit.rep_name||"another rep")}. It stays theirs — you can view it, not change it.</div>`
+      +(isBoss()&&s0.visit.id?`<button class="btn sm" style="margin-top:6px" onclick="openRecipients(${i})">Follow-up recipients</button><div id="rcp_${i}"></div>`:""); return; } }
   const s=DAY.stops[i], b=$("#body_"+i), st=statusOf(s); b.dataset.loaded="1";
   if(st==="here") return visitPanel(i);
   if(st==="ended"){ b.innerHTML=`<div class="hint">Visit ended${s.visit&&s.visit.duration_min!=null?` after ${esc(String(s.visit.duration_min))} min`:""}. Review the summary to save it.</div>

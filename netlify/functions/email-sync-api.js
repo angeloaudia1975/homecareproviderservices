@@ -412,12 +412,12 @@ exports.handler = async (event)=>{
             const route=rr&&rr[0];
             if(route && (Array.isArray(route.stops)?route.stops:[]).some(st=>st&&String(st.dealer_id||"")===dealerId) && await RR.authorizedRoute(me.email, route, sbGet)) grant={kind:"route"}; }
           if(!grant){ const v=await RR.visitGrant(me.email, dealerId, {report_id:b.report_id, route_id:b.route_id}, sbGet); if(v) grant={kind:"visit",report_id:v.id}; }
-          if(grant) allowed=await RR.allowedRecipients(dealerId, grant.report_id||null, sbGet);
+          if(grant) allowed=await RR.allowedRecipients(dealerId, grant.report_id||null, sbGet, me.email);
         }catch(e){ return json(503,{ok:false,error:"access_check_failed",message:"Couldn't check your access to this dealer — nothing was sent. Try again."}); }
         if(!grant) return json(403,{ok:false,error:"Not your dealer"});
         const strangers=[to].concat(cc.map(x=>x.toLowerCase())).filter(a=>!allowed.has(a));
         if(strangers.length) return json(403,{ok:false,error:"recipient_not_allowed",recipients:strangers,
-          message:"This dealer isn't in your book, so this email can go only to the dealer's own contacts on file: "+strangers.join(", ")+" can't be included."});
+          message:"This dealer isn't in your book, so this email can go only to the dealer's email on file"+(grant.kind==="visit"?" and the verified people from your visit":" and its contacts on file")+". Not verified: "+strangers.join(", ")+(grant.kind==="visit"?" — the President can approve an attendee's address for this visit.":".")});
       }
       const fromMailbox=String(me.email||"").toLowerCase();   // the rep's login email == their Outlook mailbox
       if(!fromMailbox) return json(200,{ok:false,error:"no_sender",message:"Your account has no email on file to send from."});

@@ -3799,7 +3799,17 @@ direct-to-main path). Rules it established:
   visit only — no account history), save and send THAT visit's follow-up after a reassignment, only to the dealer's own
   email and THAT visit's attendees (not the dealer's whole contact list); nothing else of that dealer opens. Review
   hardening: only the President adds dealers to a route he handed to someone else (403 `assigned_route_locked`);
-  an archived route opens nothing; a locked stop shows only the status of another rep's visit. Tests: sr-access (+ mutants),
+  an archived route opens nothing; a locked stop shows only the status of another rep's visit.
+  **Recipient verification (Angelo, 2026-10-30 19:01 CT):** outside his book a rep's email goes only to the dealer's
+  email on file and VERIFIED addresses — a typed attendee address is recorded but never by itself a recipient. Verified
+  = a dealer contact on file that this rep did not create himself from his own visits (`summary.contacts_added`), and for
+  a visit-only grant that contact must be linked to THAT visit; or an address the President approved for that visit
+  (`approve_recipient`: President only, a recorded attendee of that visit only, reason required, stored in
+  `summary.approved_recipients` — kept by the server, never taken from the rep's input; never changes a dealer contact).
+  The President sees verified / approved / not verified per attendee (`followup_recipients`, field app → another rep's
+  visit → Follow-up recipients). **Assignment review:** `assign_route` to a rep first answers a review (stops, and which
+  dealers are outside that rep's own book); it assigns only with that review's code, so a stop added after the review
+  needs a new one (409 `review_required`). Unassigning needs no review. Tests: sr-access (+ mutants),
   sr-workflow (full plan → assign → ETA → heads-up → visit → reassign → follow-up → CRM intact), sr-access.qa. Separate
   from Smart Email Learning.
 

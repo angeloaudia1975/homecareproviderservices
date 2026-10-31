@@ -682,6 +682,40 @@ exports.handler = async (event)=>{
        the office planned to the person who will drive it, rather than leaving it under
        the account that happened to create it. Assigning also re-bases the start point,
        because a route planned from the president's house must not send a rep there. */
+    /* FOLLOW-UP RECIPIENTS of one visit (owner decision, Angelo 2026-10-30 19:01 CT). An attendee address the rep typed
+       is recorded but is not a recipient until it is verified (a dealer contact on file he did not create himself) or the
+       President approves it for that visit. followup_recipients: read (the President, or the rep who made the visit);
+       approve_recipient: the President only, a recorded attendee of that visit only, with a reason; never changes a
+       dealer contact. */
+    if(b.action==="followup_recipients"||b.action==="approve_recipient"){
+      const rid=String(b.report_id||"").trim(); if(!rid) return json(400,{error:"report_id required"});
+      let rep; try{ rep=await sbGet(`dealer_visit_reports?id=eq.${encodeURIComponent(rid)}&select=id,dealer_id,rep_email,rep_name,summary&limit=1`); }
+      catch(e){ return json(503,{error:"Couldn't read this visit — try again."}); }
+      const r=rep&&rep[0]; if(!r) return json(404,{error:"visit not found"});
+      const boss=String(me.role||"").toLowerCase()==="president";
+      if(!boss && !emailEq(r.rep_email,me.email)) return json(403,{error:"not your visit"});
+      if(b.action==="approve_recipient"){
+        if(!boss) return json(403,{error:"President only"});
+        const email=String(b.email||"").trim().toLowerCase(), reason=String(b.reason||"").trim();
+        if(!EMAIL_RE.test(email)) return json(400,{error:"Enter a valid email."});
+        if(reason.length<3) return json(400,{error:"Give a short reason for approving this address."});
+        let parts; try{ parts=await sbGet(`dealer_visit_participants?visit_report_id=eq.${encodeURIComponent(rid)}&select=email_snapshot`); }
+        catch(e){ return json(503,{error:"Couldn't read this visit's attendees — nothing was approved."}); }
+        if(!(parts||[]).some(x=>String(x.email_snapshot||"").trim().toLowerCase()===email))
+          return json(400,{error:"not_an_attendee",message:"Only an address recorded for someone at this visit can be approved."});
+        const cur=(r.summary&&Array.isArray(r.summary.approved_recipients))?r.summary.approved_recipients:[];
+        if(!cur.some(x=>String((x&&x.email)||"").toLowerCase()===email)){
+          const next=Object.assign({},r.summary||{},{approved_recipients:cur.concat([{email,by:me.email||me.name||"president",at:new Date().toISOString(),reason:reason.slice(0,300)}])});
+          try{ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(rid)}`,{summary:next},{Prefer:"return=minimal"}); }
+          catch(e){ return json(502,{error:"Couldn't save the approval — try again."}); }
+          try{ await sbSend("POST","dealer_activity",{dealer_id:r.dealer_id,kind:"note",subject:"Follow-up recipient approved",
+            body:`${email} approved by ${me.email||"the President"} for the visit by ${r.rep_name||r.rep_email}: ${reason.slice(0,300)}`,actor:me.name||me.email||"president"},{Prefer:"return=minimal"}); }catch(e){}
+        }
+      }
+      let rv; try{ rv=await RR.recipientReview(r.dealer_id,rid,sbGet,r.rep_email); }
+      catch(e){ return json(503,{error:"Couldn't check this visit's recipients — try again."}); }
+      return json(200,{ok:true,report_id:rid,rep_name:r.rep_name||r.rep_email,dealer_email:rv.dealer_email,people:rv.people,can_approve:boss});
+    }
     if(b.action==="assign_route"){
       if(!isBoss(me)) return json(403,{error:"President only"});
       const id=String(b.id||"").trim(); if(!id) return json(400,{error:"id required"});
@@ -694,10 +728,26 @@ exports.handler = async (event)=>{
           {assigned_to_email:null,assigned_to_rep:null,assigned_at:null,assigned_by:null,updated_at:now},{Prefer:"return=minimal"});
         return json(200,{ok:true,assigned_to_email:null});
       }
-      const su=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=email,name,rep_name,active,home_base`).catch(()=>[]);
+      const su=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=email,name,rep_name,role,active,home_base`).catch(()=>[]);
       const u=su&&su[0];
       if(!u) return json(404,{error:`No staff user with the email ${email}. Add them under Staff before assigning a route.`});
       if(u.active===false) return json(400,{error:"That staff account is inactive"});
+      /* REVIEW BEFORE CONFIRMING (owner decision, Angelo 2026-10-30 19:01 CT): assigning a route to a rep opens every stop's
+         dealer to him. The President first sees the stops and which dealers are outside that rep's own book; the
+         assignment is made only with the review's code, so a stop added after the review needs a new review. */
+      const stopsNow=(Array.isArray(route.stops)?route.stops:[]).filter(x=>x&&x.dealer_id);
+      const reviewCode=require("crypto").createHash("sha256").update(JSON.stringify([id,email,stopsNow.map(x=>String(x.dealer_id))])).digest("hex").slice(0,24);
+      if(b.review||String(b.review_code||"")!==reviewCode){
+        let off=[];
+        try{ const ids=[...new Set(stopsNow.map(x=>String(x.dealer_id)))]; if(ids.length) off=await SC.dealersOutsideScope({email,role:u.role||"rep",rep_name:u.rep_name||null,name:u.name||null},ids,sbGet); }
+        catch(e){ return json(503,{error:"Couldn't check the dealers on this route — nothing was assigned."}); }
+        const offS=new Set((off||[]).map(String));
+        return json(b.review?200:409,{ok:!!b.review,review:true,error:b.review?undefined:"review_required",review_code:reviewCode,
+          assignee:{email,name:u.rep_name||u.name||email},
+          stops:stopsNow.map(x=>({dealer_id:String(x.dealer_id),name:x.name||"",city:x.city||"",state:x.state||"",outside_book:offS.has(String(x.dealer_id))})),
+          outside_count:offS.size,
+          message:offS.size?`${offS.size} dealer${offS.size>1?"s are":" is"} outside ${u.rep_name||u.name||email}'s own book — this assignment lets them work ${offS.size>1?"those dealers":"that dealer"} (contacts, history, visits, email) while the route is assigned.`:"Every dealer on this route is already in this rep's own book."});
+      }
       const patch={assigned_to_email:email, assigned_to_rep:u.rep_name||u.name||null,
         assigned_at:now, assigned_by:me.email||me.name||"president", updated_at:now};
       /* Start point. The rep's own default wins; if they have none, the route's start is
@@ -1961,6 +2011,8 @@ exports.handler = async (event)=>{
         tasks:tasksApproved.map(t=>({key:t.key,title:t.title,due_date:t.due_date,priority:t.priority})),
         opportunities:oppsApproved.map(o=>({key:o.key,title:o.title,stage:o.stage,manufacturer:o.manufacturer,product:o.product,quantity:o.quantity,value:o.value})),
         contacts_added:[...new Set([].concat(((r.summary&&r.summary.contacts_added)||[]),contactsAdded))],
+        // Follow-up addresses the President approved for this visit — kept by the server, never taken from the rep's input.
+        approved_recipients:(r.summary&&Array.isArray(r.summary.approved_recipients))?r.summary.approved_recipients:[],
         interest_slugs:[...new Set((Array.isArray(b.interest_slugs)?b.interest_slugs:[]).map(String).filter(s=>mfrName[s]))],
       });
       const endedAt=r.ended_at||nowIso;

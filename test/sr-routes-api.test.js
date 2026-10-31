@@ -21,6 +21,13 @@ async function call(w, who, body, headers) {
   const r = await mod.handler({ httpMethod: 'POST', headers: Object.assign({ authorization: 'Bearer ' + who }, headers || {}), body: JSON.stringify(body) });
   return { status: r.statusCode, j: JSON.parse(r.body || '{}') };
 }
+
+// An assignment is reviewed first, then confirmed with the review's code (owner decision 2026-10-30).
+async function assignR(w, who, id, email) {
+  const rv = await call(w, who, { action: 'assign_route', id, assigned_to_email: email, review: true });
+  if (!rv.j.review_code) return rv;
+  return call(w, who, { action: 'assign_route', id, assigned_to_email: email, review_code: rv.j.review_code });
+}
 (async () => {
   await t('a rep re-saving his route keeps the President’s assignment (to Lori) and stays owner', async () => {
     const w = world();
@@ -206,11 +213,11 @@ async function call(w, who, body, headers) {
     const w = world(); const rt = w.db.rep_routes.find(r => r.id === 'r-greg');
     rt.home_base = { label: 'Greg home', lat: 36.9, lng: -86.4, depart_time: '07:15' };
     w.db.staff_users.forEach(u => { if (u.email === 'lori@hcps.us') u.home_base = { label: 'Lori home', lat: 36.1, lng: -86.8 }; });
-    const r = await call(w, 'pres', { action: 'assign_route', id: 'r-greg', assigned_to_email: 'lori@hcps.us' });
+    const r = await assignR(w, 'pres', 'r-greg', 'lori@hcps.us');
     assert.ok(r.j.ok, JSON.stringify(r.j)); assert.strictEqual(rt.home_base.label, 'Lori home'); assert.strictEqual(rt.home_base.depart_time, '07:15');
     w.db.staff_users.forEach(u => { if (u.email === 'greg@hcps.us') u.home_base = null; });
     rt.owner_email = 'angelo@hcps.us';
-    const r2 = await call(w, 'pres', { action: 'assign_route', id: 'r-greg', assigned_to_email: 'greg@hcps.us' });
+    const r2 = await assignR(w, 'pres', 'r-greg', 'greg@hcps.us');
     assert.ok(r2.j.ok); assert.strictEqual(rt.home_base, null); assert.strictEqual(rt.depart_time, '07:15', 'the departure went with the start point');
   });
   await t('reassigned after visiting: the first rep still OPENS the route — only his own stops — and the new rep sees them as his', async () => {
