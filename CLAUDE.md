@@ -3787,6 +3787,38 @@ direct-to-main path). Rules it established:
   Tests: sr-routes-api (29), routeclock (+ mutants), sr-eta (16 + 9 mutants), sr-consistency (planner =
   field app = heads-up, two browser zones), sr-review (other rep read only), sr-planner.
 
+- **A route never widens a rep's dealer access (RULE, Angelo 2026-10-30 17:14 CT; PR fix/route-dealer-access).** A
+  route extends a rep's reach to a dealer outside his book ONLY when it is assigned to him, held by someone else, and
+  assigned by an ACTIVE President (`assigned_by`, else the owner for older routes) — President-planned routes and
+  explicitly authorized ride-alongs. One rule: `_route_reach.js` (strict reads → 503). A rep's own route, a route a
+  non-President assigned, or one whose assigner is no longer an active President opens nothing: `save_route` refuses
+  adding such a dealer (403 `not_your_dealer`; stops already on the route are kept), `route_day` shows it name/address
+  only (its dealer and contacts are never read), every routes-api dealer action, the Outlook send, the AI draft and
+  Command Center Meeting Prep refuse or leave it out. Server-side only, never just the UI. **Follow-up continuity:** the
+  rep who personally performed a visit (checked in / ended / completed, his own report) may still draft (AI from that
+  visit only — no account history), save and send THAT visit's follow-up after a reassignment, only to the dealer's own
+  email and THAT visit's attendees (not the dealer's whole contact list); nothing else of that dealer opens. Review
+  hardening: only the President adds dealers to a route he handed to someone else (403 `assigned_route_locked`);
+  an archived route opens nothing; a locked stop shows only the status of another rep's visit.
+  **Recipient verification (Angelo, 2026-10-30 19:01 CT; hardened after the exact-head review):** outside his book a
+  rep's email goes only to the dealer's email on file and VERIFIED addresses — nothing the rep can write (a typed
+  attendee, a contact he created, a link he made) verifies an address. On a President-sent route he is on now: the
+  dealer's contacts on file except those he created from his own visits (`summary.contacts_added`). With only his own
+  visit (after a reassignment): the dealer's email plus the attendees of THAT visit the President approved for it
+  (`approve_recipient`: President only, a recorded attendee of that visit only, reason required, stored in
+  `summary.approved_recipients` — kept by the server, never taken from the rep's input; never changes a dealer contact);
+  the President sees each attendee as verified / approved / not verified, with "matches a contact on file"
+  (`followup_recipients`, field app → another rep's visit → Follow-up recipients). In that own-visit-only state he also
+  sees none of the dealer's contacts (route_day `own_visit_only`, no analyze pickers) and visit_approve links no other
+  contact and creates none. A send naming a route or visit must name its dealer (400 `dealer_required`).
+  **Assignment review:** every way a route reaches another rep — `assign_route`, the President's `save_route` with
+  `assigned_to_email`, or the President adding dealers to a route assigned to someone else — first answers a review
+  (409 `review_required`: stops, and which dealers are outside that rep's own book) and saves only with that review's
+  code (tied to the route, the rep and exactly those stops). Field app and planner show the list with Confirm.
+  Unassigning needs no review. Tests: sr-access (+ mutants),
+  sr-workflow (full plan → assign → ETA → heads-up → visit → reassign → follow-up → CRM intact), sr-access.qa. Separate
+  from Smart Email Learning.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.

@@ -400,7 +400,27 @@ exports.handler = async (event)=>{
       // The email goes from the caller's own mailbox; logging it onto a dealer's timeline needs
       // that dealer to be in their book.
       // In My Sales Workspace, only dealers in his own book (Phase 2, amendment 1).
-      if(dealerId && !(await SC.canAccessDealer(SC.workspaceUser(event, me),dealerId,sbGet))) return json(403,{ok:false,error:"Not your dealer"});
+      // A send tied to a route stop or a visit must name its dealer, so the checks below always run (review L3).
+      if(!dealerId && (String(b.route_id||"").trim()||String(b.report_id||"").trim())) return json(400,{ok:false,error:"dealer_required",message:"This email isn't tied to a dealer — reopen it from the route and try again."});
+      if(dealerId && !(await SC.canAccessDealer(SC.workspaceUser(event, me),dealerId,sbGet))){
+        /* Outside the book (security fix + follow-up continuity, Angelo 2026-10-30): allowed only for a stop on a route the
+           President sent this rep on (b.route_id), or for the visit he personally performed at this dealer (b.report_id /
+           b.route_id) — and only to this dealer's own addresses (its email, its contacts, the people at that visit). */
+        let grant=null, allowed=null;
+        try{
+          const RR=require("./_route_reach.js");
+          const rid=String(b.route_id||"").trim();
+          if(rid){ const rr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(rid)}&select=*&limit=1`);
+            const route=rr&&rr[0];
+            if(route && (Array.isArray(route.stops)?route.stops:[]).some(st=>st&&String(st.dealer_id||"")===dealerId) && await RR.authorizedRoute(me.email, route, sbGet)) grant={kind:"route"}; }
+          if(!grant){ const v=await RR.visitGrant(me.email, dealerId, {report_id:b.report_id, route_id:b.route_id}, sbGet); if(v) grant={kind:"visit",report_id:v.id}; }
+          if(grant) allowed=await RR.allowedRecipients(dealerId, grant.report_id||null, sbGet, me.email);
+        }catch(e){ return json(503,{ok:false,error:"access_check_failed",message:"Couldn't check your access to this dealer — nothing was sent. Try again."}); }
+        if(!grant) return json(403,{ok:false,error:"Not your dealer"});
+        const strangers=[to].concat(cc.map(x=>x.toLowerCase())).filter(a=>!allowed.has(a));
+        if(strangers.length) return json(403,{ok:false,error:"recipient_not_allowed",recipients:strangers,
+          message:"This dealer isn't in your book, so this email can go only to the dealer's email on file"+(grant.kind==="visit"?" and the visit attendees the President approved":" and its contacts on file")+". Not verified: "+strangers.join(", ")+(grant.kind==="visit"?" — the President can approve an attendee's address for this visit.":".")});
+      }
       const fromMailbox=String(me.email||"").toLowerCase();   // the rep's login email == their Outlook mailbox
       if(!fromMailbox) return json(200,{ok:false,error:"no_sender",message:"Your account has no email on file to send from."});
       if(!G_TENANT||!G_CLIENT||!G_SECRET) return json(200,{ok:false,error:"graph_env_missing",fallback:true,to,message:"Sending from Outlook isn't set up yet (Graph credentials)."});

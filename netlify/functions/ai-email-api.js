@@ -252,9 +252,21 @@ exports.handler=async(event)=>{
     // Access check: management + relations may draft for any dealer; a rep only for their own book —
     // and so may the President inside My Sales Workspace (Phase 2, amendment 1).
     const scopeMe=workspaceUser(event, me);
+    /* Outside the book, ONE thing is allowed (follow-up continuity, Angelo 2026-10-30): the follow-up to a visit this rep
+       personally performed at this dealer — written from that visit alone, with none of the dealer's account history. */
+    let visitOnly=false;
     if(!isAdmin(scopeMe)){
       const sc=await dealerScope(scopeMe, sbGet);
-      if(!sc.isAll && !(sc.ids && sc.ids.has(dealerId))) return json(403,{error:"Not your dealer"});
+      if(!sc.isAll && !(sc.ids && sc.ids.has(dealerId))){
+        const tk=String(b.template||"").toLowerCase();
+        let v=null;
+        if(tk==="visit_followup" && b.visit_report_id){
+          try{ v=await require("./_route_reach.js").visitGrant(me.email, dealerId, {report_id:b.visit_report_id}, sbGet); }
+          catch(e){ return json(503,{error:"Couldn't check your access to this dealer — try again."}); }
+        }
+        if(!v) return json(403,{error:"Not your dealer"});
+        visitOnly=true;
+      }
     }
     const signature=(me.signature&&me.signature.trim())||defaultSignature(me);
     if(!AI_KEY) return json(200,{ok:false,error:"ai_unavailable",message:"AI drafting isn't enabled — set ANTHROPIC_API_KEY in Netlify.",signature});
@@ -285,7 +297,9 @@ exports.handler=async(event)=>{
     // slug -> manufacturer display name
     let slugName={}; try{ const m=await sbGet("manufacturers?select=slug,name"); (m||[]).forEach(x=>{ if(x&&x.slug) slugName[x.slug]=x.name||x.slug; }); }catch(e){}
 
-    const ctx=await gather(dealerId, slugName);
+    const ctx=visitOnly
+      ? {dealer:((await sbGet(`dealers?id=eq.${encodeURIComponent(dealerId)}&select=business_name,city,state&limit=1`).catch(()=>[]))||[])[0]||{}}
+      : await gather(dealerId, slugName);   // visit-only: no purchase history, lines or notes of another rep's dealer
     const contactName=String(b.contact_name||"").trim();
     const firstName=contactName?contactName.split(/\s+/)[0]:"";
     const styleGuide=await loadStyleGuide(sbGet);   // centralized HCPS AI Communication Style Guide

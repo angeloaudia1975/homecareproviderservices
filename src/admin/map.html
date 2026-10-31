@@ -790,7 +790,7 @@ function saveRouteDialog(){
     <div class="er" id="rerr"></div></div></div>`;
   setTimeout(()=>{const i=$("#rname"); if(i)i.focus();},40);
 }
-async function saveRouteGo(){
+async function saveRouteGo(reviewCode){
   const name=(($("#rname")||{}).value||"").trim(); if(!name){ $("#rerr").textContent="Enter a name."; return; }
   const date=(($("#rdate")||{}).value||"").trim()||(($("#startDate")||{}).value||"").trim();
   /* Arrival times a dealer is told start from this departure. A one-way route also needs its time
@@ -807,7 +807,17 @@ async function saveRouteGo(){
     const r=await api2({action:"save_route",id:CURRENT_ROUTE_ID||undefined,name,scheduled_date:date||null,
       home_base:(HOME&&ROUNDTRIP&&!LOADED_NOHOME)?{label:HOME.short||"",address:HOME.q||"",lat:HOME.lat,lng:HOME.lng,depart_time:departTime}:null,
       depart_time:departTime, depart_tz:oneWay()?departTz:null,
-      round_trip:LOADED_NOHOME?LOADED_NOHOME.round_trip:!!(HOME&&ROUNDTRIP),stops,distance_m:LASTROUTE.distance_m,duration_s:LASTROUTE.duration_s,geometry:LASTROUTE.geometry});
+      round_trip:LOADED_NOHOME?LOADED_NOHOME.round_trip:!!(HOME&&ROUNDTRIP),stops,distance_m:LASTROUTE.distance_m,duration_s:LASTROUTE.duration_s,geometry:LASTROUTE.geometry,
+      ...(typeof reviewCode==="string"&&reviewCode?{review_code:reviewCode}:{})});
+    /* Adding dealers to a route assigned to someone else: the President first sees which stops that rep will be able to
+       work (outside their own book) and confirms exactly that list (owner decision 2026-10-30). */
+    if(r&&r.error==="review_required"&&r.review_code){
+      $("#rerr").innerHTML=`<div style="color:#0b1f33;text-align:left"><b>Before you save — ${esc((r.assignee&&r.assignee.name)||"")} will work these stops:</b>
+        <ol style="margin:6px 0 0 18px;padding:0">${(r.stops||[]).map(x=>`<li>${esc(x.name||x.dealer_id)}${x.outside_book?` — <b style="color:#b4651a">not in their book: this opens it to them</b>`:" — in their book"}</li>`).join("")}</ol>
+        <div style="margin-top:6px">${esc(r.message||"")}</div>
+        <button class="btn" style="margin-top:8px" onclick="saveRouteGo('${jesc(r.review_code)}')">Confirm and save</button></div>`;
+      return;
+    }
     /* The draft kept in this browser must learn the saved id too: it used to keep route_id:null, so
        leaving for Dealer 360 and coming back restored an "unsaved" plan and the next Save created a
        second copy of the route. */

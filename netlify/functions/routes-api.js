@@ -447,20 +447,16 @@ const mineFilter = me => { const e=String(me.email||"~none~").toLowerCase();
 
 const SC=require("./_scope.js");
 const FL=require("./_flags.js");
-// Dealer ids the caller may NOT work: outside their book (_scope.js) and not a stop on any
-// route they own or are assigned. [] means every id is allowed.
+const RR=require("./_route_reach.js");
+/* Dealer ids the caller may NOT work: outside their book (_scope.js) and not a stop on a route the
+   PRESIDENT sent them on (_route_reach.js — security fix 2026-10-30: a route a rep builds for
+   himself no longer opens other reps' dealers). [] means every id is allowed. Strict: throws on a
+   failed read, so callers refuse rather than guess. */
 async function dealersOffReach(me, ids){
   let off=await SC.dealersOutsideScope(me, ids, sbGet);
   if(!off.length) return off;
-  const rs=await sbGet(`rep_routes?${mineFilter(me)}&select=stops,owner_email,assigned_to_email&limit=1000`).catch(()=>[]);
-  const onMine=new Set();
-  for(const r of (rs||[])){
-    // In My Sales Workspace only the routes he DRIVES count (assigned to him, or built by him for
-    // nobody else) — a route he planned for Greg is Greg's day, not a way into Greg's dealers.
-    if(me.workspace && !(r.assigned_to_email ? emailEq(r.assigned_to_email,me.email) : emailEq(r.owner_email,me.email))) continue;
-    for(const st of (Array.isArray(r.stops)?r.stops:[])) if(st&&st.dealer_id) onMine.add(String(st.dealer_id));
-  }
-  return off.filter(id=>!onMine.has(id));
+  const reach=await RR.reachDealerIds(me.email, sbGet);
+  return off.filter(id=>!reach.has(String(id)));
 }
 /* ROUTE INTEGRITY (Angelo, 2026-10-30).
    · A route or a stop that holds a visit record is never deleted or dropped — the visit would be
@@ -579,6 +575,19 @@ exports.handler = async (event)=>{
     }
 
     // ---------- Saved routes ----------
+    /* One review for every way a route reaches a rep (owner decision 2026-10-30): the stops, and which dealers are outside
+       that rep's own book. The code ties the review to this route, this rep and exactly these stops. */
+    async function assignmentReview(routeId, email, u, stops){
+      const stopsNow=(Array.isArray(stops)?stops:[]).filter(x=>x&&x.dealer_id);
+      const code=require("crypto").createHash("sha256").update(JSON.stringify(["assign-review-v1",String(routeId||"new"),email,stopsNow.map(x=>String(x.dealer_id))])).digest("hex").slice(0,24);
+      const ids=[...new Set(stopsNow.map(x=>String(x.dealer_id)))];
+      const off=ids.length?await SC.dealersOutsideScope({email,role:(u&&u.role)||"rep",rep_name:(u&&u.rep_name)||null,name:(u&&u.name)||null},ids,sbGet):[];
+      const offS=new Set((off||[]).map(String)), who=(u&&(u.rep_name||u.name))||email;
+      return {code, body:{review:true,review_code:code,assignee:{email,name:who},
+        stops:stopsNow.map(x=>({dealer_id:String(x.dealer_id),name:x.name||"",city:x.city||"",state:x.state||"",outside_book:offS.has(String(x.dealer_id))})),
+        outside_count:offS.size,
+        message:offS.size?`${offS.size} dealer${offS.size>1?"s are":" is"} outside ${who}'s own book — this assignment lets them work ${offS.size>1?"those dealers":"that dealer"} (contacts, history, visits, email) while the route is assigned.`:"Every dealer on this route is already in this rep's own book."}};
+    }
     if(b.action==="save_route"){
       const name=String(b.name||"").trim(); if(!name) return json(400,{error:"name required"});
       /* A route built BY a rep is theirs; a route built by the president is for whoever
@@ -621,6 +630,45 @@ exports.handler = async (event)=>{
       if(schema){ const hasHome=!!(b.home_base && isFinite(Number(b.home_base.lat))); row.depart_time=depTime; row.depart_tz=(isRound&&hasHome)?null:depTz; }
       if(asgEmail){ row.assigned_to_email=asgEmail; row.assigned_to_rep=asgRep;
         row.assigned_at=new Date().toISOString(); row.assigned_by=me.email||me.name||null; }
+      /* A rep adds only dealers he may work (security fix, Angelo 2026-10-30): adding another rep's dealer to a
+         route never opens it to him, and is refused here so the route never claims it. Stops already on the
+         route are kept as they are (a stop with a visit can't be dropped). Management and Relations plan freely. */
+      /* A route the President handed to someone else gets new dealers only from the President: its stops
+         are what that person may work, so an owner (or anyone but the President) adding a stop there would
+         open that dealer to him without the President's say (review M1, 2026-10-30). */
+      let prevIds=new Set(), prevAsg="", prevRow=null;
+      if(b.id){ let pr; try{ pr=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=*`); }catch(e){ return json(503,{error:"Couldn't check this route — nothing was saved."}); }
+        for(const x of ((pr&&pr[0]&&pr[0].stops)||[])) if(x&&x.dealer_id) prevIds.add(String(x.dealer_id));
+        prevAsg=String((pr&&pr[0]&&pr[0].assigned_to_email)||"").trim().toLowerCase();
+        prevRow=(pr&&pr[0])||null; }
+      const added=[...new Set(row.stops.map(x=>String((x&&x.dealer_id)||"")).filter(Boolean))].filter(id=>!prevIds.has(id));
+      /* By the route's SHAPE, not by whether it grants anything right now: archiving it (or the President's
+         account being switched off) for a moment must not let stops in that reopen with it (re-review). Handed
+         over = assigned to someone else by someone other than its owner — only the President does that. */
+      const handedOver=!!(prevRow && prevAsg && !emailEq(prevAsg,me.email) && !emailEq(RR.assignerOf(prevRow),prevRow.owner_email));
+      if(added.length && !isBoss(me) && handedOver){
+        const names=row.stops.filter(x=>x&&added.includes(String(x.dealer_id))).map(x=>x.name||x.dealer_id);
+        return json(403,{error:"assigned_route_locked",dealer_ids:added,stops:names,
+          message:`This route is assigned to someone else, so only the President can add dealers to it: ${names.join(", ")}.`}); }
+      /* The President assigning a route to someone else here — or adding dealers to a route already assigned to someone
+         else — sees the same review first and saves with its code. */
+      if(isBoss(me)){
+        let target=(asgEmail && !emailEq(asgEmail,me.email))?asgEmail:null, isNew=!!target;
+        if(!target && b.id && prevAsg && !emailEq(prevAsg,me.email)) target=prevAsg;
+        if(target && (isNew ? !(prevAsg&&emailEq(prevAsg,target)&&!added.length) : added.length)){
+          let tu; try{ const su=await sbGet(`staff_users?email=eq.${encodeURIComponent(target)}&select=email,name,rep_name,role&limit=1`); tu=su&&su[0]; }
+          catch(e){ return json(503,{error:"Couldn't check the rep — nothing was saved."}); }
+          let rv; try{ rv=await assignmentReview(b.id||"new", target, tu, row.stops); }
+          catch(e){ return json(503,{error:"Couldn't check the dealers on this route — nothing was saved."}); }
+          if(String(b.review_code||"")!==rv.code) return json(409,Object.assign({ok:false,error:"review_required"},rv.body));
+        }
+      }
+      if(!SC.seesAllDealers(scopeMe)){
+        let off=[]; if(added.length){ try{ off=await dealersOffReach(scopeMe,added); }catch(e){ return json(503,{error:"Couldn't check these dealers — nothing was saved."}); } }
+        if(off.length){ const names=row.stops.filter(x=>x&&off.includes(String(x.dealer_id))).map(x=>x.name||x.dealer_id);
+          return json(403,{error:"not_your_dealer",dealer_ids:off,stops:names,
+            message:`These dealers aren't in your book, so they can't go on your route: ${names.join(", ")}. Ask the President to plan a ride-along.`}); }
+      }
       if(b.id){
         const cur=await sbGet(`rep_routes?id=eq.${encodeURIComponent(b.id)}&select=owner_email,assigned_to_email,stops`).catch(()=>[]);
         const own=cur&&cur[0]; if(!own) return json(404,{error:"route not found"});
@@ -660,6 +708,40 @@ exports.handler = async (event)=>{
        the office planned to the person who will drive it, rather than leaving it under
        the account that happened to create it. Assigning also re-bases the start point,
        because a route planned from the president's house must not send a rep there. */
+    /* FOLLOW-UP RECIPIENTS of one visit (owner decision, Angelo 2026-10-30 19:01 CT). An attendee address the rep typed
+       is recorded but is not a recipient until it is verified (a dealer contact on file he did not create himself) or the
+       President approves it for that visit. followup_recipients: read (the President, or the rep who made the visit);
+       approve_recipient: the President only, a recorded attendee of that visit only, with a reason; never changes a
+       dealer contact. */
+    if(b.action==="followup_recipients"||b.action==="approve_recipient"){
+      const rid=String(b.report_id||"").trim(); if(!rid) return json(400,{error:"report_id required"});
+      let rep; try{ rep=await sbGet(`dealer_visit_reports?id=eq.${encodeURIComponent(rid)}&select=id,dealer_id,rep_email,rep_name,summary&limit=1`); }
+      catch(e){ return json(503,{error:"Couldn't read this visit — try again."}); }
+      const r=rep&&rep[0]; if(!r) return json(404,{error:"visit not found"});
+      const boss=String(me.role||"").toLowerCase()==="president";
+      if(!boss && !emailEq(r.rep_email,me.email)) return json(403,{error:"not your visit"});
+      if(b.action==="approve_recipient"){
+        if(!boss) return json(403,{error:"President only"});
+        const email=String(b.email||"").trim().toLowerCase(), reason=String(b.reason||"").trim();
+        if(!EMAIL_RE.test(email)) return json(400,{error:"Enter a valid email."});
+        if(reason.length<3) return json(400,{error:"Give a short reason for approving this address."});
+        let parts; try{ parts=await sbGet(`dealer_visit_participants?visit_report_id=eq.${encodeURIComponent(rid)}&select=email_snapshot`); }
+        catch(e){ return json(503,{error:"Couldn't read this visit's attendees — nothing was approved."}); }
+        if(!(parts||[]).some(x=>String(x.email_snapshot||"").trim().toLowerCase()===email))
+          return json(400,{error:"not_an_attendee",message:"Only an address recorded for someone at this visit can be approved."});
+        const cur=(r.summary&&Array.isArray(r.summary.approved_recipients))?r.summary.approved_recipients:[];
+        if(!cur.some(x=>String((x&&x.email)||"").toLowerCase()===email)){
+          const next=Object.assign({},r.summary||{},{approved_recipients:cur.concat([{email,by:me.email||me.name||"president",at:new Date().toISOString(),reason:reason.slice(0,300)}])});
+          try{ await sbSend("PATCH",`dealer_visit_reports?id=eq.${encodeURIComponent(rid)}`,{summary:next},{Prefer:"return=minimal"}); }
+          catch(e){ return json(502,{error:"Couldn't save the approval — try again."}); }
+          try{ await sbSend("POST","dealer_activity",{dealer_id:r.dealer_id,kind:"note",subject:"Follow-up recipient approved",
+            body:`${email} approved by ${me.email||"the President"} for the visit by ${r.rep_name||r.rep_email}: ${reason.slice(0,300)}`,actor:me.name||me.email||"president"},{Prefer:"return=minimal"}); }catch(e){}
+        }
+      }
+      let rv; try{ rv=await RR.recipientReview(r.dealer_id,rid,sbGet,r.rep_email); }
+      catch(e){ return json(503,{error:"Couldn't check this visit's recipients — try again."}); }
+      return json(200,{ok:true,report_id:rid,rep_name:r.rep_name||r.rep_email,dealer_email:rv.dealer_email,people:rv.people,can_approve:boss});
+    }
     if(b.action==="assign_route"){
       if(!isBoss(me)) return json(403,{error:"President only"});
       const id=String(b.id||"").trim(); if(!id) return json(400,{error:"id required"});
@@ -672,10 +754,17 @@ exports.handler = async (event)=>{
           {assigned_to_email:null,assigned_to_rep:null,assigned_at:null,assigned_by:null,updated_at:now},{Prefer:"return=minimal"});
         return json(200,{ok:true,assigned_to_email:null});
       }
-      const su=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=email,name,rep_name,active,home_base`).catch(()=>[]);
+      const su=await sbGet(`staff_users?email=eq.${encodeURIComponent(email)}&select=email,name,rep_name,role,active,home_base`).catch(()=>[]);
       const u=su&&su[0];
       if(!u) return json(404,{error:`No staff user with the email ${email}. Add them under Staff before assigning a route.`});
       if(u.active===false) return json(400,{error:"That staff account is inactive"});
+      /* REVIEW BEFORE CONFIRMING (owner decision, Angelo 2026-10-30 19:01 CT): assigning a route to a rep opens every stop's
+         dealer to him. The President first sees the stops and which dealers are outside that rep's own book; the
+         assignment is made only with the review's code, so a stop added after the review needs a new review. */
+      let rv; try{ rv=await assignmentReview(id, email, u, route.stops); }
+      catch(e){ return json(503,{error:"Couldn't check the dealers on this route — nothing was assigned."}); }
+      if(b.review||String(b.review_code||"")!==rv.code)
+        return json(b.review?200:409,Object.assign({ok:!!b.review},b.review?{}:{error:"review_required"},rv.body));
       const patch={assigned_to_email:email, assigned_to_rep:u.rep_name||u.name||null,
         assigned_at:now, assigned_by:me.email||me.name||"president", updated_at:now};
       /* Start point. The rep's own default wins; if they have none, the route's start is
@@ -834,19 +923,23 @@ exports.handler = async (event)=>{
     const DEALER_ACTIONS=new Set(["business_case","log_visit","visit_checkin","visit_report_get","visit_report_save","save_visit",
       "visit_end","visit_analyze","visit_approve","visit_followup_set","visit_email_save",
       "generate_followup","send_followup","notify_visit","previsit_draft","list_handout_exclusions","set_handout_exclusion","set_handout_feature"]);
+    /* OWN_ONLY: the dealer is outside his reach and he is here only because of his own visit on this route stop. Then he
+       sees and links none of the dealer's contacts (review M1, 2026-10-30) — only what his visit already recorded. */
+    let OWN_ONLY=false;
     if(DEALER_ACTIONS.has(b.action)){
       const want=b.action==="business_case"?(Array.isArray(b.dealer_ids)?b.dealer_ids:[]):[b.dealer_id];
-      let off=await dealersOffReach(scopeMe,want);
+      let off; try{ off=await dealersOffReach(scopeMe,want); }catch(e){ return json(503,{error:"Couldn't check your access to this dealer — try again."}); }
       /* The rep whose route was reassigned after he visited a stop keeps working THAT visit: his own
          report on that route stop (or named by id) reaches the dealer for the visit actions only —
-         never the dealer's other records, and never another stop. */
-      const OWN_VISIT_ACTIONS=new Set(["visit_checkin","visit_report_get","visit_report_save","visit_end","visit_analyze","visit_approve","visit_followup_set","visit_email_save"]);
+         never the dealer's other records, and never another stop. Follow-up continuity (Angelo,
+         2026-10-30): that includes writing and sending the visit's follow-up — to the dealer's own address. */
+      const OWN_VISIT_ACTIONS=new Set(["visit_checkin","visit_report_get","visit_report_save","visit_end","visit_analyze","visit_approve","visit_followup_set","visit_email_save","generate_followup","send_followup"]);
       if(off.length===1 && OWN_VISIT_ACTIONS.has(b.action) && me.email && b.route_id){   // the route-stop visit only: a report_id alone would let an old report open NEW off-route visits
         const did1=String(b.dealer_id||""), em=encodeURIComponent(String(me.email).toLowerCase());
         const q=`dealer_visit_reports?route_id=eq.${encodeURIComponent(String(b.route_id))}&dealer_id=eq.${encodeURIComponent(did1)}&rep_email=eq.${em}&or=(checkin_at.not.is.null,ended_at.not.is.null,completed_at.not.is.null)&select=id&limit=1`;
         let own; try{ own=await sbGet(q); }catch(e){ return json(503,{error:"Couldn't check this visit — try again."}); }
         // ...and only for THAT report: a report_id naming any other report of his is not covered.
-        if(own&&own.length && (!b.report_id || String(b.report_id)===String(own[0].id))) off=[];
+        if(own&&own.length && (!b.report_id || String(b.report_id)===String(own[0].id))){ off=[]; OWN_ONLY=true; }
       }
       if(off.length) return json(403,{error:"Not your dealer",dealer_ids:off});
     }
@@ -1320,7 +1413,7 @@ exports.handler = async (event)=>{
     async function keyOf(id){ const r=await sbGet(`dealer_visit_reports?id=eq.${encodeURIComponent(id)}&select=visit_key&limit=1`).catch(()=>[]); return (r&&r[0]&&r[0].visit_key)||null; }
     // Dealer cards for a day's stops: details, every contact, and the visit on each.
     async function stopDetails(stops,vmap){
-      const ids=[...new Set(stops.map(s=>s.dealer_id).filter(Boolean))];
+      const ids=[...new Set(stops.filter(s=>!s._locked).map(s=>s.dealer_id).filter(Boolean))];   // a locked stop's dealer is never read
       let dmap={},cmap={},clist={};
       if(ids.length){
         try{ const ds=await sbGet(`dealers?id=in.(${ids.join(",")})&select=id,business_name,contact_name,email,phone,address,city,state,zip`); for(const d of (ds||[])) dmap[d.id]=d; }catch(e){}
@@ -1356,7 +1449,7 @@ exports.handler = async (event)=>{
          the one this phone's visit_key names, else this rep's open unplanned visit. */
       if(!(await FL.flagOn(sbGet,"adhoc_visit"))) return json(403,{error:"Unplanned visits aren't turned on yet.",code:"flag_off"});
       const did=String(b.dealer_id).trim();
-      const off=await dealersOffReach(scopeMe,[did]);
+      let off; try{ off=await dealersOffReach(scopeMe,[did]); }catch(e){ return json(503,{error:"Couldn't check your access to this dealer — try again."}); }
       if(off.length>0) return json(403,{error:"Not your dealer",dealer_ids:off});
       const ex=await dealerExists(did);
       if(ex===null) return json(503,{error:"Couldn't check the dealer right now — try again."});
@@ -1402,7 +1495,23 @@ exports.handler = async (event)=>{
       let vmap={};
       try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=id,dealer_id,status,checkin_at,completed_at,ended_at,duration_min,approved_at,followup_status,ai_suggested_at,rep_email,rep_name`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }
       catch(e){ try{ const vr=await sbGet(`dealer_visit_reports?route_id=eq.${encodeURIComponent(route.id)}&select=dealer_id,status,checkin_at,completed_at`); for(const v of (vr||[])) vmap[v.dealer_id]=v; }catch(_){} }
-      const outStops=await stopDetails(stops,vmap);
+      /* A stop the person may not work (another rep's dealer on a route he built himself) shows only what the
+         route itself holds — name and address — never the dealer's contacts (security fix 2026-10-30). His
+         own started visit on that stop keeps it open for that visit (follow-up continuity). */
+      let locked=new Set(), ownOnly=new Set();
+      if(!SC.seesAllDealers(scopeMe)){
+        const ids=[...new Set(stops.map(x=>x&&x.dealer_id).filter(Boolean).map(String))];
+        let off; try{ off=await dealersOffReach(scopeMe,ids); }catch(e){ return json(503,{error:"Couldn't open this route — try again."}); }
+        const mine=v=>v&&emailEq(v.rep_email,me.email)&&(v.checkin_at||v.ended_at||v.completed_at);
+        locked=new Set(off.filter(id=>!mine(vmap[id])));
+        ownOnly=new Set(off.filter(id=>mine(vmap[id])));
+      }
+      const outStops=(await stopDetails(stops.map(x=>x&&locked.has(String(x.dealer_id))?{...x,_locked:true}:x),vmap)).map((x,i)=>{
+        if(ownOnly.has(String(x.dealer_id))) return {...x, contact_name:"", contact_email:"", contact_phone:"", contacts:[], own_visit_only:true};
+        if(!locked.has(String(x.dealer_id))) return x;
+        return {...x, contact_name:"", contact_email:"", contact_phone:"", contacts:[], visit:x.visit?{status:x.visit.status||null}:null, locked:true,
+          locked_reason:"Not in your book — ask the President to plan a ride-along to work this dealer."};
+      });
       const hb=resolveHomeBase(route,me);
       return json(200,{ok:true,
         route:{id:route.id,name:route.name,scheduled_date:route.scheduled_date,
@@ -1768,7 +1877,7 @@ exports.handler = async (event)=>{
       // The review screen's pickers: this dealer's contacts and the known manufacturers.
       const [{dealer},contacts,mfrs]=await Promise.all([
         dealerEnv(did),
-        sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(did)}&select=id,name,title,email&order=name`).catch(()=>[]),
+        OWN_ONLY ? Promise.resolve([]) : sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(did)}&select=id,name,title,email&order=name`).catch(()=>[]),
         knownMfrs(),
       ]);
       const pickers={contacts:(contacts||[]).map(c=>({id:c.id,name:c.name||c.email||"",title:c.title||"",email:c.email||""})),manufacturers:mfrs.map(m=>({slug:m.slug,name:m.name||m.slug}))};
@@ -1852,7 +1961,18 @@ exports.handler = async (event)=>{
 
       // ATTENDEES — linked to the dealer's own contacts. "Add as contact" makes a normal Dealer 360
       // contact (found again by email or name on a replay, never made twice).
-      const contacts=await sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(did)}&select=id,name,email,title,phone,cell`).catch(()=>[]);
+      let contacts;
+      try{ contacts=await sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(did)}&select=id,name,email,title,phone,cell`); }
+      catch(e){ return json(503,{error:"Couldn't read this dealer's contacts — nothing was saved. Try again."}); }
+      /* Outside his reach (own visit only): he may keep the links his visit already has, but links no other contact and
+         creates none — a typed attendee is recorded as typed, never turned into a dealer contact (review M1 / H1). */
+      if(OWN_ONLY){
+        let linked; try{ linked=await sbGet(`dealer_visit_participants?visit_report_id=eq.${encodeURIComponent(r.id)}&contact_id=not.is.null&select=contact_id`); }
+        catch(e){ return json(503,{error:"Couldn't read this visit's attendees — nothing was saved. Try again."}); }
+        const keep=new Set((linked||[]).map(x=>String(x.contact_id)));
+        contacts=(contacts||[]).filter(c=>keep.has(String(c.id)));
+        for(const p of partsIn) if(p){ p.add_as_contact=false; if(p.contact_id && !keep.has(String(p.contact_id))) p.contact_id=null; }
+      }
       const byId={}; for(const c of (contacts||[])) byId[c.id]=c;
       /* The participant row is the lock. Rows are inserted first with "ignore duplicates", so only
          the request that actually inserted a person's row may create a NEW contact for them — two
@@ -1924,6 +2044,8 @@ exports.handler = async (event)=>{
         tasks:tasksApproved.map(t=>({key:t.key,title:t.title,due_date:t.due_date,priority:t.priority})),
         opportunities:oppsApproved.map(o=>({key:o.key,title:o.title,stage:o.stage,manufacturer:o.manufacturer,product:o.product,quantity:o.quantity,value:o.value})),
         contacts_added:[...new Set([].concat(((r.summary&&r.summary.contacts_added)||[]),contactsAdded))],
+        // Follow-up addresses the President approved for this visit — kept by the server, never taken from the rep's input.
+        approved_recipients:(r.summary&&Array.isArray(r.summary.approved_recipients))?r.summary.approved_recipients:[],
         interest_slugs:[...new Set((Array.isArray(b.interest_slugs)?b.interest_slugs:[]).map(String).filter(s=>mfrName[s]))],
       });
       const endedAt=r.ended_at||nowIso;

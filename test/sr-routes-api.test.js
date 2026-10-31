@@ -21,6 +21,13 @@ async function call(w, who, body, headers) {
   const r = await mod.handler({ httpMethod: 'POST', headers: Object.assign({ authorization: 'Bearer ' + who }, headers || {}), body: JSON.stringify(body) });
   return { status: r.statusCode, j: JSON.parse(r.body || '{}') };
 }
+
+// An assignment is reviewed first, then confirmed with the review's code (owner decision 2026-10-30).
+async function assignR(w, who, id, email) {
+  const rv = await call(w, who, { action: 'assign_route', id, assigned_to_email: email, review: true });
+  if (!rv.j.review_code) return rv;
+  return call(w, who, { action: 'assign_route', id, assigned_to_email: email, review_code: rv.j.review_code });
+}
 (async () => {
   await t('a rep re-saving his route keeps the President’s assignment (to Lori) and stays owner', async () => {
     const w = world();
@@ -38,7 +45,9 @@ async function call(w, who, body, headers) {
   });
   await t('an explicit assignment by the President still moves it', async () => {
     const w = world();
-    assert.ok((await call(w, 'pres', { action: 'save_route', id: 'r-greg', name: 'x', stops: [], assigned_to_email: 'greg@hcps.us' })).j.ok);
+    const body = { action: 'save_route', id: 'r-greg', name: 'x', stops: [], assigned_to_email: 'greg@hcps.us' };
+    const rv = await call(w, 'pres', body); assert.strictEqual(rv.status, 409, JSON.stringify(rv.j));
+    assert.ok((await call(w, 'pres', Object.assign({}, body, { review_code: rv.j.review_code }))).j.ok);
     assert.strictEqual(w.db.rep_routes.find(x => x.id === 'r-greg').assigned_to_email, 'greg@hcps.us');
   });
   await t('a new route is still owned by whoever saves it', async () => {
@@ -84,9 +93,9 @@ async function call(w, who, body, headers) {
     const drop = await call(w, 'greg', { action: 'save_route', id: 'r-greg', name: 'x', stops: [{ dealer_id: 'd-dir-greg', name: 'Directory' }] });
     assert.strictEqual(drop.status, 409); assert.strictEqual(drop.j.error, 'stop_has_visit'); assert.deepStrictEqual(drop.j.stops, ['Glasgow']);
     assert.strictEqual(w.db.rep_routes.find(r => r.id === 'r-greg').stops.length, 2, 'the stop was dropped');
-    const ok1 = await call(w, 'greg', { action: 'save_route', id: 'r-greg', name: 'x', stops: [{ dealer_id: 'd-dir-greg', name: 'Directory' }, { dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-ang', name: 'RMS' }] });
+    const ok1 = await call(w, 'greg', { action: 'save_route', id: 'r-greg', name: 'x', stops: [{ dealer_id: 'd-dir-greg', name: 'Directory' }, { dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-greg-branch', name: 'Glasgow North' }] });
     assert.ok(ok1.j.ok, JSON.stringify(ok1.j));
-    const ok2 = await call(w, 'greg', { action: 'save_route', id: 'r-greg', name: 'x', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-ang', name: 'RMS' }] });
+    const ok2 = await call(w, 'greg', { action: 'save_route', id: 'r-greg', name: 'x', stops: [{ dealer_id: 'd-greg', name: 'Glasgow' }, { dealer_id: 'd-greg-branch', name: 'Glasgow North' }] });
     assert.ok(ok2.j.ok, 'dropping a stop WITHOUT a visit must still work');
   });
   await t('reassigned route: the new rep can neither re-check-in, edit, end, approve nor re-email the first rep\'s visit (409, report untouched)', async () => {
@@ -206,11 +215,11 @@ async function call(w, who, body, headers) {
     const w = world(); const rt = w.db.rep_routes.find(r => r.id === 'r-greg');
     rt.home_base = { label: 'Greg home', lat: 36.9, lng: -86.4, depart_time: '07:15' };
     w.db.staff_users.forEach(u => { if (u.email === 'lori@hcps.us') u.home_base = { label: 'Lori home', lat: 36.1, lng: -86.8 }; });
-    const r = await call(w, 'pres', { action: 'assign_route', id: 'r-greg', assigned_to_email: 'lori@hcps.us' });
+    const r = await assignR(w, 'pres', 'r-greg', 'lori@hcps.us');
     assert.ok(r.j.ok, JSON.stringify(r.j)); assert.strictEqual(rt.home_base.label, 'Lori home'); assert.strictEqual(rt.home_base.depart_time, '07:15');
     w.db.staff_users.forEach(u => { if (u.email === 'greg@hcps.us') u.home_base = null; });
     rt.owner_email = 'angelo@hcps.us';
-    const r2 = await call(w, 'pres', { action: 'assign_route', id: 'r-greg', assigned_to_email: 'greg@hcps.us' });
+    const r2 = await assignR(w, 'pres', 'r-greg', 'greg@hcps.us');
     assert.ok(r2.j.ok); assert.strictEqual(rt.home_base, null); assert.strictEqual(rt.depart_time, '07:15', 'the departure went with the start point');
   });
   await t('reassigned after visiting: the first rep still OPENS the route — only his own stops — and the new rep sees them as his', async () => {

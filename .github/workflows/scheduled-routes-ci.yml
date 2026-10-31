@@ -17,6 +17,9 @@ on:
       - "netlify/functions/territory-api.js"
       - "netlify/functions/ai-email-api.js"
       - "netlify/functions/email-sync-api.js"
+      - "netlify/functions/_route_reach.js"
+      - "netlify/functions/_scope.js"
+      - "netlify/functions/rep-command-api.js"
       - "test/sr-*.js"
       - "supabase/sr_route_integrity.sql"
       - "test/routeclock*.js"
@@ -42,6 +45,7 @@ jobs:
           node --check src/admin/route-clock.js
           node --check netlify/functions/routes-api.js
           node --check netlify/functions/territory-api.js
+          node --check netlify/functions/_route_reach.js
       - name: Unit suites (with mutants)
         run: |
           MUTANTS=1 node test/sr-eta.test.js
@@ -53,6 +57,13 @@ jobs:
           node test/phase0-visits.test.js
           node test/phase1-visits.test.js
           node test/phase2-adhoc.test.js
+      - name: Route access security + full workflow (with mutants)
+        run: |
+          node test/sr-access.test.js
+          node test/sr-access.mutants.js
+          node test/sr-workflow.test.js
+          node test/phase0-ownership.test.js
+          node test/phase1-cc.test.js
       - name: Install browser test tools (not site dependencies)
         run: |
           npm install --no-save --no-package-lock playwright@1.63.0 leaflet@1.9.4 leaflet.markercluster@1.5.3
@@ -66,3 +77,4 @@ jobs:
           node test/sr-planner.qa.js
           node test/sr-consistency.qa.js
           node test/phase2-ui.qa.js
+          node test/sr-access.qa.js
