@@ -30,7 +30,7 @@ async function rpc(fn, p){
 const RULE_COLS = "id,email_type,kind,pattern,instruction,suggested_instruction,examples,sends,dealers,first_seen,last_seen,status,decided_at,decided_by,decision_reason,updated_at";
 const DECIDE_HTTP = { decided: 200, president_only: 403, version_conflict: 409, not_allowed: 409, not_found: 404, reason_required: 422, bad_instruction: 422 };
 // "Not installed" = the Phase 2 table or function is missing — never any other database error (a column error stays a 500).
-const rulesInstalled = e => !(e && (/PGRST205|PGRST202|42P01/.test(String(e.message))
+const rulesInstalled = e => !(e && (/PGRST205|PGRST202/.test(String(e.message))
   || (/relation "public\.email_learning_|function public\.hcps_email_(rule|profile)_\w+\(.*\) does not exist|Could not find the (table|function) 'public\.(email_learning_|hcps_email_(rule|profile)_)/i.test(String(e.message)))));
 const { flags } = require("./_flags.js");
 

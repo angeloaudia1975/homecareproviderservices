@@ -54,7 +54,11 @@ create table if not exists public.email_learning_rules (
   constraint email_learning_rules_masked_ck check (pattern::text !~ '[0-9@]' and examples::text !~ '[0-9@]'
                                                    and suggested_instruction !~ '@' and instruction !~ '@'
                                                    and regexp_replace(suggested_instruction, '[0-9]{1,3}%', '', 'g') !~ '[0-9]'
-                                                   and regexp_replace(instruction, '[0-9]{1,3}%', '', 'g') !~ '[0-9]')
+                                                   and regexp_replace(instruction, '[0-9]{1,3}%', '', 'g') !~ '[0-9]'
+                                                   -- and nothing outside printable ASCII + typographic quotes / dashes / "…" / "→" / "−":
+                                                   -- no full-width digit or "＠", no other script, no invisible character
+                                                   and pattern::text !~ '[^ -~‘’“”–—…→−]' and examples::text !~ '[^ -~‘’“”–—…→−]'
+                                                   and suggested_instruction !~ '[^ -~‘’“”–—…→−]' and instruction !~ '[^ -~‘’“”–—…→−]')
 );
 create index if not exists email_learning_rules_status_ix on public.email_learning_rules(status, updated_at desc);
 -- One rule per edit, whatever the email type: two analysis runs at once can never suggest the same edit twice.
@@ -236,7 +240,7 @@ begin
     return jsonb_build_object('ok', false, 'status', 'version_conflict', 'version', v_cur, 'rule_status', r.status);
   end if;
   if v_instr is not null and (length(v_instr) < 3 or length(v_instr) > 300 or v_instr ~ '@'
-                              or regexp_replace(v_instr, '[0-9]{1,3}%', '', 'g') ~ '[0-9]') then
+                              or regexp_replace(v_instr, '[0-9]{1,3}%', '', 'g') ~ '[0-9]' or v_instr ~ '[^ -~‘’“”–—…→−]') then
     return jsonb_build_object('ok', false, 'status', 'bad_instruction');
   end if;
   v_to := case v_d when 'approve' then case when r.status in ('suggested','rejected','retired') then 'approved' end
@@ -354,5 +358,5 @@ select * from (
          coalesce((select value->>'email_learning_suggest' from public.app_settings where key = 'phase2_flags'), 'absent') <> 'true'
   union all select 9, 'one rule per edit (unique pattern_key)', coalesce((select indexdef from pg_indexes where schemaname = 'public'
            and indexname = 'email_learning_rules_pattern_uk'), 'missing'),
-         exists (select 1 from pg_index i where i.indexrelid = 'public.email_learning_rules_pattern_uk'::regclass and i.indisunique)
+         coalesce((select i.indisunique from pg_index i where i.indexrelid = to_regclass('public.email_learning_rules_pattern_uk')), false)
 ) c order by n;

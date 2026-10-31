@@ -23,7 +23,7 @@ const MIN_SENDS = 3, MIN_DEALERS = 2, MAX_EXAMPLES = 3, MAX_PHRASE = 200;
 const KINDS = ["remove_phrase", "replace_phrase", "add_phrase", "greeting", "shorter", "longer", "subject"];
 // Capitalised words that may stay: they identify nobody. Manufacturer names are NOT kept (they also appear inside dealer names —
 // "Golden Rule Pharmacy").
-const KEEP_WORDS = new Set(["I", "HCPS", "OK", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]);
+const KEEP_WORDS = new Set(["I", "I've", "I'll", "I'm", "I'd", "I’ve", "I’ll", "I’m", "I’d", "HCPS", "OK", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]);
 // Ordinary words that open a sentence. Any OTHER capitalised word — at the start of a sentence or inside it — is treated as a name.
 const COMMON_START = new Set(("A About Absolutely Actually After Again All Also An And Any Anything Are As Ask At Attached Based Be Because Before Best Both " +
   "Bring But By Call Can Could Can't Checking Did Do Does Don't Dropping Each Either Email Even Every Everything Feel Final Following For " +
@@ -32,7 +32,11 @@ const COMMON_START = new Set(("A About Absolutely Actually After Again All Also 
   "Reply See Sharing Should Since Sincerely So Some Sorry Sounds Stop Stopping Sure Talk Thank Thanks That That's The Then There There's " +
   "These They This Those Today Tomorrow Unfortunately Until Usually Very Want Wanted We We'll We're We've Welcome Were What When Where " +
   "Which While Who Why Will With Would Yes Yesterday You You'll You're Your Dear Greetings Morning Afternoon Evening Cheers Warm " +
-  "Visit Contact Note Remember Need Give Take Make Keep Send Share Check Try Use Order Find Join Come Go Hear Know Look Tell Write").split(" "));
+  "Visit Contact Note Remember Need Give Take Make Keep Send Share Check Try Use Order Find Join Come Go Hear Know Look Tell Write " +
+  "Congratulations Appreciate Appreciated Wishing Enjoy Really Excited Thrilled Unless Otherwise Meanwhile Overall Of Regarding Per " +
+  "Feel Kindly Again Hoping Wondering Just Quickly Unfortunately Fortunately Honestly Ideally Typically Currently Recently Finally").split(" "));
+// Characters a stored phrase may hold: printable ASCII and typographic quotes, dashes, the ellipsis, "→" and "−" (used in examples).
+const ALLOWED_TEXT = /^[\x20-\x7E‘’“”–—…→−]*$/;
 const HONORIFIC = /\b(?:Mr|Mrs|Ms|Mx|Dr|Prof|Rev|Sr|Jr|St)\.?\s+\p{Lu}[\p{L}\p{M}\p{N}_'’-]*/gu;
 const MONTHS = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
 const GREETING = /^(hi|hello|hey|dear|good\s+(?:morning|afternoon|evening)|greetings)\b/i;
@@ -41,15 +45,17 @@ const escRe = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /* Mask one phrase. ctx = { dealer: "Business Name" } (optional). Pure. */
 function mask(text, ctx){
-  let s = String(text == null ? "" : text).replace(/\s+/g, " ").trim();
+  // NFKC first: full-width digits, "＠", "｛at｝", "。" become their plain forms, so every rule below sees them; zero-width and
+  // other invisible format characters are removed (a name split by one is still a name).
+  let s = String(text == null ? "" : text).normalize("NFKC").replace(/\p{Cf}+/gu, "").replace(/。/g, ".").replace(/\s+/g, " ").trim();
   if(!s) return "";
   const dealer = ctx && String(ctx.dealer || "").trim();
   if(dealer && dealer.length >= 3) s = s.replace(new RegExp(escRe(dealer), "gi"), "{dealer}");
   s = s.replace(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi, "{email}")
        .replace(/\b(?:https?:\/\/|www\.)\S+/gi, "{link}")
        // spelled-out addresses, with or without spaces: "bob at acme dot com", "pat(at)acme(dot)com", "pat [at] acme [dot] ai"
-       .replace(/[\p{L}\p{N}._+-]+\s*(?:\s(?:at)\s|\[\s*at\s*\]|\(\s*at\s*\)|\{\s*at\s*\})\s*[\p{L}\p{N}-]+(?:\s*(?:\s(?:dot)\s|\[\s*dot\s*\]|\(\s*dot\s*\)|\{\s*dot\s*\})\s*[\p{L}\p{N}-]+)+/giu, "{email}")
-       .replace(/[\p{L}\p{N}-]+(?:\s*(?:\s(?:dot)\s|\[\s*dot\s*\]|\(\s*dot\s*\)|\{\s*dot\s*\})\s*[\p{L}\p{N}-]+)+/giu, m => /\bdot\b/i.test(m) ? "{link}" : m)
+       .replace(/[\p{L}\p{N}._+-]+\s*(?:\s(?:at)\s|\[\s*at\s*\]|\(\s*at\s*\)|\{\s*at\s*\}|<\s*at\s*>|[_-]+\s*at\s*[_-]+)\s*[\p{L}\p{N}-]+(?:\s*(?:\s(?:dot)\s|\[\s*dot\s*\]|\(\s*dot\s*\)|\{\s*dot\s*\}|<\s*dot\s*>|[_-]+\s*dot\s*[_-]+)\s*[\p{L}\p{N}-]+)+/giu, "{email}")
+       .replace(/[\p{L}\p{N}-]+(?:\s*(?:\s(?:dot)\s|\[\s*dot\s*\]|\(\s*dot\s*\)|\{\s*dot\s*\}|<\s*dot\s*>|[_-]+\s*dot\s*[_-]+)\s*[\p{L}\p{N}-]+)+/giu, m => /\bdot\b/i.test(m) ? "{link}" : m)
        // any word.word token with a 2+ letter ending is treated as a web address (over-masks rather than under-masks)
        .replace(/(?<![\p{L}\p{N}_{}])[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)*\.\p{L}{2,}(?:\/\S*)?/gu, "{link}")
        .replace(/(?:\+?1[\s.-]?)?\(?\b\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/g, "{phone}")
@@ -82,9 +88,9 @@ const norm = s => String(s || "").toLowerCase().replace(/[“”"]/g, '"').repla
 function safePhrase(s){
   const t = String(s || "");
   if(!(t.length >= 3 && t.length <= MAX_PHRASE && !/[0-9@]/.test(t) && /[a-z]{2}/i.test(t.replace(/\{[a-z]+\}/g, "")))) return false;
+  if(!ALLOWED_TEXT.test(t) || /\p{N}/u.test(t)) return false;   // no other digit form, "＠" or symbol outside the allowed set
   const bare = t.replace(/\{[a-z]+\}/g, " ");
-  if(/(?![A-Za-z])[\p{L}\p{M}]/u.test(bare)) return false;
-  if(/[([{]\s*(?:at|dot)\s*[)\]}]/i.test(bare)) return false;
+  if(/[([{<]\s*(?:at|dot)\s*[)\]}>]|[_-]\s*(?:at|dot)\s*[_-]/i.test(bare)) return false;
   const re = /\b[A-Z][A-Za-z'’_-]*/g; let mm;
   while((mm = re.exec(bare))){
     const w = mm[0];
@@ -236,8 +242,9 @@ function analyze(drafts){
 // An owner-edited instruction: plain text, one line, 3–300 characters, no e-mail address or link.
 // No digits except a percentage ("about 30%"): a phone number, amount, date or address never goes into a rule.
 function cleanInstruction(s){
-  const t = String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  const t = String(s == null ? "" : s).normalize("NFKC").replace(/\p{Cf}+/gu, "").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
   if(t.length < 3 || t.length > 300) return null;
+  if(!ALLOWED_TEXT.test(t) || /(?![0-9])\p{N}/u.test(t)) return null;   // plain text only (no "＠", other digit forms or symbols)
   if(/@/.test(t) || /\b(?:https?:\/\/|www\.)/i.test(t)) return null;
   if(/\d/.test(t.replace(/\b\d{1,3}%/g, ""))) return null;
   return t;

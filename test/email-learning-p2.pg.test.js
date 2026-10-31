@@ -140,6 +140,9 @@ try {
     refused(() => note(4, { instruction: 'Write to pat@example.test.' }), /masked_ck/);
     refused(() => note(4, { instruction: 'Call Pat on 937 626 5141.' }), /masked_ck/, 'no phone number in the wording');
     refused(() => note(4, { instruction: 'Mention the $20 fee.' }), /masked_ck/, 'no amount in the wording');
+    refused(() => note(4, { pattern: { phrase: 'Call ５５５ today' } }), /masked_ck/, 'no full-width digit in the pattern');
+    refused(() => note(4, { examples: ['+ email pat＠acme'] }), /masked_ck/, 'no full-width "@" in an example');
+    refused(() => note(4, { instruction: 'Ask for José.' }), /masked_ck/, 'nothing outside plain text in the wording');
   });
   B = note(5, { kind: 'greeting', pattern: { from: 'Hi {name}', to: 'Good morning {name}' }, instruction: 'Open with “Good morning {name}”.', examples: [] }).id;
   C = note(6, { email_type: 'all', kind: 'shorter', pattern: {}, instruction: 'Keep it shorter — you usually cut about 30% of the draft.', examples: [] }).id;
@@ -186,6 +189,7 @@ try {
     assert.strictEqual(decide({ rule_id: A, decision: 'edit', instruction: 'Skip “I hope this email finds you well” — get to the point.' }).status, 'not_allowed');
     assert.strictEqual(decide({ rule_id: A, decision: 'edit', instruction: 'Write to me at x@y.test' }).status, 'bad_instruction');
     assert.strictEqual(decide({ rule_id: A, decision: 'edit', instruction: 'Ask them to call 615 555 0100.' }).status, 'bad_instruction');
+    assert.strictEqual(decide({ rule_id: A, decision: 'edit', instruction: 'Ask them to call ６１５ ５５５ ０１００.' }).status, 'bad_instruction');
   });
   t('approve a second rule → version 3 holds both; retire → version 4 holds one', () => {
     assert.strictEqual(decide({ rule_id: C, decision: 'approve' }).version, 3);
