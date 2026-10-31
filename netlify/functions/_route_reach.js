@@ -63,13 +63,14 @@ async function visitGrant(myEmail, dealerId, ref, sbGet){
   return (rows && rows[0]) || null;
 }
 /* Where an email may go outside the rep's book (owner decision, Angelo 2026-10-30 19:01 CT). Typing an address — as an
-   attendee, or through a contact the rep created himself from his own visit — never by itself makes it a recipient.
+   attendee, or through a contact the rep created himself — never by itself makes it a recipient.
    - Always: the dealer's own email on file.
-   - President-sent route (no reportId): the dealer's contacts on file, EXCEPT contacts this rep created from his own
-     visits at this dealer (summary.contacts_added) — those need verification like any typed address.
-   - His own visit (reportId): only the people recorded at THAT visit who are verified — linked to a dealer contact on
-     file that he did not create himself — plus addresses the President approved for that visit
-     (summary.approved_recipients). Never the dealer's whole contact list.
+   - President-sent route he is on now (no reportId): the dealer's contacts on file, except contacts this rep created
+     from his own visits at this dealer (summary.contacts_added). He is authorized to work that dealer on that route.
+   - Only his own visit (reportId; after a reassignment): the dealer's email plus the attendees of THAT visit the
+     President approved for it (summary.approved_recipients). Nothing the rep can write — a typed address, a contact he
+     created, a link he made — verifies an address here (exact-head review H1 / M1). `on_file` tells the President
+     which attendee addresses match a dealer contact, to make the approval easy; it grants nothing by itself.
    Returns a Set of lower-case emails. Strict reads: a failed read throws. */
 async function selfAddedContacts(myEmail, dealerId, sbGet){
   const me = low(myEmail), did = String(dealerId || "").trim(), out = new Set();
@@ -87,32 +88,27 @@ async function recipientReview(dealerId, reportId, sbGet, myEmail){
   const [d, c, p, rep, self] = await Promise.all([
     sbGet(`dealers?id=eq.${enc(did)}&select=email&limit=1`),
     sbGet(`dealer_contacts?dealer_id=eq.${enc(did)}&select=id,email`),
-    rid ? sbGet(`dealer_visit_participants?visit_report_id=eq.${enc(rid)}&dealer_id=eq.${enc(did)}&select=name_snapshot,email_snapshot,contact_id`) : Promise.resolve([]),
-    rid ? sbGet(`dealer_visit_reports?id=eq.${enc(rid)}&dealer_id=eq.${enc(did)}&select=summary,rep_email&limit=1`) : Promise.resolve([]),
-    selfAddedContacts(myEmail, did, sbGet),
+    rid ? sbGet(`dealer_visit_participants?visit_report_id=eq.${enc(rid)}&dealer_id=eq.${enc(did)}&select=name_snapshot,email_snapshot`) : Promise.resolve([]),
+    rid ? sbGet(`dealer_visit_reports?id=eq.${enc(rid)}&dealer_id=eq.${enc(did)}&select=summary&limit=1`) : Promise.resolve([]),
+    rid ? Promise.resolve(new Set()) : selfAddedContacts(myEmail, did, sbGet),
   ]);
   const dealerEmail = low(d && d[0] && d[0].email);
-  const byId = {}; for(const x of (c || [])) byId[String(x.id)] = x;
-  const verifiedContact = x => x && EMAIL.test(low(x.email)) && !self.has(String(x.id));
-  const approved = new Set(rid ? approvedOf(rep && rep[0] && rep[0].summary) : []);
+  const onFile = new Set((c || []).map(x => low(x.email)).filter(e => EMAIL.test(e)));
   const allowed = new Set();
   if(EMAIL.test(dealerEmail)) allowed.add(dealerEmail);
   const people = [];
   if(!rid){
-    for(const x of (c || [])) if(verifiedContact(x)) allowed.add(low(x.email));
+    for(const x of (c || [])) if(EMAIL.test(low(x.email)) && !self.has(String(x.id))) allowed.add(low(x.email));
   } else {
+    const approved = new Set(approvedOf(rep && rep[0] && rep[0].summary));
+    for(const e of approved) allowed.add(e);
+    const seen = new Set();
     for(const x of (p || [])){
       const email = low(x.email_snapshot);
-      const ct = x.contact_id ? byId[String(x.contact_id)] : null;
-      const viaContact = verifiedContact(ct) ? low(ct.email) : "";
-      if(viaContact) allowed.add(viaContact);
-      if(EMAIL.test(email)){
-        const status = email === dealerEmail || email === viaContact ? "verified" : approved.has(email) ? "approved" : "unverified";
-        if(status !== "unverified") allowed.add(email);
-        people.push({ name: x.name_snapshot || "", email, status });
-      }
+      if(!EMAIL.test(email) || seen.has(email)) continue; seen.add(email);
+      const status = email === dealerEmail ? "verified" : approved.has(email) ? "approved" : "unverified";
+      people.push({ name: x.name_snapshot || "", email, status, on_file: onFile.has(email) });
     }
-    for(const e of approved) allowed.add(e);
   }
   return { allowed, people, dealer_email: dealerEmail || null };
 }

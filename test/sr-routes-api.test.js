@@ -45,7 +45,9 @@ async function assignR(w, who, id, email) {
   });
   await t('an explicit assignment by the President still moves it', async () => {
     const w = world();
-    assert.ok((await call(w, 'pres', { action: 'save_route', id: 'r-greg', name: 'x', stops: [], assigned_to_email: 'greg@hcps.us' })).j.ok);
+    const body = { action: 'save_route', id: 'r-greg', name: 'x', stops: [], assigned_to_email: 'greg@hcps.us' };
+    const rv = await call(w, 'pres', body); assert.strictEqual(rv.status, 409, JSON.stringify(rv.j));
+    assert.ok((await call(w, 'pres', Object.assign({}, body, { review_code: rv.j.review_code }))).j.ok);
     assert.strictEqual(w.db.rep_routes.find(x => x.id === 'r-greg').assigned_to_email, 'greg@hcps.us');
   });
   await t('a new route is still owned by whoever saves it', async () => {

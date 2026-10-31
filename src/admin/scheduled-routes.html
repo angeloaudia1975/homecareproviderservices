@@ -517,17 +517,18 @@ async function confirmAssign(id,email,code){
 }
 
 /* ── Follow-up recipients of another rep's visit (President; owner decision 2026-10-30) ──────────────────
-   An address the rep typed for an attendee is recorded but is not a recipient until it is a dealer contact on file
-   (that he did not create himself) or the President approves it here, for this visit only, with a reason. */
+   Once the dealer is outside the rep's reach, an attendee's address — typed by him or a contact on file — is a
+   recipient only after the President approves it here, for this visit only, with a reason. The dealer's own email
+   on file is always allowed. */
 async function openRecipients(i){
   const s=DAY.stops[i], box=$("#rcp_"+i); if(!box||!s||!s.visit) return;
   box.innerHTML=`<div class="mt" style="color:var(--gray)">Loading…</div>`;
   let j=null; try{ j=await rapi({action:"followup_recipients",report_id:s.visit.id}); }catch(e){ j=null; }
   if(!j||!j.ok){ box.innerHTML=`<div class="mt" style="color:#b42323">${esc((j&&(j.message||j.error))||"Couldn't load the recipients — check your signal.")}</div>`; return; }
-  const lbl={verified:"✓ verified contact",approved:"✓ approved by the President",unverified:"not verified"};
+  const lbl={verified:"✓ the dealer's email on file",approved:"✓ approved by the President",unverified:"not verified"};
   box.innerHTML=`<div class="mt" style="margin-top:8px;padding:10px 12px;border-radius:10px;background:#f4f7fb;border:1px solid var(--line)">
     <div style="color:var(--gray)">Who ${esc(j.rep_name||"the rep")} may send this visit's follow-up to${j.dealer_email?` — always the dealer's email on file (${esc(j.dealer_email)})`:""}:</div>
-    ${(j.people||[]).length?(j.people||[]).map((p,k)=>`<div style="margin-top:8px"><b>${esc(p.name||p.email)}</b> · ${esc(p.email)} — <span style="color:${p.status==="unverified"?"#b4651a":"#1d7a3a"}">${lbl[p.status]||esc(p.status)}</span>
+    ${(j.people||[]).length?(j.people||[]).map((p,k)=>`<div style="margin-top:8px"><b>${esc(p.name||p.email)}</b> · ${esc(p.email)} — <span style="color:${p.status==="unverified"?"#b4651a":"#1d7a3a"}">${lbl[p.status]||esc(p.status)}</span>${p.status==="unverified"&&p.on_file?` <span style="color:var(--gray)">(matches a contact on file)</span>`:""}
       ${p.status==="unverified"&&j.can_approve?`<div style="margin-top:6px"><input id="rcpwhy_${i}_${k}" class="btn" style="max-width:100%;min-width:220px;text-align:left;font-size:16px" placeholder="Why this address is right (required)">
         <button class="btn sm pri" style="margin-top:6px" onclick="approveRecipient(${i},'${jesc(p.email)}','rcpwhy_${i}_${k}')">Approve for this visit</button></div>`:""}</div>`).join("")
       :`<div class="mt" style="margin-top:6px">No attendee email addresses were recorded for this visit.</div>`}

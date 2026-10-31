@@ -41,10 +41,14 @@ const DATE = '2026-11-05';
   let routeId, day, itin, report, crmBefore;
   try {
     await step('1 the President plans a route for Greg (his dealer + a ride-along stop), leaving 08:00 Central', async () => {
-      const r = await R('pres', { action: 'save_route', name: 'KY/TN ride-along', scheduled_date: DATE, assigned_to_email: 'greg@hcps.us', round_trip: true,
+      const plan = { action: 'save_route', name: 'KY/TN ride-along', scheduled_date: DATE, assigned_to_email: 'greg@hcps.us', round_trip: true,
         home_base: { lat: 36.53, lng: -86.36, label: 'Cottontown, TN' }, depart_time: '08:00',
         stops: [{ dealer_id: 'd-greg', name: 'Glasgow Prescription Center', state: 'KY', lat: 36.99, lng: -85.91, visit_min: 45 },
-                { dealer_id: 'd-ang', name: 'Retail Medical Solutions', state: 'TN', lat: 36.16, lng: -86.78, visit_min: 30 }] });
+                { dealer_id: 'd-ang', name: 'Retail Medical Solutions', state: 'TN', lat: 36.16, lng: -86.78, visit_min: 30 }] };
+      // The President first sees which stops are outside Greg's book (the ride-along stop), then confirms.
+      const rv = await R('pres', plan);
+      assert.strictEqual(rv.status, 409, JSON.stringify(rv.j)); assert.deepStrictEqual(rv.j.stops.map(s => s.outside_book), [false, true]);
+      const r = await R('pres', Object.assign({}, plan, { review_code: rv.j.review_code }));
       assert.ok(r.j.ok, JSON.stringify(r.j)); routeId = r.j.id;
       const row = w.db.rep_routes.find(x => x.id === routeId);
       assert.strictEqual(row.owner_email, 'angelo@hcps.us'); assert.strictEqual(row.assigned_to_email, 'greg@hcps.us'); assert.strictEqual(row.assigned_by, 'angelo@hcps.us');
@@ -101,6 +105,12 @@ const DATE = '2026-11-05';
     await step('9 Greg still writes and sends THAT visit\'s follow-up (AI draft from the visit; to Rita; saved on the visit)', async () => {
       const d = await call('ai-email-api', 'greg', { action: 'draft', dealer_id: 'd-ang', template: 'visit_followup', visit_report_id: report.id, contact_name: 'Rita' });
       assert.strictEqual(d.status, 200, JSON.stringify(d.j));
+      // After the reassignment Rita's address is not his to use until the President approves it for this visit.
+      const no = await call('email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: routeId, report_id: report.id, to: 'rita@rms.test', subject: d.j.subject, body_text: d.j.body });
+      assert.strictEqual(no.status, 403, 'an unapproved attendee address was used: ' + JSON.stringify(no.j)); assert.strictEqual(sends().length, 1);
+      const rv = await R('pres', { action: 'followup_recipients', report_id: report.id });
+      assert.ok(rv.j.people.some(p => p.email === 'rita@rms.test' && p.status === 'unverified' && p.on_file), JSON.stringify(rv.j));
+      assert.ok((await R('pres', { action: 'approve_recipient', report_id: report.id, email: 'rita@rms.test', reason: 'Rita is the owner on file' })).j.ok);
       const s = await call('email-sync-api', 'greg', { action: 'send', dealer_id: 'd-ang', route_id: routeId, report_id: report.id, to: 'rita@rms.test', subject: d.j.subject, body_text: d.j.body });
       assert.ok(s.j.ok, JSON.stringify(s.j)); assert.strictEqual(sends().length, 2);
       const sv = await R('greg', { action: 'visit_email_save', route_id: routeId, dealer_id: 'd-ang', sent: true, email: { to: 'rita@rms.test', subject: d.j.subject, body: d.j.body } });

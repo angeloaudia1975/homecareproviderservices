@@ -400,6 +400,8 @@ exports.handler = async (event)=>{
       // The email goes from the caller's own mailbox; logging it onto a dealer's timeline needs
       // that dealer to be in their book.
       // In My Sales Workspace, only dealers in his own book (Phase 2, amendment 1).
+      // A send tied to a route stop or a visit must name its dealer, so the checks below always run (review L3).
+      if(!dealerId && (String(b.route_id||"").trim()||String(b.report_id||"").trim())) return json(400,{ok:false,error:"dealer_required",message:"This email isn't tied to a dealer — reopen it from the route and try again."});
       if(dealerId && !(await SC.canAccessDealer(SC.workspaceUser(event, me),dealerId,sbGet))){
         /* Outside the book (security fix + follow-up continuity, Angelo 2026-10-30): allowed only for a stop on a route the
            President sent this rep on (b.route_id), or for the visit he personally performed at this dealer (b.report_id /
@@ -417,7 +419,7 @@ exports.handler = async (event)=>{
         if(!grant) return json(403,{ok:false,error:"Not your dealer"});
         const strangers=[to].concat(cc.map(x=>x.toLowerCase())).filter(a=>!allowed.has(a));
         if(strangers.length) return json(403,{ok:false,error:"recipient_not_allowed",recipients:strangers,
-          message:"This dealer isn't in your book, so this email can go only to the dealer's email on file"+(grant.kind==="visit"?" and the verified people from your visit":" and its contacts on file")+". Not verified: "+strangers.join(", ")+(grant.kind==="visit"?" — the President can approve an attendee's address for this visit.":".")});
+          message:"This dealer isn't in your book, so this email can go only to the dealer's email on file"+(grant.kind==="visit"?" and the visit attendees the President approved":" and its contacts on file")+". Not verified: "+strangers.join(", ")+(grant.kind==="visit"?" — the President can approve an attendee's address for this visit.":".")});
       }
       const fromMailbox=String(me.email||"").toLowerCase();   // the rep's login email == their Outlook mailbox
       if(!fromMailbox) return json(200,{ok:false,error:"no_sender",message:"Your account has no email on file to send from."});
