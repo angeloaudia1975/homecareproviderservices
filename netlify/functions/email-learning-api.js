@@ -10,6 +10,7 @@
 //        expected_status = the rule's status on the owner's screen (a stale screen is refused: version_conflict)
 //   POST {action:"versions"}                          every version of the approved set
 //   POST {action:"rollback", to_version, reason, expected_version}   0 = reset (no approved rule)
+//   POST {action:"redact", rule_id, reason, expected_version, expected_status}   Phase 3: remove a rule's evidence for good
 // President only (owner decision: the learning record and its dashboard are the owner's). The person deciding is always the
 // verified sign-in, never the request. Approved rules change NO email in Phase 2: applying them to drafts is Phase 3.
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -28,7 +29,7 @@ async function rpc(fn, p){
   return t ? JSON.parse(t) : null;
 }
 const RULE_COLS = "id,email_type,kind,pattern,instruction,suggested_instruction,examples,sends,dealers,first_seen,last_seen,status,decided_at,decided_by,decision_reason,updated_at";
-const DECIDE_HTTP = { decided: 200, president_only: 403, version_conflict: 409, not_allowed: 409, not_found: 404, reason_required: 422, bad_instruction: 422 };
+const DECIDE_HTTP = { decided: 200, president_only: 403, version_conflict: 409, not_allowed: 409, not_found: 404, reason_required: 422, bad_instruction: 422, redacted: 409 };
 // "Not installed" = the Phase 2 table or function is missing — never any other database error (a column error stays a 500).
 const rulesInstalled = e => !(e && (/PGRST205|PGRST202/.test(String(e.message))
   || (/relation "public\.email_learning_|function public\.hcps_email_(rule|profile)_\w+\(.*\) does not exist|Could not find the (table|function) 'public\.(email_learning_|hcps_email_(rule|profile)_)/i.test(String(e.message)))));
@@ -67,9 +68,11 @@ exports.handler = async (event) => {
         const v = await sbGet(`email_learning_profiles?select=version&order=version.desc&limit=1`);
         const c = s => rr.filter(x => x.status === s).length;
         learning = Object.assign(learning, { installed: true, suggested: c("suggested"), approved: c("approved"), rejected: c("rejected"), retired: c("retired"),
-          version: (v[0] && v[0].version) || 0, applied_to_emails: false });   // Phase 3 applies approved rules, behind its own switch
+          version: (v[0] && v[0].version) || 0, applied_to_emails: f.email_learning_apply === true });   // Phase 3, behind its own switch
       }catch(e){ if(rulesInstalled(e)) throw e; }
-      return json(200, { ok: true, installed: true, capture_on: f[EL.SWITCH] === true, types: EL.EMAIL_TYPES,
+      // Phase 3 switches (each off unless exactly true) — shown so the owner sees what shapes his drafts.
+      const phase3 = { apply: f.email_learning_apply === true, ai_headsup: f.email_ai_headsup === true, styles: f.email_styles === true };
+      return json(200, { ok: true, installed: true, capture_on: f[EL.SWITCH] === true, types: EL.EMAIL_TYPES, phase3,
         totals: { drafts: rows.length, sent, edited, capped: rows.length >= 5000 }, by_type: by, learning,
         thresholds: { sends: LEARN.MIN_SENDS, dealers: LEARN.MIN_DEALERS } });
     }
@@ -112,9 +115,13 @@ exports.handler = async (event) => {
     if(b.action === "rules") return p2(async () => {
       const st = b.status ? String(b.status) : "";
       if(st && !["suggested","approved","rejected","retired"].includes(st)) return json(400, { error: "bad_status" });
-      const rows = await sbGet(`email_learning_rules?select=${RULE_COLS}${st ? `&status=eq.${st}` : ""}&order=status.asc,sends.desc,updated_at.desc&limit=500`);
+      const q = cols => sbGet(`email_learning_rules?select=${cols}${st ? `&status=eq.${st}` : ""}&order=status.asc,sends.desc,updated_at.desc&limit=500`);
+      // Phase 3 adds the redaction columns; before its SQL runs they don't exist (the page then offers no Redact).
+      let rows, redactReady = true;
+      try{ rows = await q(RULE_COLS + ",redacted_at,redacted_by"); }
+      catch(e){ if(!/42703|redacted_(at|by)/.test(String(e.message))) throw e; rows = await q(RULE_COLS); redactReady = false; }
       const v = await sbGet(`email_learning_profiles?select=version&order=version.desc&limit=1`);
-      return json(200, { ok: true, rules: rows, version: (v[0] && v[0].version) || 0 });
+      return json(200, { ok: true, rules: rows, version: (v[0] && v[0].version) || 0, redact_ready: redactReady });
     });
     if(b.action === "analyze") return p2(async () => {
       await sbGet(`email_learning_rules?select=id&limit=1`);   // installed?
@@ -151,6 +158,24 @@ exports.handler = async (event) => {
       const code = out && (out.status === "rolled_back" || out.status === "reset") ? 200 : (DECIDE_HTTP[out && out.status] || 500);
       return json(code, Object.assign({ ok: code === 200 }, out));
     });
+    /* Phase 3: Redact. The active President removes a rule's stored evidence for good (masked pattern, examples, both wordings,
+       and the same wording in its events and version snapshots); an approved rule is retired in a new version. The row stays,
+       so the edit is never suggested, refreshed, approved or restored again. Checked again in the database. */
+    if(b.action === "redact"){
+      const id = EL.uuidOrNull(b.rule_id); if(!id) return json(400, { error: "bad_id" });
+      const reason = String(b.reason == null ? "" : b.reason).replace(/\s+/g, " ").trim();
+      if(reason.length < 3 || reason.length > 500) return json(422, { error: "reason_required", message: "Give a short reason (3–500 characters)." });
+      const ev = parseInt(b.expected_version, 10); if(!Number.isFinite(ev) || ev < 0) return json(400, { error: "bad_version" });
+      const es = String(b.expected_status || ""); if(!["suggested","approved","rejected","retired"].includes(es)) return json(400, { error: "bad_status" });
+      let out;
+      try{ out = await rpc("hcps_email_rule_redact", { rule_id: id, by: me.email, reason, expected_version: ev, expected_status: es }); }
+      catch(e){
+        if(/PGRST202|hcps_email_rule_redact/.test(String(e.message))) return json(503, { error: "redact_not_installed", message: "Redact needs the Phase 3 database update (email_learning_p3_shapes_redact.sql)." });
+        throw e;
+      }
+      const code = out && out.status === "redacted" && out.ok ? 200 : (DECIDE_HTTP[out && out.status] || 500);
+      return json(code, Object.assign({ ok: code === 200 }, out, code === 409 && out.status === "version_conflict" ? { message: "Something changed since you opened this page — reload and try again." } : {}));
+    }
     return json(400, { error: "unknown_action" });
   }catch(e){ console.error("email-learning-api", String(e && e.message || e).slice(0, 300)); return json(500, { error: "server_error", message: "Email Learning couldn't load just now." }); }
 };

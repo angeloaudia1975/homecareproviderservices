@@ -43,8 +43,15 @@ async function runAnalysis(sbGet, rpc, opts){
   const names = await dealerNames(sbGet, drafts.map(d => d.dealer_id));
   drafts.forEach(d => { d.dealer = names[d.dealer_id] || null; });
   const res = L.analyze(drafts);
-  const summary = { scanned: res.scanned, candidates: res.candidates, suggestions: res.suggestions.length, capped, applied: apply,
-    inserted: 0, updated: 0, unchanged: 0, already_decided: 0, refused: 0 };
+  /* Phase 3 Redact: an edit the owner redacted is never shown or sent again — not in a preview, not to the database. Read from
+     the rule table (redacted_at); before the Phase 3 SQL the column does not exist and nothing can have been redacted. */
+  let gone = new Set();
+  try{ (await sbGet(`email_learning_rules?redacted_at=not.is.null&select=rule_key,pattern_key&limit=10000`)).forEach(r => { gone.add(r.rule_key); gone.add(r.pattern_key); }); }
+  catch(e){ if(!/42703|redacted_at/.test(String(e && e.message))) throw e; }
+  const kept = res.suggestions.filter(s => !gone.has(s.rule_key) && !gone.has(s.pattern_key));
+  const summary = { scanned: res.scanned, candidates: res.candidates, suggestions: kept.length, capped, applied: apply,
+    inserted: 0, updated: 0, unchanged: 0, already_decided: 0, refused: 0, redacted: res.suggestions.length - kept.length };
+  res.suggestions = kept;
   if(apply){
     for(const s of res.suggestions){
       try{

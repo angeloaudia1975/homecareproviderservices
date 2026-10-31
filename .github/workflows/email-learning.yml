@@ -7,6 +7,12 @@ on:
       - 'netlify/functions/email-learning-api.js'
       - 'netlify/functions/_email_learn.js'
       - 'netlify/functions/_email_learn_run.js'
+      - 'netlify/functions/_email_rules_apply.js'
+      - 'netlify/functions/_email_styles.js'
+      - 'netlify/functions/_draft_guards.js'
+      - 'netlify/functions/_headsup.js'
+      - 'netlify/functions/_ai_draft.js'
+      - 'netlify/functions/_ai_style.js'
       - 'netlify/functions/email-learning-purge-cron.js'
       - 'netlify/functions/ai-email-api.js'
       - 'netlify/functions/email-sync-api.js'
@@ -17,6 +23,7 @@ on:
       - 'src/admin/dealer.html'
       - 'supabase/email_learning_*.sql'
       - 'test/email-learning*'
+      - 'scripts/email_learning_*'
       - 'test/phase0-mock.js'
       - '.github/workflows/email-learning.yml'
   workflow_dispatch:
@@ -47,7 +54,7 @@ jobs:
       - name: Install Playwright Chromium
         run: npm install --no-save playwright && npx playwright install --with-deps chromium
       - name: Syntax
-        run: for f in netlify/functions/_email_learn.js netlify/functions/_email_learn_run.js netlify/functions/email-learning-purge-cron.js netlify/functions/_email_learning.js netlify/functions/email-learning-api.js netlify/functions/ai-email-api.js netlify/functions/email-sync-api.js netlify/functions/routes-api.js src/admin/email-learning.js; do node --check "$f"; done
+        run: for f in netlify/functions/_email_learn.js netlify/functions/_email_learn_run.js netlify/functions/email-learning-purge-cron.js netlify/functions/_email_learning.js netlify/functions/email-learning-api.js netlify/functions/_email_rules_apply.js netlify/functions/_email_styles.js netlify/functions/_draft_guards.js netlify/functions/_headsup.js netlify/functions/_ai_draft.js netlify/functions/ai-email-api.js netlify/functions/email-sync-api.js netlify/functions/routes-api.js src/admin/email-learning.js scripts/email_learning_p3_public_probe_browser.js; do node --check "$f"; done
       - name: Capture rules (real handlers, synthetic data)
         run: node test/email-learning-p1.test.js
       - name: Migration in Postgres 16
@@ -56,11 +63,21 @@ jobs:
         run: node test/email-learning-p2.test.js
       - name: Phase 2 migration in Postgres 16
         run: node test/email-learning-p2.pg.test.js
-      - name: Mutation tests (JS + SQL, Phase 1 + 2)
+      - name: Phase 3 rule application (off unless switched on)
+        run: node test/email-learning-p3.test.js
+      - name: Phase 3 guards, writing styles, heads-up checks (pure)
+        run: node test/email-learning-p3.guards.test.js
+      - name: Phase 3 generators + Redact API (real handlers, synthetic data)
+        run: node test/email-learning-p3.flow.test.js
+      - name: Phase 3 migration in Postgres 16 (shapes + Redact)
+        run: node test/email-learning-p3.pg.test.js
+      - name: Mutation tests (JS + SQL, Phases 1–3)
         run: node test/email-learning.mutants.js
       - name: Browser — editors, Dealer 360 composer, owner page
         run: node test/email-learning-p1.ui.js
       - name: Browser — owner page Learned rules + Versions
         run: node test/email-learning-p2.ui.js
+      - name: Browser — Phase 3 editors (styles, Regenerate, suggestions)
+        run: node test/email-learning-p3.ui.js
       - name: Browser — email editor regression (PR #67)
         run: node test/email-editor.qa.js

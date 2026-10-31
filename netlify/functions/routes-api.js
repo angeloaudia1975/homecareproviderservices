@@ -33,6 +33,10 @@ const OPP = require("./_opps.js");
 const VAI = require("./_visit_ai.js");
 const UP = require("./_upsert.js");
 const EL = require("./_email_learning.js");   // Smart Email Learning, Phase 1 (capture only)
+const HU = require("./_headsup.js");           // Smart Email Learning, Phase 3: the heads-up (template, checks, AI version)
+const ST = require("./_email_styles.js");
+const RA = require("./_email_rules_apply.js");
+const { loadStyleGuide, findBanned } = require("./_ai_style.js");
 const AI_KEY = process.env.ANTHROPIC_API_KEY || "";
 const VISIT_AI_MODEL = process.env.HCPS_VISIT_AI_MODEL || process.env.HCPS_AI_MODEL || "claude-sonnet-5";
 const esc2 = s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
@@ -2269,12 +2273,11 @@ exports.handler = async (event)=>{
       const d=rows&&rows[0]; if(!d) return json(404,{error:"dealer not found"});
       const repName=me.name||me.rep_name||"your HCPS representative";
       const dateStr=String(b.date||"").trim();
-      const when = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? prettyDate(dateStr) : "";
       /* A time a dealer can be told, or none. The phone already leaves out an arrival outside the
          working day; this is the second lock, so no caller (an old cached app, another page) can
          put "around 1:21 AM" in front of a customer. Accepts "h:mm AM/PM" with an optional zone. */
       const warnings=[];
-      const eta = previsitEta(b.eta, warnings);
+      let eta = previsitEta(b.eta, warnings);
       const opp = String(b.opportunity||"").trim();
       /* GREET THE PERSON THE ROUTE SAYS WE ARE VISITING.
          This read the dealer record's contact_name while the stop card, the TO
@@ -2282,17 +2285,36 @@ exports.handler = async (event)=>{
          addressed to Steve Lyons opened "Hi Jeremiah". The caller passes the
          contact it is actually showing; the dealer record is the fallback. */
       const first = String(b.contact_name||d.contact_name||"").trim().split(/\s+/)[0]||"";
-      const greet = first?`Hi ${first},`:"Hi there,";
-      const arrive = eta
-        ? `I expect to be in your area${when?` on ${when}`:""} around ${eta}`
-        : (when?`I'm planning to be in your area on ${when}`:"I'm planning to be in your area soon");
-      const oppLine = opp ? `\n\nWhile I'm there I'd also like to show you ${opp} — I think it could be a good fit for your business.` : "";
-      const body = `${greet}\n\nThis is ${repName} with HomeCare Provider Services. ${arrive}, and I'd love to stop by for a few minutes to review how things are going and make sure your lines and pricing are set up the way you need.${oppLine}\n\nThe arrival time is an estimate — I'll be moving between accounts that day — but I'll do my best to reach you close to then. If a different time works better, just reply and let me know.\n\nLooking forward to seeing you.`;
-      const subject = `HCPS will be in your area${when?` — ${when}`:""}`;
+      /* Smart Email Learning, Phase 3 (each OFF unless its switch is exactly true; all off = the heads-up exactly as before):
+         email_ai_headsup — the heads-up is written by AI from the checked facts, the fixed template is the fallback;
+         email_styles — the editor's writing style. With either on, the date and arrival time are checked first (HU.checkDate /
+         HU.checkEta: a past, far-off or unreadable date, a time without a known zone or one already passed → left out, neutral
+         wording). The heads-up never reads more of the dealer than the template does. */
+      const fl=await FL.flags(sbGet);
+      const aiOn=fl.email_ai_headsup===true, stylesOn=fl[ST.SWITCH_STYLES]===true, strict=aiOn||stylesOn;
+      let when=/^\d{4}-\d{2}-\d{2}$/.test(dateStr)?dateStr:"";
+      if(strict){ when=HU.checkDate(dateStr, warnings); eta=HU.checkEta(eta, when, warnings); }
+      const f={repName, first, when, eta, opp};
+      let {subject, body}=HU.templateDraft(f), ai=false, style=null, learned=null;
+      if(aiOn){
+        style=stylesOn?ST.styleKey(b.style):null;
+        learned=await RA.approvedFor(sbGet, me, "previsit_headsup", fl);
+        const extra=[style?ST.styleBlock(style):"", learned.active?learned.addendum:""].filter(Boolean).join("\n\n");
+        const r=await HU.aiDraft(f, {ask:p=>require("./_ai_draft.js").askDraft(p,{key:AI_KEY, model:process.env.HCPS_AI_MODEL||"claude-sonnet-5"}),
+          styleGuide:await loadStyleGuide(sbGet), extra, findBanned});
+        if(r.ok){ subject=r.subject; body=r.body; ai=true; }
+        else warnings.push(r.reason==="guard_refused"
+          ? "The AI heads-up said something HCPS couldn't confirm, so the standard heads-up was used."
+          : "The AI heads-up couldn't be written just now, so the standard heads-up was used.");
+      }
       const signature = `${repName}${me.email?` · ${me.email}`:""}\nHomeCare Provider Services`;
       // Smart Email Learning, Phase 1: keep this heads-up as written (President only, switch on; never fails the draft).
       const draft_id=await EL.recordDraft(sbGet, me, {template:"previsit", generator:"routes-api", dealer_id, subject, body:EL.asShown(body, signature)});
-      return json(200,{ok:true, draft_id, to:String(d.email||""), subject, body, signature, warnings});
+      if(draft_id && (ai || style)) await RA.recordShape(me, draft_id, {profile_version:learned&&learned.active?learned.version:null, style, ai});
+      return json(200,{ok:true, draft_id, to:String(d.email||""), subject, body, signature, warnings,
+        ai:aiOn?ai:undefined, style:style||undefined,
+        features:strict?{styles:stylesOn, style_list:stylesOn?ST.styleList():undefined, ai:aiOn, checked:true}:undefined,
+        learning:learned&&learned.active?{version:learned.version, rules:learned.rules.length}:undefined});
     }
 
     // ---------- Email the rep the mobile Scheduled Routes link (for add-to-home-screen) ----------
