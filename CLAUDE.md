@@ -2004,6 +2004,18 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   the storefront, search, cart and order server drop them, while the catalog file, the private price record, the live
   site and order history stay untouched; `restore` brings them back. Retired SKUs leave the image audit / missing list.
   Manufacturers are reviewed one at a time in the order the owner sets; other lines are not touched during one review.
+- **Parent product families (owner, 2026-10-31, Access4U; tracker #42).** One dealer card per meaningful product family
+  (the Ovation product-detail standard), never a card per size: sizes / widths / configurations are chosen inside the
+  product page, one picker per axis, and every combination is exactly one SKU from the authoritative price list
+  (a combination the list does not have is marked "not offered", never invented). Materially different products stay
+  separate cards (Access4U: ramp sections, starter ramps, rest section, platform-to-ramp kits). Rules are data —
+  content-overrides/<slug>.json `_families` {key, name, match, axes [{name, on code|name|field, re, fmt}], specs,
+  content_from} — applied by scripts/_catalog_families.js on every enrichment run (catalog-enrich) and by
+  `node scripts/catalog-families.js`, so a new price list's SKUs join their family automatically; a SKU on no page / two
+  pages, or two SKUs with the same choices, is reported and stops the write. Grouping never touches prices (pricing stays
+  keyed by SKU). Storefront: SKU `axes` → `p._axes`, `specs` → `p._skuSpecs` (Selected configuration rows); pickers use
+  `axesOf()`. At publication: the live engine/picker copies are re-extracted (test/extract-picker.js takes axesOf when
+  present). Tests: test/catalog-families.test.js (admin), test/a4u-families.test.js (ordering preview).
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.

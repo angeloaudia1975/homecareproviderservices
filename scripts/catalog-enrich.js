@@ -263,6 +263,9 @@ for (const page of plan.pages) {
   const IL = require("./_catalog_images_lib.js");
   const log = IL.applyApproved(pages, overrides._images || {}, shop, {});
   IL.cleanPages(pages, shop, log);
+  /* parent product families (content-overrides "_families"): one card per family, a picker per axis */
+  const fam = require("./_catalog_families.js").applyFamilies(pages, catalog, overrides._families || [], log);
+  report.family_problems = fam.problems;
   IL.applyRetired(pages, overrides._retired || {}, log);
   report.images = Object.fromEntries(Object.entries(log).map(([k, v]) => [k, v.length]));
 }

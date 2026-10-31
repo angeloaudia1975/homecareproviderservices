@@ -22,6 +22,9 @@ function grabDecl(src, anchor){
   }
   throw new Error('unterminated: '+anchor);
 }
-function extract(src){ return NAMES.map(a=>grabDecl(src,a)).join('\n'); }
+/* 'function axesOf' (parent families, 2026-10-31) is taken when the page has it — the preview branch does, the live page
+   does not yet — so one extractor serves both until the preview is published. */
+const OPTIONAL=['function axesOf'];
+function extract(src){ return NAMES.map(a=>grabDecl(src,a)).concat(OPTIONAL.filter(a=>src.indexOf('\n'+a)>=0).map(a=>grabDecl(src,a))).join('\n'); }
 module.exports={extract,NAMES,grabDecl};
 if(require.main===module){ const src=fs.readFileSync(process.argv[2],'utf8'); process.stdout.write(extract(src)); }
