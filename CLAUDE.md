@@ -590,6 +590,14 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   numbered, insert-only version (restore / reset create a new one). Daily analysis only while `phase2_flags.email_learning_suggest`
   is exactly true (off). **Approved rules change NO email in Phase 2** — no generator reads them (test-enforced); Phase 3 applies
   them behind its own switch.
+  **Exact-head review fixes (2026-10-31, after reconciling with main incl. PR #71):** a capitalised word is a name wherever it stands
+  (after "(", a quote, a dash, "/", a comma with no space) and in any alphabet ("José"); spelled-out addresses without spaces
+  ("pat(at)acme(dot)com") and any word.word token are masked; a phrase still holding a non-A–Z letter, a capitalised word that is
+  not an ordinary opener, or "(at)"/"[dot]" is DROPPED (fail closed — rule rows are never deleted, so nothing identifying may get
+  in). Only the ACTIVE President's own drafts are learned from (runner AND database). The database COUNTS the evidence itself from
+  `draft_ids` (sent, edited, President-written) — the caller's counts are ignored. A decision carries the rule's status on screen
+  (`expected_status`): a reject makes no version, so a stale tab can never approve a rule rejected meanwhile. The wording (owner's or
+  suggested) holds no digit except a percentage — code and database. One rule per edit: unique `pattern_key` + an advisory lock.
 - **A replay is a no-op.** Every write from a visit carries `(origin_type, origin_id, origin_key)` against
   a unique index (or a claim PATCH on a null column), so a double tap, an offline resend or a late replay
   never duplicates a visit, note, task, deal, contact, activity row or intent signal — while a genuinely

@@ -143,7 +143,8 @@
     }
     $("#body").innerHTML = tabs() + inner; wireTabs();
     const an = $("#el-analyze"); if (an) an.onclick = analyze;
-    document.querySelectorAll("[data-act]").forEach(b => { b.onclick = () => { FORM = { id: b.getAttribute("data-id"), act: b.getAttribute("data-act") }; MSG = ""; renderRules(); const f = $("#el-reason"); if (f) f.focus(); }; });
+    document.querySelectorAll("[data-act]").forEach(b => { b.onclick = () => { const id = b.getAttribute("data-id"), rr = Array.isArray(RULES) ? RULES.find(x => x.id === id) : null;
+      FORM = { id, act: b.getAttribute("data-act"), status: rr ? rr.status : "" }; MSG = ""; renderRules(); const f = $("#el-reason"); if (f) f.focus(); }; });
     const c = $("#el-cancel"); if (c) c.onclick = () => { FORM = null; renderRules(); };
     const sv = $("#el-save"); if (sv) sv.onclick = saveDecision;
   }
@@ -157,10 +158,10 @@
     const reason = ($("#el-reason").value || "").trim(), instr = $("#el-instr") ? $("#el-instr").value : undefined;
     if (reason.length < 3) { MSG = "Give a short reason first."; renderRules(); return; }
     BUSY = true; renderRules();
-    const r = await api({ action: "decide", rule_id: FORM.id, decision: FORM.act, reason, instruction: instr, expected_version: VER });
+    const r = await api({ action: "decide", rule_id: FORM.id, decision: FORM.act, reason, instruction: instr, expected_version: VER, expected_status: FORM.status });
     BUSY = false;
     if (r.status === 200) { MSG = { approve: "Approved", reject: "Rejected", retire: "Retired", edit: "Wording saved" }[FORM.act] + (r.body.version !== VER ? ` — approved set is now version ${r.body.version}.` : "."); FORM = null; await refreshStatus(); await loadRules(); }
-    else { MSG = (r.body && (r.body.message || ({ not_allowed: "That change isn't possible for this rule any more — reload.", president_only: "Only the President can decide.", bad_instruction: "Check the wording (3–300 characters, no email address or link)." })[r.body.status] || r.body.error)) || "Couldn't save."; renderRules(); }
+    else { MSG = (r.body && (r.body.message || ({ not_allowed: "That change isn't possible for this rule any more — reload.", president_only: "Only the President can decide.", bad_instruction: "Check the wording (3–300 characters, no email address, link or number — a percentage is fine)." })[r.body.status] || r.body.error)) || "Couldn't save."; renderRules(); }
   }
   async function refreshStatus() { const s = await api({ action: "status" }); if (s.status === 200) ST = s.body; }
 

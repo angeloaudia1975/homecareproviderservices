@@ -36,7 +36,11 @@ function world(opts) {
   if (opts.missing) S.missingTables = ['email_learning_rules', 'email_learning_profiles', 'email_learning_rule_events'];
   return { S, w: createWorld(S) };
 }
-const api = (w, b, token) => call(load('email-learning-api.js', w), b, { token: token || 'pres' });
+// A decision carries the status the owner sees on screen (taken from the world unless the test sets it).
+const api = (w, b, token) => {
+  if (b && b.action === 'decide' && !('expected_status' in b)) { const r = ((w.db && w.db.email_learning_rules) || []).find(x => x.id === b.rule_id); b = Object.assign({}, b, { expected_status: r ? r.status : 'suggested' }); }
+  return call(load('email-learning-api.js', w), b, { token: token || 'pres' });
+};
 
 (async () => {
   // ── the analyser (pure) ─────────────────────────────────────────────────
@@ -59,7 +63,18 @@ const api = (w, b, token) => call(load('email-learning-api.js', w), b, { token: 
   });
   await t('safe evidence: a digit or "@" left after masking, or only placeholders, is never kept', () => {
     assert.ok(L.safePhrase('I hope this email finds you well'));
-    for (const s of ['Room 4B', 'x@y', '{name} {date}', 'ok', 'a'.repeat(201)]) assert.ok(!L.safePhrase(s), s);
+    for (const s of ['Room 4B', 'see you in room 4b today', 'write to x@y', 'x@y', '{name} {date}', 'ok', 'a'.repeat(201)]) assert.ok(!L.safePhrase(s), s);
+  });
+  await t('masking over-masks: names after "(", quotes, dashes, "/", a comma with no space, other alphabets; spelled-out and unusual addresses', () => {
+    const cases = [['Please ask for (Sarah) at the front desk.', /Sarah/], ['Thanks,Pat for the help.', /Pat/], ['Our rep —Sarah— will call.', /Sarah/],
+      ['Talk to Bob/Alice tomorrow.', /Bob|Alice/], ['Say hi to “Golden Rule” for me.', /Golden|Rule/], ['Ask José or Émile at the desk.', /Jos|mile|é|É/],
+      ['Write to pat(at)acme(dot)com today.', /pat|acme/], ['Write to pat [at] acme [dot] ai today.', /pat|acme/], ['See acmemedical.ai for details.', /acme/],
+      ["Ask for 'Greg' when you call.", /Greg/], ['Talk to Mr.Smith soon.', /Smith/], ['Ask for O’Brien at the front.', /Brien/]];
+    for (const [x, leak] of cases) { const m = L.mask(x, { dealer: 'Golden Rule Pharmacy' }); assert.ok(!leak.test(m), x + ' → ' + m); }
+    // fail closed: anything still looking like a name or a non-ASCII letter is never kept as evidence
+    for (const x of ['Talk to josé soon.', 'Ask for Zebulon here.', 'Write pat(at)acme']) assert.ok(!L.safePhrase(x), x);
+    for (const x of ['Thanks for meeting with us today.', 'Please let me know if you have questions.', 'Hi {name}, thanks for your time.', 'I think {name} will call.'])
+      assert.ok(L.safePhrase(L.mask(x)), x);
   });
   await t('the edits of one email: greeting, deleted line, rewritten line', () => {
     const e = L.editsOf(edited(0), { dealer: NAMES[0] }).map(x => x.kind + ':' + JSON.stringify(x.pattern));
@@ -94,7 +109,9 @@ const api = (w, b, token) => call(load('email-learning-api.js', w), b, { token: 
   });
   await t('owner wording: 3–300 characters, no email address or link', () => {
     assert.strictEqual(L.cleanInstruction('  Keep it   short. '), 'Keep it short.');
-    for (const s of ['', 'ok', 'x'.repeat(301), 'Mail me at a@b.test', 'See https://x.test']) assert.strictEqual(L.cleanInstruction(s), null, s);
+    for (const s of ['', 'ok', 'x'.repeat(301), 'Mail me at a@b.test', 'See https://x.test', 'Call 615 555 0100.', 'Mention the $20 fee.', 'Visit on 10/31.'])
+      assert.strictEqual(L.cleanInstruction(s), null, s);
+    assert.strictEqual(L.cleanInstruction('Keep it shorter — about 30%.'), 'Keep it shorter — about 30%.', 'a percentage is fine');
   });
 
   // ── owner page API ──────────────────────────────────────────────────────
@@ -115,6 +132,22 @@ const api = (w, b, token) => call(load('email-learning-api.js', w), b, { token: 
     assert.strictEqual(w.db.email_learning_profiles.length, 0, 'a suggestion never approves');
     const again = await api(w, { action: 'analyze' });
     assert.strictEqual(again.body.summary.inserted, 0); assert.strictEqual(w.db.email_learning_rules.length, r.body.summary.inserted);
+  });
+  await t('only the President\'s own emails are learned from (a rep\'s captured drafts never count, even if present)', async () => {
+    const greg = [edited(0), edited(1), edited(3)].map(d => Object.assign(d, { author_email: 'greg@hcps.us' }));
+    const { w } = world({ drafts: greg });
+    const r = await api(w, { action: 'analyze' });
+    assert.strictEqual(r.status, 200); assert.strictEqual(r.body.summary.scanned, 0); assert.strictEqual((w.db.email_learning_rules || []).length, 0);
+    const mixed = [edited(0), edited(1)].concat([edited(3)].map(d => Object.assign(d, { author_email: 'greg@hcps.us' })));
+    const w2 = world({ drafts: mixed }).w; await api(w2, { action: 'analyze' });
+    assert.strictEqual((w2.db.email_learning_rules || []).length, 0, 'two of the President\'s + one of Greg\'s is not three');
+  });
+  await t('a decision without the status on screen is refused before the database', async () => {
+    const { w } = world({ drafts: three() }); await api(w, { action: 'analyze' });
+    const id = w.db.email_learning_rules[0].id;
+    assert.strictEqual((await api(w, { action: 'decide', rule_id: id, decision: 'approve', reason: 'Mine', expected_version: 0, expected_status: '' })).status, 400);
+    assert.strictEqual((await api(w, { action: 'decide', rule_id: id, decision: 'approve', reason: 'Mine', expected_version: 0, expected_status: 'approved' })).status, 409, 'stale screen');
+    assert.strictEqual(w.db.email_learning_rules[0].status, 'suggested');
   });
   await t('a rejected edit does not come back under another email type', async () => {
     // The edit appears once in each of three types → suggested once for "every type"; the owner rejects it.

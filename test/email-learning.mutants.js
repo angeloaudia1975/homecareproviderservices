@@ -20,9 +20,10 @@ for (const TABLE of TABLES) { const table = require(TABLE); total += Object.valu
 for (const [name, m] of Object.entries(table)) {
   const env = Object.assign({}, process.env); let tmp = null;
   if (SQLF[m.file]) {
-    const [SQL, VAR] = SQLF[m.file]; const src = fs.readFileSync(SQL, 'utf8');
-    if (src.split(m.from).length !== 2) { skipped.push(name); console.log('ANCHOR?  ' + name); continue; }
-    tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'el-')), 'm.sql'); fs.writeFileSync(tmp, src.replace(m.from, m.to)); env[VAR] = tmp;
+    const [SQL, VAR] = SQLF[m.file]; let src = fs.readFileSync(SQL, 'utf8');
+    if (src.split(m.from).length !== 2 || (m.also_sql && src.split(m.also_sql.from).length !== 2)) { skipped.push(name); console.log('ANCHOR?  ' + name); continue; }
+    src = src.replace(m.from, () => m.to); if (m.also_sql) src = src.replace(m.also_sql.from, () => m.also_sql.to);   // a second edit, same file
+    tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'el-')), 'm.sql'); fs.writeFileSync(tmp, src); env[VAR] = tmp;
   } else { env.P0_MUTANT = name; env.P0_MUTANT_TABLE = TABLE; }
   const r = run(m.suite, env);
   if (tmp) fs.rmSync(path.dirname(tmp), { recursive: true, force: true });

@@ -6,7 +6,8 @@
 // Phase 2 (learning; owner decisions 3 + versions — CLAUDE.md §16):
 //   POST {action:"rules", status?}                    learned rules (masked evidence only)
 //   POST {action:"analyze", dry_run?}                 look for repeated edits now (pure code, no AI); dry_run = preview only
-//   POST {action:"decide", rule_id, decision, reason, instruction?, expected_version}   approve | reject | retire | edit
+//   POST {action:"decide", rule_id, decision, reason, instruction?, expected_version, expected_status}   approve | reject | retire | edit
+//        expected_status = the rule's status on the owner's screen (a stale screen is refused: version_conflict)
 //   POST {action:"versions"}                          every version of the approved set
 //   POST {action:"rollback", to_version, reason, expected_version}   0 = reset (no approved rule)
 // President only (owner decision: the learning record and its dashboard are the owner's). The person deciding is always the
@@ -28,7 +29,9 @@ async function rpc(fn, p){
 }
 const RULE_COLS = "id,email_type,kind,pattern,instruction,suggested_instruction,examples,sends,dealers,first_seen,last_seen,status,decided_at,decided_by,decision_reason,updated_at";
 const DECIDE_HTTP = { decided: 200, president_only: 403, version_conflict: 409, not_allowed: 409, not_found: 404, reason_required: 422, bad_instruction: 422 };
-const rulesInstalled = e => !(e && (e.status === 404 || /PGRST205|PGRST202|42P01|does not exist|Could not find/i.test(String(e.message))));
+// "Not installed" = the Phase 2 table or function is missing — never any other database error (a column error stays a 500).
+const rulesInstalled = e => !(e && (/PGRST205|PGRST202|42P01/.test(String(e.message))
+  || (/relation "public\.email_learning_|function public\.hcps_email_(rule|profile)_\w+\(.*\) does not exist|Could not find the (table|function) 'public\.(email_learning_|hcps_email_(rule|profile)_)/i.test(String(e.message)))));
 const { flags } = require("./_flags.js");
 
 async function whoami(event){
@@ -126,11 +129,12 @@ exports.handler = async (event) => {
       let instruction;
       if(b.instruction != null && String(b.instruction).trim() !== ""){
         instruction = LEARN.cleanInstruction(b.instruction);
-        if(!instruction) return json(422, { error: "bad_instruction", message: "The wording must be 3–300 characters, with no email address or link." });
+        if(!instruction) return json(422, { error: "bad_instruction", message: "The wording must be 3–300 characters, with no email address, link or number (a percentage is fine)." });
       }
       if(b.decision === "edit" && !instruction) return json(422, { error: "bad_instruction", message: "Write the new wording." });
       const ev = parseInt(b.expected_version, 10); if(!Number.isFinite(ev) || ev < 0) return json(400, { error: "bad_version" });
-      const out = await rpc("hcps_email_rule_decide", { rule_id: id, decision: b.decision, by: me.email, reason, instruction, expected_version: ev });
+      const es = String(b.expected_status || ""); if(!["suggested","approved","rejected","retired"].includes(es)) return json(400, { error: "bad_status" });
+      const out = await rpc("hcps_email_rule_decide", { rule_id: id, decision: b.decision, by: me.email, reason, instruction, expected_version: ev, expected_status: es });
       const code = DECIDE_HTTP[out && out.status] || 500;
       return json(code, Object.assign({ ok: code === 200 }, out, code === 409 && out.status === "version_conflict" ? { message: "Something changed since you opened this page — reload and try again." } : {}));
     });

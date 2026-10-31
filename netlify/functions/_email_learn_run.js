@@ -10,10 +10,20 @@ const L = require("./_email_learn.js");
 const PAGE = 1000, MAX_ROWS = 10000;
 const COLS = "id,email_type,dealer_id,sent_at,edited,original_subject,original_body,sent_subject,sent_body";
 
+// Only the ACTIVE President's own emails are learned from (owner decision: Greg's and Lori's emails are never learned from
+// until he says so) — whatever Phase 1 capture holds. Read strictly; no President → nothing is read.
+async function presidentEmails(sbGet){
+  const rows = await sbGet(`staff_users?select=email,role,active&role=ilike.president`);
+  return [...new Set((rows || []).filter(r => r && r.email && String(r.role || "").toLowerCase() === "president" && r.active !== false)
+    .map(r => String(r.email).trim().toLowerCase()))];
+}
 async function loadDrafts(sbGet){
   const out = [];
+  const authors = await presidentEmails(sbGet);
+  if(!authors.length) return { drafts: out, capped: false };
+  const who = `author_email=in.(${authors.map(e => `"${e.replace(/["\\]/g, "")}"`).map(encodeURIComponent).join(",")})`;
   for(let off = 0; off < MAX_ROWS; off += PAGE){
-    const rows = await sbGet(`email_drafts?select=${COLS}&sent_at=not.is.null&edited=is.true&content_purged_at=is.null&order=sent_at.desc,id.desc&limit=${PAGE}&offset=${off}`);
+    const rows = await sbGet(`email_drafts?select=${COLS}&${who}&sent_at=not.is.null&edited=is.true&content_purged_at=is.null&order=sent_at.desc,id.desc&limit=${PAGE}&offset=${off}`);
     out.push(...rows); if(rows.length < PAGE) return { drafts: out, capped: false };
   }
   return { drafts: out, capped: true };
@@ -39,7 +49,8 @@ async function runAnalysis(sbGet, rpc, opts){
     for(const s of res.suggestions){
       try{
         const out = await rpc("hcps_email_rule_note", { rule_key: s.rule_key, pattern_key: s.pattern_key, email_type: s.email_type, kind: s.kind, pattern: s.pattern,
-          instruction: s.instruction, examples: s.examples, sends: s.sends, dealers: s.dealers, first_seen: s.first_seen, last_seen: s.last_seen });
+          instruction: s.instruction, examples: s.examples, sends: s.sends, dealers: s.dealers, first_seen: s.first_seen, last_seen: s.last_seen,
+          draft_ids: s.draft_ids });   // the database recounts the evidence from these drafts itself
         const st = out && out.status;
         if(st === "inserted") summary.inserted++; else if(st === "updated") summary.updated++; else if(st === "unchanged") summary.unchanged++; else if(st === "sibling_exists") summary.already_decided++; else summary.refused++;
       }catch(e){ summary.refused++; }
@@ -48,4 +59,4 @@ async function runAnalysis(sbGet, rpc, opts){
   return { summary, preview: apply ? undefined : res.suggestions.map(s => ({ email_type: s.email_type, kind: s.kind, instruction: s.instruction,
     sends: s.sends, dealers: s.dealers, examples: s.examples })) };
 }
-module.exports = { runAnalysis, loadDrafts, SWITCH_SUGGEST: "email_learning_suggest" };
+module.exports = { runAnalysis, loadDrafts, presidentEmails, SWITCH_SUGGEST: "email_learning_suggest" };

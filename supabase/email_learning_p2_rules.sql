@@ -49,12 +49,16 @@ create table if not exists public.email_learning_rules (
   decision_reason        text check (decision_reason is null or length(decision_reason) <= 500),
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now(),
-  -- non-identifying evidence: no digit and no "@" anywhere in the stored pattern, wording or examples
+  -- non-identifying evidence: no digit and no "@" anywhere in the stored pattern or examples; the wording holds no "@" and
+  -- no digit other than a percentage ("about 30%") — never a phone number, amount, date or address
   constraint email_learning_rules_masked_ck check (pattern::text !~ '[0-9@]' and examples::text !~ '[0-9@]'
-                                                   and suggested_instruction !~ '@' and instruction !~ '@')
+                                                   and suggested_instruction !~ '@' and instruction !~ '@'
+                                                   and regexp_replace(suggested_instruction, '[0-9]{1,3}%', '', 'g') !~ '[0-9]'
+                                                   and regexp_replace(instruction, '[0-9]{1,3}%', '', 'g') !~ '[0-9]')
 );
 create index if not exists email_learning_rules_status_ix on public.email_learning_rules(status, updated_at desc);
-create index if not exists email_learning_rules_pattern_ix on public.email_learning_rules(pattern_key);
+-- One rule per edit, whatever the email type: two analysis runs at once can never suggest the same edit twice.
+create unique index if not exists email_learning_rules_pattern_uk on public.email_learning_rules(pattern_key);
 
 create table if not exists public.email_learning_profiles (
   version       integer primary key check (version > 0),
@@ -149,17 +153,29 @@ returns jsonb language sql stable security definer set search_path = public, pg_
     from public.email_learning_rules where status = 'approved'
 $$;
 
--- p = { rule_key, pattern_key, email_type, kind, pattern, instruction, examples, sends, dealers, first_seen, last_seen }
--- A new rule is never created for an edit already known under another email type (pattern_key): a rejected, approved or
--- retired edit is never suggested again in another scope, and the same edit is never suggested twice.
+-- p = { rule_key, pattern_key, email_type, kind, pattern, instruction, examples, draft_ids, first_seen, last_seen }
+-- The evidence is COUNTED HERE from email_drafts (draft_ids = the drafts the analyser found the edit in): only sent, edited
+-- drafts written by the active President count; the caller's own counts are not trusted. A new rule is never created for an
+-- edit already known under another email type (pattern_key): a rejected, approved or retired edit is never suggested again in
+-- another scope, and the same edit is never suggested twice (advisory lock + unique index on pattern_key).
 create or replace function public.hcps_email_rule_note(p jsonb)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
 declare r public.email_learning_rules; v_sends int; v_dealers int; v_instr text := btrim(coalesce(p->>'instruction', ''));
-        v_ex jsonb := coalesce(p->'examples', '[]'::jsonb); v_changed boolean;
+        v_ex jsonb := coalesce(p->'examples', '[]'::jsonb); v_changed boolean; v_ids uuid[];
 begin
-  begin v_sends := coalesce((p->>'sends')::int, 0); v_dealers := coalesce((p->>'dealers')::int, 0);
-  exception when others then return jsonb_build_object('ok', false, 'status', 'bad_request'); end;
   if jsonb_typeof(v_ex) <> 'array' then raise exception 'email_rule_bad_request: examples is a list'; end if;
+  if coalesce(p->>'pattern_key', '') !~ '^[0-9a-f]{32}$' or jsonb_typeof(p->'draft_ids') is distinct from 'array'
+     or jsonb_array_length(p->'draft_ids') > 10000 then
+    return jsonb_build_object('ok', false, 'status', 'bad_request');
+  end if;
+  begin select array_agg(distinct x::uuid) into v_ids from jsonb_array_elements_text(p->'draft_ids') x;
+  exception when others then return jsonb_build_object('ok', false, 'status', 'bad_request'); end;
+  select count(distinct d.id), count(distinct d.dealer_id) into v_sends, v_dealers
+    from public.email_drafts d
+   where d.id = any(coalesce(v_ids, '{}'::uuid[])) and d.sent_at is not null and d.edited is true
+     and d.author_email in (select lower(btrim(s.email)) from public.staff_users s
+                             where lower(coalesce(s.role, '')) = 'president' and s.active is not false);
+  perform pg_advisory_xact_lock(hashtext('hcps_email_rule_note:' || (p->>'pattern_key')));
   select * into r from public.email_learning_rules where rule_key = p->>'rule_key' for update;
   if r.id is null then   -- (not FOUND: a later PERFORM would reset it)
     if v_sends < 3 or v_dealers < 2 then return jsonb_build_object('ok', false, 'status', 'below_threshold'); end if;
@@ -196,7 +212,9 @@ returns integer language sql stable security definer set search_path = public, p
   select coalesce(max(version), 0) from public.email_learning_profiles
 $$;
 
--- p = { rule_id, decision: approve | reject | retire | edit, by, reason, instruction?, expected_version }
+-- p = { rule_id, decision: approve | reject | retire | edit, by, reason, instruction?, expected_version, expected_status }
+-- expected_status = the rule's status on the owner's screen: a reject creates no version, so the version alone cannot tell
+-- a stale screen from a current one (a rule rejected in another tab is never approved from an old one).
 create or replace function public.hcps_email_rule_decide(p jsonb)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
 declare r public.email_learning_rules; v_by text; v_cur int; v_id uuid; v_d text := coalesce(p->>'decision', '');
@@ -214,7 +232,11 @@ begin
   end if;
   select * into r from public.email_learning_rules where id = v_id for update;
   if not found then return jsonb_build_object('ok', false, 'status', 'not_found'); end if;
-  if v_instr is not null and (length(v_instr) < 3 or length(v_instr) > 300 or v_instr ~ '@') then
+  if coalesce(p->>'expected_status', '') <> r.status then
+    return jsonb_build_object('ok', false, 'status', 'version_conflict', 'version', v_cur, 'rule_status', r.status);
+  end if;
+  if v_instr is not null and (length(v_instr) < 3 or length(v_instr) > 300 or v_instr ~ '@'
+                              or regexp_replace(v_instr, '[0-9]{1,3}%', '', 'g') ~ '[0-9]') then
     return jsonb_build_object('ok', false, 'status', 'bad_instruction');
   end if;
   v_to := case v_d when 'approve' then case when r.status in ('suggested','rejected','retired') then 'approved' end
@@ -330,4 +352,7 @@ select * from (
   union all select 8, 'suggestion switch NOT turned on by this migration',
          coalesce((select value->>'email_learning_suggest' from public.app_settings where key = 'phase2_flags'), 'absent'),
          coalesce((select value->>'email_learning_suggest' from public.app_settings where key = 'phase2_flags'), 'absent') <> 'true'
+  union all select 9, 'one rule per edit (unique pattern_key)', coalesce((select indexdef from pg_indexes where schemaname = 'public'
+           and indexname = 'email_learning_rules_pattern_uk'), 'missing'),
+         exists (select 1 from pg_index i where i.indexrelid = 'public.email_learning_rules_pattern_uk'::regclass and i.indisunique)
 ) c order by n;

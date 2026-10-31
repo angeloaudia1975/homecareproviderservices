@@ -12,8 +12,15 @@ function rpc() {
   return {
     hcps_email_rule_note(p, db) {
       const t = db.email_learning_rules = db.email_learning_rules || [];
-      if (/[0-9@]/.test(JSON.stringify(p.pattern || {}) + JSON.stringify(p.examples || [])) || /@/.test(p.instruction || ''))
+      if (/[0-9@]/.test(JSON.stringify(p.pattern || {}) + JSON.stringify(p.examples || [])) || /@/.test(p.instruction || '')
+          || /\d/.test(String(p.instruction || '').replace(/\d{1,3}%/g, '')))
         return { status: 400, body: { code: '23514', message: 'violates check constraint "email_learning_rules_masked_ck"' } };
+      if (!/^[0-9a-f]{32}$/.test(String(p.pattern_key || '')) || !Array.isArray(p.draft_ids)) return ok({ ok: false, status: 'bad_request' });
+      // Counted here, as the SQL does: sent, edited drafts of the active President only (the caller's counts are ignored).
+      const ids = new Set(p.draft_ids.map(String));
+      const presidents = new Set((db.staff_users || []).filter(u => String(u.role).toLowerCase() === 'president' && u.active !== false).map(u => String(u.email).toLowerCase()));
+      const ev2 = (db.email_drafts || []).filter(d => ids.has(String(d.id)) && d.sent_at && d.edited === true && presidents.has(String(d.author_email).toLowerCase()));
+      p = Object.assign({}, p, { sends: ev2.length, dealers: new Set(ev2.map(d => d.dealer_id).filter(Boolean)).size });
       const r = t.find(x => x.rule_key === p.rule_key);
       if (!r) {
         if (!(p.sends >= 3 && p.dealers >= 2)) return ok({ ok: false, status: 'below_threshold' });
@@ -33,8 +40,9 @@ function rpc() {
       const reason = String(p.reason || '').trim(); if (reason.length < 3 || reason.length > 500) return ok({ ok: false, status: 'reason_required' });
       const cur = ver(db); if (Number(p.expected_version) !== cur) return ok({ ok: false, status: 'version_conflict', version: cur });
       const r = (db.email_learning_rules || []).find(x => x.id === p.rule_id); if (!r) return ok({ ok: false, status: 'not_found' });
+      if (String(p.expected_status || '') !== r.status) return ok({ ok: false, status: 'version_conflict', version: cur, rule_status: r.status });
       const ins = p.instruction ? String(p.instruction).trim() : null;
-      if (ins && (ins.length < 3 || ins.length > 300 || /@/.test(ins))) return ok({ ok: false, status: 'bad_instruction' });
+      if (ins && (ins.length < 3 || ins.length > 300 || /@/.test(ins) || /\d/.test(ins.replace(/\d{1,3}%/g, '')))) return ok({ ok: false, status: 'bad_instruction' });
       const to = { approve: ['suggested', 'rejected', 'retired'].includes(r.status) && 'approved', reject: r.status === 'suggested' && 'rejected',
         retire: r.status === 'approved' && 'retired', edit: r.status === 'approved' && ins && ins !== r.instruction && 'approved' }[p.decision];
       if (!to) return ok({ ok: false, status: 'not_allowed', rule_status: r.status });

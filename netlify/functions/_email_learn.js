@@ -33,7 +33,7 @@ const COMMON_START = new Set(("A About Absolutely Actually After Again All Also 
   "These They This Those Today Tomorrow Unfortunately Until Usually Very Want Wanted We We'll We're We've Welcome Were What When Where " +
   "Which While Who Why Will With Would Yes Yesterday You You'll You're Your Dear Greetings Morning Afternoon Evening Cheers Warm " +
   "Visit Contact Note Remember Need Give Take Make Keep Send Share Check Try Use Order Find Join Come Go Hear Know Look Tell Write").split(" "));
-const HONORIFIC = /\b(?:Mr|Mrs|Ms|Mx|Dr|Prof|Rev|Sr|Jr|St)\.?\s+[A-Z][\w'’-]*/g;
+const HONORIFIC = /\b(?:Mr|Mrs|Ms|Mx|Dr|Prof|Rev|Sr|Jr|St)\.?\s+\p{Lu}[\p{L}\p{M}\p{N}_'’-]*/gu;
 const MONTHS = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
 const GREETING = /^(hi|hello|hey|dear|good\s+(?:morning|afternoon|evening)|greetings)\b/i;
 
@@ -47,9 +47,11 @@ function mask(text, ctx){
   if(dealer && dealer.length >= 3) s = s.replace(new RegExp(escRe(dealer), "gi"), "{dealer}");
   s = s.replace(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi, "{email}")
        .replace(/\b(?:https?:\/\/|www\.)\S+/gi, "{link}")
-       .replace(/\b[\w.+-]+\s+(?:at|\[at\]|\(at\))\s+[\w-]+\s+(?:dot|\[dot\]|\(dot\))\s+[a-z]{2,}\b/gi, "{email}")
-       .replace(/\b[\w-]+\s+(?:dot|\[dot\]|\(dot\))\s+(?:com|net|org|us|biz|info|co|io|edu|gov)\b/gi, "{link}")
-       .replace(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|us|biz|info|co|io|edu|gov|health|care|shop|store|app)\b(?:\/\S*)?/gi, "{link}")
+       // spelled-out addresses, with or without spaces: "bob at acme dot com", "pat(at)acme(dot)com", "pat [at] acme [dot] ai"
+       .replace(/[\p{L}\p{N}._+-]+\s*(?:\s(?:at)\s|\[\s*at\s*\]|\(\s*at\s*\)|\{\s*at\s*\})\s*[\p{L}\p{N}-]+(?:\s*(?:\s(?:dot)\s|\[\s*dot\s*\]|\(\s*dot\s*\)|\{\s*dot\s*\})\s*[\p{L}\p{N}-]+)+/giu, "{email}")
+       .replace(/[\p{L}\p{N}-]+(?:\s*(?:\s(?:dot)\s|\[\s*dot\s*\]|\(\s*dot\s*\)|\{\s*dot\s*\})\s*[\p{L}\p{N}-]+)+/giu, m => /\bdot\b/i.test(m) ? "{link}" : m)
+       // any word.word token with a 2+ letter ending is treated as a web address (over-masks rather than under-masks)
+       .replace(/(?<![\p{L}\p{N}_{}])[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)*\.\p{L}{2,}(?:\/\S*)?/gu, "{link}")
        .replace(/(?:\+?1[\s.-]?)?\(?\b\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/g, "{phone}")
        .replace(/\$\s?\d[\d,]*(?:\.\d+)?/g, "{amount}")
        .replace(new RegExp(`\\b(?:${MONTHS})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?\\b`, "gi"), "{date}")
@@ -61,22 +63,36 @@ function mask(text, ctx){
   for(const nm of (ctx && ctx.names) || []){ if(nm && nm.length >= 2) s = s.replace(new RegExp(`\\b${escRe(nm)}\\b`, "gi"), "{name}"); }
   s = s.replace(HONORIFIC, "{name}");
   // A greeting names a person: "Hi Pat," / "Good morning Pat Smith,".
-  s = s.replace(/^((?:[Hh]i|[Hh]ello|[Hh]ey|[Dd]ear|[Gg]ood\s+(?:[Mm]orning|[Aa]fternoon|[Ee]vening)|[Gg]reetings)\s+)([A-Z][\w'’-]*(?:\s+[A-Z][\w'’-]*)?)/, "$1{name}");
+  s = s.replace(/^((?:[Hh]i|[Hh]ello|[Hh]ey|[Dd]ear|[Gg]ood\s+(?:[Mm]orning|[Aa]fternoon|[Ee]vening)|[Gg]reetings)\s+)(\p{Lu}[\p{L}\p{M}'’-]*(?:\s+\p{Lu}[\p{L}\p{M}'’-]*)?)/u, "$1{name}");
   // Every other capitalised word is a likely name — wherever it stands — unless it identifies nobody (KEEP_WORDS) or it is an
   // ordinary word opening a sentence or a clause after ":" ("Please", "Thanks", "We").
-  s = s.replace(/(^|[.!?:;]\s+|\s)([A-Z][a-zA-Z'’-]*)/g, (m, pre, w) => {
-    if(KEEP_WORDS.has(w)) return m;
-    const opening = pre === "" || /[.!?:;]/.test(pre);
-    return opening && COMMON_START.has(w) ? m : pre + "{name}";
+  // A capitalised word counts wherever it stands — after a space, "(", a quote, a dash, "/" or a comma — and in any alphabet ("José").
+  s = s.replace(/(?<![\p{L}\p{M}\p{N}_{])\p{Lu}[\p{L}\p{M}\p{N}'’_-]*/gu, (w, off, all) => {
+    if(KEEP_WORDS.has(w)) return w;
+    const opening = /(?:^|[.!?:;]\s+)$/.test(all.slice(0, off));
+    return opening && COMMON_START.has(w) ? w : "{name}";
   });
   s = s.replace(/(\{name\})(\s+\{name\})+/g, "$1");
   return s;
 }
 const norm = s => String(s || "").toLowerCase().replace(/[“”"]/g, '"').replace(/[‘’]/g, "'").replace(/\s+/g, " ").replace(/[\s.!,;:]+$/, "").trim();
 // Safe to keep as non-identifying evidence: no digit, no "@", not too long, not empty, not only placeholders.
+// Fail closed: a phrase that still holds a letter outside plain A–Z (a name in another alphabet, "José"), a capitalised word that
+// is not an ordinary sentence opener or a KEEP word, or a spelled-out "(at)" / "[dot]" is dropped, never stored.
 function safePhrase(s){
   const t = String(s || "");
-  return t.length >= 3 && t.length <= MAX_PHRASE && !/[0-9@]/.test(t) && /[a-z]{2}/i.test(t.replace(/\{[a-z]+\}/g, ""));
+  if(!(t.length >= 3 && t.length <= MAX_PHRASE && !/[0-9@]/.test(t) && /[a-z]{2}/i.test(t.replace(/\{[a-z]+\}/g, "")))) return false;
+  const bare = t.replace(/\{[a-z]+\}/g, " ");
+  if(/(?![A-Za-z])[\p{L}\p{M}]/u.test(bare)) return false;
+  if(/[([{]\s*(?:at|dot)\s*[)\]}]/i.test(bare)) return false;
+  const re = /\b[A-Z][A-Za-z'’_-]*/g; let mm;
+  while((mm = re.exec(bare))){
+    const w = mm[0];
+    if(KEEP_WORDS.has(w)) continue;
+    if(COMMON_START.has(w) && /(?:^\s*|[.!?:;]\s+)$/.test(bare.slice(0, mm.index))) continue;
+    return false;
+  }
+  return true;
 }
 
 /* The email body as units (sentences), the signature left out. Pure. */
@@ -207,7 +223,7 @@ function analyze(drafts){
   const all = [...by.values()].map(c => {
     const ratio = median(c.ratios);
     return { rule_key: c.rule_key, pattern_key: keyOf("*", c.kind, c.pattern), email_type: c.email_type, kind: c.kind, pattern: c.pattern, sends: c.drafts.size, dealers: c.dealerSet.size,
-      examples: c.examples, first_seen: c.first_seen, last_seen: c.last_seen, instruction: instructionOf(c.kind, c.pattern, ratio),
+      examples: c.examples, first_seen: c.first_seen, last_seen: c.last_seen, instruction: instructionOf(c.kind, c.pattern, ratio), draft_ids: [...c.drafts].sort(),
       qualifies: c.drafts.size >= MIN_SENDS && c.dealerSet.size >= MIN_DEALERS };
   });
   // An "all types" candidate is suggested only when no single type already carries the same edit as a suggestion.
@@ -218,10 +234,12 @@ function analyze(drafts){
 }
 
 // An owner-edited instruction: plain text, one line, 3–300 characters, no e-mail address or link.
+// No digits except a percentage ("about 30%"): a phone number, amount, date or address never goes into a rule.
 function cleanInstruction(s){
   const t = String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
   if(t.length < 3 || t.length > 300) return null;
-  if(/[^\s@]+@[^\s@]+\.[a-z]{2,}/i.test(t) || /\b(?:https?:\/\/|www\.)/i.test(t)) return null;
+  if(/@/.test(t) || /\b(?:https?:\/\/|www\.)/i.test(t)) return null;
+  if(/\d/.test(t.replace(/\b\d{1,3}%/g, ""))) return null;
   return t;
 }
 

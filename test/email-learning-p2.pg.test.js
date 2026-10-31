@@ -28,12 +28,23 @@ const lit = o => `'${JSON.stringify(o).replace(/'/g, "''")}'::jsonb`;
 const call = (fn, o) => JSON.parse(as('service_role', `select public.${fn}(${lit(o)})::text`));
 const PRES = 'owner@hcps.test', REP = 'rep@hcps.test', GONE = 'former@hcps.test';
 const key = n => (n.toString(16) + '0'.repeat(32)).slice(0, 32).replace(/[^0-9a-f]/g, 'a');
+// Synthetic drafts (made through the Phase 1 functions): the database counts the evidence from these itself.
+const D1 = '0d000000-0000-4000-8000-000000000001', D2 = '0d000000-0000-4000-8000-000000000002', D3 = '0d000000-0000-4000-8000-000000000003';
+const mkDraft = (author, dealer, { send = true, edit = true } = {}) => {
+  const id = JSON.parse(q(`select public.hcps_email_draft_create(${lit({ author_email: author, dealer_id: dealer, email_type: 'previsit_headsup', template: 'previsit', generator: 'routes-api',
+    subject: 'Visit next week', body: 'Hi there, I hope this email finds you well. See you soon.' })})::text`)).id;
+  if (send) q(`select public.hcps_email_draft_record_send(${lit({ draft_id: id, author_email: author, dealer_id: dealer, subject: 'Visit next week',
+    body: edit ? 'Hi there, see you soon.' : 'Hi there, I hope this email finds you well. See you soon.', recipient_count: 1 })})`);
+  return id;
+};
+let PD = [], RD = [], GD = [], UNSENT = [], UNEDITED = [];
 const note = (n, o) => call('hcps_email_rule_note', Object.assign({ rule_key: key(n), pattern_key: key(n + 500), email_type: 'previsit_headsup', kind: 'remove_phrase',
   pattern: { phrase: 'I hope this email finds you well' }, instruction: 'Don\'t write “I hope this email finds you well”.',
-  examples: ['− I hope this email finds you well'], sends: 3, dealers: 2, first_seen: '2026-10-01T10:00:00Z', last_seen: '2026-10-20T10:00:00Z' }, o || {}));
+  examples: ['− I hope this email finds you well'], draft_ids: PD.slice(0, 3), first_seen: '2026-10-01T10:00:00Z', last_seen: '2026-10-20T10:00:00Z' }, o || {}));
 const ver = () => +as('service_role', 'select public.hcps_email_rule_version()');
-const decide = o => call('hcps_email_rule_decide', Object.assign({ by: PRES, reason: 'Matches how I write', expected_version: ver() }, o));
-const ruleOf = id => JSON.parse(q(`select row_to_json(r)::text from public.email_learning_rules r where id = '${id}'`));
+const ruleOf = id => JSON.parse(q(`select row_to_json(r)::text from public.email_learning_rules r where id = '${id}'`) || 'null');
+const decide = o => { const r = ruleOf(o.rule_id); return call('hcps_email_rule_decide', Object.assign({ by: PRES, reason: 'Matches how I write', expected_version: ver(),
+  expected_status: r ? r.status : 'suggested' }, o)); };
 
 run('postgres', `drop database if exists ${DB}`); run('postgres', `create database ${DB}`);
 try {
@@ -48,10 +59,15 @@ try {
 
   t('Phase 2 refuses to install without Phase 1', () => { refused(() => file(DB, SQL), /install Phase 1/); });
   file(DB, P1);
+  // Six sent, edited drafts by the President (dealers 1,1,2,3,1,2) and drafts that must NOT count: a rep's, a former President's,
+  // unsent ones and sent-but-unedited ones.
+  PD = [D1, D1, D2, D3, D1, D2].map(d => mkDraft(PRES, d));
+  RD = [D1, D2, D3].map(d => mkDraft(REP, d)); GD = [D1, D2, D3].map(d => mkDraft(GONE, d));
+  UNSENT = [D1, D2, D3].map(d => mkDraft(PRES, d, { send: false })); UNEDITED = [D1, D2, D3].map(d => mkDraft(PRES, d, { edit: false }));
 
   t('install: every check ok', () => {
     const out = file(DB, SQL).trim().split('\n').filter(l => /^\d+\|/.test(l));
-    assert.strictEqual(out.length, 8, out.join('\n'));
+    assert.strictEqual(out.length, 9, out.join('\n'));
     for (const l of out) assert.ok(/\|t$/.test(l), 'check ' + l);
   });
   t('the static safe-update rule: every UPDATE carries a WHERE clause; no DELETE statement', () => {
@@ -84,8 +100,15 @@ try {
 
   let A, B, C;
   t('a suggestion needs 3 sends across 2 dealers (checked in the database)', () => {
-    assert.strictEqual(note(1, { sends: 2, dealers: 2 }).status, 'below_threshold');
-    assert.strictEqual(note(1, { sends: 5, dealers: 1 }).status, 'below_threshold');
+    assert.strictEqual(note(1, { draft_ids: [PD[0], PD[2]] }).status, 'below_threshold');
+    assert.strictEqual(note(1, { draft_ids: [PD[0], PD[1], PD[4]] }).status, 'below_threshold', '3 sends, one dealer');
+    assert.strictEqual(note(1, { draft_ids: [PD[0], PD[0], PD[2], PD[2]] }).status, 'below_threshold', 'a draft counts once');
+    assert.strictEqual(note(1, { sends: 99, dealers: 50, draft_ids: [PD[0], PD[2]] }).status, 'below_threshold', 'the caller\'s counts are not trusted');
+    assert.strictEqual(note(1, { draft_ids: RD }).status, 'below_threshold', 'a rep\'s drafts never count');
+    assert.strictEqual(note(1, { draft_ids: GD }).status, 'below_threshold', 'a former President\'s drafts never count');
+    assert.strictEqual(note(1, { draft_ids: UNSENT }).status, 'below_threshold', 'unsent drafts never count');
+    assert.strictEqual(note(1, { draft_ids: UNEDITED }).status, 'below_threshold', 'unedited sends never count');
+    assert.strictEqual(note(1, { draft_ids: [PD[0], PD[2]].concat(RD, UNSENT, UNEDITED) }).status, 'below_threshold');
     assert.strictEqual(q('select count(*) from public.email_learning_rules'), '0');
     const r = note(1); assert.strictEqual(r.status, 'inserted'); A = r.id;
     assert.strictEqual(ruleOf(A).status, 'suggested');
@@ -93,10 +116,10 @@ try {
   });
   t('the same evidence again changes nothing; more evidence updates only the counts and examples', () => {
     assert.strictEqual(note(1).status, 'unchanged');
-    const r = note(1, { sends: 6, dealers: 3, examples: ['− I hope this email finds you well', '− I hope you are well'] });
+    const r = note(1, { draft_ids: PD, examples: ['− I hope this email finds you well', '− I hope you are well'] });
     assert.strictEqual(r.status, 'updated');
     const x = ruleOf(A); assert.strictEqual(x.sends, 6); assert.strictEqual(x.dealers, 3); assert.strictEqual(x.status, 'suggested');
-    assert.strictEqual(note(1, { sends: 4, dealers: 2, examples: ['− I hope this email finds you well', '− I hope you are well'] }).status, 'unchanged', 'counts never go down');
+    assert.strictEqual(note(1, { draft_ids: [PD[0], PD[1], PD[2], PD[4]], examples: ['− I hope this email finds you well', '− I hope you are well'] }).status, 'unchanged', 'counts never go down');
     assert.strictEqual(ruleOf(A).sends, 6);
   });
   t('the same edit under another email type is never a new rule (a decided edit is never suggested again in another scope)', () => {
@@ -104,8 +127,10 @@ try {
     assert.strictEqual(q(`select count(*) from public.email_learning_rules where pattern_key = '${key(501)}'`), '1');
   });
   t('bad input answers a status, never an error', () => {
-    assert.strictEqual(note(9, { dealers: null }).status, 'below_threshold');
-    assert.strictEqual(note(9, { sends: 'many' }).status, 'bad_request');
+    assert.strictEqual(note(9, { draft_ids: null }).status, 'bad_request');
+    assert.strictEqual(note(9, { draft_ids: ['not-an-id'] }).status, 'bad_request');
+    assert.strictEqual(note(9, { pattern_key: 'x' }).status, 'bad_request');
+    assert.strictEqual(note(9, { draft_ids: [] }).status, 'below_threshold');
     assert.strictEqual(call('hcps_email_rule_decide', { rule_id: A, decision: 'approve', by: PRES, reason: 'Fine by me', expected_version: 'x' }).status, 'version_conflict');
     assert.strictEqual(call('hcps_email_profile_rollback', { to_version: 'x', by: PRES, reason: 'Fine by me', expected_version: 0 }).status, 'not_found');
   });
@@ -113,6 +138,8 @@ try {
     refused(() => note(2, { pattern: { phrase: 'Call me at 615 555 0100' } }), /masked_ck/);
     refused(() => note(3, { examples: ['− write to pat@example.test'] }), /masked_ck/);
     refused(() => note(4, { instruction: 'Write to pat@example.test.' }), /masked_ck/);
+    refused(() => note(4, { instruction: 'Call Pat on 937 626 5141.' }), /masked_ck/, 'no phone number in the wording');
+    refused(() => note(4, { instruction: 'Mention the $20 fee.' }), /masked_ck/, 'no amount in the wording');
   });
   B = note(5, { kind: 'greeting', pattern: { from: 'Hi {name}', to: 'Good morning {name}' }, instruction: 'Open with “Good morning {name}”.', examples: [] }).id;
   C = note(6, { email_type: 'all', kind: 'shorter', pattern: {}, instruction: 'Keep it shorter — you usually cut about 30% of the draft.', examples: [] }).id;
@@ -138,17 +165,27 @@ try {
     assert.strictEqual(decide({ rule_id: B, decision: 'retire' }).status, 'not_allowed');
     assert.strictEqual(decide({ rule_id: A, decision: 'reject' }).status, 'not_allowed', 'an approved rule is retired, not rejected');
   });
+  t('a stale screen never approves a rule rejected meanwhile (reject creates no version; the status on screen is checked)', () => {
+    const S = note(10, { pattern_key: key(610), kind: 'subject', pattern: { from: 'Checking in', to: 'Visit next week' }, instruction: 'Subject: “Visit next week”.', examples: [] }).id;
+    const v = ver();
+    assert.strictEqual(decide({ rule_id: S, decision: 'reject' }).status, 'decided');   // tab B
+    assert.strictEqual(ver(), v, 'reject made no version');
+    const stale = call('hcps_email_rule_decide', { rule_id: S, decision: 'approve', by: PRES, reason: 'Old tab', expected_version: v, expected_status: 'suggested' });
+    assert.strictEqual(stale.status, 'version_conflict'); assert.strictEqual(ruleOf(S).status, 'rejected');
+    assert.strictEqual(call('hcps_email_rule_decide', { rule_id: S, decision: 'approve', by: PRES, reason: 'No status', expected_version: v }).status, 'version_conflict', 'a missing status is refused');
+  });
   t('the analyser never changes the status or wording of a decided rule', () => {
-    note(1, { sends: 9, dealers: 4, instruction: 'Never say “I hope this email finds you well”.' });
+    note(1, { draft_ids: PD, instruction: 'Never say “I hope this email finds you well”.' });
     const x = ruleOf(A); assert.strictEqual(x.status, 'approved'); assert.strictEqual(x.instruction, 'Don\'t write “I hope this email finds you well”.');
-    assert.strictEqual(x.suggested_instruction, 'Never say “I hope this email finds you well”.'); assert.strictEqual(x.sends, 9);
-    note(5, { kind: 'greeting', pattern: { from: 'Hi {name}', to: 'Good morning {name}' }, sends: 8, dealers: 3, instruction: 'Open with “Good morning {name}”.', examples: [] });
+    assert.strictEqual(x.suggested_instruction, 'Never say “I hope this email finds you well”.'); assert.strictEqual(x.sends, 6);
+    note(5, { kind: 'greeting', pattern: { from: 'Hi {name}', to: 'Good morning {name}' }, draft_ids: PD, instruction: 'Open with “Good morning {name}”.', examples: [] });
     assert.strictEqual(ruleOf(B).status, 'rejected', 'a rejected rule is never suggested again');
   });
   t('edit wording → version 2; the same wording is not a change; an "@" is refused', () => {
     assert.strictEqual(decide({ rule_id: A, decision: 'edit', instruction: 'Skip “I hope this email finds you well” — get to the point.' }).version, 2);
     assert.strictEqual(decide({ rule_id: A, decision: 'edit', instruction: 'Skip “I hope this email finds you well” — get to the point.' }).status, 'not_allowed');
     assert.strictEqual(decide({ rule_id: A, decision: 'edit', instruction: 'Write to me at x@y.test' }).status, 'bad_instruction');
+    assert.strictEqual(decide({ rule_id: A, decision: 'edit', instruction: 'Ask them to call 615 555 0100.' }).status, 'bad_instruction');
   });
   t('approve a second rule → version 3 holds both; retire → version 4 holds one', () => {
     assert.strictEqual(decide({ rule_id: C, decision: 'approve' }).version, 3);
@@ -181,7 +218,7 @@ try {
   });
   t('simultaneous decisions: the second waits for the first, then is told the version changed (never two version N+1)', () => {
     const v = ver(), D = note(7, { kind: 'subject', pattern: { from: 'HCPS will be in your area', to: 'Quick visit next week' }, instruction: 'Subject: “Quick visit next week”.', examples: [] }).id;
-    const dec = rid => `select public.hcps_email_rule_decide(${lit({ rule_id: rid, decision: 'approve', by: PRES, reason: 'Matches how I write', expected_version: v })})::text;`;
+    const dec = rid => `select public.hcps_email_rule_decide(${lit({ rule_id: rid, decision: 'approve', by: PRES, reason: 'Matches how I write', expected_version: v, expected_status: ruleOf(rid).status })})::text;`;
     // A decides and holds its transaction open for a second; B starts while A is still open.
     const A1 = `begin; set role service_role; ${dec(C)} select pg_sleep(1.2); commit;`, B1 = `select pg_sleep(0.4); set role service_role; ${dec(D)}`;
     const esc = x => x.replace(/"/g, '\\"');
@@ -191,6 +228,17 @@ try {
     assert.strictEqual(outs.length, 2, r.stdout + r.stderr);
     assert.deepStrictEqual(outs.map(o => o.status).sort(), ['decided', 'version_conflict']);
     assert.strictEqual(ver(), v + 1);
+  });
+  t('two analysis runs at once never suggest the same edit twice (one rule per pattern_key)', () => {
+    const pk = key(777), mk = rk => `select public.hcps_email_rule_note(${lit({ rule_key: key(rk), pattern_key: pk, email_type: rk === 701 ? 'all' : 'previsit_headsup', kind: 'add_phrase',
+      pattern: { phrase: 'Let me know what works', where: 'closing' }, instruction: 'End the email with: “Let me know what works”.', examples: [], draft_ids: PD })})::text;`;
+    const A1 = `begin; set role service_role; ${mk(700)} select pg_sleep(1.0); commit;`, B1 = `select pg_sleep(0.3); set role service_role; ${mk(701)}`;
+    const esc = x => x.replace(/"/g, '\\"');
+    const r = spawnSync('bash', ['-c', `${PSQL} -X -q -A -t -d ${DB} -c "${esc(A1)}" 2>&1 & ${PSQL} -X -q -A -t -d ${DB} -c "${esc(B1)}" 2>&1 & wait`], { encoding: 'utf8', env: process.env });
+    const outs = r.stdout.split('\n').filter(l => l.startsWith('{')).map(l => JSON.parse(l));
+    assert.deepStrictEqual(outs.map(o => o.status).sort(), ['inserted', 'sibling_exists'], r.stdout + r.stderr);
+    assert.strictEqual(q(`select count(*) from public.email_learning_rules where pattern_key = '${pk}'`), '1');
+    assert.strictEqual(q(`select indisunique from pg_index where indexrelid = 'public.email_learning_rules_pattern_uk'::regclass`), 't');
   });
   t('the guard: even a role GIVEN write rights on the tables, with the marker set, is refused (only the owner\'s functions write)', () => {
     q(`do $$ begin if not exists (select 1 from pg_roles where rolname='el_writer') then create role el_writer; end if; end $$; alter role el_writer bypassrls;
