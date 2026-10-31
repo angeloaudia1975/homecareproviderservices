@@ -76,5 +76,13 @@ t("two SKUs with the same choices, an unreadable axis, a SKU on no page are repo
   const p2 = mk(); delete p2.g; const r2 = F.applyFamilies(p2, cat, rules, {});
   ok(r2.problems.some(x => x.sku === "GATE36" && /no page/.test(x.problem)), JSON.stringify(r2.problems));
 });
+t("option_images: an exact photo per option, \"none\" never borrows the family photo, a note is kept", () => {
+  const p = mk(); const r2 = rules.map(r => r.key === "assist" ? Object.assign({}, r, { option_images: { AST96x30: "none", AST24x30: { url: "/exact.jpg", note: "low resolution" } } }) : r);
+  F.applyFamilies(p, cat, r2, {});
+  const s = c => p.assist.skus.find(x => x.sku === c);
+  eq(s("AST96x30").image, "none"); eq(s("AST24x30").image, "/exact.jpg"); eq(s("AST24x30").image_note, "low resolution");
+  eq(s("AST24x36").image, "/opt36.jpg", "others unchanged"); ok(!("image_note" in s("AST24x36")), "no stray note");
+  const once = JSON.stringify(p); F.applyFamilies(p, cat, r2, {}); eq(JSON.stringify(p), once, "idempotent");
+});
 t("number parsing", () => { eq(["1/2", "3/4", "1 1/4", "08", "7 - 14", "5.5"].map(F.num), [0.5, 0.75, 1.25, 8, 7, 5.5]); });
 console.log(`catalog families: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

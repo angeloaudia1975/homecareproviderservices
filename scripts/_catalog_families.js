@@ -14,7 +14,8 @@
                  { "name": "Width",  "on": "code", "re": "x(\\d+)$",    "fmt": "{1}\" wide" } ],
        "specs": [ { "label": "Rise", "field": "rise", "fmt": "{v}\"" } ],     per-SKU specification rows
        "content_from": "<existing page key>",           whose words / photos / documents the family keeps
-       "description": "…"                               optional: replaces the description (source-backed words only)
+       "description": "…",                              optional: replaces the description (source-backed words only)
+       "option_images": { "CODE": "<url>" | {"url","note"} | "none" }   owner-confirmed photo per option, or none
      }
    Axis values come from the SKU's own code or catalog name (never invented); "labels": {"CODE": "text"} may name
    one value by hand. Values sort by their number (fractions understood: 1/2 < 3/4 < 1 < 1 1/4). Two SKUs of one
@@ -121,8 +122,15 @@ function applyFamilies(pages, catalog, rules, log) {
       else combos.set(combo, r.code);
       const prev = entries[codeNorm(r.code)] || {};
       const label = Object.values(axes).join(" · ");
-      return { e: Object.assign({}, prev, { sku: r.code, name: r.name, size: label || prev.size || r.name, axes, specs: specRows(rule, r),
-        status: prev.status || "active", disabled: !!prev.disabled, image: prev.image || optPhoto[codeNorm(r.code)] || "", images: prev.images || [], source: prev.source || "" }), keys };
+      /* "option_images": {CODE: url | {url, note} | "none"} — an owner-confirmed photo for exactly this option, or "none"
+         when no exact photo exists (the storefront then says "Image not available for this option" and never borrows
+         another option's or the family's picture). It wins over any photo the option carried before. */
+      const oi = rule.option_images ? (rule.option_images[r.code] != null ? rule.option_images[r.code] : rule.option_images[codeNorm(r.code)]) : null;
+      const oiUrl = oi == null ? null : (typeof oi === "string" ? oi : oi.url || "none");
+      const e = Object.assign({}, prev, { sku: r.code, name: r.name, size: label || prev.size || r.name, axes, specs: specRows(rule, r),
+        status: prev.status || "active", disabled: !!prev.disabled, image: oiUrl != null ? oiUrl : (prev.image || optPhoto[codeNorm(r.code)] || ""), images: prev.images || [], source: prev.source || "" });
+      if (oi && typeof oi === "object" && oi.note) e.image_note = oi.note; else delete e.image_note;
+      return { e, keys };
     });
     const nAx = (rule.axes || []).length;
     const ord = Array.isArray(rule.order) ? rule.order.map(codeNorm) : null;   /* an explicit option order, when given */

@@ -2016,6 +2016,11 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   keyed by SKU). Storefront: SKU `axes` → `p._axes`, `specs` → `p._skuSpecs` (Selected configuration rows); pickers use
   `axesOf()`. At publication: the live engine/picker copies are re-extracted (test/extract-picker.js takes axesOf when
   present). Tests: test/catalog-families.test.js (admin), test/a4u-families.test.js (ordering preview).
+  **Option photos are exact or absent (owner, 2026-10-31 12:32).** A family rule's `option_images` {CODE: url | {url,
+  note} | "none"} records an owner-confirmed photo for exactly that option, or "none" when no exact photo exists: the
+  storefront (`pageImageFor`) then shows "Image not available for this option" and no other picture — never the family
+  hero or another option's photo. A file name is not confirmation (VPLK.jpg shows Access4U stairs beside a platform-lift
+  tower, not the VPL kit, so VPLK = none). A usable but poor photo keeps a `note` (DLOOP.jpg, 102×124: replace later).
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.
