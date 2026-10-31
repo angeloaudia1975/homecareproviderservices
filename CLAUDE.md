@@ -1647,6 +1647,18 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   historical orders, sales, commissions, dealer account numbers (`dealer_manufacturers` — do NOT run the old
   `retire_complete_medical.sql` delete without Angelo's decision, it would erase them) and its commission-report capture
   profile (final statements may still arrive). Never re-add it to ordering unless Angelo says it is represented again.
+- **Catalog layout = Option 2 (owner directive, 2026-10-31; PRIVATE PREVIEW only until he approves).** One shared catalog view
+  for every manufacturer, in the ordering repo's `public/index.html` (`renderProducts` / `cardHtml` / `cv*`, CSS `#catalog-v2`):
+  compact manufacturer banner (logo, name, one line, Products = family cards · SKUs · Categories), sticky left sidebar (line
+  search, categories + subcategories with card counts from the data, manufacturer switch, brand only when a line has 2+,
+  dealer-price range only when prices exist, Clear), category chips, toolbar (product + SKU counts, sort relevance / name /
+  dealer price, grid/list), three cards across on desktop (photo beside the words ≥1400px, above them 1200–1399), two on
+  tablet, one on phones, filters in a slide-out drawer below 1200px, 24 per page. Presentation only: no second pricing
+  engine or product source — `groupLeads`, `priceHtml`, `pageImageFor`, the merge and the cart are unchanged (p0parity
+  holds them byte-identical). Families stay whole: a search that matches any SKU keeps the family together and opens it on
+  that SKU. Description clamped to 3 lines (never a scrollbox); "Choose options" for families, quantity + Add to cart for a
+  single SKU. No decorative controls: no stock / quick-ship / new / favourite on cards (no trustworthy per-family data).
+  Test: ordering `test/catalog-v2.test.js`.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
