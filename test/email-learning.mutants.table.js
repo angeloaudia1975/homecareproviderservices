@@ -18,7 +18,7 @@ module.exports = {
   original_without_signature: { file: EL, suite: 'js', from: '  return s ? `${b}\\n\\n${s}` : b;', to: '  return b;' },
   sent_text_not_what_was_sent: { file: MAIL, suite: 'js', from: 'subject, body:bodyText, recipient_count:1+cc.length});', to: 'subject, body:bodyText.trim(), recipient_count:1+cc.length});' },
   junk_draft_id_passed_through: { file: EL, suite: 'js', from: 'return UUID_RE.test(s) ? s.toLowerCase() : null;', to: 'return s ? s.toLowerCase() : null;' },
-  heads_up_drops_draft_id: { file: RT, suite: 'js', from: '      return json(200,{ok:true, draft_id, to:String(d.email||""), subject, body, signature});', to: '      return json(200,{ok:true, to:String(d.email||""), subject, body, signature});' },
+  heads_up_drops_draft_id: { file: RT, suite: 'js', from: '      return json(200,{ok:true, draft_id, to:String(d.email||""), subject, body, signature, warnings});', to: '      return json(200,{ok:true, to:String(d.email||""), subject, body, signature, warnings});' },
   ai_draft_drops_draft_id: { file: AI, suite: 'js', from: '    return json(200,{ok:true, draft_id, subject, body, html, signature,', to: '    return json(200,{ok:true, subject, body, html, signature,' },
   saved_followup_forgets_draft: { file: RT, suite: 'js', from: 'draft_id:Object.prototype.hasOwnProperty.call(e,"draft_id")?EL.uuidOrNull(e.draft_id):EL.uuidOrNull(prev.draft_id)};', to: 'draft_id:EL.uuidOrNull(e.draft_id)};' },
   saved_followup_keeps_stale_draft: { file: RT, suite: 'js', from: 'draft_id:Object.prototype.hasOwnProperty.call(e,"draft_id")?EL.uuidOrNull(e.draft_id):EL.uuidOrNull(prev.draft_id)};', to: 'draft_id:EL.uuidOrNull(e.draft_id)||EL.uuidOrNull(prev.draft_id)};' },

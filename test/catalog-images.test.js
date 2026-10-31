@@ -134,5 +134,14 @@ t("retire switches a SKU off on its page (reversible), keeps catalog rows, leave
   eq(r2.retired_now, 1);
   let threw = false; try { run("retire", "--skus", "NOPE", "--reason", "x"); } catch (e) { threw = true; } ok(threw, "unknown SKU refused");
 });
+t("an admin-added SKU (not in the catalog file) is retired through a holder page whose entries are all off; restore removes it", () => {
+  let threw = false; try { run("retire", "--skus", "ZZ9", "--reason", "x"); } catch (e) { threw = true; } ok(threw, "needs --added");
+  run("retire", "--skus", "ZZ9", "--reason", "owner", "--added");
+  let c = JSON.parse(fs.readFileSync(path.join(shop, "public", "data", "content", "acme.json"), "utf8")).pages;
+  const h = c["retired-skus"]; ok(h && h.status === "published" && h.skus.length === 1 && h.skus[0].sku === "ZZ9" && h.skus[0].disabled === true && h.skus[0].status === "hidden", JSON.stringify(h));
+  run("restore", "--skus", "ZZ9");
+  c = JSON.parse(fs.readFileSync(path.join(shop, "public", "data", "content", "acme.json"), "utf8")).pages;
+  ok(!c["retired-skus"], "holder removed");
+});
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`catalog images: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

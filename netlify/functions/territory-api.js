@@ -48,6 +48,7 @@ async function whoami(event){
 
 // Lines we NO LONGER represent — excluded from the Territory picker AND from business-
 // development targeting. Add a slug here to retire a line company-wide (rep-facing tools).
+const pgq=v=>encodeURIComponent('"'+String(v).replace(/\\/g,"\\\\").replace(/"/g,'\\"')+'"');   // a quoted PostgREST in.(…) value
 const NOT_REPRESENTED=new Set(["complete-medical-supplies"]);
 const STATES=["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
 
@@ -112,18 +113,25 @@ exports.handler = async (event)=>{
       if(b.action==="set_line"){
         const st=String(b.state||"").trim().toUpperCase(); let mf=String(b.manufacturer||"").trim();
         if(!st||!mf) return json(400,{error:"state + manufacturer required"});
+        if(!STATES.includes(st)) return json(400,{error:"unknown state"});
         mf=cat.canonOf[mf]||mf;
         if(NOT_REPRESENTED.has(mf)) return json(200,{ok:false,message:"That line is retired (no longer represented)."});
         const members=cat.membersOf[mf]||[mf];
         if(b.on){ await sbSend("POST","territory_lines?on_conflict=state,manufacturer",{state:st,manufacturer:mf},{Prefer:"resolution=merge-duplicates,return=minimal"}); }
-        else { await sbSend("DELETE",`territory_lines?state=eq.${encodeURIComponent(st)}&manufacturer=in.(${members.map(encodeURIComponent).join(",")})`,null,{Prefer:"return=minimal"}); }
+        else { await sbSend("DELETE",`territory_lines?state=eq.${encodeURIComponent(st)}&manufacturer=in.(${members.map(pgq).join(",")})`,null,{Prefer:"return=minimal"}); }
         return json(200,{ok:true});
       }
       if(b.action==="set_state"){
-        const st=String(b.state||"").trim().toUpperCase(); if(!st) return json(400,{error:"state required"});
+        const st=String(b.state||"").trim().toUpperCase(); if(!STATES.includes(st)) return json(400,{error:"state required"});
         const slugs=[...new Set((Array.isArray(b.manufacturers)?b.manufacturers:[]).map(s=>cat.canonOf[s]||s).filter(s=>s&&!NOT_REPRESENTED.has(s)))];
-        await sbSend("DELETE",`territory_lines?state=eq.${encodeURIComponent(st)}`,null,{Prefer:"return=minimal"});
-        if(slugs.length) await sbSend("POST","territory_lines",slugs.map(s=>({state:st,manufacturer:String(s)})),{Prefer:"return=minimal"});
+        /* ADD FIRST, THEN REMOVE WHAT IS NO LONGER WANTED. This used to delete the whole state and
+           then insert the new list — two requests with nothing between them, so an insert that
+           failed (timeout, a bad slug, Supabase hiccup) left the state with NO lines at all and
+           the page still showing them. Now a failure part-way leaves the old lines plus any
+           added ones, never an empty state; repeating the request finishes the job. */
+        if(slugs.length) await sbSend("POST","territory_lines?on_conflict=state,manufacturer",slugs.map(s=>({state:st,manufacturer:String(s)})),{Prefer:"resolution=merge-duplicates,return=minimal"});
+        const keep=slugs.length?`&manufacturer=not.in.(${slugs.map(pgq).join(",")})`:"";
+        await sbSend("DELETE",`territory_lines?state=eq.${encodeURIComponent(st)}${keep}`,null,{Prefer:"return=minimal"});
         return json(200,{ok:true});
       }
       return json(400,{error:"unknown action"});

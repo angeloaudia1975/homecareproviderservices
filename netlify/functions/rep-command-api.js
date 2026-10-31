@@ -25,6 +25,7 @@ const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 const SC = require("./_scope.js");
+const RR = require("./_route_reach.js");
 const FL = require("./_flags.js");
 const BAI = require("./_brief_ai.js");
 const AC = require("./_account_class.js");
@@ -197,7 +198,11 @@ async function buildDay(me, who, b, workspace, opts){
 
     // ---- Round 1: everything keyed by the person (parallel, paged) ----
     const [routes,tasksOpen,tasksClosed,opps,myVisits,pendingFU,appts]=await Promise.all([
-      sbGet(`rep_routes?scheduled_date=in.(${today},${tomorrow})&or=(owner_email.eq.${E},assigned_to_email.eq.${E})&select=id,name,scheduled_date,stops,owner_email,assigned_to_email,round_trip,home_base&order=updated_at.desc&limit=20`).catch(()=>[]),
+      /* Archived routes are not today's route (read with the column; before sr_route_integrity.sql runs
+         it does not exist, and the old read is used). */
+      sbGet(`rep_routes?scheduled_date=in.(${today},${tomorrow})&or=(owner_email.eq.${E},assigned_to_email.eq.${E})&select=id,name,scheduled_date,stops,owner_email,assigned_to_email,round_trip,home_base,archived_at&order=updated_at.desc&limit=20`)
+        .then(rs=>(rs||[]).filter(r=>!r.archived_at))
+        .catch(e=>/42703|PGRST204|does not exist|Supabase 400/i.test(String(e&&e.message||e))?sbGet(`rep_routes?scheduled_date=in.(${today},${tomorrow})&or=(owner_email.eq.${E},assigned_to_email.eq.${E})&select=id,name,scheduled_date,stops,owner_email,assigned_to_email,round_trip,home_base&order=updated_at.desc&limit=20`):Promise.reject(e)).catch(()=>[]),
       getAll(`dealer_tasks?status=eq.open&or=(${mineTasks})&select=id,dealer_id,title,due_date,priority,source,reason,assigned_rep,assigned_email,origin_type,origin_id,created_at,status`,"id").catch(()=>[]),
       getAll(`dealer_tasks?status=in.(done,dismissed)&done_at=gte.${enc(sinceIso)}&or=(${mineTasks})&select=id,dealer_id,title,due_date,status,origin_type,origin_id,assigned_rep,assigned_email,done_at`,"id").catch(()=>[]),
       getAll(`opportunities?status=eq.open&or=(${mineOpps})&select=id,dealer_id,title,stage,value,expected_close,next_step,next_step_date,origin_type,origin_id,owner_rep,owner_email,created_at,updated_at`,"id").catch(()=>[]),
@@ -214,7 +219,15 @@ async function buildDay(me, who, b, workspace, opts){
     const myOpps=(opps||[]).filter(isMineO);
     const stopsToday=todayRoute&&Array.isArray(todayRoute.stops)?todayRoute.stops.filter(s=>s&&s.dealer_id):[];
     const stopsTomorrow=tomorrowRoute&&Array.isArray(tomorrowRoute.stops)?tomorrowRoute.stops.filter(s=>s&&s.dealer_id):[];
-    const prepIds=[...new Set(stopsToday.map(s=>String(s.dealer_id)))].slice(0,30);
+    /* Meeting Prep reads each stop's sales, notes and contacts — only for dealers this person may work: his book,
+       or a route the President sent him on (_route_reach.js). Another rep's dealer on a route he built himself
+       gets no prep (security fix, Angelo 2026-10-30). */
+    let prepIds=[...new Set(stopsToday.map(s=>String(s.dealer_id)))].slice(0,30);
+    if(!SC.seesAllDealers({role:who.role}) || workspace){
+      const asRep={email:who.email,rep_name:who.rep_name,role:"rep"};
+      const off=await SC.dealersOutsideScope(asRep, prepIds, sbGet);
+      if(off.length){ const reach=await RR.reachDealerIds(who.email, sbGet); const no=new Set(off.filter(id=>!reach.has(id))); prepIds=prepIds.filter(id=>!no.has(id)); }
+    }
     const todaysVisits=(myVisits||[]).filter(v=>inDay(v.checkin_at));
 
     // ---- Round 2: route-stop dealers (Meeting Prep) and the visits' own links (parallel) ----
