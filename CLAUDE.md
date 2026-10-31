@@ -598,6 +598,13 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   `draft_ids` (sent, edited, President-written) — the caller's counts are ignored. A decision carries the rule's status on screen
   (`expected_status`): a reject makes no version, so a stale tab can never approve a rule rejected meanwhile. The wording (owner's or
   suggested) holds no digit except a percentage — code and database. One rule per edit: unique `pattern_key` + an advisory lock.
+  Second round: every phrase is NFKC-normalised and stripped of invisible characters before masking; stored evidence and wording
+  are plain text only (printable ASCII + ‘ ’ “ ” – — … → −, code AND database); only the real placeholders count as masked.
+  **PR #70 MERGED (2026-10-31, 6469112; reviewed head 60c388d, third review GO; CI green) and live (Netlify Published main@6469112;
+  the page says "Learning isn't installed yet").** Migration `email_learning_p2_rules.sql` sha256 f440d45c…efa1 NOT run yet —
+  Angelo runs it; expected postcheck row 2 `e566e341…` (Windows paste) / `eb5db477…` (Unix), row 8 `true / true / false`; then the
+  18-check public-key probe. `email_learning_suggest` stays OFF. Open LOW (Phase 3): a President-only Redact decision for lowercase
+  names / spelled-out addresses that still reach a rule.
 - **A replay is a no-op.** Every write from a visit carries `(origin_type, origin_id, origin_key)` against
   a unique index (or a claim PATCH on a null column), so a double tap, an offline resend or a late replay
   never duplicates a visit, note, task, deal, contact, activity row or intent signal — while a genuinely
