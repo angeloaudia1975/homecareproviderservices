@@ -627,6 +627,11 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   row stays so the edit is never suggested, refreshed, approved or restored again. SQL `email_learning_p3_shapes_redact.sql`
   (+ `email_draft_shapes`, RULE 19 locked) replaces the Phase 2 guard / note / decide, so the Phase 2 postcheck row 2 changes
   by design — use `email_learning_p3_postcheck.sql`; Angelo runs it; code works without it (shapes skipped, Redact 503).
+  **PR #72 MERGED (2026-10-31, 0c3645b; reviewed head f670d25b; two independent exact-head reviews GO — the first's 3 MEDIUM
+  and the second's LOWs fixed; CI green; 136 mutants) and LIVE:** the owner page reports apply / ai_headsup / styles all false,
+  Redact answers 503 redact_not_installed. SQL `email_learning_p3_shapes_redact.sql` sha256 e3754e83…894e NOT run — Angelo runs
+  it; expected postcheck row 2 `a36686c0…edaa5` (Windows paste) / `2006d502…cf3a8` (Unix); then the 20-check probe. No Phase 3
+  switch is turned on without Angelo's final authorization.
 - **A replay is a no-op.** Every write from a visit carries `(origin_type, origin_id, origin_key)` against
   a unique index (or a claim PATCH on a null column), so a double tap, an offline resend or a late replay
   never duplicates a visit, note, task, deal, contact, activity row or intent signal — while a genuinely
