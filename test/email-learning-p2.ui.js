@@ -85,7 +85,7 @@ const graphSends = w => w.outbound.filter(x => x.kind === 'graph' && /sendMail/.
     await step('Learned rules: "Look for patterns" shows masked suggestions; nothing approved by itself', async () => {
       await p.goto(`${B}/admin/email-learning.html`); await p.waitForSelector('.el-tab');
       await p.click('.el-tab[data-tab="rules"]'); await p.waitForSelector('#el-analyze');
-      assert.ok(/don't change any email yet/.test(await p.textContent('#body')));
+      assert.ok(/shape your own AI drafts only while Apply learned rules is switched on \(off\)/.test(await p.textContent('#body')));
       await p.click('#el-analyze'); await p.waitForFunction(() => /new suggestion/.test(document.body.textContent));
       const n = await p.$$eval('.el-rule.s-suggested', x => x.length); assert.ok(n >= 2, 'suggestions ' + n);
       const txt = await p.textContent('#body'); for (const bad of ['Pat', 'Lee', 'Sampletown', 'Exampleville']) assert.ok(!txt.includes(bad), bad);

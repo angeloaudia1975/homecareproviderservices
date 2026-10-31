@@ -178,6 +178,18 @@ const api = (w, b, token) => {
     assert.strictEqual(r.status, 200); assert.ok(r.body.preview.length >= 2); assert.strictEqual(w.db.email_learning_rules.length, 0);
     assert.strictEqual(w.writes.filter(x => x.kind === 'rpc').length, 0);
   });
+  await t('Phase 3 Redact: a redacted edit never comes back — not in a preview, not to the database', async () => {
+    const { w } = world({ drafts: three() });
+    await api(w, { action: 'analyze' });
+    const before = (await api(w, { action: 'analyze', dry_run: true })).body.preview.length;
+    const r0 = w.db.email_learning_rules[0]; r0.redacted_at = new Date().toISOString(); r0.status = 'rejected';
+    const r = await api(w, { action: 'analyze', dry_run: true });
+    assert.strictEqual(r.body.preview.length, before - 1, 'the redacted edit is left out of the preview');
+    assert.ok(!r.body.preview.some(x => x.instruction === r0.instruction)); assert.strictEqual(r.body.summary.redacted, 1);
+    const n = w.writes.filter(x => x.kind === 'rpc').length;
+    await api(w, { action: 'analyze' });
+    assert.ok(!w.writes.slice(n).some(x => x.kind === 'rpc' && x.p.rule_key === r0.rule_key), 'never sent to the database again');
+  });
   await t('decide: the President from the sign-in (a name in the request is ignored), reason required, current version only', async () => {
     const { S, w } = world({ drafts: three() });
     await api(w, { action: 'analyze' });

@@ -20,6 +20,11 @@ async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}
 const { dealerScope, isAdmin, workspaceUser } = require("./_scope.js");
 const { loadStyleGuide, findBanned } = require("./_ai_style.js");
 const EL = require("./_email_learning.js");   // Smart Email Learning, Phase 1: keep the draft as written
+// Smart Email Learning, Phase 3 (each OFF unless its phase2_flags switch is exactly true; off = today's drafts, word for word):
+const { flags } = require("./_flags.js");
+const RA = require("./_email_rules_apply.js");   // email_learning_apply: the owner's approved writing rules, after the style guide
+const ST = require("./_email_styles.js");        // email_styles: Professional & Friendly · Consultative Sales · Brief & Direct
+const DG = require("./_draft_guards.js");        // no-invention guards, on whenever a Phase 3 feature shapes the prompt
 
 async function whoami(event){
   const auth=event.headers["authorization"]||event.headers["Authorization"]||"";
@@ -303,6 +308,14 @@ exports.handler=async(event)=>{
     const contactName=String(b.contact_name||"").trim();
     const firstName=contactName?contactName.split(/\s+/)[0]:"";
     const styleGuide=await loadStyleGuide(sbGet);   // centralized HCPS AI Communication Style Guide
+    /* Phase 3. The style and the learned rules come AFTER the style guide, which stays first and wins on any conflict. Both
+       are off unless their switch is exactly true; the learned rules only ever shape the active President's own drafts. */
+    const fl=await flags(sbGet);
+    const stylesOn=fl[ST.SWITCH_STYLES]===true;
+    const style=stylesOn?ST.styleKey(b.style):null;
+    const learned=await RA.approvedFor(sbGet, me, EL.emailType(tmplKey), fl);
+    const guardsOn=stylesOn||learned.active;
+    const phase3=[style?ST.styleBlock(style):"", learned.active?learned.addendum:""].filter(Boolean).join("\n\n");
 
     /* The product the rep chose, if any. This is what turns a generic note into a real
        one: the model writes from the approved description, features and specs rather
@@ -328,7 +341,7 @@ exports.handler=async(event)=>{
     const buildPrompt=(avoidNote)=>`You write short, professional B2B sales emails for HomeCare Provider Services (HCPS), a manufacturers' rep group that sells home-medical-equipment lines to durable-medical-equipment (DME) dealers.
 
 ${styleGuide}
-
+${phase3?`\n${phase3}\n`:""}
 Write ONE email from the rep (${me.name||"the HCPS rep"}) to a dealer contact${firstName?` named ${firstName}`:""}.
 
 Situation / purpose of this email:
@@ -392,6 +405,20 @@ Do not include markdown or any text outside the JSON.`;
         const retry=await generate(buildPrompt(`IMPORTANT: your previous draft used relative day words (${found.map(x=>`"${x}"`).join(", ")}). Rewrite it referring to the meeting only as "on ${visitDay.md}" and to due dates only by their dates.`));
         if(!retry.err && retry.subject && retry.body) g=retry;
       }
+      /* No-invention guards (Phase 3): every date, time, zone, amount, promotion, stock / shipping claim, purchase-history
+         claim and commitment in the draft must be in what the generator was given. One rewrite naming what was found; if the
+         rewrite still holds any, the rep is told exactly what to check before sending. */
+      if(guardsOn){
+        const facts={source:[tmpl, contextLines(ctx), lineName, recap, brief, firstName, contactName, me.name||"", "HomeCare Provider Services",
+            visitDay?visitDay.long:"", visitDay?visitDay.md:""],
+          history:!visitOnly && !!((ctx.lines&&ctx.lines.length) || ctx.last_order!=null || ctx.total_sales)};
+        let gc=DG.check(g, facts);
+        if(!gc.ok){
+          const retry=await generate(buildPrompt(DG.rewriteNote(gc.problems)));
+          if(!retry.err && retry.subject && retry.body){ const rc=DG.check(retry, facts); if(rc.problems.length<=gc.problems.length){ g=retry; gc=rc; } }
+        }
+        if(!gc.ok) DG.warningsFor(gc.problems).forEach(w=>warnings.push(w));
+      }
       subject=g.subject; body=g.body;
       if(visitDay){ subject=fixRelativePast(subject,visitDay.md); body=fixRelativePast(body,visitDay.md);
         if(RELATIVE_DAY.test(`${subject}\n${body}`)) warnings.push("This draft still mentions a relative day (like “tomorrow”) — check the dates before sending."); }
@@ -406,7 +433,11 @@ Do not include markdown or any text outside the JSON.`;
        compared with what is finally sent. Best-effort: null when capture is off or not the President's; never fails a draft. */
     const draft_id=await EL.recordDraft(sbGet, me, {template:tmplKey, generator:"ai-email-api", dealer_id:dealerId,
       subject, body:EL.asShown(body, signature)});
+    // Which learned version and style shaped this draft (Phase 3; best-effort, only when one did).
+    if(draft_id && (style || learned.active)) await RA.recordShape(me, draft_id, {profile_version:learned.active?learned.version:null, style, ai:true});
     return json(200,{ok:true, draft_id, subject, body, html, signature, visit_date:visitDay?visitDay.md:undefined, warnings:warnings.length?warnings:undefined,
+      features:{styles:stylesOn, style_list:stylesOn?ST.styleList():undefined, checked:guardsOn},
+      style:style||undefined, learning:learned.active?{version:learned.version, rules:learned.rules.length}:undefined,
       product:PC||null, product_url:productUrl||null, image_url:imageUrl||null,
       product_warning: (PC&&!PC.approved)
         ? `Heads up: this product's content is still "${PC.status||"in review"}". Approve it in Product Content Enrichment & Review before sending.` : null,
