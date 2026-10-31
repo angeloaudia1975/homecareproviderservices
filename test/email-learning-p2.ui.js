@@ -127,9 +127,11 @@ const graphSends = w => w.outbound.filter(x => x.kind === 'graph' && /sendMail/.
         const c2 = await ctxFor(browser, 'pres', dev); const q = await c2.newPage(); q.on('pageerror', e => errors.push(e.message));
         await q.goto(`${B}/admin/email-learning.html`); await q.waitForSelector('.el-tab');
         for (const tab of ['rules', 'versions']) {
-          await q.click(`.el-tab[data-tab="${tab}"]`); await q.waitForSelector('.el-rule, .empty');
+          // Wait until THIS tab has rendered (not the previous tab's cards, which are replaced when the new list arrives).
+          await q.click(`.el-tab[data-tab="${tab}"]`); await q.waitForSelector(`.el-tab.on[data-tab="${tab}"]`);
+          await q.waitForFunction(t => !/Loading…/.test(document.body.textContent) && document.querySelector('.el-tab.on') && document.querySelector('.el-tab.on').getAttribute('data-tab') === t && document.querySelector('.el-rule, .empty'), tab);
           const ov = await q.evaluate(() => document.documentElement.scrollWidth - window.innerWidth); assert.ok(ov <= 1, tab + ' overflow ' + ov);
-          if (dev.isMobile) { const hs = await q.$$eval('.el-tab, .el-rule button', b => b.map(x => x.getBoundingClientRect().height)); assert.ok(hs.every(h => h >= 44), tab + ' ' + hs.join(',')); }
+          if (dev.isMobile) { const hs = await q.evaluate(() => [...document.querySelectorAll('.el-tab, .el-rule button')].map(x => x.getBoundingClientRect().height)); assert.ok(hs.every(h => h >= 44), tab + ' ' + hs.join(',')); }
         }
         await c2.close();
       });
