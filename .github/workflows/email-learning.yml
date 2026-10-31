@@ -5,6 +5,9 @@ on:
     paths:
       - 'netlify/functions/_email_learning.js'
       - 'netlify/functions/email-learning-api.js'
+      - 'netlify/functions/_email_learn.js'
+      - 'netlify/functions/_email_learn_run.js'
+      - 'netlify/functions/email-learning-purge-cron.js'
       - 'netlify/functions/ai-email-api.js'
       - 'netlify/functions/email-sync-api.js'
       - 'netlify/functions/routes-api.js'
@@ -44,14 +47,20 @@ jobs:
       - name: Install Playwright Chromium
         run: npm install --no-save playwright && npx playwright install --with-deps chromium
       - name: Syntax
-        run: for f in netlify/functions/_email_learning.js netlify/functions/email-learning-api.js netlify/functions/ai-email-api.js netlify/functions/email-sync-api.js netlify/functions/routes-api.js src/admin/email-learning.js; do node --check "$f"; done
+        run: for f in netlify/functions/_email_learn.js netlify/functions/_email_learn_run.js netlify/functions/email-learning-purge-cron.js netlify/functions/_email_learning.js netlify/functions/email-learning-api.js netlify/functions/ai-email-api.js netlify/functions/email-sync-api.js netlify/functions/routes-api.js src/admin/email-learning.js; do node --check "$f"; done
       - name: Capture rules (real handlers, synthetic data)
         run: node test/email-learning-p1.test.js
       - name: Migration in Postgres 16
         run: node test/email-learning-p1.pg.test.js
-      - name: Mutation tests (JS + SQL)
+      - name: Learning rules (real handlers, synthetic data)
+        run: node test/email-learning-p2.test.js
+      - name: Phase 2 migration in Postgres 16
+        run: node test/email-learning-p2.pg.test.js
+      - name: Mutation tests (JS + SQL, Phase 1 + 2)
         run: node test/email-learning.mutants.js
       - name: Browser — editors, Dealer 360 composer, owner page
         run: node test/email-learning-p1.ui.js
+      - name: Browser — owner page Learned rules + Versions
+        run: node test/email-learning-p2.ui.js
       - name: Browser — email editor regression (PR #67)
         run: node test/email-editor.qa.js

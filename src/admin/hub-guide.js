@@ -443,11 +443,11 @@ window.HUB_GUIDE = {
     intelligence: "Injected into every AI email prompt; drafts that slip in a banned phrase are auto-regenerated."
   },
   "Email Learning": {
-    tagline: "What HCPS drafted, beside what you actually sent — owner only.",
-    what: "Phase 1 of Smart Email Learning: each email draft HCPS writes for you (pre-visit heads-up, visit follow-up, Dealer 360 AI emails) is kept as drafted and, once Outlook accepts the send, beside the version you sent. Nothing is learned or changed yet; approved writing rules come in Phase 2.",
-    features: ["Original draft and sent version side by side", "Line-by-line comparison", "Filter by email type, sent or edited", "Your own emails only; text removed after 12 months"],
-    data: "email_drafts (locked; written only when the capture switch is on).",
-    actions: ["Review what you changed before sending"],
+    tagline: "What HCPS drafted, beside what you actually sent — and the writing rules learned from your edits. Owner only.",
+    what: "Smart Email Learning. Each email draft HCPS writes for you (pre-visit heads-up, visit follow-up, Dealer 360 AI emails) is kept as drafted and, once Outlook accepts the send, beside the version you sent. When the same edit repeats in 3+ sent emails to 2+ dealers it is suggested as a writing rule; nothing is used until you approve it, and approved rules don't change any email until Phase 3 is switched on.",
+    features: ["Original draft and sent version side by side", "Line-by-line comparison", "Suggested writing rules with masked evidence (no names, dealers, dates or numbers)", "Approve (in your own words), reject, retire", "Numbered versions with restore and reset", "Your own emails only; text removed after 12 months"],
+    data: "email_drafts, email_learning_rules, email_learning_profiles, email_learning_rule_events (all locked; written only through checked database functions).",
+    actions: ["Review what you changed before sending", "Approve or reject suggested rules", "Restore an earlier version of your rules"],
     reports: [],
     connects: ["Scheduled Routes heads-up and follow-up", "Dealer 360 AI email composer", "Outlook sending"]
   },

@@ -1,10 +1,17 @@
-// HCPS Smart Email Learning — owner page API (Phase 1: READ ONLY).
-//   POST {action:"status"}                            switch, installed, counts per email type
+// HCPS Smart Email Learning — owner page API.
+// Phase 1 (read only):
+//   POST {action:"status"}                            switches, installed, counts per email type, learning summary
 //   POST {action:"list", type?, only?, before?, limit?} captured drafts, newest first — no email text
 //   POST {action:"get", id}                           one draft: original and sent version + line comparison
-// President only (owner decision: the learning record and its dashboard are the owner's). It writes nothing:
-// capture happens in the generators and in email-sync-api send (_email_learning.js). Learning, suggestions and
-// approved rules are Phase 2.
+// Phase 2 (learning; owner decisions 3 + versions — CLAUDE.md §16):
+//   POST {action:"rules", status?}                    learned rules (masked evidence only)
+//   POST {action:"analyze", dry_run?}                 look for repeated edits now (pure code, no AI); dry_run = preview only
+//   POST {action:"decide", rule_id, decision, reason, instruction?, expected_version, expected_status}   approve | reject | retire | edit
+//        expected_status = the rule's status on the owner's screen (a stale screen is refused: version_conflict)
+//   POST {action:"versions"}                          every version of the approved set
+//   POST {action:"rollback", to_version, reason, expected_version}   0 = reset (no approved rule)
+// President only (owner decision: the learning record and its dashboard are the owner's). The person deciding is always the
+// verified sign-in, never the request. Approved rules change NO email in Phase 2: applying them to drafts is Phase 3.
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const json = (c, o) => ({ statusCode: c, headers: { "content-type": "application/json", "cache-control": "no-store" }, body: JSON.stringify(o) });
@@ -12,6 +19,19 @@ const H = () => ({ apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`
 async function sbGet(path){ const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: H() });
   if(!r.ok){ const e = new Error(`Supabase ${r.status}: ${(await r.text()).slice(0, 200)}`); e.status = r.status; throw e; } return r.json(); }
 const EL = require("./_email_learning.js");
+const RUN = require("./_email_learn_run.js");
+const LEARN = require("./_email_learn.js");
+async function rpc(fn, p){
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, { method: "POST", headers: Object.assign({ "content-type": "application/json" }, H()), body: JSON.stringify({ p }) });
+  const t = await r.text();
+  if(!r.ok){ const e = new Error(`rpc ${fn} ${r.status}: ${t.slice(0, 200)}`); e.status = r.status; e.body = t; throw e; }
+  return t ? JSON.parse(t) : null;
+}
+const RULE_COLS = "id,email_type,kind,pattern,instruction,suggested_instruction,examples,sends,dealers,first_seen,last_seen,status,decided_at,decided_by,decision_reason,updated_at";
+const DECIDE_HTTP = { decided: 200, president_only: 403, version_conflict: 409, not_allowed: 409, not_found: 404, reason_required: 422, bad_instruction: 422 };
+// "Not installed" = the Phase 2 table or function is missing — never any other database error (a column error stays a 500).
+const rulesInstalled = e => !(e && (/PGRST205|PGRST202/.test(String(e.message))
+  || (/relation "public\.email_learning_|function public\.hcps_email_(rule|profile)_\w+\(.*\) does not exist|Could not find the (table|function) 'public\.(email_learning_|hcps_email_(rule|profile)_)/i.test(String(e.message)))));
 const { flags } = require("./_flags.js");
 
 async function whoami(event){
@@ -41,9 +61,17 @@ exports.handler = async (event) => {
       const by = {}; let sent = 0, edited = 0;
       for(const r of rows){ const t = by[r.email_type] = by[r.email_type] || { drafts: 0, sent: 0, edited: 0 };
         t.drafts++; if(r.sent_at){ t.sent++; sent++; if(r.edited){ t.edited++; edited++; } } }
+      let learning = { installed: false, suggest_on: f[RUN.SWITCH_SUGGEST] === true };
+      try{
+        const rr = await sbGet(`email_learning_rules?select=status&limit=5000`);
+        const v = await sbGet(`email_learning_profiles?select=version&order=version.desc&limit=1`);
+        const c = s => rr.filter(x => x.status === s).length;
+        learning = Object.assign(learning, { installed: true, suggested: c("suggested"), approved: c("approved"), rejected: c("rejected"), retired: c("retired"),
+          version: (v[0] && v[0].version) || 0, applied_to_emails: false });   // Phase 3 applies approved rules, behind its own switch
+      }catch(e){ if(rulesInstalled(e)) throw e; }
       return json(200, { ok: true, installed: true, capture_on: f[EL.SWITCH] === true, types: EL.EMAIL_TYPES,
-        totals: { drafts: rows.length, sent, edited, capped: rows.length >= 5000 }, by_type: by,
-        learning_active: false });   // Phase 2: suggestions and approved rules
+        totals: { drafts: rows.length, sent, edited, capped: rows.length >= 5000 }, by_type: by, learning,
+        thresholds: { sends: LEARN.MIN_SENDS, dealers: LEARN.MIN_DEALERS } });
     }
 
     if(b.action === "list"){
@@ -79,6 +107,50 @@ exports.handler = async (event) => {
       return json(200, { ok: true, draft: Object.assign({}, r, { dealer }),
         diff: r.sent_at && !r.content_purged_at ? { subject_changed: r.original_subject !== r.sent_subject, body: EL.lineDiff(r.original_body, r.sent_body) } : null });
     }
+    // ---- Phase 2 -------------------------------------------------------------------------------------------
+    const p2 = fn => fn().catch(e => { if(!rulesInstalled(e)) return json(503, { error: "not_installed", message: "Learning (Phase 2) isn't installed yet." }); throw e; });
+    if(b.action === "rules") return p2(async () => {
+      const st = b.status ? String(b.status) : "";
+      if(st && !["suggested","approved","rejected","retired"].includes(st)) return json(400, { error: "bad_status" });
+      const rows = await sbGet(`email_learning_rules?select=${RULE_COLS}${st ? `&status=eq.${st}` : ""}&order=status.asc,sends.desc,updated_at.desc&limit=500`);
+      const v = await sbGet(`email_learning_profiles?select=version&order=version.desc&limit=1`);
+      return json(200, { ok: true, rules: rows, version: (v[0] && v[0].version) || 0 });
+    });
+    if(b.action === "analyze") return p2(async () => {
+      await sbGet(`email_learning_rules?select=id&limit=1`);   // installed?
+      const out = await RUN.runAnalysis(sbGet, rpc, { apply: b.dry_run !== true });
+      return json(200, Object.assign({ ok: true }, out));
+    });
+    if(b.action === "decide") return p2(async () => {
+      const id = EL.uuidOrNull(b.rule_id); if(!id) return json(400, { error: "bad_id" });
+      if(!["approve","reject","retire","edit"].includes(String(b.decision))) return json(400, { error: "bad_decision" });
+      const reason = String(b.reason == null ? "" : b.reason).replace(/\s+/g, " ").trim();
+      if(reason.length < 3 || reason.length > 500) return json(422, { error: "reason_required", message: "Give a short reason (3–500 characters)." });
+      let instruction;
+      if(b.instruction != null && String(b.instruction).trim() !== ""){
+        instruction = LEARN.cleanInstruction(b.instruction);
+        if(!instruction) return json(422, { error: "bad_instruction", message: "The wording must be 3–300 characters, with no email address, link or number (a percentage is fine)." });
+      }
+      if(b.decision === "edit" && !instruction) return json(422, { error: "bad_instruction", message: "Write the new wording." });
+      const ev = parseInt(b.expected_version, 10); if(!Number.isFinite(ev) || ev < 0) return json(400, { error: "bad_version" });
+      const es = String(b.expected_status || ""); if(!["suggested","approved","rejected","retired"].includes(es)) return json(400, { error: "bad_status" });
+      const out = await rpc("hcps_email_rule_decide", { rule_id: id, decision: b.decision, by: me.email, reason, instruction, expected_version: ev, expected_status: es });
+      const code = DECIDE_HTTP[out && out.status] || 500;
+      return json(code, Object.assign({ ok: code === 200 }, out, code === 409 && out.status === "version_conflict" ? { message: "Something changed since you opened this page — reload and try again." } : {}));
+    });
+    if(b.action === "versions") return p2(async () => {
+      const rows = await sbGet(`email_learning_profiles?select=version,created_at,created_by,action,reason,rule_id,from_version,rules&order=version.desc&limit=200`);
+      return json(200, { ok: true, versions: rows, version: (rows[0] && rows[0].version) || 0 });
+    });
+    if(b.action === "rollback") return p2(async () => {
+      const to = parseInt(b.to_version, 10), ev = parseInt(b.expected_version, 10);
+      if(!Number.isFinite(to) || to < 0 || !Number.isFinite(ev) || ev < 0) return json(400, { error: "bad_version" });
+      const reason = String(b.reason == null ? "" : b.reason).replace(/\s+/g, " ").trim();
+      if(reason.length < 3 || reason.length > 500) return json(422, { error: "reason_required", message: "Give a short reason (3–500 characters)." });
+      const out = await rpc("hcps_email_profile_rollback", { to_version: to, by: me.email, reason, expected_version: ev });
+      const code = out && (out.status === "rolled_back" || out.status === "reset") ? 200 : (DECIDE_HTTP[out && out.status] || 500);
+      return json(code, Object.assign({ ok: code === 200 }, out));
+    });
     return json(400, { error: "unknown_action" });
   }catch(e){ console.error("email-learning-api", String(e && e.message || e).slice(0, 300)); return json(500, { error: "server_error", message: "Email Learning couldn't load just now." }); }
 };

@@ -27,14 +27,29 @@
  .el-diff .del{background:#fdecec;text-decoration:line-through;color:#7a2a2a}.el-diff .del::before{content:"− ";color:#b42323;font-weight:800;text-decoration:none;display:inline-block}
  .el-diff .same::before{content:"  "}
  button.sec{background:#fff;color:var(--navy);border:1px solid var(--line)}
+ .el-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+ .el-tab{min-height:40px;padding:8px 14px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--navy);font:inherit;font-weight:700;cursor:pointer}
+ .el-tab.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+ .el-badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:#ef6325;color:#fff;font-size:11px;line-height:18px;text-align:center}
+ .el-h{font-size:15px;margin:16px 0 8px;color:var(--navy)}
+ .el-rule{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#fff}
+ .el-rule .r1{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between;font-size:13px}
+ .el-rule .subj{font-weight:700;color:var(--navy);overflow-wrap:anywhere}
+ .el-rule.s-rejected,.el-rule.s-retired{opacity:.75}
+ .el-ex{margin-top:6px;font-size:12.5px;color:var(--navy2);background:#fafbfc;border-radius:8px;padding:6px 10px}
+ .el-ex div{overflow-wrap:anywhere}
+ .el-form{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+ .el-form textarea,.el-form input{width:100%;box-sizing:border-box;padding:8px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:14px;margin:2px 0 8px}
+ .el-msg{background:#eef6ff;border:1px solid #cfe2f7;border-radius:8px;padding:8px 10px;font-size:13px;margin:0 0 10px;color:var(--navy)}
  button.go{min-height:40px}
- @media(max-width:760px){ .wrap{padding:14px 14px 50px} .el-cols{grid-template-columns:minmax(0,1fr)} button.go,.el-flt select{min-height:44px;font-size:16px} }
+ @media(max-width:760px){ .wrap{padding:14px 14px 50px} .el-cols{grid-template-columns:minmax(0,1fr)} button.go,.el-flt select,.el-tab{min-height:44px;font-size:16px}
+   .el-form textarea,.el-form input{font-size:16px} }
 </style>
 </head><body>
 <header id="ac-head"></header>
 <div class="wrap">
   <div class="top"><div><h1 style="margin:0">Email Learning</h1>
-    <div class="sub">What HCPS drafted, next to what you actually sent. Owner only. Phase 1 keeps the two versions — nothing is learned or changed yet.</div></div></div>
+    <div class="sub">What HCPS drafted, next to what you actually sent — and the writing rules learned from your edits, for you to approve. Owner only.</div></div></div>
   <div id="body"><div class="msg">Loading…</div></div>
 </div>
 <script src="/admin/staff-session.js"></script>
