@@ -2156,6 +2156,17 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
 - **Storefront: only the last line chosen is shown (2026-10-26, ABM).** `loadProducts` carries a sequence number; only
   the newest load sets `state.products`; Home cancels a pending load; an unreadable catalog file empties the line. The
   guard sits outside the slices `_shop_engine.js` extracts (engine byte-identical). Ordering test/catalog-switch.test.js.
+- **Partner 360 card order, related products and touch targets (RULES, Angelo 2026-11-02 — BongoRx release, ordering PR #21).**
+  (1) A line's card order is PRESENTATION ONLY: `public/data/manufacturers.json` `card_order` = the line's page keys in display
+  order (storefront `cvCardOrder`; ordered cards first, then everything else as before; exact SKU search still first). Never
+  reorder by renaming subcategories or editing the catalog file (that changes catalog identity and blanks prices). BongoRx:
+  Starter Kit → Annual Replenishment Pack → Single Replenishment Unit → Replacement Headgear. (2) "Related products" are keyed
+  by the same family key as the cards (`groupKeyOf`: page, else group, else code) — another size/option of the same family is
+  an option, never a related product (applies to every line, frozen lines included; display only). (3) Shared ordering controls
+  (Choose options, Add to cart, quantity, pager) are ≥44px at every width; filter chips, sort select, view toggles, chip arrows,
+  clear-filter and ghost buttons ≥44px on tablet/phone. (4) An approved change to code `p0parity` protects is recorded as an
+  exact-text exception in the ordering repo's `test/_line_discount_undo.js` (Golden-only add-to-cart guard from #17); the
+  protection itself is never loosened. Tests: ordering `test/catalog-display.test.js` + `.mutants.js`.
 
 ## 18. Manufacturer report imports — MI-1a transaction identity & safe replacement (RULE, agreed 2026-10-09/10)
 
