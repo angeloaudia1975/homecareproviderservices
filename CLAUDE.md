@@ -1713,6 +1713,17 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   lands on the variant; quote + Add / Remove work, "MSRP not provided", no Ohio Medical; public files and content carry no
   prices; price tables refuse the public key; mc_verify (save:false) PASS on Climbing Steps, Strongback, Ovation, Bemis.
   Known, pre-existing: the quote picker lists only the first 500 products, so Ovation and PediFix items cannot be added.
+- **ABM final completion (owner, 2026-11-02; ordering PR #18).** Seven SKUs retired (reversible `_retired`): BK388, BK381,
+  BC23966, BC23891, BC23575, BC21084, BC2396 → 35 active SKUs, 27 cards; the catalog file stays at 42 rows so its private price
+  identity is unchanged. RULES: (1) **a retired or switched-off product is never offered for a NEW hub action** — quote line,
+  price request, showroom slot, pricing export (`hubPageOff` / `hubLayerOff` keep it out of `PRICELIST`); `PRICE` keeps it so
+  existing quotes and history still read; an unreadable content file withdraws nothing. (2) **Warranty SKUs may show a
+  warranty badge** (owner-allowed); product photos are not required for them. (3) A photo is assigned only after it is
+  viewed and matched to the part; a file name alone never decides. Assigned from "New folder (2).zip": BC21087 (primary),
+  BC22480, BK291, BK373/BK372/BK374 (one photo shows all three sizes), BK536 / BC21275 badges. Held: BK389 (same beige photo
+  as before, label shows a supplier part number — needs ABM's confirmation), BK281 (BV Filter identified by ABM's QRG item A
+  but 151 px — needs a ≥300 px copy), BC21095 (battery compartment, not the battery). Still without photos: the six Cough
+  dual-lumen circuits. Register: ordering docs/catalog/abm-image-library-2026-10-31.md. Test: ordering test/abm-final.test.js.
 - **ABM Respiratory Care commercial rules (owner, 2026-10-27, re-confirmed 2026-10-31 — supersedes the older "ABM named-account
   prices are never a base dealer price" note for ABM only).** The Williams Brothers columns of ABM's 2026 BiWaze Clear and BiWaze
   Cough schedules are the standard HCPS dealer prices (dealer-specific discounts only where authorized); MSRP only where ABM
