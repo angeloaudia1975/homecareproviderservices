@@ -1,6 +1,6 @@
 # Golden Commerce API — contract v1 (golden-commerce-v1)
 
-**Contract version:** 1.1.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
+**Contract version:** 1.3.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
 **Committed byte-identical in:** `golden-dealer-portal/docs/contracts/` and `homecareproviderservices/docs/contracts/`.
 `golden-commerce-v1.lock.json` pins the SHA-256 of this file, the schema, the signing vectors and the shared
 signing module. Each repo's tests fail on drift. Change all copies together and bump the lock.
@@ -33,7 +33,7 @@ Golden decides and writes.
 | GET `/v1/catalog` | `golden:read` | required | 2 | **built (B2)** |
 | GET `/v1/inventory` | `golden:read` | required | 2 | **built (B2)** |
 | GET `/v1/catalog/family?family=` | `golden:read` | required | 2 | **built (B2 enrichment, 1.2.0)** |
-| GET `/v1/config/engine` | `golden:read` | required | 3 | not built |
+| GET `/v1/config?sku=&fabric=&color=&tier=&footrest=` | `golden:read` | required | 3 | **built (B3 configurator, 1.3.0)** |
 | POST `/v1/quote` | `golden:quote` | required | 4 | not built |
 | POST `/v1/orders` | `golden:order` | required + `Idempotency-Key` | 4 | not built |
 | GET `/v1/orders/{order_id}`, `/v1/history` | `golden:history` | required | 5 | not built |
@@ -136,6 +136,34 @@ folders, Golden's YouTube channel, the portal's own catalog and fabric rules) in
 - `related[]` — Golden's related models that the portal sells. `page` — Golden's product page. `enriched` — false when
   no enrichment exists yet for the family (the consumer shows the card data only).
 - Never returned: website retail prices, internal reconciliation notes, image hashes.
+
+## 4c. Payloads (B3 configurator, contract 1.3.0)
+
+**GET /v1/config?sku=PR511-LAR&fabric=xover&color=JBO&tier=nirvana&footrest=1 → 200** (schema `config_200`)
+`{ as_of, etag, engine, prices_visible, linked, reason, config }`. Header `ETag`. Caller resolution and the pricing rule are
+those of `/v1/catalog` (§4a). **Golden decides:** the answer is computed by the Golden dealer portal's OWN configurator
+code (extracted verbatim from `portals/dealer/index.html` into `repo/functions/lib/golden-config-portal.js`, drift-tested;
+`engine` = the first 16 hex of its SHA-256) run on Golden's server with this dealer's Golden pricing and Golden's inventory
+rows. A consumer renders it and never re-computes a price, stock level, lead time or item number.
+
+Query: `sku` (a configurable lift-chair size, `PR\d{3}-[A-Z]{3}`), optional `fabric` (`std` · `xover` · `brisa`, default
+`std`), `color` (3-character Golden colour code), `tier` (`standard` · `irheat` · `hvib` · `nirvana`), `footrest` (`0`|`1`).
+
+- `config.sizes[]` — every size of the model `{ sku, code, label, msrp, status }` (+ `dealer_price` with prices visible).
+- `config.tabs[]` — the fabric tabs the portal offers for the model `{ key, label, colors[] }` (+ `upcharge` with prices
+  visible); each colour `{ code, name, hex, swatch, status }` with `status` in · low · out for the selected size and tier.
+- `config.tiers` — `{ included, included_text, options[{ key, msrp, prebuilt_status }] }` (+ `upcharge`). An `included`
+  model (PR447, PR442) has exactly its built-in tier at no charge.
+- `config.footrest` — `{ eligible, part }` (+ `upcharge`). A chair with a footrest extension is always a custom build.
+- `config.quote` (only when `color` is given) — `{ ok:true, sku, fabric, color, color_name, tier, footrest, lead_note,
+  in_stock, custom, item_no, item_no_resolved, upgrades[], details }` (+ `unit_price`, `breakdown` with prices visible).
+  `item_no` is Golden's full item number only for the matching in-stock unit of the SAME tier (portal rules #143 /
+  PO#90151); otherwise it is the model-size and `item_no_resolved:false` — the order carries the spec breakdown.
+- Exact quantities (`qty`, `prebuilt`) only for a dealer with a verified link; everyone else gets the status only.
+- Errors: 400 `bad_request` (malformed query, or a colour / tier the portal does not offer for that model — `detail` names
+  it), 404 `not_found` (not a configurable model or size), 503 `inventory_unavailable` · `pricing_unavailable` ·
+  `config_unavailable`. Never a guessed price or stock level.
+- Ordering a configuration is Stage 4 (`POST /v1/orders`); this route never reserves stock or records anything.
 
 ## 5. Authentication: HMAC request signing (shared module `hcps-s2s.js`)
 

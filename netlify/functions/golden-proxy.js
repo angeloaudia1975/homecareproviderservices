@@ -31,7 +31,8 @@ async function sbGet(path){ const r = await fetch(`${SUPABASE_URL}/rest/v1/${pat
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // Partner 360 deploy previews and branch deploys (never the production storefront).
 const ORDERING_PREVIEW_ORIGIN = /^https:\/\/(deploy-preview-\d+|(?!main--)[a-z0-9-]+)--hcpsonlineordering\.netlify\.app$/;   // never main-- (= production)
-const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", family: "/v1/catalog/family" };
+const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", family: "/v1/catalog/family", config: "/v1/config" };
+const CFG_SKU_RE = /^PR\d{3}-[A-Z]{3}$/, CFG_COLOR_RE = /^[A-Z0-9]{3}$/, CFG_FABRICS = ["std","xover","brisa"], CFG_TIERS = ["standard","irheat","hvib","nirvana"];
 const FAMILY_RE = /^[A-Z]{2}\d{3}[A-Z]?(?:-[A-Z0-9]{2,4})?$/;
 
 // Only the fields the contract defines for a catalog product reach the browser (schema catalog_product).
@@ -96,6 +97,39 @@ function cleanFamily(f, pricesVisible){
   };
 }
 
+// Golden's configurator answer (schema config_200 → `config`). Rebuilt from an allow-list: Golden decides every price,
+// stock status, lead note and item #; HCPS only passes them on. Dealer prices only when Golden says prices are visible.
+const num = v => (typeof v === "number" && Number.isFinite(v)) ? v : null;
+const oneOf = (v, list) => list.includes(v) ? v : null;
+const STATUS = ["in","low","out"];
+function cleanConfig(c, pv, linked){
+  if(!c || typeof c !== "object" || !CFG_SKU_RE.test(String(c.sku))) return null;
+  const price = (o, k, v) => { if(pv && num(v) != null) o[k] = v; return o; };
+  const qty = (o, v) => { if(linked && Number.isInteger(v)) o.qty = v; return o; };
+  const noPrice = t => (typeof t === "string" && !pv) ? t.replace(/\s*\(?\+?\$[\d,.]+\)?/g, "").trim() : t;
+  const out = {
+    model: str(c.model, 20), rules_type: oneOf(c.rules_type, ["configurable","prebuilt","limited"]), sku: c.sku, tier: oneOf(c.tier, CFG_TIERS) || "standard",
+    low_stock_threshold: Number.isInteger(c.low_stock_threshold) ? c.low_stock_threshold : 50,
+    sizes: (Array.isArray(c.sizes) ? c.sizes : []).filter(x => x && CFG_SKU_RE.test(String(x.sku))).slice(0, 12).map(x =>
+      price(qty({ sku: x.sku, code: str(x.code, 8), label: str(x.label, 40) || x.code, msrp: num(x.msrp), status: oneOf(x.status, ["in","out"]) }, x.qty), "dealer_price", x.dealer_price)),
+    tabs: (Array.isArray(c.tabs) ? c.tabs : []).filter(t => t && CFG_FABRICS.includes(t.key)).map(t => price({ key: t.key, label: str(t.label, 40) || t.key,
+      colors: (Array.isArray(t.colors) ? t.colors : []).filter(x => x && CFG_COLOR_RE.test(String(x.code))).slice(0, 40).map(x => qty({ code: x.code, name: str(x.name, 60) || x.code,
+        hex: /^#[0-9a-f]{6}$/i.test(String(x.hex)) ? x.hex : null, swatch: httpsOrNull(x.swatch), status: oneOf(x.status, STATUS) || "out" }, x.qty)) }, "upcharge", t.upcharge)),
+    tiers: { included: !!(c.tiers && c.tiers.included === true), included_text: str(c.tiers && c.tiers.included_text, 120),
+      options: (c.tiers && Array.isArray(c.tiers.options) ? c.tiers.options : []).filter(o => o && CFG_TIERS.includes(o.key)).map(o => {
+        const r = { key: o.key, msrp: num(o.msrp), prebuilt_status: o.prebuilt_status === "in" ? "in" : "none" }; if(linked && Number.isInteger(o.prebuilt)) r.prebuilt = o.prebuilt; return price(r, "upcharge", o.upcharge); }) },
+    footrest: c.footrest && c.footrest.eligible === true ? price({ eligible: true, part: str(c.footrest.part, 20) }, "upcharge", c.footrest.upcharge) : { eligible: false },
+  };
+  const q = c.quote;
+  if(q && q.ok === true && CFG_SKU_RE.test(String(q.sku))){
+    out.quote = { ok: true, sku: q.sku, fabric: oneOf(q.fabric, CFG_FABRICS) || "std", color: CFG_COLOR_RE.test(String(q.color)) ? q.color : null, color_name: str(q.color_name, 60),
+      tier: oneOf(q.tier, CFG_TIERS) || "standard", footrest: q.footrest === true, lead_note: str(q.lead_note, 200), in_stock: q.in_stock === true, custom: q.custom === true,
+      item_no: /^[A-Z0-9-]{3,40}$/.test(String(q.item_no)) ? q.item_no : q.sku, item_no_resolved: q.item_no_resolved === true, upgrades: strs(q.upgrades, 120, 8).map(noPrice), details: noPrice(str(q.details, 400)) };
+    if(pv){ if(num(q.unit_price) != null) out.quote.unit_price = q.unit_price; out.quote.breakdown = str(q.breakdown, 300); }
+  }
+  return out;
+}
+
 async function dealerFromToken(event){
   const auth = event.headers["authorization"] || event.headers["Authorization"] || "";
   const tok = auth.replace(/^Bearer\s+/i, "").trim(); if(!tok) return null;
@@ -133,6 +167,16 @@ exports.handler = async (event) => {
     if(!Object.prototype.hasOwnProperty.call(ACTIONS, action)) return json(400, { ok:false, error:"unknown action" });
     const family = action === "family" ? String(b.family || "").trim().toUpperCase() : null;
     if(action === "family" && !FAMILY_RE.test(family)) return json(400, { ok:false, error:"bad family" });
+    let cfgQuery = null;
+    if(action === "config"){
+      const sku = String(b.sku || "").trim().toUpperCase(), color = String(b.color || "").trim().toUpperCase();
+      const fabric = String(b.fabric || "std").trim().toLowerCase(), tier = String(b.tier || "").trim().toLowerCase();
+      if(!CFG_SKU_RE.test(sku) || (color && !CFG_COLOR_RE.test(color)) || !CFG_FABRICS.includes(fabric) || (tier && !CFG_TIERS.includes(tier))) return json(400, { ok:false, error:"bad configuration" });
+      cfgQuery = { sku, fabric };
+      if(color) cfgQuery.color = color;
+      if(tier) cfgQuery.tier = tier;
+      if(b.footrest === true) cfgQuery.footrest = "1";
+    }
 
     let who = null;
     try{ who = (await dealerFromToken(event)) || (await dealerFromPreview(event)); }
@@ -159,11 +203,12 @@ exports.handler = async (event) => {
     if(!envName && !who.pilot.includes(String(c.sub_dealer)) && !who.pilot.includes(String(who.dealer_id))) return json(200, { ok:true, enabled:false, reason:"not_in_pilot" });
 
     const role = who.preview ? "staff_preview" : (c.sub_branch ? "branch_user" : "dealer");
-    const r = await GC.call({ method:"GET", path: ACTIONS[action], env: envName || undefined, query: family ? { family } : undefined,
+    const r = await GC.call({ method:"GET", path: ACTIONS[action], env: envName || undefined, query: family ? { family } : (cfgQuery || undefined),
       delegation: { sub_dealer: c.sub_dealer, sub_branch: c.sub_branch, actor: who.actor, role } });
     const extra = envName ? { preview:true } : {};
     if(r.configured === false) return json(200, Object.assign({ ok:true, enabled:false, reason:"golden_not_configured" }, extra));
-    if(!r.ok && action === "family" && r.status === 404) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"not_found" }, extra));
+    if(!r.ok && action === "config" && r.status === 400 && r.error === "bad_request") return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"not_offered" }, extra));
+    if(!r.ok && (action === "family" || action === "config") && r.status === 404) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"not_found" }, extra));
     if(!r.ok){
       // Never guess: Golden's answer is the only source. Show "not available right now". The precise reason
       // (e.g. a key or signature problem) is logged here, never sent to the dealer's browser.
@@ -192,6 +237,13 @@ exports.handler = async (event) => {
       if(!fam) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
       return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, linked: g.linked === true,
         enrichment_as_of: str(g.enrichment_as_of, 30), etag: typeof g.etag === "string" ? g.etag : null, family: fam, request_id: g.request_id || null }, extra));
+    }
+    if(action === "config"){
+      const pv = g.prices_visible === true;
+      const cfg = cleanConfig(g.config, pv, g.linked === true);
+      if(!cfg) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, linked: g.linked === true, engine: /^[0-9a-f]{16}$/.test(String(g.engine)) ? g.engine : null,
+        etag: typeof g.etag === "string" ? g.etag : null, config: cfg, request_id: g.request_id || null }, extra));
     }
     // inventory
     const items = (Array.isArray(g.items) ? g.items : []).filter(i => i && typeof i.sku === "string" && ["in","low","out","on_request"].includes(i.status))
