@@ -80,7 +80,9 @@ const J = r => JSON.parse(r.body);
     env(); world({ pv: false });
     r = J(await load("golden-proxy.js").handler(post({ action: "config", sku: "PR511-LAR", color: "JBO" })));
     const s = JSON.stringify(r.config);
-    ok(!/dealer_price|unit_price|breakdown|upcharge|9999/.test(s), "no price of any kind when Golden hides prices: " + s.slice(0, 120));
+    ok(!/dealer_price|unit_price|breakdown|upcharge|9999|\$/.test(s), "no price of any kind when Golden hides prices, even in Golden's text: " + s.slice(0, 120));
+    ok(!/"qty"|"prebuilt"/.test(s), "no stock quantity without a verified link");
+    eq([r.config.quote.details, r.config.quote.upgrades], ["Cross-Over: JZ Bourbon", ["Nirvana"]]);
   });
 
   await t("config: Golden's 400/404/outage become a calm 'not offered / not available', never a guess", async () => {
@@ -107,7 +109,7 @@ const J = r => JSON.parse(r.body);
         integration_clients: [{ kid: "hcps-p360-1", client_id: "hcps-partner360", tenant_id: "hcps", scopes: ["golden:read"], active: true, secret_fingerprint: gS.fingerprint(SECRET) }],
         dealer_integration_map: [{ id: "aaaaaaaa-0000-4000-8000-000000000001", tenant_id: "hcps", client_id: "hcps-partner360", hcps_dealer_id: D_HQ, golden_dealer_id: "dealer-a", status: "verified", price_visibility: visibility }],
         dealer_integration_branch_map: [], dealers: [{ id: "dealer-a", active: true }],
-        inventory: [{ sku: "PR511-LAR", size: "LAR", fabcode: "SKN", color_code: "SUM", avail: 3 }],
+        inventory: [{ sku: "PR511-LAR", size: "LAR", fabcode: "SKN", color_code: "SUM", avail: 3, pool: null }],
       }, rpc: {
         integration_nonce_claim: a => { const f1 = !nonces.has(a.p_nonce); nonces.add(a.p_nonce); return f1; },
         integration_audit_log: () => null,

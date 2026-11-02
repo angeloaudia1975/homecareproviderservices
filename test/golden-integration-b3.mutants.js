@@ -13,6 +13,8 @@ const M=[
   ['golden-proxy.js','malformed size passed through','(Array.isArray(c.sizes) ? c.sizes : []).filter(x => x && CFG_SKU_RE.test(String(x.sku)))','(Array.isArray(c.sizes) ? c.sizes : []).filter(x => x)'],
   ['golden-proxy.js','malformed selection sent to Golden','if(!CFG_SKU_RE.test(sku) || (color && !CFG_COLOR_RE.test(color))','if(false && (color && !CFG_COLOR_RE.test(color))'],
   ['golden-proxy.js','footrest sent without being asked','if(b.footrest === true) cfgQuery.footrest = "1";','cfgQuery.footrest = "1";'],
+  ['golden-proxy.js','price text kept in details without prices','details: noPrice(str(q.details, 400))','details: str(q.details, 400)'],
+  ['golden-proxy.js','quantities passed to an unlinked dealer','if(linked && Number.isInteger(v)) o.qty = v;','if(Number.isInteger(v)) o.qty = v;'],
   ['golden-proxy.js','Golden refusal shown as available','if(!r.ok && action === "config" && r.status === 400 && r.error === "bad_request") return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"not_offered" }, extra));',''],
 ];
 let killed=0, bad=0;

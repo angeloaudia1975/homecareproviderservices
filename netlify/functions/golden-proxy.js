@@ -102,10 +102,11 @@ function cleanFamily(f, pricesVisible){
 const num = v => (typeof v === "number" && Number.isFinite(v)) ? v : null;
 const oneOf = (v, list) => list.includes(v) ? v : null;
 const STATUS = ["in","low","out"];
-function cleanConfig(c, pv){
+function cleanConfig(c, pv, linked){
   if(!c || typeof c !== "object" || !CFG_SKU_RE.test(String(c.sku))) return null;
   const price = (o, k, v) => { if(pv && num(v) != null) o[k] = v; return o; };
-  const qty = (o, v) => { if(Number.isInteger(v)) o.qty = v; return o; };
+  const qty = (o, v) => { if(linked && Number.isInteger(v)) o.qty = v; return o; };
+  const noPrice = t => (typeof t === "string" && !pv) ? t.replace(/\s*\(?\+?\$[\d,.]+\)?/g, "").trim() : t;
   const out = {
     model: str(c.model, 20), rules_type: oneOf(c.rules_type, ["configurable","prebuilt","limited"]), sku: c.sku, tier: oneOf(c.tier, CFG_TIERS) || "standard",
     low_stock_threshold: Number.isInteger(c.low_stock_threshold) ? c.low_stock_threshold : 50,
@@ -116,14 +117,14 @@ function cleanConfig(c, pv){
         hex: /^#[0-9a-f]{6}$/i.test(String(x.hex)) ? x.hex : null, swatch: httpsOrNull(x.swatch), status: oneOf(x.status, STATUS) || "out" }, x.qty)) }, "upcharge", t.upcharge)),
     tiers: { included: !!(c.tiers && c.tiers.included === true), included_text: str(c.tiers && c.tiers.included_text, 120),
       options: (c.tiers && Array.isArray(c.tiers.options) ? c.tiers.options : []).filter(o => o && CFG_TIERS.includes(o.key)).map(o => {
-        const r = { key: o.key, msrp: num(o.msrp), prebuilt_status: o.prebuilt_status === "in" ? "in" : "none" }; if(Number.isInteger(o.prebuilt)) r.prebuilt = o.prebuilt; return price(r, "upcharge", o.upcharge); }) },
+        const r = { key: o.key, msrp: num(o.msrp), prebuilt_status: o.prebuilt_status === "in" ? "in" : "none" }; if(linked && Number.isInteger(o.prebuilt)) r.prebuilt = o.prebuilt; return price(r, "upcharge", o.upcharge); }) },
     footrest: c.footrest && c.footrest.eligible === true ? price({ eligible: true, part: str(c.footrest.part, 20) }, "upcharge", c.footrest.upcharge) : { eligible: false },
   };
   const q = c.quote;
   if(q && q.ok === true && CFG_SKU_RE.test(String(q.sku))){
     out.quote = { ok: true, sku: q.sku, fabric: oneOf(q.fabric, CFG_FABRICS) || "std", color: CFG_COLOR_RE.test(String(q.color)) ? q.color : null, color_name: str(q.color_name, 60),
       tier: oneOf(q.tier, CFG_TIERS) || "standard", footrest: q.footrest === true, lead_note: str(q.lead_note, 200), in_stock: q.in_stock === true, custom: q.custom === true,
-      item_no: /^[A-Z0-9-]{3,40}$/.test(String(q.item_no)) ? q.item_no : q.sku, item_no_resolved: q.item_no_resolved === true, upgrades: strs(q.upgrades, 120, 8), details: str(q.details, 400) };
+      item_no: /^[A-Z0-9-]{3,40}$/.test(String(q.item_no)) ? q.item_no : q.sku, item_no_resolved: q.item_no_resolved === true, upgrades: strs(q.upgrades, 120, 8).map(noPrice), details: noPrice(str(q.details, 400)) };
     if(pv){ if(num(q.unit_price) != null) out.quote.unit_price = q.unit_price; out.quote.breakdown = str(q.breakdown, 300); }
   }
   return out;
@@ -239,7 +240,7 @@ exports.handler = async (event) => {
     }
     if(action === "config"){
       const pv = g.prices_visible === true;
-      const cfg = cleanConfig(g.config, pv);
+      const cfg = cleanConfig(g.config, pv, g.linked === true);
       if(!cfg) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
       return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, linked: g.linked === true, engine: /^[0-9a-f]{16}$/.test(String(g.engine)) ? g.engine : null,
         etag: typeof g.etag === "string" ? g.etag : null, config: cfg, request_id: g.request_id || null }, extra));
