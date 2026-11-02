@@ -3967,7 +3967,9 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
 - **Retry safety:** an order submission (Stage 4) carries one `Idempotency-Key` per checkout attempt. **PO numbers are NOT unique**
   (dealers reuse them). Never add a PO uniqueness rule or use a PO as an idempotency key.
 - **Switches** (`phase2_flags`, exactly `true` = on): `golden_p360_catalog`, `golden_p360_pilot_dealers` (list),
-  `golden_p360_links`. Golden: `GOLDEN_V1_API`, `GOLDEN_V1_ORDERS` (off), `SSO_LEGACY_SECRET`. All of them are OFF in B1.
+  `golden_p360_links`. Golden: `GOLDEN_V1_API`, `GOLDEN_V1_ORDERS` (off), `SSO_LEGACY_SECRET` (opt-in `on` only). All of them are OFF in B1.
+- **Deploy order:** a storefront change that stops sending Golden lines must be live BEFORE any orders-api change that refuses them
+  (the old page ignored the answer). Each environment has its own integration secret; key rotation = new key id, same `client_id`.
   Turning a switch on is a production step that needs Angelo's approval.
 - **Branches/PRs.** This programme uses branches and draft PRs with independent review. Golden's repo requires that anyway, and the
   integration is substantial-risk work under §7.

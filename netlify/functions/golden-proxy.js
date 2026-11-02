@@ -76,8 +76,10 @@ exports.handler = async (event) => {
     const r = await GC.call({ method:"GET", path:"/v1/eligibility", delegation: { sub_dealer: c.sub_dealer, sub_branch: c.sub_branch, actor: who.actor, role } });
     if(r.configured === false) return json(200, { ok:true, enabled:false, reason:"golden_not_configured" });
     if(!r.ok){
-      // Never guess: Golden's answer is the only source. Show "not available right now".
-      return json(200, { ok:true, enabled:true, available:false, reason: r.error || "golden_unavailable" });
+      // Never guess: Golden's answer is the only source. Show "not available right now". The precise reason
+      // (e.g. a key or signature problem) is logged here, never sent to the dealer's browser.
+      console.warn("golden-proxy: Golden refused or unreachable", JSON.stringify({ status: r.status, code: r.error }));
+      return json(200, { ok:true, enabled:true, available:false, reason: "golden_unavailable" });
     }
     const g = r.json || {};
     const caps = g.capabilities || {};

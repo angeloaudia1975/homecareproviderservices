@@ -66,9 +66,10 @@ Request: `{ golden_dealer_id, hcps_dealer_id, customer_no?, evidence:{ method:"a
 - 200: `{ result:"proposed"|"unchanged", link_id, status }`.
 - Errors:
     - 404 `unknown_golden_dealer`
-    - 409 `customer_no_mismatch` · `link_conflict`
+    - 409 `link_conflict`
     - 422 `golden_dealer_id` · `hcps_dealer_mismatch` · `evidence_method`
     - 403 `role`
+- A `customer_no` that differs from Golden's is **not** reported back. It is Golden's default dealer login secret, so a distinct answer would let a caller test guesses. Instead it is recorded on the proposal for the Golden admin.
 - The result is a **proposal** only. It becomes usable only when a Golden admin verifies it (`admin-integration-links`), and verifying never enables ordering.
 
 ## 5. Authentication: HMAC request signing (shared module `hcps-s2s.js`)
@@ -86,7 +87,11 @@ sig = HMAC-SHA256(secret, join("\n",
     - Golden: `HCPS_P360_KEYS`, a JSON object `{"<kid>":"<secret>"}`. It can hold two kids during a rotation.
     - HCPS: `GOLDEN_P360_KEY_ID` + `GOLDEN_P360_SECRET`.
 
-  The secret is ≥ 32 bytes (`openssl rand -base64 48`). It is **never** stored in a database, a repo, a log or a chat. Golden's `integration_clients` row holds only `kid`, `scopes`, `active`, `tenant_id` and a 16-hex `secret_fingerprint`. The fingerprint confirms which secret is configured and is never used to sign or verify.
+  The secret is ≥ 32 bytes (`openssl rand -base64 48`). It is **never** stored in a database, a repo, a log or a chat. Golden's `integration_clients` row holds only `kid`, a stable `client_id`, `scopes`, `active`, `tenant_id` and a 16-hex `secret_fingerprint`. The fingerprint confirms which secret is configured and is never used to sign or verify.
+
+  **Rotation:** add a second key id with the **same `client_id`**. Dealer links hang on `client_id`, so they survive the change. Move HCPS to the new key, then set the old row `active=false`.
+
+  **Environments:** each environment (production, preview, staging) has its **own** secret. The signature does not cover the host, so a shared secret would let a request signed for one environment be replayed once against another.
 - **Golden's checks, in order. Each refusal is logged without values:**
     1. API switch on.
     2. Header grammar.
@@ -108,14 +113,17 @@ sig = HMAC-SHA256(secret, join("\n",
     - `key_mismatch`, `replayed_nonce`
     - 400 `bad_query`
     - 403 `tenant` · `scope`
-- **Sign-in links are a separate secret.** Staff links use `HCPS_SSO_SECRET` (Golden) = `GOLDEN_SSO_SECRET` (HCPS), with claims `{slug, exp, aud:"golden-sso"}`. The event-signing secret (`HCPS_FEDERATION_SECRET` / `FEDERATION_SECRET`) is accepted for links only until `SSO_LEGACY_SECRET=off`.
+- **Sign-in links are a separate secret.** Staff links use `HCPS_SSO_SECRET` (Golden) = `GOLDEN_SSO_SECRET` (HCPS).
+    - Claims: `{slug, exp, aud:"golden-sso"}`.
+    - `aud` is always required, and `exp` may be at most 300 s ahead.
+    - The event-signing secret is accepted for links **only** while `SSO_LEGACY_SECRET=on`. That is opt-in and off by default.
 
 `golden-commerce-v1.signing-vectors.json` holds fixed inputs and the exact expected headers. Both repos test their implementation against it.
 
 ## 6. Retry safety and idempotency (binding for Stage 4)
 
 - `POST /v1/orders` requires `Idempotency-Key: <uuid v4>`. HCPS mints one key per checkout attempt and reuses it on every retry of that attempt.
-- Golden stores `(tenant_id, client_kid, idempotency_key)` → `request_hash` + the full first response, in one transaction with the order:
+- Golden stores `(tenant_id, client_id, idempotency_key)` → `request_hash` + the full first response, in one transaction with the order:
     - Same key and same body: Golden replays the stored response with `idempotent_replay:true`.
     - Same key and a different body: 422 `idempotency_conflict`.
     - Concurrent duplicates: exactly one order.

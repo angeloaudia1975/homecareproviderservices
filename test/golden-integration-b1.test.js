@@ -150,9 +150,9 @@ const J = r => JSON.parse(r.body);
   await t("proxy: Golden error/unreachable → available:false, no guessed state", async () => {
     env(); world({ golden: () => ({ ok: false, status: 503, json: async () => ({ error: { code: "golden_v1_disabled" } }) }) });
     let j = J(await load("golden-proxy.js").handler(post({ action: "eligibility" })));
-    eq([j.available, j.reason, j.state], [false, "golden_v1_disabled", undefined]);
+    eq([j.available, j.reason, j.state], [false, "golden_unavailable", undefined], "Golden's internal code never reaches the browser");
     env(); world({ goldenDown: true }); j = J(await load("golden-proxy.js").handler(post({ action: "eligibility" })));
-    eq([j.available, j.reason], [false, "golden_unreachable"]);
+    eq([j.available, j.reason], [false, "golden_unavailable"]);
     env({ GOLDEN_P360_SECRET: "" }); world(); j = J(await load("golden-proxy.js").handler(post({ action: "eligibility" })));
     eq([j.enabled, j.reason], [false, "golden_not_configured"]);
   });
@@ -210,6 +210,23 @@ const J = r => JSON.parse(r.body);
     const wr = x.w.writes.find(w => w.method === "PATCH"); ok(wr && !("status" in JSON.parse(wr.body)), "a not-verified answer never marks the mirror verified");
   });
 
+  await t("links: refresh marks ONLY the link Golden names as verified; every other row for the dealer is not verified", async () => {
+    const LID = "dddddddd-0000-4000-8000-000000000001";
+    const x = await links({ action: "refresh", dealer_id: D_HQ }, { golden: () => ({ ok: true, status: 200, json: async () => ({ state: "account", link_id: LID, capabilities: { see_prices: true, order: false, history: false } }) }) });
+    eq(x.j.state, "verified");
+    const p = x.w.writes.filter(w => w.method === "PATCH");
+    eq(p.length, 2, "two targeted updates");
+    ok(/golden_link_id=eq\.dddddddd/.test(p[0].url) && JSON.parse(p[0].body).golden_state === "verified", "named link verified");
+    ok(/golden_link_id\.neq\.dddddddd/.test(decodeURIComponent(p[1].url)) && JSON.parse(p[1].body).golden_state === "not_verified", "the others are not");
+    ok(p.every(w => !("status" in JSON.parse(w.body))), "status stays HCPS's own record");
+  });
+  await t("links: a proposal mirror row starts unchecked (golden_state null)", async () => {
+    const x = await links({ action: "propose", dealer_id: D_HQ, golden_dealer_id: "dealer-a", method: "account_number" },
+      { golden: () => ({ ok: true, status: 200, json: async () => ({ result: "unchanged", link_id: "dddddddd-0000-4000-8000-000000000001", status: "verified" }) }) });
+    const row = JSON.parse(x.w.writes.find(w => /golden_dealer_links/.test(w.url)).body)[0];
+    eq([row.status, row.golden_state], ["proposed", null], "Golden's word is recorded only by refresh");
+  });
+
   // ── orders-api guard (D6) ─────────────────────────────────────────────────
   await t("orders-api: a Golden order is refused (409) and nothing is written", async () => {
     env(); const w = world(); const OA = load("orders-api.js");
@@ -250,7 +267,7 @@ const J = r => JSON.parse(r.body);
     const nonces = new Set();
     const goldenSb = async (u, init) => {
       const res = (b) => ({ ok: true, status: 200, text: async () => JSON.stringify(b), json: async () => b });
-      if (/integration_clients/.test(u)) return res([{ kid: "hcps-p360-test", tenant_id: "hcps", scopes: ["golden:read"], active: true, secret_fingerprint: gS.fingerprint(SECRET) }]);
+      if (/integration_clients/.test(u)) return res([{ kid: "hcps-p360-test", client_id: "hcps-partner360", tenant_id: "hcps", scopes: ["golden:read"], active: true, secret_fingerprint: gS.fingerprint(SECRET) }]);
       if (/rpc\/integration_nonce_claim/.test(u)) { const a = JSON.parse(init.body); const k = a.p_nonce; const fresh1 = !nonces.has(k); nonces.add(k); return res(fresh1); }
       if (/rpc\/integration_audit_log/.test(u)) return res(null);
       if (/dealer_integration_map/.test(u)) return res([{ id: "aaaaaaaa-0000-4000-8000-000000000001", golden_dealer_id: "dealer-a", price_visibility: "dealer", golden_ordering_enabled: false, history_enabled: false }]);
@@ -277,7 +294,7 @@ const J = r => JSON.parse(r.body);
     // Forge: wrong secret on HCPS side → Golden refuses with bad_signature.
     process.env.GOLDEN_P360_SECRET = SECRET + "-forged";
     const j2 = J(await load("golden-proxy.js").handler(post({ action: "eligibility" })));
-    eq([j2.available, j2.reason], [false, "bad_signature"]);
+    eq([j2.available, j2.reason], [false, "golden_unavailable"], "refused by Golden; detail stays server-side");
     void hcpsWorld;
   });
 

@@ -108,7 +108,7 @@ exports.handler = async (event) => {
       const g = r.json || {};
       await sbSend("POST", "golden_dealer_links?on_conflict=hcps_dealer_id,golden_dealer_id", [{
         hcps_dealer_id: dealerId, golden_dealer_id: golden, customer_no: customerNo, golden_link_id: g.link_id || null,
-        status: g.status === "verified" ? "verified" : "proposed", proposed_by: me.email, evidence_method: b.method, note,
+        status: "proposed", golden_state: null, proposed_by: me.email, evidence_method: b.method, note,
       }], { Prefer: "resolution=merge-duplicates,return=minimal" });
       return json(200, { ok:true, result: g.result, status: g.status, link_id: g.link_id });
     }
@@ -120,11 +120,22 @@ exports.handler = async (event) => {
       if(r.configured === false) return json(503, { ok:false, error:"golden_not_configured" });
       if(!r.ok) return json(502, { ok:false, error: r.error || "golden_unavailable" });
       const g = r.json || {};
-      const state = g.state === "none" ? (g.reason === "golden_account_inactive" ? "inactive" : "not_verified") : "verified";
-      await sbSend("PATCH", `golden_dealer_links?hcps_dealer_id=eq.${encodeURIComponent(dealerId)}`,
-        { golden_state: state, capabilities: g.capabilities || null, checked_at: new Date().toISOString(), status: state === "verified" ? "verified" : undefined },
-        { Prefer: "return=minimal" });
-      return json(200, { ok:true, state, capabilities: g.capabilities || null });
+      const at = new Date().toISOString();
+      const verifiedId = g.state !== "none" && UUID_RE.test(String(g.link_id || "")) ? String(g.link_id) : null;
+      const state = verifiedId ? "verified" : (g.reason === "golden_account_inactive" ? "inactive" : "not_verified");
+      /* Golden's answer names the ONE verified link (link_id). Only the mirror row for that link is marked verified;
+         every other row for this dealer is marked not verified — including a link Golden has since revoked. `status`
+         stays HCPS's own record of what it proposed; the page shows Golden's word (golden_state) only. */
+      if(verifiedId){
+        await sbSend("PATCH", `golden_dealer_links?hcps_dealer_id=eq.${encodeURIComponent(dealerId)}&golden_link_id=eq.${encodeURIComponent(verifiedId)}`,
+          { golden_state: "verified", capabilities: g.capabilities || null, checked_at: at }, { Prefer: "return=minimal" });
+        await sbSend("PATCH", `golden_dealer_links?hcps_dealer_id=eq.${encodeURIComponent(dealerId)}&or=(golden_link_id.is.null,golden_link_id.neq.${encodeURIComponent(verifiedId)})`,
+          { golden_state: "not_verified", capabilities: null, checked_at: at }, { Prefer: "return=minimal" });
+      } else {
+        await sbSend("PATCH", `golden_dealer_links?hcps_dealer_id=eq.${encodeURIComponent(dealerId)}`,
+          { golden_state: state, capabilities: null, checked_at: at }, { Prefer: "return=minimal" });
+      }
+      return json(200, { ok:true, state, capabilities: verifiedId ? (g.capabilities || null) : null });
     }
 
     return json(400, { ok:false, error:"unknown action" });

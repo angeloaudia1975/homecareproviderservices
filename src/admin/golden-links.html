@@ -24,7 +24,7 @@
     <div class="sub">Golden decides which HCPS dealer is which Golden account. HCPS only <b>proposes</b>; a Golden admin verifies on the Golden side.
       Until a link is verified, Partner 360 shows Golden as not available for that dealer. Verifying never turns on ordering.</div></div>
     <div><button class="btn ghost" onclick="load()">↻ Refresh</button></div></div>
-  <div id="body"><div class="msg">Loading…</div></div>
+  <div id="body" aria-live="polite"><div class="msg" role="status">Loading…</div></div>
 </div>
 <script src="/admin/staff-session.js"></script>
 <script src="/admin/admin-chrome.js"></script>
@@ -44,9 +44,10 @@ async function api(action, extra){ const r=await fetch("/.netlify/functions/gold
 
 function statePill(c){
   const l=c.link; if(!l) return '<span class="pill">not proposed</span>';
-  if(l.golden_state==="verified"||l.status==="verified") return '<span class="pill ok">verified by Golden</span>';
+  if(l.golden_state==="verified") return '<span class="pill ok">verified by Golden</span>';
   if(l.golden_state==="inactive") return '<span class="pill bad">Golden account off</span>';
-  return '<span class="pill wait">proposed — waiting for Golden</span>';
+  if(l.golden_state==="not_verified") return '<span class="pill wait">not verified by Golden</span>';
+  return '<span class="pill wait">proposed — not checked yet</span>';
 }
 async function propose(i, btn){
   const c=CANDS[i]; if(!c) return;
@@ -75,7 +76,7 @@ function render(){
      <td class="mono" data-l="Golden account">${esc(c.golden_dealer_id)}<div class="note">#${esc(c.customer_no||"—")} ${c.account_matches?'<span class="pill ok">account # matches</span>':''}</div></td>
      <td class="note" data-l="Activity">${c.events} event(s)<br>last ${esc(when(c.last_event))}</td>
      <td data-l="State">${statePill(c)}</td>
-     <td><div class="row">${!c.link?`<button class="btn" ${s.switch_on&&s.configured&&!c.is_branch?'':'disabled'} onclick="propose(${i},this)">Propose</button>`:''}
+     <td><div class="row">${(!c.link||c.link.golden_state==="not_verified")?`<button class="btn" ${s.switch_on&&s.configured&&!c.is_branch?'':'disabled'} onclick="propose(${i},this)">${c.link?'Propose again':'Propose'}</button>`:''}
        ${c.link?`<button class="btn ghost" ${s.configured?'':'disabled'} onclick="refresh('${esc(c.dealer_id)}',this)">Check Golden</button>`:''}</div></td></tr>`).join("");
   $("#body").innerHTML=st+(MSG?`<div class="msg">${esc(MSG)}</div>`:"")
     +`<div class="card"><h2>Golden accounts seen on activity</h2><p class="note">Each row is a Golden account that has sent events, and the HCPS dealer those events matched to. Propose only rows you have checked.</p>

@@ -104,6 +104,13 @@ await t('a Golden line is never submitted or recorded by HCPS; it stays in the c
   eq([...E.CART.keys()],['golden-technologies::PR1'],'Golden line kept in the cart');
   ok(E.toasts.some(m=>/Golden platform/.test(m)),'told to order Golden on the Golden platform: '+E.toasts.join(' | '));
 });
+await t('a Golden line needs no PO and never blocks the HCPS order',async()=>{
+  const E=env(); E.add('A1',1);
+  E.CART.set('golden-technologies::PR1',{p:{manufacturer:'golden-technologies',code:'PR1',name:'Chair',base_price:900},qty:1});
+  await E.page.submitOrder();
+  eq(E.W.db.orders.map(o=>o.manufacturer),[LINE],'HCPS order placed without a Golden PO');
+  ok(!E.toasts.some(m=>/Enter a PO number for golden/i.test(m)),'no Golden PO demanded: '+E.toasts.join(' | '));
+});
 await t('a Golden-only cart submits nothing at all',async()=>{
   const E=env();
   E.CART.set('golden-technologies::PR1',{p:{manufacturer:'golden-technologies',code:'PR1',name:'Chair',base_price:900},qty:1}); E.MFR['golden-technologies']={po:'G-1',notes:''};
