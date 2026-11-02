@@ -380,10 +380,13 @@ exports.handler=async(event)=>{
       // 3. Fall back to a golden_url on the dealer record.
       if(!slug){ try{ const d=await sbGet(`dealers?id=eq.${encodeURIComponent(did)}&select=golden_url`); const u=d&&d[0]&&d[0].golden_url; if(u){ const mm=String(u).match(/\/portal\/([^\/?#]+)/); slug=mm?mm[1]:(/^[a-z0-9][a-z0-9-]*$/i.test(String(u).trim())?String(u).trim():null); } }catch(e){} }
       if(!slug) return json(400,{error:"no_golden_slug",message:"No linked Golden portal for this dealer (no Golden slug on file)."});
-      const secret=process.env.FEDERATION_SECRET||""; if(!secret) return json(500,{error:"FEDERATION_SECRET not set"});
+      /* Sign-in links have their OWN secret (blueprint v1.3.0 §9: one secret per purpose). GOLDEN_SSO_SECRET = Golden's
+         HCPS_SSO_SECRET. Until it is set, the legacy event secret keeps links working; Golden stops accepting that once
+         Angelo sets SSO_LEGACY_SECRET=off there. aud is always sent (older Golden builds ignore it). */
+      const secret=process.env.GOLDEN_SSO_SECRET||process.env.FEDERATION_SECRET||""; if(!secret) return json(500,{error:"sign-in secret not set"});
       const crypto=require("crypto");
       const exp=Math.floor(Date.now()/1000)+120;   // 2-minute link
-      const payload=Buffer.from(JSON.stringify({slug:String(slug),exp}),"utf8").toString("base64url");
+      const payload=Buffer.from(JSON.stringify({slug:String(slug),exp,aud:"golden-sso"}),"utf8").toString("base64url");
       const sig=crypto.createHmac("sha256",secret).update(payload,"utf8").digest("hex");
       const base=String(process.env.GOLDEN_PORTAL_BASE||"https://goldenonlineordering.netlify.app").replace(/\/$/,"");
       return json(200,{ok:true,url:base+"/sso?t="+encodeURIComponent(payload+"."+sig),slug,expires_in:120});

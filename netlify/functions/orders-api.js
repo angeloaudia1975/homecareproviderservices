@@ -235,6 +235,12 @@ exports.handler = async (event)=>{
     if(b.action==="create"){
       let orders=Array.isArray(b.orders)?b.orders:[];
       if(!orders.length) return json(400,{error:"no orders"});
+      /* Golden orders are created, priced and owned by Golden (blueprint v1.3.0 §2.4). HCPS never records a Golden
+         order of its own — that would be a second, browser-priced copy. Partner 360 submits Golden lines only through
+         golden-proxy → Golden's /v1/orders (Stage 4). Nothing is written for a request that carries a Golden order. */
+      if(orders.some(o=>PRICING.isGolden(o&&(o.manufacturer_slug||o.manufacturer)))){
+        return json(409,{ok:false,status:"golden_routes_to_golden",error:"Golden orders are placed with Golden, not recorded by HCPS."});
+      }
       const denied=await entitlementGate(orders, who.dealer_id); if(denied) return denied;
       /* Re-price before anything is written. A total the dealer has not seen is never saved. */
       let priced;

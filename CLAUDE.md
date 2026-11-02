@@ -3946,6 +3946,36 @@ direct-to-main path). Rules it established:
   sr-workflow (full plan → assign → ETA → heads-up → visit → reassign → follow-up → CRM intact), sr-access.qa. Separate
   from Smart Email Learning.
 
+## 23. Golden ⇄ Partner 360 integration (RULE, Angelo 2026-11-02 — B0 + B1 approved)
+Blueprint `docs/FEDERATED_ARCHITECTURE.md` v1.3.0 + contract `docs/contracts/golden-commerce-v1.md` (pinned by
+`golden-commerce-v1.lock.json`, byte-identical in golden-dealer-portal). Work package: Claude Doc "Golden ⇄ Partner 360
+Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RUNBOOK.md`.
+- **Golden is authoritative** for Golden products, prices, inventory, configuration, orders, fulfilment and history.
+  HCPS stores no competing Golden price or stock. It never writes Golden tables, and it never records a Golden order of its own:
+  `orders-api create` refuses any request carrying a Golden order (409 `golden_routes_to_golden`).
+- **One route to Golden:** the browser → `golden-proxy` → `_golden_client.js` → Golden `/v1/*`. It is signed with the shared module
+  `_golden_s2s.js`; never edit it here alone, change both repos and the lock. The browser never calls Golden or holds an
+  integration credential.
+- **Secrets: one per purpose, environment only, never shown in chat, files or logs.**
+    - Server-to-server: `GOLDEN_P360_KEY_ID` + `GOLDEN_P360_SECRET`.
+    - Staff sign-in links: `GOLDEN_SSO_SECRET`.
+    - Events: `FEDERATION_SECRET`.
+    - No secret is stored in a database. Golden keeps only a fingerprint, used to confirm which secret is configured, never to verify.
+- **Identity is a Golden-verified link.** HCPS only proposes (`golden-links-api propose`, management only, organisation not branch).
+  A Golden admin verifies. Only a verified link unlocks Golden prices, ordering or history. `golden_dealer_links` is HCPS's
+  mirror and authorizes nothing.
+- **Retry safety:** an order submission (Stage 4) carries one `Idempotency-Key` per checkout attempt. **PO numbers are NOT unique**
+  (dealers reuse them). Never add a PO uniqueness rule or use a PO as an idempotency key.
+- **Switches** (`phase2_flags`, exactly `true` = on): `golden_p360_catalog`, `golden_p360_pilot_dealers` (list),
+  `golden_p360_links`. Golden: `GOLDEN_V1_API`, `GOLDEN_V1_ORDERS` (off), `SSO_LEGACY_SECRET` (opt-in `on` only). All of them are OFF in B1.
+- **Deploy order:** a storefront change that stops sending Golden lines must be live BEFORE any orders-api change that refuses them
+  (the old page ignored the answer). Each environment has its own integration secret; key rotation = new key id, same `client_id`.
+  Turning a switch on is a production step that needs Angelo's approval.
+- **Branches/PRs.** This programme uses branches and draft PRs with independent review. Golden's repo requires that anyway, and the
+  integration is substantial-risk work under §7.
+- Tests: `node test/golden-integration-b1.test.js` (includes a real cross-repo round trip when `../golden-dealer-portal` is checked
+  out) and `node test/golden-integration-b1.mutants.js`.
+
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
 - [ ] Hero headline is short + single-row on desktop, wraps on mobile.

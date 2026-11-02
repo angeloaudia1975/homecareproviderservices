@@ -463,6 +463,14 @@ window.HUB_GUIDE = {
     workflow: "Weekly: pick a line you want to grow, pull the interested non-buyers, and launch a targeted campaign.",
     intelligence: "Behavioral intent scoring with automatic buyer exclusion."
   },
+  "Golden Partner Links": {
+    tagline: "Tell Golden which HCPS dealer is which Golden account — Golden checks and confirms.",
+    what: "Stage 1 of putting Golden inside Partner 360. Golden stays the authority: HCPS only proposes that one of its dealers is a given Golden account, and a Golden administrator verifies or rejects it on the Golden admin side. Until a link is verified, Partner 360 shows Golden as not available for that dealer. Verifying never turns on ordering.",
+    features: ["Candidates from Golden activity — each Golden account already seen on events, with the HCPS dealer it matched", "Account-number match flag", "Propose a link (organisation level, never a branch)", "Refresh a dealer's state from Golden", "Connection status — configured, reachable, which Golden capabilities are on"],
+    data: "Golden's /v1 API (signed server-to-server) for status and proposals; HCPS keeps golden_dealer_links as its record of what it proposed and what Golden last reported. No Golden prices or stock are stored.",
+    actions: ["Check the Golden connection", "Propose links for the pilot dealers", "Refresh after Golden verifies"],
+    reports: ["Candidates", "Proposed / verified links"],
+  },
   "Golden Activity": {
     tagline: "A live window into the Golden ordering platform — every dealer touch, in one dashboard.",
     what: "The portfolio view of what's happening inside the HCPS-owned Golden ordering platform right now: who logged in, which products are being viewed, what's sitting in carts, what's been abandoned, and what's being ordered — fed in real time through the federation connector and attributed to the right HCPS dealer.",

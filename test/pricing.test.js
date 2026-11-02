@@ -133,10 +133,10 @@ await t('a catalog file that cannot be read stops the pricing; a missing content
   const r=await call(C,{action:'price_check',orders:[order([{code:'A1',qty:1,unit:50}])]});
   eq(r.status,503,'catalog file unreadable');
 });
-await t('Golden orders pass through untouched (Golden prices its own orders)',async()=>{
+await t('Golden orders are never recorded by HCPS (blueprint v1.3.0 — Golden owns its orders; was: pass-through at browser prices)',async()=>{
   const W=world({}); const C=mod(W);
   const c=await call(C,{action:'create',orders:[{manufacturer_slug:'golden-technologies',po:'G1',items:[{code:'PR-1',qty:1,unit:999}],items_subtotal:999}],dealer:{}});
-  eq(c.status,200,'saved'); eq(W.db.order_items.map(i=>i.unit_price),[999],'client price kept for Golden');
+  eq([c.status,c.body.status],[409,'golden_routes_to_golden'],'refused'); eq(W.db.orders.length,0,'no order row'); eq(W.db.order_items.length,0,'no lines');
   ok(!W.calls.some(x=>/golden-technologies/.test(x.url)&&/product_overrides|\/data\//.test(x.url)),'no HCPS layers read for Golden');
 });
 await t('an authoritative master record prices the line; one with a parity error does not',async()=>{
@@ -181,8 +181,9 @@ await t('an order whose lines cannot be written is withdrawn — never recorded 
 await t('one manufacturer failing to record does not hide the ones that did',async()=>{
   let n=0; const W=world({failWrite:(m,t)=>m==='POST'&&t==='order_items'&&(n++===1)?500:0}); const C=mod(W);
   W.db.manufacturers.push({slug:'other-line',name:'Other'});
-  const c=await call(C,{action:'create',orders:[order([{code:'A1',qty:1,unit:50}]),{manufacturer_slug:'golden-technologies',po:'G',items:[{code:'G1',qty:1,unit:5}],items_subtotal:5}],dealer:{}});
-  eq([c.status,c.body.status,c.body.saved],[200,'partial',1],'partial'); eq(c.body.failed.map(f=>f.manufacturer_slug),['golden-technologies'],'which failed');
+  /* Two HCPS orders (the second used to be a Golden pass-through order, which HCPS no longer records). */
+  const c=await call(C,{action:'create',orders:[order([{code:'A1',qty:1,unit:50}]),order([{code:'A1',qty:1,unit:50}],{po:'PO2'})],dealer:{}});
+  eq([c.status,c.body.status,c.body.saved],[200,'partial',1],'partial'); eq(c.body.failed.map(f=>f.manufacturer_slug),[LINE],'which failed');
   eq(c.body.orders.map(o=>o.manufacturer_slug),[LINE],'which recorded'); eq(W.db.orders.length,1,'one row');
 });
 await t('a failed HCPS notification flags the dealer\'s own recorded order, and nobody else\'s',async()=>{
