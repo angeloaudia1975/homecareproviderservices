@@ -1712,11 +1712,18 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   overflow; server = browser on Access4U / ABM / Dalton; ABM MOQ, BK536 and BC21275 rules enforced by the server; SKU search
   lands on the variant; quote + Add / Remove work, "MSRP not provided", no Ohio Medical; public files and content carry no
   prices; price tables refuse the public key; mc_verify (save:false) PASS on Climbing Steps, Strongback, Ovation, Bemis.
-  Quote picker cap FIXED 2026-11-02 (ordering PR #19): every quotable product is offered, grouped by manufacturer (it stopped
-  at 500 and, in network load order, dropped whole lines — ABM on live). Known gap (pre-existing, not yet fixed): the hub's
-  product list is built from the catalog FILE only, so products added in the catalog editor (custom_products — e.g. the renamed
-  Strongback models, Climbing Steps MP-P12/13/14, Bemis 444DISPLAY) and the storefront's generated colour options (Ovation) are
-  not offered on new quotes; nothing it offers is unsellable. Fix = build the list from the storefront's own merged catalog.
+  Quote picker cap FIXED 2026-11-02 (ordering PR #19).
+- **Customer MSRP Quotes use the storefront's own catalog (RULE, owner 2026-11-02; ordering PR #20).** The quote list (and the
+  hub's price request / showroom / pricing-export lists) is built by `hubStoreCatalog` → `mergeCatalogEdits` — the code the shop
+  and the order server run — for every line the dealer may order (entitlement unchanged), rebuilt whenever that set of lines
+  changes (`ensureQuoteCatalog`; an empty list built before the lines loaded must never stick). Catalog-editor publications,
+  added products, colour options and retirements reach quotes with NO code change. Never offered: discontinued (reference-only),
+  retired / hidden / switched-off, inactive lines (`quotable:false`), Golden, lines the dealer cannot order; a line that cannot
+  load is named on screen. Each SKU is its own choice — family, exact options, part # — and Access4U railing upgrades are their
+  own choices (quote list only). MSRP = manufacturer only: a storefront-derived 2x MSRP (`_msrp_suggested`) is "MSRP not
+  provided"; a per-piece pack MSRP says "each"; no dealer cost on the customer quote; Print / PDF prints the quote page alone.
+  `PRICE` keeps every catalog-file entry so items already on a quote keep their names. Verified live 2026-11-02: quote = shop on
+  all 10 lines (1,360 SKUs + 96 upgrade choices; 0 missing, 0 extra). Test: ordering test/quote-catalog.test.js.
 - **ABM final completion (owner, 2026-11-02; ordering PR #18).** Seven SKUs retired (reversible `_retired`): BK388, BK381,
   BC23966, BC23891, BC23575, BC21084, BC2396 → 35 active SKUs, 27 cards; the catalog file stays at 42 rows so its private price
   identity is unchanged. RULES: (1) **a retired or switched-off product is never offered for a NEW hub action** — quote line,
