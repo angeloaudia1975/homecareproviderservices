@@ -74,7 +74,7 @@ exports.handler = async (event) => {
       // no link state, and say so. Only THAT table being missing is tolerated; any other read failure still fails.
       let links, linksInstalled = true;
       try { links = await sbGet("golden_dealer_links?select=hcps_dealer_id,golden_dealer_id,status,golden_state"); }
-      catch(e){ if(!/golden_dealer_links/.test(String(e && e.message)) || !/PGRST205|42P01|Could not find the table|does not exist/i.test(String(e && e.message))) throw e;
+      catch(e){ const m = String(e && e.message); if(!/golden_dealer_links/.test(m) || !/"code":"(PGRST205|42P01)"/.test(m)) throw e;
         links = []; linksInstalled = false; }
       const linkBy = {}; (links || []).forEach(l => { linkBy[l.hcps_dealer_id + "|" + l.golden_dealer_id] = l; });
       const out = [...seen.values()].map(c => {
@@ -101,6 +101,8 @@ exports.handler = async (event) => {
       if(!METHODS.has(b.method)) return json(400, { ok:false, error:"method must be account_number, federation_event or manual" });
       const note = b.note == null ? null : String(b.note).slice(0, 500);
       if(b.method === "manual" && !note) return json(400, { ok:false, error:"a note is required for a manual proposal" });
+      // The mirror must exist BEFORE Golden is asked: never leave a proposal at Golden that HCPS cannot record.
+      await sbGet("golden_dealer_links?select=id&limit=1");
       const d = await sbGet(`dealers?id=eq.${encodeURIComponent(dealerId)}&select=id,parent_id,hcps_account,is_test`);
       if(!d || !d[0]) return json(404, { ok:false, error:"dealer not found" });
       if(d[0].parent_id) return json(400, { ok:false, error:"link the organisation (HQ), not a branch", parent_id: d[0].parent_id });

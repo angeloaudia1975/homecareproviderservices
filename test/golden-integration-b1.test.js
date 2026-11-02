@@ -188,7 +188,12 @@ const J = r => JSON.parse(r.body);
     eq((await load("golden-links-api.js").handler(post({ action: "candidates" }))).statusCode, 500, "other link-table failure is not hidden");
     env(); world(); global.fetch = miss(/federation_events/, '{"code":"PGRST205","message":"Could not find the table \'public.federation_events\'"}')(global.fetch);
     eq((await load("golden-links-api.js").handler(post({ action: "candidates" }))).statusCode, 500, "a missing events table is not hidden");
+    env(); world(); global.fetch = miss(/golden_dealer_links/, '{"code":"42703","message":"column golden_dealer_links.golden_state does not exist"}')(global.fetch);
+    eq((await load("golden-links-api.js").handler(post({ action: "candidates" }))).statusCode, 500, "a missing column is not hidden");
     const { j: k } = await links({ action: "candidates" }); eq(k.links_installed, true);
+    env(); const w = world(); global.fetch = miss(/golden_dealer_links/, '{"code":"PGRST205","message":"no table"}')(global.fetch);
+    r = await load("golden-links-api.js").handler(post({ action: "propose", dealer_id: D_HQ, golden_dealer_id: "dealer-a", method: "account_number" }));
+    eq([r.statusCode, w.golden.length], [500, 0], "propose never reaches Golden without the mirror table");
   });
   await t("links page: a failed candidates call shows an error, never an empty list", async () => {
     const html = fs.readFileSync(path.join(__dirname, "..", "src/admin/golden-links.html"), "utf8");
