@@ -15,7 +15,13 @@ const M=[
   ['golden-proxy.js','preview uses the production key','env: envName || undefined,','env: undefined,'],
   ['_golden_client.js','test key may reach production Golden','base: PREVIEW_BASE_RE.test(b) ? b : "", usable: !!kid && S2S.secretUsable(secret) && PREVIEW_BASE_RE.test(b) && distinct','base: b, usable: !!kid && S2S.secretUsable(secret) && distinct'],
   ['_golden_client.js','test key may equal the production key','&& PREVIEW_BASE_RE.test(b) && distinct };','&& PREVIEW_BASE_RE.test(b) };'],
-  ['golden-proxy.js','orders action reachable','const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory" };','const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", orders: "/v1/orders" };'],
+  ['golden-proxy.js','orders action reachable','family: "/v1/catalog/family" };','family: "/v1/catalog/family", orders: "/v1/orders" };'],
+  ['golden-proxy.js','malformed family code forwarded','if(action === "family" && !FAMILY_RE.test(family)) return','if(false) return'],
+  ['golden-proxy.js','second primary photo kept','if(seenPrimary) g.primary = false;','if(false) g.primary = false;'],
+  ['golden-proxy.js','video embed from Golden\'s answer trusted','embed: "https://www.youtube-nocookie.com/embed/" + v.youtube_id,','embed: v.embed,'],
+  ['golden-proxy.js','unknown document kind passed','&& DOC_KINDS.includes(d.kind)).slice(0, 40)',').slice(0, 40)'],
+  ['golden-proxy.js','spec value for a SKU outside the columns passed','const v = {}; cols.forEach(c => { if(typeof r.values[c] === "string") v[c] = r.values[c].slice(0, 200); });','const v = Object.assign({}, r.values);'],
+  ['golden-proxy.js','family SKU price shown when Golden hides prices','.map(p => cleanProduct(p, pricesVisible)),\n    summary','.map(p => cleanProduct(p, true)),\n    summary'],
   ['golden-proxy.js','branch refusal hidden','const branch = r.status === 403 && r.error === "branch_not_permitted";','const branch = false;'],
 ];
 let killed=0, bad=0;

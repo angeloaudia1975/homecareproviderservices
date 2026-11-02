@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "golden-commerce-v1.schema.json",
-  "title": "Golden Commerce API v1 — wire schemas (routes built through batch B2)",
-  "contract_version": "1.1.0",
+  "title": "Golden Commerce API v1 — wire schemas (routes built through batch B2 (enrichment 1.2.0))",
+  "contract_version": "1.2.0",
   "$defs": {
     "uuid": {
       "type": "string",
@@ -19,7 +19,8 @@
         "contract_version": {
           "enum": [
             "1.0.0",
-            "1.1.0"
+            "1.1.0",
+            "1.2.0"
           ]
         },
         "tenant": {
@@ -559,6 +560,336 @@
                   "null"
                 ]
               }
+            }
+          }
+        }
+      }
+    },
+    "family_200": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "as_of",
+        "etag",
+        "enrichment_as_of",
+        "prices_visible",
+        "linked",
+        "family"
+      ],
+      "properties": {
+        "as_of": {
+          "type": "string"
+        },
+        "etag": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "enrichment_as_of": {
+          "type": "string"
+        },
+        "prices_visible": {
+          "type": "boolean"
+        },
+        "linked": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "family": {
+          "type": "object",
+          "required": [
+            "family",
+            "name",
+            "category",
+            "skus",
+            "gallery",
+            "specs",
+            "features",
+            "documents",
+            "videos",
+            "fabrics",
+            "related",
+            "enriched"
+          ],
+          "properties": {
+            "family": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "category": {
+              "type": "string"
+            },
+            "subcategory": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "skus": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/catalog_product"
+              }
+            },
+            "summary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sell_sheet_description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "gallery": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "url",
+                  "role",
+                  "skus",
+                  "primary"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "pattern": "^https://"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "skus": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "primary": {
+                    "type": "boolean"
+                  },
+                  "shared": {
+                    "type": "boolean"
+                  },
+                  "w": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "h": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "quality": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "specs": {
+              "type": "object",
+              "required": [
+                "columns",
+                "rows"
+              ],
+              "properties": {
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "label",
+                      "values"
+                    ],
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      },
+                      "values": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "key": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "basis": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "compare": {
+              "type": "object"
+            },
+            "features": {
+              "type": "object",
+              "required": [
+                "standard",
+                "optional",
+                "none_published"
+              ],
+              "properties": {
+                "standard": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "optional": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "none_published": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "documents": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "title",
+                  "url"
+                ],
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "sell_sheet",
+                      "accessories_sheet",
+                      "brochure",
+                      "owners_manual",
+                      "quick_start",
+                      "option_manual",
+                      "warranty",
+                      "setup_instructions",
+                      "document"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string",
+                    "pattern": "^https://"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "pages": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "videos": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "youtube_id",
+                  "embed"
+                ],
+                "properties": {
+                  "youtube_id": {
+                    "type": "string",
+                    "pattern": "^[\\w-]{11}$"
+                  },
+                  "embed": {
+                    "type": "string",
+                    "pattern": "^https://www\\.youtube-nocookie\\.com/embed/"
+                  },
+                  "title": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "fabrics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "code",
+                  "name"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "swatch": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^https://"
+                  }
+                }
+              }
+            },
+            "related": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "enriched": {
+              "type": "boolean"
             }
           }
         }

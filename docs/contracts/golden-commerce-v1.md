@@ -32,6 +32,7 @@ Golden decides and writes.
 | POST `/v1/identity/assign` | `golden:identity` | required, role `hcps_staff` | 1 | **built (B1)** |
 | GET `/v1/catalog` | `golden:read` | required | 2 | **built (B2)** |
 | GET `/v1/inventory` | `golden:read` | required | 2 | **built (B2)** |
+| GET `/v1/catalog/family?family=` | `golden:read` | required | 2 | **built (B2 enrichment, 1.2.0)** |
 | GET `/v1/config/engine` | `golden:read` | required | 3 | not built |
 | POST `/v1/quote` | `golden:quote` | required | 4 | not built |
 | POST `/v1/orders` | `golden:order` | required + `Idempotency-Key` | 4 | not built |
@@ -102,6 +103,39 @@ the Golden account must be active, and a delegated branch needs its own verified
 - `as_of` is the newest inventory sync; `stale` is true when it is older than 36 hours or there is no feed.
   Golden stock is a daily file sync: a consumer shows it "as of" `as_of`, never as live.
 - Errors: 503 `inventory_unavailable`.
+
+## 4b. Payloads (B2 enrichment, contract 1.2.0)
+
+**GET /v1/catalog/family?family=PR511 → 200** (schema `family_200`)
+`{ as_of, etag, enrichment_as_of, prices_visible, linked, reason, family }`. Header `ETag`. Caller resolution, pricing
+rule, merchandising layer and errors are exactly those of `/v1/catalog` (§4a); plus 400 `bad_request` (family code
+malformed) and 404 `not_found` (unknown family, or a model Golden has hidden).
+
+`family` carries the product-detail content Golden publishes for that model, built from Golden's own sources by
+`repo/scripts/golden-enrichment/build.js` (goldentech.com pages and their PDFs, Golden's official owner's-manual
+folders, Golden's YouTube channel, the portal's own catalog and fabric rules) into `repo/functions/lib/golden-enrichment.json`:
+
+- `skus` — the same `catalog_product` objects as `/v1/catalog` for this family (dealer prices under the same rule).
+- `gallery[]` — `{ url, role, skus, w, h, quality, primary, shared, source_url }`, verified Golden photos only (each
+  loaded, measured and hashed; a photo whose file name names another Golden model or line is never included). At most
+  one `primary`. `shared:true` = the same picture appears on another Golden model's page (a feature / lifestyle shot,
+  never the primary). `skus` lists the sizes a photo shows when Golden says so. Golden's own merchandising photos lead.
+- `specs` — `{ columns:[sku], rows:[{ label, values:{sku:value}, key }], basis, source }`. A value is attached to a
+  size only where Golden's source states it for that size (`basis` `sell_sheet_size_table` or, for a one-model page,
+  `product_page`). `website_unscoped[]` holds values Golden's website shows without naming the size; a consumer labels
+  them so and never assigns them to a size. `compare` = the rows that have a `key`, for side-by-side comparison.
+- `features` — `{ standard, optional, accessories, benefits, groups, warranty_terms, none_published, source }` in
+  Golden's own words. `none_published:true` = Golden's sell sheet for this model is a spec sheet without a feature list.
+- `documents[]` — `{ kind, title, url, format, language, pages, bytes, version, applies, note, source }`;
+  `kind` ∈ sell_sheet · accessories_sheet · brochure · owners_manual · quick_start · option_manual · warranty ·
+  setup_instructions · document. `version.date` is the date the file states (file name, folder or PDF metadata — `version.basis` says which).
+  A document Golden restricts (`access:"dealer"`) is included only for a dealer with a verified link.
+- `videos[]` — `{ youtube_id, title, embed, thumbnail, relevance }`, only videos embedded on Golden's product page and
+  published by Golden Technologies' YouTube channel; `embed` is the privacy-enhanced youtube-nocookie URL.
+- `fabrics[]` — the portal's standard palette for the model with Golden's swatch photos.
+- `related[]` — Golden's related models that the portal sells. `page` — Golden's product page. `enriched` — false when
+  no enrichment exists yet for the family (the consumer shows the card data only).
+- Never returned: website retail prices, internal reconciliation notes, image hashes.
 
 ## 5. Authentication: HMAC request signing (shared module `hcps-s2s.js`)
 

@@ -161,6 +161,41 @@ const J = r => JSON.parse(r.body);
     ok(!/method:\s*["'](POST|PATCH|PUT|DELETE)["']/.test(src.replace(/GC\.call\(\{ method:"GET"/g, "")), "no write calls in source");
   });
 
+  await t("family: allow-listed detail only — https links, one primary, nocookie videos, capped, prices as Golden says", async () => {
+    env(); world({ golden: (u) => {
+      const res = (status, body) => ({ ok: status < 400, status, text: async () => JSON.stringify(body), json: async () => body });
+      ok(/\/v1\/catalog\/family\?family=PR511$/.test(u), "family query forwarded: " + u);
+      return res(200, { contract_version: "1.2.0", request_id: "req_f", etag: "f".repeat(32), enrichment_as_of: "2026-11-02", prices_visible: false, linked: true, family: {
+        family: "PR511", model: "PR511", name: "Cloud Plus™", category: "Lift Chairs", enriched: true, secret_note: "LEAK",
+        skus: [{ sku: "PR511-SMA", family: "PR511", dealer_price: 999, customer_no: "LEAK-ACCT" }],
+        gallery: [{ url: "https://cdn.golden/a.jpg", role: "product", skus: [], primary: true }, { url: "https://cdn.golden/b.jpg", primary: true }, { url: "http://x/c.jpg", primary: false }, { url: "javascript:alert(1)" }],
+        specs: { columns: ["PR511-SMA"], rows: [{ label: "Seat Width", values: { "PR511-SMA": '23"', "PR511-XXX": "9" }, key: "seat_width" }], basis: "sell_sheet_size_table" },
+        documents: [{ kind: "sell_sheet", title: "S", url: "https://cdn.golden/s.pdf" }, { kind: "evil", title: "E", url: "https://x/e.pdf" }, { kind: "warranty", title: "W", url: "ftp://x" }],
+        videos: [{ youtube_id: "lSueL73XDqw", title: "T", embed: "https://evil.example/embed" }, { youtube_id: "bad id" }],
+        fabrics: [{ code: "TCP", name: "Calypso", swatch: "http://insecure/s.jpg", hex: "red" }],
+        features: { standard: ["A", 5, "B"], optional: [], none_published: false },
+        related: ["PR510", 7], compare: { seat_width: { label: "Seat Width", "PR511-SMA": '23"' }, "bad key!": {} } } });
+    } });
+    const j = J(await load("golden-proxy.js").handler(post({ action: "family", family: "pr511" })));
+    eq([j.ok, j.available, j.prices_visible, j.family.family], [true, true, false, "PR511"]);
+    eq(j.family.gallery.map(g => [g.url, g.primary]), [["https://cdn.golden/a.jpg", true], ["https://cdn.golden/b.jpg", false]]);
+    eq(j.family.specs.rows[0].values, { "PR511-SMA": '23"' });
+    eq(j.family.documents.map(d => d.kind), ["sell_sheet"]);
+    eq(j.family.videos.map(v => v.embed), ["https://www.youtube-nocookie.com/embed/lSueL73XDqw"]);
+    eq([j.family.fabrics[0].swatch, j.family.fabrics[0].hex], [null, null]);
+    eq(j.family.features.standard, ["A", "B"]); eq(j.family.related, ["PR510"]); eq(Object.keys(j.family.compare), ["seat_width"]);
+    ok(!JSON.stringify(j).includes("LEAK") && !("dealer_price" in j.family.skus[0]), "nothing outside the allow-list, no hidden price");
+  });
+
+  await t("family: malformed family code → 400 and Golden never called; Golden 404 → not_found", async () => {
+    env(); let w = world();
+    for (const f of ["", "PR511;drop", "../x", "ZZ"]) { const r = await load("golden-proxy.js").handler(post({ action: "family", family: f })); eq(r.statusCode, 400, f); }
+    eq(w.golden.length, 0);
+    env(); w = world({ golden: () => ({ ok: false, status: 404, text: async () => "{}", json: async () => ({ error: { code: "not_found" } }) }) });
+    const j = J(await load("golden-proxy.js").handler(post({ action: "family", family: "GB999A" })));
+    eq([j.available, j.reason], [false, "not_found"]);
+  });
+
   // ── Real cross-repo round trip (Golden's real handlers + real catalog data) ──
   const gFN = path.join(GOLDEN, "repo", "functions");
   if (!fs.existsSync(path.join(gFN, "v1-catalog.js"))) { skipped++; console.log("skip  cross-repo catalog round trip (Golden B2 not checked out at " + GOLDEN + ")"); }
@@ -168,7 +203,7 @@ const J = r => JSON.parse(r.body);
     const { createMock } = require(path.join(GOLDEN, "repo", "tests", "support", "postgrest-mock.js"));
     const fresh = m => { Object.keys(require.cache).forEach(k => { if (k.startsWith(gFN)) delete require.cache[k]; }); return require(path.join(gFN, m)); };
     const gS = fresh("lib/hcps-s2s.js");
-    const run = async (visibility, action) => {
+    const run = async (visibility, action, extraBody) => {
       env({ GOLDEN_API_BASE: "https://golden.test" });
       process.env.SUPABASE_SERVICE_KEY = "svc"; process.env.GOLDEN_V1_API = "true"; process.env.HCPS_P360_KEYS = JSON.stringify({ "hcps-p360-1": SECRET });
       const nonces = new Set();
@@ -182,7 +217,7 @@ const J = r => JSON.parse(r.body);
         integration_audit_log: () => null,
         get_dealer_portal_data: () => ({ dealer: { customer_no: "LEAK" }, pricing: [{ sku: "PR535-MED", dealer_cost: 901 }] }),
       } });
-      const handler = fresh(action === "catalog" ? "v1-catalog.js" : "v1-inventory.js").handler;
+      const handler = fresh(action === "catalog" ? "v1-catalog.js" : action === "family" ? "v1-catalog-family.js" : "v1-inventory.js").handler;
       world();
       const hcpsFetch = global.fetch;
       global.fetch = async (u, init) => {
@@ -196,7 +231,7 @@ const J = r => JSON.parse(r.body);
         }
         return hcpsFetch(u, init);
       };
-      return J(await load("golden-proxy.js").handler(post({ action })));
+      return J(await load("golden-proxy.js").handler(post(Object.assign({ action }, extraBody || {}))));
     };
     const priced = await run("dealer", "catalog");
     eq([priced.available, priced.prices_visible], [true, true]);
@@ -209,6 +244,19 @@ const J = r => JSON.parse(r.body);
     const inv = await run("dealer", "inventory");
     eq(inv.items.find(i => i.sku === "PR535-MED"), { sku: "PR535-MED", status: "in", qty: 80 });
     eq(inv.stale, false);
+    // enriched family detail through the whole chain
+    const fam = await run("dealer", "family", { family: "PR511" });
+    eq([fam.available, fam.prices_visible, fam.family.family], [true, true, "PR511"]);
+    ok(fam.family.gallery.length >= 3 && fam.family.gallery.every(g => /^https:\/\//.test(g.url)), "verified https gallery");
+    eq(fam.family.gallery.filter(g => g.primary).length, 1);
+    const wc = fam.family.specs.rows.find(r => r.label === "Weight Capacity").values;
+    eq(wc, { "PR511-SMA": "400 LBS", "PR511-MED": "400 LBS", "PR511-LAR": "400 LBS", "PR511-MXW": "600 LBS" });
+    ok(fam.family.documents.some(d => d.kind === "sell_sheet") && fam.family.videos.every(v => v.embed.startsWith("https://www.youtube-nocookie.com/embed/")));
+    ok(fam.family.skus.every(s => "dealer_price" in s), "family SKUs carry this dealer's prices");
+    const famHidden = await run("none", "family", { family: "PR511" });
+    ok(famHidden.family.skus.every(s => !("dealer_price" in s)), "no prices when Golden hides them");
+    const missing = await run("dealer", "family", { family: "ZZ999" });
+    eq([missing.available, missing.reason], [false, "not_found"]);
   });
 
   console.log(`\n${pass} passed, ${fail} failed${skipped ? ", " + skipped + " skipped" : ""}`);
