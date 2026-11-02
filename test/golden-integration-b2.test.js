@@ -168,9 +168,9 @@ const J = r => JSON.parse(r.body);
       return res(200, { contract_version: "1.2.0", request_id: "req_f", etag: "f".repeat(32), enrichment_as_of: "2026-11-02", prices_visible: false, linked: true, family: {
         family: "PR511", model: "PR511", name: "Cloud Plus™", category: "Lift Chairs", enriched: true, secret_note: "LEAK",
         skus: [{ sku: "PR511-SMA", family: "PR511", dealer_price: 999, customer_no: "LEAK-ACCT" }],
-        gallery: [{ url: "https://cdn.golden/a.jpg", role: "product", skus: [], primary: true }, { url: "https://cdn.golden/b.jpg", primary: true }, { url: "http://x/c.jpg", primary: false }, { url: "javascript:alert(1)" }],
+        gallery: [{ url: "https://d3325uqufdmhie.cloudfront.net/a.jpg", role: "product", skus: [], primary: true }, { url: "https://d3325uqufdmhie.cloudfront.net/b.jpg", primary: true }, { url: "http://x/c.jpg", primary: false }, { url: "javascript:alert(1)" }, { url: "https://evil.example/d.jpg" }, { url: "https://d3325uqufdmhie.cloudfront.net/x');alert(1);//.jpg" }],
         specs: { columns: ["PR511-SMA"], rows: [{ label: "Seat Width", values: { "PR511-SMA": '23"', "PR511-XXX": "9" }, key: "seat_width" }], basis: "sell_sheet_size_table" },
-        documents: [{ kind: "sell_sheet", title: "S", url: "https://cdn.golden/s.pdf" }, { kind: "evil", title: "E", url: "https://x/e.pdf" }, { kind: "warranty", title: "W", url: "ftp://x" }],
+        documents: [{ kind: "sell_sheet", title: "S", url: "https://d3325uqufdmhie.cloudfront.net/s.pdf" }, { kind: "owners_manual", title: "M", url: "https://evil.example/m.pdf" }, { kind: "evil", title: "E", url: "https://d3325uqufdmhie.cloudfront.net/e.pdf" }, { kind: "warranty", title: "W", url: "ftp://x" }],
         videos: [{ youtube_id: "lSueL73XDqw", title: "T", embed: "https://evil.example/embed" }, { youtube_id: "bad id" }],
         fabrics: [{ code: "TCP", name: "Calypso", swatch: "http://insecure/s.jpg", hex: "red" }],
         features: { standard: ["A", 5, "B"], optional: [], none_published: false },
@@ -178,13 +178,23 @@ const J = r => JSON.parse(r.body);
     } });
     const j = J(await load("golden-proxy.js").handler(post({ action: "family", family: "pr511" })));
     eq([j.ok, j.available, j.prices_visible, j.family.family], [true, true, false, "PR511"]);
-    eq(j.family.gallery.map(g => [g.url, g.primary]), [["https://cdn.golden/a.jpg", true], ["https://cdn.golden/b.jpg", false]]);
+    eq(j.family.gallery.map(g => [g.url, g.primary]), [["https://d3325uqufdmhie.cloudfront.net/a.jpg", true], ["https://d3325uqufdmhie.cloudfront.net/b.jpg", false]]);
     eq(j.family.specs.rows[0].values, { "PR511-SMA": '23"' });
     eq(j.family.documents.map(d => d.kind), ["sell_sheet"]);
     eq(j.family.videos.map(v => v.embed), ["https://www.youtube-nocookie.com/embed/lSueL73XDqw"]);
     eq([j.family.fabrics[0].swatch, j.family.fabrics[0].hex], [null, null]);
     eq(j.family.features.standard, ["A", "B"]); eq(j.family.related, ["PR510"]); eq(Object.keys(j.family.compare), ["seat_width"]);
     ok(!JSON.stringify(j).includes("LEAK") && !("dealer_price" in j.family.skus[0]), "nothing outside the allow-list, no hidden price");
+  });
+
+  await t("CORS preflight allows the preview header; the production branch alias is never a preview origin", async () => {
+    env(); world();
+    const r = await load("golden-proxy.js").handler({ httpMethod: "OPTIONS", headers: { origin: PREVIEW_ORIGIN } });
+    eq(r.statusCode, 204);
+    ok(/x-hcps-golden-env/.test(r.headers["access-control-allow-headers"]) && /x-hcps-preview/.test(r.headers["access-control-allow-headers"]), r.headers["access-control-allow-headers"]);
+    env(PREVIEW_ENV); const w = world();
+    const j = J(await load("golden-proxy.js").handler(asBody(staffPreview({ origin: "https://main--hcpsonlineordering.netlify.app" }), { action: "catalog" })));
+    eq(j.error, "preview_not_allowed"); eq(w.golden.length, 0);
   });
 
   await t("family: malformed family code → 400 and Golden never called; Golden 404 → not_found", async () => {

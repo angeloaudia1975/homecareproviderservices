@@ -23,25 +23,31 @@ const GC = require("./_golden_client.js");
 
 const SUPABASE_URL = process.env.SUPABASE_URL, SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 // Same CORS as orders-api: authorization is the dealer's bearer token (no cookies), never the Origin.
-const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, authorization, x-hcps-preview",
+const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, authorization, x-hcps-preview, x-hcps-golden-env",
   "access-control-allow-methods": "POST, OPTIONS" };
 const json = (c, o) => ({ statusCode: c, headers: Object.assign({ "content-type": "application/json", "cache-control": "no-store" }, CORS), body: JSON.stringify(o) });
 const H = () => ({ apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}` });
 async function sbGet(path){ const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: H() }); if(!r.ok) throw new Error(`Supabase ${r.status}`); return r.json(); }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // Partner 360 deploy previews and branch deploys (never the production storefront).
-const ORDERING_PREVIEW_ORIGIN = /^https:\/\/(deploy-preview-\d+|[a-z0-9-]+)--hcpsonlineordering\.netlify\.app$/;
+const ORDERING_PREVIEW_ORIGIN = /^https:\/\/(deploy-preview-\d+|(?!main--)[a-z0-9-]+)--hcpsonlineordering\.netlify\.app$/;   // never main-- (= production)
 const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", family: "/v1/catalog/family" };
 const FAMILY_RE = /^[A-Z]{2}\d{3}[A-Z]?(?:-[A-Z0-9]{2,4})?$/;
 
 // Only the fields the contract defines for a catalog product reach the browser (schema catalog_product).
 const PRODUCT_KEYS = ["sku","family","family_name","name","category","subcategory","size_code","size_label","description","specs","zones",
   "class_ii","ribbon","color_note","badges","brochure_url","action","image","msrp","emap","sort"];
-const httpsOrNull = v => (typeof v === "string" && /^https:\/\//.test(v)) ? v : null;
+// Golden links only from Golden's own hosts (and the official document hosts Golden links to), never with a quote,
+// space or angle bracket: the storefront puts photo URLs inside markup and onclick handlers.
+const GOLDEN_HOSTS = /^https:\/\/(d3325uqufdmhie\.cloudfront\.net|cdn\.wdgtsrc\.com|goldenonlineordering\.netlify\.app|goldentech\.com|www\.goldentech\.com|www\.dropbox\.com\/scl\/fo\/|www\.flipsnack\.com\/oldforge\/|i\.ytimg\.com)/;
+const httpsOrNull = v => (typeof v === "string" && GOLDEN_HOSTS.test(v) && !/["\s<>\\]/.test(v) && (!v.includes("'") || /^https:\/\/www\.dropbox\.com\//.test(v))) ? v : null;
 function cleanProduct(p, pricesVisible){
   const o = {};
   for(const k of PRODUCT_KEYS) if(p[k] !== undefined) o[k] = p[k];
   o.image = httpsOrNull(p.image); o.brochure_url = httpsOrNull(p.brochure_url);
+  for(const k of ["msrp","emap","sort"]) if(o[k] !== undefined && !(typeof o[k] === "number" && Number.isFinite(o[k]))) o[k] = null;
+  for(const k of ["name","family","family_name","category","subcategory","size_code","size_label","description","zones","ribbon","color_note","action"]) if(o[k] != null && typeof o[k] !== "string") o[k] = null;
+  if(o.badges != null && (typeof o.badges !== "object" || Array.isArray(o.badges))) o.badges = null;
   o.specs = Array.isArray(p.specs) ? p.specs.filter(x => typeof x === "string").slice(0, 12) : [];
   if(pricesVisible && (typeof p.dealer_price === "number" || p.dealer_price === null)){ o.dealer_price = p.dealer_price; o.price_source = p.price_source || null; }
   return o;
@@ -55,7 +61,7 @@ const DOC_KINDS = ["sell_sheet","accessories_sheet","brochure","owners_manual","
 function cleanFamily(f, pricesVisible){
   if(!f || typeof f !== "object") return null;
   const src = s => (s && typeof s === "object") ? { type: str(s.type, 200), url: httpsOrNull(s.url) } : null;
-  const gallery = (Array.isArray(f.gallery) ? f.gallery : []).filter(g => g && httpsOrNull(g.url)).slice(0, 60).map(g => ({
+  const gallery = (Array.isArray(f.gallery) ? f.gallery : []).filter(g => g && httpsOrNull(g.url) && !/['"\s<>\\]/.test(g.url)).slice(0, 60).map(g => ({
     url: g.url, role: str(g.role, 40) || "product", skus: strs(g.skus, 40, 20), primary: g.primary === true, shared: g.shared === true,
     w: Number.isInteger(g.w) ? g.w : null, h: Number.isInteger(g.h) ? g.h : null, quality: str(g.quality, 20) }));
   let seenPrimary = false; gallery.forEach(g => { if(g.primary){ if(seenPrimary) g.primary = false; seenPrimary = true; } });

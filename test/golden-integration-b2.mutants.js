@@ -22,6 +22,9 @@ const M=[
   ['golden-proxy.js','unknown document kind passed','&& DOC_KINDS.includes(d.kind)).slice(0, 40)',').slice(0, 40)'],
   ['golden-proxy.js','spec value for a SKU outside the columns passed','const v = {}; cols.forEach(c => { if(typeof r.values[c] === "string") v[c] = r.values[c].slice(0, 200); });','const v = Object.assign({}, r.values);'],
   ['golden-proxy.js','family SKU price shown when Golden hides prices','.map(p => cleanProduct(p, pricesVisible)),\n    summary','.map(p => cleanProduct(p, true)),\n    summary'],
+  ['golden-proxy.js','preview header missing from CORS','x-hcps-preview, x-hcps-golden-env"','x-hcps-preview"'],
+  ['golden-proxy.js','production branch alias accepted as a preview origin','|(?!main--)[a-z0-9-]+)--','|[a-z0-9-]+)--'],
+  ['golden-proxy.js','photo from a foreign host passed','typeof v === "string" && GOLDEN_HOSTS.test(v) &&','typeof v === "string" && /^https:/.test(v) &&'],
   ['golden-proxy.js','branch refusal hidden','const branch = r.status === 403 && r.error === "branch_not_permitted";','const branch = false;'],
 ];
 let killed=0, bad=0;
