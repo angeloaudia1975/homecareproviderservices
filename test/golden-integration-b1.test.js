@@ -179,6 +179,26 @@ const J = r => JSON.parse(r.body);
     const hq = j.candidates.find(c => c.dealer_id === D_HQ); eq([hq.events, hq.account_matches, hq.is_branch], [2, true, false]);
     const br = j.candidates.find(c => c.dealer_id === D_BR); eq([br.account_matches, br.is_branch], [false, true]);
   });
+  await t("links: candidates still list accounts before the link table exists; any other read failure still fails", async () => {
+    const miss = (re, msg) => (orig => async (u, i) => re.test(String(u)) ? { ok: false, status: 404, json: async () => ({}), text: async () => msg } : orig(u, i));
+    env(); world(); global.fetch = miss(/golden_dealer_links/, '{"code":"PGRST205","message":"Could not find the table \'public.golden_dealer_links\' in the schema cache"}')(global.fetch);
+    let r = await load("golden-links-api.js").handler(post({ action: "candidates" })); let j = J(r);
+    eq([r.statusCode, j.ok, j.links_installed, j.candidates.length, j.candidates[0].link], [200, true, false, 2, null]);
+    env(); world(); global.fetch = miss(/golden_dealer_links/, '{"message":"permission denied"}')(global.fetch);
+    eq((await load("golden-links-api.js").handler(post({ action: "candidates" }))).statusCode, 500, "other link-table failure is not hidden");
+    env(); world(); global.fetch = miss(/federation_events/, '{"code":"PGRST205","message":"Could not find the table \'public.federation_events\'"}')(global.fetch);
+    eq((await load("golden-links-api.js").handler(post({ action: "candidates" }))).statusCode, 500, "a missing events table is not hidden");
+    env(); world(); global.fetch = miss(/golden_dealer_links/, '{"code":"42703","message":"column golden_dealer_links.golden_state does not exist"}')(global.fetch);
+    eq((await load("golden-links-api.js").handler(post({ action: "candidates" }))).statusCode, 500, "a missing column is not hidden");
+    const { j: k } = await links({ action: "candidates" }); eq(k.links_installed, true);
+    env(); const w = world(); global.fetch = miss(/golden_dealer_links/, '{"code":"PGRST205","message":"no table"}')(global.fetch);
+    r = await load("golden-links-api.js").handler(post({ action: "propose", dealer_id: D_HQ, golden_dealer_id: "dealer-a", method: "account_number" }));
+    eq([r.statusCode, w.golden.length], [500, 0], "propose never reaches Golden without the mirror table");
+  });
+  await t("links page: a failed candidates call shows an error, never an empty list", async () => {
+    const html = fs.readFileSync(path.join(__dirname, "..", "src/admin/golden-links.html"), "utf8");
+    ok(/if\(!c\|\|c\.ok!==true\)/.test(html) && /Could not load the Golden accounts/.test(html), "error branch present");
+  });
   await t("links: propose refused when the switch is off, for a branch, for a manual guess without a note", async () => {
     let x = await links({ action: "propose", dealer_id: D_HQ, golden_dealer_id: "dealer-a", method: "account_number" }, { flags: { golden_p360_links: false } });
     eq([x.r.statusCode, x.j.error, x.w.golden.length], [503, "switched_off", 0]);

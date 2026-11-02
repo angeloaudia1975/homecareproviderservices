@@ -70,7 +70,12 @@ exports.handler = async (event) => {
         const rows = await sbGet(`dealers?id=in.(${chunk.map(encodeURIComponent).join(",")})&select=id,business_name,hcps_account,parent_id,city,state,is_test`);
         (rows || []).forEach(d => { dealers[d.id] = d; });
       }
-      const links = await sbGet("golden_dealer_links?select=hcps_dealer_id,golden_dealer_id,status,golden_state");
+      // Before supabase/golden_dealer_links.sql is run the mirror table does not exist: list the accounts anyway, with
+      // no link state, and say so. Only THAT table being missing is tolerated; any other read failure still fails.
+      let links, linksInstalled = true;
+      try { links = await sbGet("golden_dealer_links?select=hcps_dealer_id,golden_dealer_id,status,golden_state"); }
+      catch(e){ const m = String(e && e.message); if(!/golden_dealer_links/.test(m) || !/"code":"(PGRST205|42P01)"/.test(m)) throw e;
+        links = []; linksInstalled = false; }
       const linkBy = {}; (links || []).forEach(l => { linkBy[l.hcps_dealer_id + "|" + l.golden_dealer_id] = l; });
       const out = [...seen.values()].map(c => {
         const d = dealers[c.dealer_id] || {};
@@ -79,7 +84,7 @@ exports.handler = async (event) => {
           account_matches: !!(d.hcps_account && c.customer_no && String(d.hcps_account).trim() === String(c.customer_no).trim()),
           link: linkBy[c.dealer_id + "|" + c.golden_dealer_id] || null });
       }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-      return json(200, { ok:true, candidates: out });
+      return json(200, { ok:true, candidates: out, links_installed: linksInstalled });
     }
 
     if(b.action === "links"){
@@ -96,6 +101,8 @@ exports.handler = async (event) => {
       if(!METHODS.has(b.method)) return json(400, { ok:false, error:"method must be account_number, federation_event or manual" });
       const note = b.note == null ? null : String(b.note).slice(0, 500);
       if(b.method === "manual" && !note) return json(400, { ok:false, error:"a note is required for a manual proposal" });
+      // The mirror must exist BEFORE Golden is asked: never leave a proposal at Golden that HCPS cannot record.
+      await sbGet("golden_dealer_links?select=id&limit=1");
       const d = await sbGet(`dealers?id=eq.${encodeURIComponent(dealerId)}&select=id,parent_id,hcps_account,is_test`);
       if(!d || !d[0]) return json(404, { ok:false, error:"dealer not found" });
       if(d[0].parent_id) return json(400, { ok:false, error:"link the organisation (HQ), not a branch", parent_id: d[0].parent_id });

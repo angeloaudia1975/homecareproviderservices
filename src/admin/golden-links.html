@@ -33,7 +33,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const when=s=>{ if(!s) return "—"; try{ return new Date(s).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); }catch(e){ return String(s).slice(0,16); } };
 window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
-let TOKEN=HCPS.token(), MSG="";
+let TOKEN=HCPS.token(), MSG="", LINKS_READY=true;
 function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">${esc(msg||"Sign in with your work email and password.")}</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password"><button class="btn" onclick="submitTok()">Sign in</button></div>`;}
 async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
   try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
@@ -76,7 +76,7 @@ function render(){
      <td class="mono" data-l="Golden account">${esc(c.golden_dealer_id)}<div class="note">#${esc(c.customer_no||"—")} ${c.account_matches?'<span class="pill ok">account # matches</span>':''}</div></td>
      <td class="note" data-l="Activity">${c.events} event(s)<br>last ${esc(when(c.last_event))}</td>
      <td data-l="State">${statePill(c)}</td>
-     <td><div class="row">${!c.link?`<button class="btn" ${s.switch_on&&s.configured&&!c.is_branch?'':'disabled'} onclick="propose(${i},this)">Propose</button>`:''}${c.link&&c.link.golden_state==="not_verified"?`<span class="note">Waiting for a Golden admin. Golden can't yet tell HCPS whether a link is pending or declined — propose again only if Golden declined or revoked it.</span><button class="btn ghost" ${s.switch_on&&s.configured&&!c.is_branch?'':'disabled'} onclick="propose(${i},this)">Propose again</button>`:''}
+     <td><div class="row">${!c.link?`<button class="btn" ${s.switch_on&&s.configured&&LINKS_READY&&!c.is_branch?'':'disabled'} onclick="propose(${i},this)">Propose</button>`:''}${c.link&&c.link.golden_state==="not_verified"?`<span class="note">Waiting for a Golden admin. Golden can't yet tell HCPS whether a link is pending or declined — propose again only if Golden declined or revoked it.</span><button class="btn ghost" ${s.switch_on&&s.configured&&LINKS_READY&&!c.is_branch?'':'disabled'} onclick="propose(${i},this)">Propose again</button>`:''}
        ${c.link?`<button class="btn ghost" ${s.configured?'':'disabled'} onclick="refresh('${esc(c.dealer_id)}',this)">Check Golden</button>`:''}</div></td></tr>`).join("");
   $("#body").innerHTML=st+(MSG?`<div class="msg">${esc(MSG)}</div>`:"")
     +`<div class="card"><h2>Golden accounts seen on activity</h2><p class="note">Each row is a Golden account that has sent events, and the HCPS dealer those events matched to. Propose only rows you have checked.</p>
@@ -84,7 +84,8 @@ function render(){
 }
 async function load(){
   if(!TOKEN){ gate(); return; }
-  try{ const [s,c]=await Promise.all([api("status"),api("candidates")]); STATUS=s; CANDS=(c&&c.candidates)||[]; render(); }
+  try{ const [s,c]=await Promise.all([api("status"),api("candidates")]); STATUS=s; if(!c||c.ok!==true){ $("#body").innerHTML='<div class="msg" role="alert">Could not load the Golden accounts ('+esc((c&&c.error)||"error")+'). Nothing was changed.</div>'; return; }
+    CANDS=c.candidates||[]; LINKS_READY=c.links_installed!==false; if(c.links_installed===false) MSG="Link records are not set up yet (database step pending), so no link state is shown. Accounts are listed for review only."; render(); }
   catch(e){ if(e&&e.gate){ gate("Sign in to continue."); return; } if(e&&e.forbidden){ $("#body").innerHTML='<div class="msg">This tool is for management only.</div>'; return; } $("#body").innerHTML='<div class="msg">Could not load.</div>'; }
 }
 load();
