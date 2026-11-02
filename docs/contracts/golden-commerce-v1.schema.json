@@ -1,97 +1,567 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "golden-commerce-v1.schema.json",
-  "title": "Golden Commerce API v1 — wire schemas (routes built through batch B1)",
-  "contract_version": "1.0.0",
+  "title": "Golden Commerce API v1 — wire schemas (routes built through batch B2)",
+  "contract_version": "1.1.0",
   "$defs": {
-    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
     "envelope": {
       "type": "object",
-      "required": ["contract_version", "tenant", "request_id"],
+      "required": [
+        "contract_version",
+        "tenant",
+        "request_id"
+      ],
       "properties": {
-        "contract_version": { "const": "1.0.0" },
-        "tenant": { "type": "string" },
-        "request_id": { "type": "string", "pattern": "^req_" }
+        "contract_version": {
+          "enum": [
+            "1.0.0",
+            "1.1.0"
+          ]
+        },
+        "tenant": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^req_"
+        }
       }
     },
     "error": {
-      "allOf": [{ "$ref": "#/$defs/envelope" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
       "type": "object",
-      "required": ["error"],
+      "required": [
+        "error"
+      ],
       "properties": {
         "error": {
-          "type": "object", "additionalProperties": false,
-          "required": ["code", "message", "retryable"],
-          "properties": { "code": { "type": "string" }, "message": { "type": "string" }, "retryable": { "type": "boolean" } }
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          }
         }
       }
     },
     "capabilities": {
-      "type": "object", "additionalProperties": false,
-      "required": ["see_prices", "order", "history"],
-      "properties": { "see_prices": { "type": "boolean" }, "order": { "type": "boolean" }, "history": { "type": "boolean" } }
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "see_prices",
+        "order",
+        "history"
+      ],
+      "properties": {
+        "see_prices": {
+          "type": "boolean"
+        },
+        "order": {
+          "type": "boolean"
+        },
+        "history": {
+          "type": "boolean"
+        }
+      }
     },
     "delegation": {
       "type": "object",
-      "required": ["sub_dealer", "role", "aud", "iat", "exp"],
+      "required": [
+        "sub_dealer",
+        "role",
+        "aud",
+        "iat",
+        "exp"
+      ],
       "properties": {
-        "sub_dealer": { "$ref": "#/$defs/uuid" },
-        "sub_branch": { "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }] },
-        "actor": { "type": "string", "maxLength": 128 },
-        "role": { "enum": ["dealer", "dealer_admin", "branch_user", "staff_preview", "hcps_staff"] },
-        "aud": { "const": "golden-commerce-v1" },
-        "iat": { "type": "integer" },
-        "exp": { "type": "integer" }
+        "sub_dealer": {
+          "$ref": "#/$defs/uuid"
+        },
+        "sub_branch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actor": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "role": {
+          "enum": [
+            "dealer",
+            "dealer_admin",
+            "branch_user",
+            "staff_preview",
+            "hcps_staff"
+          ]
+        },
+        "aud": {
+          "const": "golden-commerce-v1"
+        },
+        "iat": {
+          "type": "integer"
+        },
+        "exp": {
+          "type": "integer"
+        }
       }
     },
     "health_200": {
-      "allOf": [{ "$ref": "#/$defs/envelope" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
       "type": "object",
-      "required": ["status", "capabilities"],
+      "required": [
+        "status",
+        "capabilities"
+      ],
       "properties": {
-        "status": { "const": "ok" },
+        "status": {
+          "const": "ok"
+        },
         "capabilities": {
           "type": "object",
-          "required": ["eligibility", "identity_assign", "catalog", "quote", "orders", "history"],
-          "additionalProperties": { "type": "boolean" }
+          "required": [
+            "eligibility",
+            "identity_assign",
+            "catalog",
+            "quote",
+            "orders",
+            "history"
+          ],
+          "additionalProperties": {
+            "type": "boolean"
+          }
         }
       }
     },
     "eligibility_200": {
-      "allOf": [{ "$ref": "#/$defs/envelope" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
       "type": "object",
-      "required": ["state", "capabilities"],
+      "required": [
+        "state",
+        "capabilities"
+      ],
       "properties": {
-        "state": { "enum": ["none", "browse_only", "account"] },
-        "reason": { "enum": ["no_verified_link", "golden_account_inactive"] },
-        "link_id": { "$ref": "#/$defs/uuid" },
-        "capabilities": { "$ref": "#/$defs/capabilities" },
-        "order_route": { "enum": [null, "direct", "review"] },
-        "multi_location": { "type": "boolean" }
+        "state": {
+          "enum": [
+            "none",
+            "browse_only",
+            "account"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "no_verified_link",
+            "golden_account_inactive"
+          ]
+        },
+        "link_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "order_route": {
+          "enum": [
+            null,
+            "direct",
+            "review"
+          ]
+        },
+        "multi_location": {
+          "type": "boolean"
+        }
       },
-      "not": { "anyOf": [ { "required": ["customer_no"] }, { "required": ["terms"] }, { "required": ["email"] }, { "required": ["golden_dealer_id"] } ] }
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "customer_no"
+            ]
+          },
+          {
+            "required": [
+              "terms"
+            ]
+          },
+          {
+            "required": [
+              "email"
+            ]
+          },
+          {
+            "required": [
+              "golden_dealer_id"
+            ]
+          }
+        ]
+      }
     },
     "identity_assign_request": {
-      "type": "object", "additionalProperties": false,
-      "required": ["golden_dealer_id", "hcps_dealer_id", "evidence"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "golden_dealer_id",
+        "hcps_dealer_id",
+        "evidence"
+      ],
       "properties": {
-        "golden_dealer_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,79}$" },
-        "hcps_dealer_id": { "$ref": "#/$defs/uuid" },
-        "customer_no": { "type": ["string", "null"], "maxLength": 40 },
+        "golden_dealer_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{1,79}$"
+        },
+        "hcps_dealer_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "customer_no": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 40
+        },
         "evidence": {
-          "type": "object", "additionalProperties": false, "required": ["method"],
-          "properties": { "method": { "enum": ["account_number", "federation_event", "manual"] }, "note": { "type": ["string", "null"], "maxLength": 500 } }
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "enum": [
+                "account_number",
+                "federation_event",
+                "manual"
+              ]
+            },
+            "note": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 500
+            }
+          }
         }
       }
     },
     "identity_assign_200": {
-      "allOf": [{ "$ref": "#/$defs/envelope" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
       "type": "object",
-      "required": ["result", "link_id", "status"],
+      "required": [
+        "result",
+        "link_id",
+        "status"
+      ],
       "properties": {
-        "result": { "enum": ["proposed", "unchanged"] },
-        "link_id": { "$ref": "#/$defs/uuid" },
-        "status": { "enum": ["proposed", "verified"] }
+        "result": {
+          "enum": [
+            "proposed",
+            "unchanged"
+          ]
+        },
+        "link_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "verified"
+          ]
+        }
+      }
+    },
+    "catalog_product": {
+      "type": "object",
+      "required": [
+        "sku",
+        "family",
+        "family_name",
+        "name",
+        "category",
+        "subcategory",
+        "specs",
+        "class_ii",
+        "badges",
+        "action",
+        "image",
+        "msrp",
+        "emap",
+        "sort"
+      ],
+      "properties": {
+        "sku": {
+          "type": "string"
+        },
+        "family": {
+          "type": "string"
+        },
+        "family_name": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "Lift Chairs",
+            "Scooters",
+            "Power Wheelchairs",
+            "Beds"
+          ]
+        },
+        "subcategory": {
+          "type": "string"
+        },
+        "size_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "specs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "zones": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "class_ii": {
+          "type": "boolean"
+        },
+        "ribbon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "color_note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "badges": {
+          "type": "object",
+          "required": [
+            "is_new",
+            "is_featured",
+            "is_best_seller",
+            "top_new"
+          ],
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "brochure_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^https://"
+        },
+        "action": {
+          "enum": [
+            "configure",
+            "add",
+            "none"
+          ]
+        },
+        "image": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^https://"
+        },
+        "msrp": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "emap": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dealer_price": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "price_source": {
+          "enum": [
+            "promo",
+            "account",
+            "standard",
+            null
+          ]
+        },
+        "sort": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "catalog_200": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "as_of",
+        "etag",
+        "catalog_version",
+        "prices_visible",
+        "linked",
+        "products"
+      ],
+      "properties": {
+        "as_of": {
+          "type": "string"
+        },
+        "etag": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "catalog_version": {
+          "type": "string"
+        },
+        "prices_visible": {
+          "type": "boolean"
+        },
+        "linked": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "products": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/catalog_product"
+          }
+        }
+      }
+    },
+    "inventory_200": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "as_of",
+        "stale",
+        "low_stock_threshold",
+        "items"
+      ],
+      "properties": {
+        "as_of": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stale": {
+          "type": "boolean"
+        },
+        "low_stock_threshold": {
+          "type": "integer"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "sku",
+              "status",
+              "qty"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "sku": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "in",
+                  "low",
+                  "out",
+                  "on_request"
+                ]
+              },
+              "qty": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
       }
     }
   }
