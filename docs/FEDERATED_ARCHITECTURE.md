@@ -1,9 +1,11 @@
 # HCPS ⇄ Golden — Federated Architecture Master Blueprint
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Status:** Adopted — architectural source of truth
 **Owner:** Angelo Audia (HCPS)
 **Applies to:** the HCPS development effort **and** the Golden Ordering Platform / Golden Admin development effort
+
+> **Changelog v1.3.0 (2026-11-02, adopted by Angelo):** Golden ⇄ Partner 360 integration made concrete and safe. (a) New §5.5 **server-to-server API** `golden-commerce-v1` — HMAC request signing with a per-purpose secret held only in each site's environment (never in a database), timestamp + single-use nonce, signed **delegation** naming the HCPS dealer; contract file `docs/contracts/golden-commerce-v1.md` pinned in both repos. (b) §3.10 **identity is a Golden-owned, human-verified link** (`dealer_integration_map`): HCPS only proposes; only a verified link unlocks Golden prices, ordering or history; `hcps_dealer_id` is back-filled on verify. (c) §2.4/§5.4 order submission is **retry-safe through an `Idempotency-Key`**; **PO numbers are not unique** and are never an idempotency key. (d) §5.3 adds `product.purchased` (already emitted), fixes `order_id` = Golden's `orders.public_id` (UUID; the PO travels separately) and the canonical status vocabulary. (e) §9 **one secret per purpose** — events, server-to-server API, staff sign-in links. (f) §13 checklist gains idempotency and secret-separation checks.
 
 > **Changelog v1.2.0:** Authorized **HCPS front-end order submission through a manufacturer platform's own ordering API** (§1 doctrine #2 exception; new §2.4), where the manufacturer platform remains the executing, authoritative owner of the order — enabling the Golden ⇄ Partner 360 shared-commerce-engine model (two front-ends, one Golden engine, one synchronized order record). Added `order.status.changed` to the event catalog (§5.3) and the `order_source` tag + shared `order_id` convention; added the front-end-submission direction rule (§5.4) and refined the Conformance boundary check (§13).
 
@@ -70,6 +72,8 @@ An HCPS interface (e.g. HCPS Partner 360) MAY act as a **second front-end** on a
 - HCPS holds a **read-only mirror** of the order (per §1 #5), kept current by `order.created` / `order.status.changed` events.
 - The HCPS front-end **MUST NOT** write manufacturer inventory, pricing, configuration, or order status directly. Dealer **eligibility** gates access: only dealers the manufacturer authorizes may see dealer pricing or submit orders.
 - Golden independence is preserved: this path is additive and the manufacturer platform remains fully operable with the HCPS adapter disabled.
+- **(v1.3.0)** The HCPS front-end reaches the manufacturer platform only through a **server-side proxy** using the signed server-to-server API (§5.5); the browser never calls the manufacturer platform and never holds an integration credential. The manufacturer platform — not HCPS — decides **eligibility** (whether this dealer may see dealer pricing, order, or see history) from its own verified identity link (§3.10).
+- **(v1.3.0)** Submission is **retry-safe**: every submission carries an `Idempotency-Key`; the manufacturer platform stores the key with the order in one transaction and replays the first response for a repeat. A purchase-order number is the dealer's reference only — dealers legitimately reuse one PO across several orders — and is **never** unique-constrained or used as an idempotency key.
 
 ---
 
@@ -125,6 +129,7 @@ An independent Golden deployment. `tenant_id = "hcps"` is the HCPS-owned instanc
 - The **HCPS-owned Golden instance** stores the canonical HCPS `dealer_id` on each of its dealers as `hcps_dealer_id`. Federated events carry both the Golden-local id and `hcps_dealer_id` when known.
 - Matching when `hcps_dealer_id` is absent: HCPS resolves identity by the same alias/normalization rules already used (name + address/zip), then backfills `hcps_dealer_id` into Golden via the adapter.
 - **Licensee instances have no `hcps_dealer_id`** and never federate — their dealers are theirs alone.
+- **(v1.3.0) Verified identity link.** For anything beyond behavioural analytics — Golden dealer pricing, ordering, order history — identity comes only from a **verified** row in Golden's `dealer_integration_map` (Golden-owned). HCPS may **propose** a link (`dealer.identity.assigned`, realised as `POST /v1/identity/assign`); account-number, event or name matches are proposals only and never verify themselves. A Golden administrator verifies or revokes, naming the reviewer and a reason; verifying back-fills `dealers.hcps_dealer_id`; revoking takes effect on the next request. Name/alias matching (above) remains acceptable for analytics events only.
 
 ---
 
@@ -181,6 +186,7 @@ Both projects **MUST** use these exact event names. New events are added by vers
 | `product.added_to_cart` | Item added to cart | `qty` |
 | `cart.abandoned` | Cart idle past threshold | `cart_value`, `items[]` |
 | `order.created` | Order submitted (from any authorized front-end) | `order_id` (shared), `order_source`, `total`, `lines[]` |
+| `product.purchased` | (v1.3.0, already emitted by Golden) one per ordered product line | `qty`, `value`, `order_id` |
 | `order.status.changed` | Order status transitions (acknowledged, processing, shipped, tracking available, cancelled) | `order_id`, `from`, `to`, `tracking?`, `order_source` |
 | `order.completed` | Order finalized/shipped | `order_id` (shared), `order_source`, `total` |
 | `email.sent` | Marketing/transactional email sent | `campaign_id`, `email` |
@@ -190,11 +196,20 @@ Both projects **MUST** use these exact event names. New events are added by vers
 | `dealer.status.changed` | Relationship status transitions | `manufacturer_id`, `from`, `to` |
 | `dealer.interest.updated` | Engagement Engine recomputes interest | `manufacturer_id`, `score`, `signals[]` |
 
+**(v1.3.0) Order identifiers and status.** `order_id` is the manufacturer platform's own immutable UUID for the order (Golden: `orders.public_id`); the dealer's PO travels as `po_number` and is not unique. `order.status.changed` `to` uses one vocabulary: `submitted`, `pending_review`, `acknowledged`, `processing`, `revised`, `partially_shipped`, `shipped`, `invoiced`, `completed`, `cancelled`; each event carries a monotonically increasing `version` and consumers apply only a higher version (§8.7).
+
 ### 5.4 Direction rules
 - Manufacturer/Golden → HCPS: **all** catalog events above (behavioral + order + email).
 - HCPS → Golden (Tenant 0 only, via adapter, minimal): `dealer.identity.assigned` (backfill `hcps_dealer_id`) and reference data the instance opts to consume. HCPS **MUST NOT** push operational commands or write manufacturer data directly.
 - HCPS → Golden **front-end order submission** (Tenant 0, v1.2.0): an authorized HCPS front-end MAY `POST` an order to Golden's own versioned ordering API (`/v1/orders`, i.e. `save-order`) on the dealer's behalf. Golden creates, owns, confirms, and advances the order and emits `order.created` / `order.status.changed` back to HCPS. This is a client call to Golden's ordering API — **not** an operational command and **not** a data write into Golden (§2.4).
 - HCPS internal (Zoho/Dealer 360/Engagement Engine) uses the same envelope for consistency.
+
+### 5.5 Server-to-server API (v1.3.0)
+- Contract: **`golden-commerce-v1`** (`docs/contracts/golden-commerce-v1.md` + schema + signing vectors), committed byte-identical in both repos and pinned by a lock file each repo's tests check.
+- **Request signing.** `Authorization: HCPS-S2S kid, ts, nonce, sig` where `sig = HMAC-SHA256` over scheme, audience, method, path, sorted query, timestamp, nonce, SHA-256 of the raw body and SHA-256 of the delegation header. Receivers reject: bad grammar, |skew| > 300 s, unknown or inactive key, constant-time mismatch, a reused nonce (database-enforced, unique per key), and any scope the key lacks. An unreadable store fails **closed**.
+- **Secret storage.** The shared secret (≥ 32 bytes) lives only in each site's environment. The database holds key id, tenant, scopes, active flag and a short **fingerprint** of the configured secret — never the secret and never a hash used for verification. Rotation = add a second key id, move the caller, retire the old one.
+- **Delegation.** A signed `X-HCPS-Delegation` names the acting HCPS dealer (`sub_dealer`), optional branch, actor and role, with a ≤ 120 s lifetime and audience `golden-commerce-v1`. It never carries a manufacturer slug, account number, price or total; the receiver maps it through its own verified link (§3.10). Caller-supplied dealer, account, branch, terms, price or total are ignored.
+- **Off by default.** Every route is disabled until the receiver's switch is set; additional per-capability and per-dealer switches gate pricing, ordering and history.
 
 ---
 
@@ -281,6 +296,7 @@ Owns: interest detection, scoring, next-best-action. Consumes federated activity
 
 - **Tenant isolation** is the top invariant: every tenant-scoped access enforces `tenant_id`; no cross-tenant read by any path.
 - **Signed events** (HMAC) + **scoped bearer tokens**; least privilege; per-tenant secrets. Rotating a tenant's secret **MUST NOT** affect another tenant.
+- **(v1.3.0) One secret per purpose.** Event signing, the server-to-server API (§5.5) and staff sign-in links each use a distinct secret; no secret mints a session or authorizes an API call it was not issued for. Secrets are generated and entered by the owner, never displayed in chat, logs, tickets or source control.
 - **HCPS availability independence:** a Zoho or HCPS outage **MUST NOT** block core operations of any Golden instance. Federation degrades gracefully (queue + retry).
 - **Auditability:** account/relationship changes and cross-tenant-relevant actions are logged.
 - **Prohibited by design:** credentials, financial trades/transfers, and destructive bulk deletes are never automated by either platform's agents; a human performs them.
@@ -335,6 +351,9 @@ Before building a feature, confirm:
 - [ ] **Sync:** are mirrors updated from their owner, not edited directly?
 - [ ] **Security:** signed, scoped, PII out of URLs, degrades gracefully if HCPS/Zoho is down?
 - [ ] **Licensing:** for Golden — same codebase, config-driven, isolation testable?
+- [ ] **(v1.3.0) Retry safety:** can a retried or concurrent submission ever create a second order? (Idempotency-Key, never PO uniqueness.)
+- [ ] **(v1.3.0) Secrets:** one secret per purpose, held only in environment, none in a database or the repo?
+- [ ] **(v1.3.0) Identity:** does access to manufacturer pricing/orders/history rest only on a verified, revocable identity link?
 
 If any box is unchecked, revise the design or amend this blueprint (with a version bump) before building.
 
@@ -352,4 +371,4 @@ If any box is unchecked, revise the design or amend this blueprint (with a versi
 
 ---
 
-*End of Master Blueprint v1.2.0 — give this file, at this version, to both the HCPS and Golden development chats.*
+*End of Master Blueprint v1.3.0 — give this file, at this version, to both the HCPS and Golden development chats.*

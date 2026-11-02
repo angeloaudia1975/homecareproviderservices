@@ -15,7 +15,7 @@ const slice=(a,b)=>{ const i=html.indexOf(a), j=html.indexOf(b,i); if(i<0||j<0) 
 const lineOf=a=>{ const i=html.indexOf('\n'+a); if(i<0) throw new Error('anchor '+a); return html.slice(i+1,html.indexOf('\n',i+1)); };
 const CODE=[lineOf('const money = '),lineOf('const esc = '),
   ...['function familyQty','function tierQty','function contractPrice','function lineRatePrice','function withUpgrade','function upgradeAddPurchase','function unitPrice','const cartKey=','function groupCart','function linesSubtotal','function packOf'].map(a=>grabDecl(html,a)),
-  slice('/* ---------- SERVER PRICING','/* ---------- submit (one order'), slice('async function submitOrder(){','/* ---- Stage 6: submit one Golden order'), slice('function hydrateCart(saved){','/* ---- persistent cart')].join('\n');
+  slice('/* ---------- SERVER PRICING','/* ---------- submit (one order'), slice('async function submitOrder(){','/* ---- Golden orders (blueprint'), slice('function hydrateCart(saved){','/* ---- persistent cart')].join('\n');
 
 let fail=0, pass=0;
 async function t(name,fn){ try{ await fn(); pass++; console.log('ok   '+name); }catch(e){ fail++; console.log('FAIL '+name+'\n     '+(e&&e.stack||e).toString().split('\n').slice(0,3).join('\n     ')); } }
@@ -96,11 +96,19 @@ await t('standard price: a cart at the current price submits, and the order and 
   eq(E.CART.size,0,'cart cleared'); eq(E.page.PRICE_NOTES.size,0,'no notes');
   eq(E.hits.create,1,'recorded once, by submit-order');
 });
-await t('a Golden line is recorded by the page, the HCPS line only by submit-order — never twice',async()=>{
+await t('a Golden line is never submitted or recorded by HCPS; it stays in the cart while the HCPS line is placed (v1.3.0)',async()=>{
   const E=env(); E.add('A1',1);
   E.CART.set('golden-technologies::PR1',{p:{manufacturer:'golden-technologies',code:'PR1',name:'Chair',base_price:900},qty:1}); E.MFR['golden-technologies']={po:'G-1',notes:''};
   await E.page.submitOrder();
-  eq(E.W.db.orders.map(o=>o.manufacturer).sort(),['golden-technologies',LINE].sort(),'one order each');
+  eq(E.W.db.orders.map(o=>o.manufacturer),[LINE],'only the HCPS order is recorded');
+  eq([...E.CART.keys()],['golden-technologies::PR1'],'Golden line kept in the cart');
+  ok(E.toasts.some(m=>/Golden platform/.test(m)),'told to order Golden on the Golden platform: '+E.toasts.join(' | '));
+});
+await t('a Golden-only cart submits nothing at all',async()=>{
+  const E=env();
+  E.CART.set('golden-technologies::PR1',{p:{manufacturer:'golden-technologies',code:'PR1',name:'Chair',base_price:900},qty:1}); E.MFR['golden-technologies']={po:'G-1',notes:''};
+  await E.page.submitOrder();
+  eq([E.W.db.orders.length,E.hits.submit,E.hits.create,E.CART.size],[0,0,0,1],'nothing sent, cart kept');
 });
 await t('if recording fails after the check, nothing is placed and the cart is kept',async()=>{
   const st={}; const E=env({state:st,beforeApi:(b)=>{ if(b.action==='create') st.failMeta=true; }}); E.add('A1',1);

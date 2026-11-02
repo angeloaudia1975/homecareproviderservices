@@ -1,7 +1,23 @@
 # Golden ⇄ HCPS Partner 360 — Shared Commerce Engine Integration
 
-**Addendum to:** FEDERATED_ARCHITECTURE.md (proposes **v1.2.0**)
-**Status:** Proposed — for adoption by both the HCPS and Golden dev efforts
+**Addendum to:** FEDERATED_ARCHITECTURE.md — **adopted in v1.2.0, made concrete in v1.3.0 (2026-11-02)**
+**Status:** Adopted. Wire contract: `docs/contracts/golden-commerce-v1.md` (pinned in both repos). Work package: the Claude Doc
+"Golden ⇄ Partner 360 Integration — Stage 0/1 Work Package".
+
+> **Corrections (2026-11-02, from the Stage 0 code audit and production checks):**
+> 1. `order-history-api.js` does **not** yet read Golden orders. Golden orders reach HCPS only as `federation_orders` rows, which today
+>    appear in the Dealer 360 timeline and the Golden Activity dashboard, not in the dealer's My Orders. Stage 5 adds them.
+> 2. Golden emits `order.created` and `product.purchased` only. It has **never** sent `order.status.changed` or `order.completed`
+>    (production check, 2026-11-02). Status, tracking and revisions come from Golden's Golden Sync file import. Stage 5 adds an outbox
+>    that turns those imports into status events.
+> 3. Golden's `save-order` prices order lines from the browser and recomputes only S&H on the server. Partner 360 will not call it.
+>    Stage 4 adds the server-priced, idempotent `/v1/orders` on a shared core, and the Golden portal moves to that core as well.
+> 4. Identity is not "mapped via sso-login + backfillHcpsDealerId". `dealers.hcps_dealer_id` was missing in Golden production, and the
+>    stored map held one manual row. v1.3.0: Golden owns a human-verified link (`dealer_integration_map`); HCPS only proposes.
+> 5. Configurators are not reusable as they stand. Prices and rules live inline in the Golden dealer page. Stage 3 extracts them into one
+>    module that both storefronts and Golden's server run.
+> 6. PO numbers are not unique (100 dealer/PO groups, 222 orders in production). Retry safety comes from an `Idempotency-Key`, never
+>    from the PO.
 **Owner:** Angelo Audia (HCPS)
 
 > **Model:** *Two dealer experiences → one Golden commerce engine → one synchronized order record.*

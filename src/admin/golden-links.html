@@ -1,0 +1,91 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Connect 360 — Golden Partner Links</title>
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th{text-align:left;color:var(--gray);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:2px solid var(--line)}
+ td{padding:8px;border-bottom:1px solid #eef2f6;vertical-align:top}
+ .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;word-break:break-all}
+ .pill{display:inline-block;border-radius:20px;padding:1px 9px;font-size:11px;font-weight:700;border:1px solid #d6dee6;background:#f4f7fa;color:#3d5266}
+ .pill.ok{background:#e9f8ef;color:#1d7a43;border-color:#b9e4c8} .pill.wait{background:#fdf4dc;color:#8a6400;border-color:#e6d493} .pill.bad{background:#fdecec;color:#a12626;border-color:#f2c0c0}
+ .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+ .btn,button{min-height:44px}
+ .note{font-size:12px;color:var(--gray)}
+ .status{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:12px 0}
+ .status div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+ .status b{display:block;font-size:10px;text-transform:uppercase;color:var(--gray);letter-spacing:.4px}
+ .table-scroll{overflow-x:auto}
+ @media(max-width:700px){ thead{display:none} table,tbody,tr,td{display:block;width:100%} tr{border:1px solid var(--line);border-radius:12px;padding:6px 4px;margin-bottom:10px;background:#fff} td{border:0;padding:6px 8px} td[data-l]::before{content:attr(data-l);display:block;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);font-weight:700} }
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Golden Partner Links</h1>
+    <div class="sub">Golden decides which HCPS dealer is which Golden account. HCPS only <b>proposes</b>; a Golden admin verifies on the Golden side.
+      Until a link is verified, Partner 360 shows Golden as not available for that dealer. Verifying never turns on ordering.</div></div>
+    <div><button class="btn ghost" onclick="load()">↻ Refresh</button></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const when=s=>{ if(!s) return "—"; try{ return new Date(s).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); }catch(e){ return String(s).slice(0,16); } };
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+let TOKEN=HCPS.token(), MSG="";
+function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint">${esc(msg||"Sign in with your work email and password.")}</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password"><button class="btn" onclick="submitTok()">Sign in</button></div>`;}
+async function submitTok(){ const email=(($("#lemail")||{}).value||"").trim(), password=(($("#lpass")||{}).value||"");
+  try{ const r=await fetch("/.netlify/functions/staff-auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"login",email,password})});
+    const j=await r.json().catch(()=>({})); if(!j||!j.ok){ gate((j&&j.message)||"Could not sign in."); return; } HCPS.setSession(j); TOKEN=j.token; load();
+  }catch(err){ gate("Could not reach the server."); } }
+async function api(action, extra){ const r=await fetch("/.netlify/functions/golden-links-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action,...(extra||{})})});
+  if(r.status===401){ throw {gate:true}; } const j=await r.json().catch(()=>({})); if(r.status===403) throw {forbidden:true}; return Object.assign({_status:r.status},j); }
+
+function statePill(c){
+  const l=c.link; if(!l) return '<span class="pill">not proposed</span>';
+  if(l.golden_state==="verified"||l.status==="verified") return '<span class="pill ok">verified by Golden</span>';
+  if(l.golden_state==="inactive") return '<span class="pill bad">Golden account off</span>';
+  return '<span class="pill wait">proposed — waiting for Golden</span>';
+}
+async function propose(i, btn){
+  const c=CANDS[i]; if(!c) return;
+  const method=c.account_matches?"account_number":"federation_event";
+  if(c.is_branch){ MSG="This HCPS dealer is a branch — propose its organisation (HQ) instead."; render(); return; }
+  if(!confirm(`Propose to Golden that HCPS dealer “${c.name}” is Golden account ${c.golden_dealer_id}${c.customer_no?" (#"+c.customer_no+")":""}?\n\nNothing is shared until a Golden admin verifies it.`)) return;
+  btn.disabled=true; btn.textContent="Sending…";
+  try{ const j=await api("propose",{dealer_id:c.dealer_id,golden_dealer_id:c.golden_dealer_id,customer_no:c.customer_no,method});
+    MSG=j.ok?`Proposed: ${c.name} → ${c.golden_dealer_id} (${j.result}). Waiting for Golden to verify.`:`Not proposed: ${j.message||j.error||"error"}`; load();
+  }catch(e){ if(e&&e.gate){ gate("Your session ended — sign in again."); return; } MSG="Not proposed: could not reach the server."; load(); }
+}
+async function refresh(id, btn){
+  btn.disabled=true; btn.textContent="Checking…";
+  try{ const j=await api("refresh",{dealer_id:id}); MSG=j.ok?`Golden says: ${j.state.replace("_"," ")}.`:`Could not check: ${j.error||"error"}`; load(); }
+  catch(e){ if(e&&e.gate){ gate("Your session ended — sign in again."); return; } MSG="Could not check."; load(); }
+}
+let CANDS=[], STATUS=null;
+function render(){
+  const s=STATUS||{};
+  const st=`<div class="status">
+    <div><b>Connection</b>${s.configured?'<span class="pill ok">configured</span>':'<span class="pill">not configured yet</span>'}</div>
+    <div><b>Golden</b>${!s.configured?'—':s.golden_reachable?'<span class="pill ok">reachable</span>':'<span class="pill bad">'+esc(s.golden_status||'unavailable')+'</span>'}</div>
+    <div><b>Linking switch</b>${s.switch_on?'<span class="pill ok">on</span>':'<span class="pill">off</span>'}</div>
+    <div><b>Golden ordering</b><span class="pill">off (Stage 4)</span></div></div>`;
+  const rows=CANDS.map((c,i)=>`<tr><td data-l="HCPS dealer"><b>${esc(c.name||"(unknown dealer)")}</b>${c.is_test?' <span class="pill">TEST</span>':''}${c.is_branch?' <span class="pill wait">branch</span>':''}<div class="note">${esc([c.city,c.state].filter(Boolean).join(", "))}</div></td>
+     <td class="mono" data-l="Golden account">${esc(c.golden_dealer_id)}<div class="note">#${esc(c.customer_no||"—")} ${c.account_matches?'<span class="pill ok">account # matches</span>':''}</div></td>
+     <td class="note" data-l="Activity">${c.events} event(s)<br>last ${esc(when(c.last_event))}</td>
+     <td data-l="State">${statePill(c)}</td>
+     <td><div class="row">${!c.link?`<button class="btn" ${s.switch_on&&s.configured&&!c.is_branch?'':'disabled'} onclick="propose(${i},this)">Propose</button>`:''}
+       ${c.link?`<button class="btn ghost" ${s.configured?'':'disabled'} onclick="refresh('${esc(c.dealer_id)}',this)">Check Golden</button>`:''}</div></td></tr>`).join("");
+  $("#body").innerHTML=st+(MSG?`<div class="msg">${esc(MSG)}</div>`:"")
+    +`<div class="card"><h2>Golden accounts seen on activity</h2><p class="note">Each row is a Golden account that has sent events, and the HCPS dealer those events matched to. Propose only rows you have checked.</p>
+      <div class="table-scroll"><table><thead><tr><th>HCPS dealer</th><th>Golden account</th><th>Activity</th><th>State</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="note">No Golden accounts seen yet.</td></tr>'}</tbody></table></div></div>`;
+}
+async function load(){
+  if(!TOKEN){ gate(); return; }
+  try{ const [s,c]=await Promise.all([api("status"),api("candidates")]); STATUS=s; CANDS=(c&&c.candidates)||[]; render(); }
+  catch(e){ if(e&&e.gate){ gate("Sign in to continue."); return; } if(e&&e.forbidden){ $("#body").innerHTML='<div class="msg">This tool is for management only.</div>'; return; } $("#body").innerHTML='<div class="msg">Could not load.</div>'; }
+}
+load();
+</script>
+</body></html>

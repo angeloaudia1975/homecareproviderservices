@@ -1,0 +1,69 @@
+{
+  "note": "TEST VECTORS ONLY. The secret below is public test data and must never be configured anywhere.",
+  "secret": "TEST-ONLY-not-a-real-secret-0123456789abcdef-XYZ",
+  "fingerprint": "5b02799906bbe1e9",
+  "vectors": [
+    {
+      "name": "health GET, no delegation",
+      "kid": "hcps-p360-test",
+      "method": "GET",
+      "path": "/v1/health",
+      "query": {},
+      "body": "",
+      "delegation": null,
+      "ts": 1793600000,
+      "nonce": "0b1c2d3e-4f50-4a6b-8c7d-8e9fa0b1c2d3",
+      "expected_headers": {
+        "authorization": "HCPS-S2S kid=hcps-p360-test, ts=1793600000, nonce=0b1c2d3e-4f50-4a6b-8c7d-8e9fa0b1c2d3, sig=5c35aaeea323d515988109acdd2f8ae85a40ee0020cd5fa9fe94869810672d33"
+      }
+    },
+    {
+      "name": "eligibility GET with delegation",
+      "kid": "hcps-p360-test",
+      "method": "GET",
+      "path": "/v1/eligibility",
+      "query": {},
+      "body": "",
+      "delegation": {
+        "sub_dealer": "11111111-2222-4333-8444-555555555555",
+        "sub_branch": null,
+        "actor": "test-user",
+        "role": "dealer",
+        "aud": "golden-commerce-v1",
+        "iat": 1793600000,
+        "exp": 1793600090
+      },
+      "ts": 1793600000,
+      "nonce": "1b1c2d3e-4f50-4a6b-8c7d-8e9fa0b1c2d3",
+      "expected_headers": {
+        "authorization": "HCPS-S2S kid=hcps-p360-test, ts=1793600000, nonce=1b1c2d3e-4f50-4a6b-8c7d-8e9fa0b1c2d3, sig=21d0dd669a4e1bd173b154476c5506f304b52237cdd9f4fd88c2c0d36360b04a",
+        "x-hcps-delegation": "eyJzdWJfZGVhbGVyIjoiMTExMTExMTEtMjIyMi00MzMzLTg0NDQtNTU1NTU1NTU1NTU1Iiwic3ViX2JyYW5jaCI6bnVsbCwiYWN0b3IiOiJ0ZXN0LXVzZXIiLCJyb2xlIjoiZGVhbGVyIiwiYXVkIjoiZ29sZGVuLWNvbW1lcmNlLXYxIiwiaWF0IjoxNzkzNjAwMDAwLCJleHAiOjE3OTM2MDAwOTB9"
+      }
+    },
+    {
+      "name": "identity assign POST with body and query",
+      "kid": "hcps-p360-test",
+      "method": "POST",
+      "path": "/v1/identity/assign",
+      "query": {
+        "b": "2",
+        "a": "1 x"
+      },
+      "body": "{\"golden_dealer_id\":\"test-dealer-a\",\"hcps_dealer_id\":\"11111111-2222-4333-8444-555555555555\",\"evidence\":{\"method\":\"manual\"}}",
+      "delegation": {
+        "sub_dealer": "11111111-2222-4333-8444-555555555555",
+        "actor": "staff@example.invalid",
+        "role": "hcps_staff",
+        "aud": "golden-commerce-v1",
+        "iat": 1793600000,
+        "exp": 1793600060
+      },
+      "ts": 1793600000,
+      "nonce": "2b1c2d3e-4f50-4a6b-8c7d-8e9fa0b1c2d3",
+      "expected_headers": {
+        "authorization": "HCPS-S2S kid=hcps-p360-test, ts=1793600000, nonce=2b1c2d3e-4f50-4a6b-8c7d-8e9fa0b1c2d3, sig=ca1e4747a66913dc3b52b9b229f578f677c7605cbe8777c63a8ebcb6452d9e2f",
+        "x-hcps-delegation": "eyJzdWJfZGVhbGVyIjoiMTExMTExMTEtMjIyMi00MzMzLTg0NDQtNTU1NTU1NTU1NTU1IiwiYWN0b3IiOiJzdGFmZkBleGFtcGxlLmludmFsaWQiLCJyb2xlIjoiaGNwc19zdGFmZiIsImF1ZCI6ImdvbGRlbi1jb21tZXJjZS12MSIsImlhdCI6MTc5MzYwMDAwMCwiZXhwIjoxNzkzNjAwMDYwfQ"
+      }
+    }
+  ]
+}
