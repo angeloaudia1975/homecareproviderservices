@@ -84,7 +84,8 @@ function render(){
 }
 async function load(){
   if(!TOKEN){ gate(); return; }
-  try{ const [s,c]=await Promise.all([api("status"),api("candidates")]); STATUS=s; CANDS=(c&&c.candidates)||[]; render(); }
+  try{ const [s,c]=await Promise.all([api("status"),api("candidates")]); STATUS=s; if(!c||c.ok!==true){ $("#body").innerHTML='<div class="msg" role="alert">Could not load the Golden accounts ('+esc((c&&c.error)||"error")+'). Nothing was changed.</div>'; return; }
+    CANDS=c.candidates||[]; if(c.links_installed===false) MSG="Link records are not set up yet (database step pending), so no link state is shown. Accounts are listed for review only."; render(); }
   catch(e){ if(e&&e.gate){ gate("Sign in to continue."); return; } if(e&&e.forbidden){ $("#body").innerHTML='<div class="msg">This tool is for management only.</div>'; return; } $("#body").innerHTML='<div class="msg">Could not load.</div>'; }
 }
 load();

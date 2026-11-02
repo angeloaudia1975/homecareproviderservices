@@ -70,7 +70,12 @@ exports.handler = async (event) => {
         const rows = await sbGet(`dealers?id=in.(${chunk.map(encodeURIComponent).join(",")})&select=id,business_name,hcps_account,parent_id,city,state,is_test`);
         (rows || []).forEach(d => { dealers[d.id] = d; });
       }
-      const links = await sbGet("golden_dealer_links?select=hcps_dealer_id,golden_dealer_id,status,golden_state");
+      // Before supabase/golden_dealer_links.sql is run the mirror table does not exist: list the accounts anyway, with
+      // no link state, and say so. Only THAT table being missing is tolerated; any other read failure still fails.
+      let links, linksInstalled = true;
+      try { links = await sbGet("golden_dealer_links?select=hcps_dealer_id,golden_dealer_id,status,golden_state"); }
+      catch(e){ if(!/golden_dealer_links/.test(String(e && e.message)) || !/PGRST205|42P01|Could not find the table|does not exist/i.test(String(e && e.message))) throw e;
+        links = []; linksInstalled = false; }
       const linkBy = {}; (links || []).forEach(l => { linkBy[l.hcps_dealer_id + "|" + l.golden_dealer_id] = l; });
       const out = [...seen.values()].map(c => {
         const d = dealers[c.dealer_id] || {};
@@ -79,7 +84,7 @@ exports.handler = async (event) => {
           account_matches: !!(d.hcps_account && c.customer_no && String(d.hcps_account).trim() === String(c.customer_no).trim()),
           link: linkBy[c.dealer_id + "|" + c.golden_dealer_id] || null });
       }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-      return json(200, { ok:true, candidates: out });
+      return json(200, { ok:true, candidates: out, links_installed: linksInstalled });
     }
 
     if(b.action === "links"){
