@@ -3980,6 +3980,17 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
   are REUSED through golden-proxy → Golden `/v1/*` and rendered inside the HCPS design — never re-implemented or copied
   into HCPS. Coordinate with the ongoing Catalog Completion work (same file, same branch discipline): pull latest main
   first, change only the Golden slices, and run the catalog-v2 tests so no other manufacturer's catalog changes.
+- **Golden is embedded in Partner 360 — no redirect (RULE, Angelo 2026-11-02 13:07 CT).** An HCPS dealer shops, configures,
+  checks out and tracks Golden orders INSIDE Partner 360, as another manufacturer in catalog-v2: product images, search,
+  dealer-specific pricing, availability, configurators, checkout, order history and tracking — all rendered by HCPS from
+  Golden `/v1` data through golden-proxy. Never send an HCPS dealer to the Golden Ordering Platform as part of normal
+  shopping, and never add a permanent redirect or "continue on Golden" step. The Golden Ordering Platform stays available
+  on its own for Golden's own users. The SSO link (`/sso`, `GOLDEN_SSO_SECRET` = Golden `HCPS_SSO_SECRET`) is an optional
+  legacy / fallback only — no B2–B5 feature may depend on it. Stages: B2 catalog + images + search + dealer price +
+  availability (read-only) · B3 configurator (Golden's rules, HCPS UI) · B4 checkout (Idempotency-Key, `GOLDEN_V1_ORDERS`
+  + `golden_p360_catalog` OFF until fully tested and Angelo approves) · B5 order history + tracking. Coordinate with the
+  Catalog Completion / photo work: pull latest main, touch only the Golden slices, run the catalog-v2 tests.
+  SSO secrets: set on both sites 2026-11-02; Golden needed a redeploy (13:10 CT) before `/sso` saw `HCPS_SSO_SECRET`.
 - **B0+B1 merged and live 2026-11-02:** ordering #16 → `d754ab9`, Golden #278 → `53a66e2`, HCPS #74 → `3a37df2`, follow-up
   #75 (links page before its table exists) → `caf6fde`. No secret set, every switch OFF.
 - **B1 database installed 2026-11-02 (run by Angelo):** Golden `migrate-hcps-integration-v1.sql` PART 1 (DDL) and PART 2
