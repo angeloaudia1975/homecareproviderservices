@@ -632,6 +632,9 @@ Agreed for Phase 0 / Phase 1 (2026-09/10). Applies to every rep-facing tool.
   Redact answers 503 redact_not_installed. SQL `email_learning_p3_shapes_redact.sql` sha256 e3754e83…894e NOT run — Angelo runs
   it; expected postcheck row 2 `a36686c0…edaa5` (Windows paste) / `2006d502…cf3a8` (Unix); then the 20-check probe. No Phase 3
   switch is turned on without Angelo's final authorization.
+  **Phase 3 SQL INSTALLED + VERIFIED (2026-11-01):** install 8/8; postcheck ok; row 2 `051fd88d…05a8e9` accepted — note and
+  redact lack only their whole-line comments (reproduced exactly locally), logic identical; probe 20/20 BLOCKED. Never rerun
+  or roll back. Switches apply / ai_headsup / styles stay OFF until Angelo's final authorization.
 - **A replay is a no-op.** Every write from a visit carries `(origin_type, origin_id, origin_key)` against
   a unique index (or a claim PATCH on a null column), so a double tap, an offline resend or a late replay
   never duplicates a visit, note, task, deal, contact, activity row or intent signal — while a genuinely

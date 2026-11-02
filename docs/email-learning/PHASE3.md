@@ -70,6 +70,13 @@ Redact answers 503 "needs the Phase 3 database update", the rules list falls bac
   (8 install checks); rollback `b5187ef3…ec2a`; postcheck `604843b2…5c23`; probe `ace7e2d5…de83` (20 checks).
 - Expected postcheck row 2 (10 functions): **`a36686c04ff4aaf806d65b10980edaa5`** when pasted from Windows into the SQL
   editor (CRLF, the way Phases 1 and 2 were installed) / `2006d5024c4a1cd5c44922683d4cf3a8` with Unix line endings.
+- **INSTALLED + VERIFIED 2026-10-31 / 2026-11-01 (run by Angelo):** install checks 8/8 true; postcheck rows 1, 3–7 ok
+  (10 functions, RLS 4 / 0 policies, 0 public grants, 8 guard triggers, switches absent, 0 shapes / 0 redacted). Row 2 =
+  **`051fd88d0462523f5b4c691dbf05a8e9`** — accepted: per-function md5 shows 8 of 10 functions equal the Windows-paste
+  install exactly; `hcps_email_rule_note` and `hcps_email_rule_redact` lack only their whole-line `--` comments (4 lines),
+  and removing exactly those lines from the committed CRLF bodies reproduces both function md5s and `051fd88d…` locally.
+  Logic identical (same pattern as Phase 1). Public-key probe (storefront publishable key, accepted on a public table
+  first): ALL 20 BLOCKED (401). Never rerun or roll back. All three Phase 3 switches stay OFF until Angelo authorizes them.
 
 ## Tests (synthetic data only)
 - `test/email-learning-p3.test.js` — rules applied (switch, President, version, order, examples, plain text, retired,
