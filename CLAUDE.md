@@ -1712,7 +1712,11 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   overflow; server = browser on Access4U / ABM / Dalton; ABM MOQ, BK536 and BC21275 rules enforced by the server; SKU search
   lands on the variant; quote + Add / Remove work, "MSRP not provided", no Ohio Medical; public files and content carry no
   prices; price tables refuse the public key; mc_verify (save:false) PASS on Climbing Steps, Strongback, Ovation, Bemis.
-  Known, pre-existing: the quote picker lists only the first 500 products, so Ovation and PediFix items cannot be added.
+  Quote picker cap FIXED 2026-11-02 (ordering PR #19): every quotable product is offered, grouped by manufacturer (it stopped
+  at 500 and, in network load order, dropped whole lines — ABM on live). Known gap (pre-existing, not yet fixed): the hub's
+  product list is built from the catalog FILE only, so products added in the catalog editor (custom_products — e.g. the renamed
+  Strongback models, Climbing Steps MP-P12/13/14, Bemis 444DISPLAY) and the storefront's generated colour options (Ovation) are
+  not offered on new quotes; nothing it offers is unsellable. Fix = build the list from the storefront's own merged catalog.
 - **ABM final completion (owner, 2026-11-02; ordering PR #18).** Seven SKUs retired (reversible `_retired`): BK388, BK381,
   BC23966, BC23891, BC23575, BC21084, BC2396 → 35 active SKUs, 27 cards; the catalog file stays at 42 rows so its private price
   identity is unchanged. RULES: (1) **a retired or switched-off product is never offered for a NEW hub action** — quote line,
