@@ -1,6 +1,6 @@
 # Golden Commerce API — contract v1 (golden-commerce-v1)
 
-**Contract version:** 1.0.0 · **Frozen:** 2026-11-02 (Stage 0, batch B0) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
+**Contract version:** 1.1.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
 **Committed byte-identical in:** `golden-dealer-portal/docs/contracts/` and `homecareproviderservices/docs/contracts/`.
 `golden-commerce-v1.lock.json` pins the SHA-256 of this file, the schema, the signing vectors and the shared
 signing module. Each repo's tests fail on drift. Change all copies together and bump the lock.
@@ -30,8 +30,9 @@ Golden decides and writes.
 | GET `/v1/health` | `golden:health` | no | 0/1 | **built (B1)** |
 | GET `/v1/eligibility` | `golden:read` | required | 1 | **built (B1)** |
 | POST `/v1/identity/assign` | `golden:identity` | required, role `hcps_staff` | 1 | **built (B1)** |
-| GET `/v1/catalog` | `golden:read` | required | 2 | specified in the work package; not built |
-| GET `/v1/inventory` | `golden:read` | required | 2 | not built |
+| GET `/v1/catalog` | `golden:read` | required | 2 | **built (B2)** |
+| GET `/v1/inventory` | `golden:read` | required | 2 | **built (B2)** |
+| GET `/v1/catalog/family?family=` | `golden:read` | required | 2 | **built (B2 enrichment, 1.2.0)** |
 | GET `/v1/config/engine` | `golden:read` | required | 3 | not built |
 | POST `/v1/quote` | `golden:quote` | required | 4 | not built |
 | POST `/v1/orders` | `golden:order` | required + `Idempotency-Key` | 4 | not built |
@@ -71,6 +72,70 @@ Request: `{ golden_dealer_id, hcps_dealer_id, customer_no?, evidence:{ method:"a
     - 403 `role`
 - A `customer_no` that differs from Golden's is **not** reported back. It is Golden's default dealer login secret, so a distinct answer would let a caller test guesses. Instead it is recorded on the proposal for the Golden admin.
 - The result is a **proposal** only. It becomes usable only when a Golden admin verifies it (`admin-integration-links`), and verifying never enables ordering.
+
+## 4a. Payloads (B2 routes, contract 1.1.0)
+
+Both routes resolve the caller exactly like `/v1/eligibility`: only a **verified** link of the calling client counts,
+the Golden account must be active, and a delegated branch needs its own verified branch row (else 403
+`branch_not_permitted`). 409 `link_ambiguous` and 503 `integration_store_unavailable` as in §4.
+
+**GET /v1/catalog → 200** (schema `catalog_200`)
+`{ as_of, etag, catalog_version, prices_visible, linked, reason, products:[catalog_product] }`. Header `ETag`.
+
+- The products are the Golden portal's own cards (one per orderable SKU), with Golden's merchandising layer applied
+  as the portal applies it: a hidden model is left out; name/description overrides, badges, ribbon note and the
+  primary photo are applied. Lift chairs and beds share a `family` (the model) and carry `size_code` / `size_label`.
+- `dealer_price` and `price_source` are present **only** when `prices_visible` is true (verified link with
+  `price_visibility = 'dealer'`). Otherwise the keys are absent — never null, never 0.
+- `dealer_price` follows the portal's rule: promotion price, else the dealer's own Golden pricing row, else the
+  portal's standard dealer price (`price_source` = `promo` · `account` · `standard`).
+- `image` and `brochure_url` are absolute `https://` or null. `msrp` / `emap` are the portal's retail values.
+- Errors: 503 `catalog_unavailable` (merchandising layer unreadable — fails closed), 503 `pricing_unavailable`
+  (the dealer's prices could not be read — never a guessed or standard price instead).
+- Never returned: Golden account number, terms, email, another dealer's price, Golden's dealer id.
+
+**GET /v1/inventory → 200** (schema `inventory_200`)
+`{ as_of, stale, low_stock_threshold, items:[{ sku, status, qty }] }`.
+
+- `status` per catalog SKU uses the portal's card-badge rule: lift chairs by model + size, everything else by
+  plain model; `low` at or below `low_stock_threshold` (50); a product family absent from the stock feed is
+  `on_request`; Golden's merchandising `in_stock_override` wins (then `qty` is null).
+- `as_of` is the newest inventory sync; `stale` is true when it is older than 36 hours or there is no feed.
+  Golden stock is a daily file sync: a consumer shows it "as of" `as_of`, never as live.
+- Errors: 503 `inventory_unavailable`.
+
+## 4b. Payloads (B2 enrichment, contract 1.2.0)
+
+**GET /v1/catalog/family?family=PR511 → 200** (schema `family_200`)
+`{ as_of, etag, enrichment_as_of, prices_visible, linked, reason, family }`. Header `ETag`. Caller resolution, pricing
+rule, merchandising layer and errors are exactly those of `/v1/catalog` (§4a); plus 400 `bad_request` (family code
+malformed) and 404 `not_found` (unknown family, or a model Golden has hidden).
+
+`family` carries the product-detail content Golden publishes for that model, built from Golden's own sources by
+`repo/scripts/golden-enrichment/build.js` (goldentech.com pages and their PDFs, Golden's official owner's-manual
+folders, Golden's YouTube channel, the portal's own catalog and fabric rules) into `repo/functions/lib/golden-enrichment.json`:
+
+- `skus` — the same `catalog_product` objects as `/v1/catalog` for this family (dealer prices under the same rule).
+- `gallery[]` — `{ url, role, skus, w, h, quality, primary, shared, source_url }`, verified Golden photos only (each
+  loaded, measured and hashed; a photo whose file name names another Golden model or line is never included). At most
+  one `primary`. `shared:true` = the same picture appears on another Golden model's page (a feature / lifestyle shot,
+  never the primary). `skus` lists the sizes a photo shows when Golden says so. Golden's own merchandising photos lead.
+- `specs` — `{ columns:[sku], rows:[{ label, values:{sku:value}, key }], basis, source }`. A value is attached to a
+  size only where Golden's source states it for that size (`basis` `sell_sheet_size_table` or, for a one-model page,
+  `product_page`). `website_unscoped[]` holds values Golden's website shows without naming the size; a consumer labels
+  them so and never assigns them to a size. `compare` = the rows that have a `key`, for side-by-side comparison.
+- `features` — `{ standard, optional, accessories, benefits, groups, warranty_terms, none_published, source }` in
+  Golden's own words. `none_published:true` = Golden's sell sheet for this model is a spec sheet without a feature list.
+- `documents[]` — `{ kind, title, url, format, language, pages, bytes, version, applies, note, source }`;
+  `kind` ∈ sell_sheet · accessories_sheet · brochure · owners_manual · quick_start · option_manual · warranty ·
+  setup_instructions · document. `version.date` is the date the file states (file name, folder or PDF metadata — `version.basis` says which).
+  A document Golden restricts (`access:"dealer"`) is included only for a dealer with a verified link.
+- `videos[]` — `{ youtube_id, title, embed, thumbnail, relevance }`, only videos embedded on Golden's product page and
+  published by Golden Technologies' YouTube channel; `embed` is the privacy-enhanced youtube-nocookie URL.
+- `fabrics[]` — the portal's standard palette for the model with Golden's swatch photos.
+- `related[]` — Golden's related models that the portal sells. `page` — Golden's product page. `enriched` — false when
+  no enrichment exists yet for the family (the consumer shows the card data only).
+- Never returned: website retail prices, internal reconciliation notes, image hashes.
 
 ## 5. Authentication: HMAC request signing (shared module `hcps-s2s.js`)
 
