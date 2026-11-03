@@ -1750,14 +1750,21 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   ordering `docs/catalog/abm-image-library-2026-10-31.md`.
 - **One Catalog Review Sandbox (owner, 2026-11-03).** Unpublished catalog work is reviewed at ONE stable private address:
   https://deploy-preview-26--hcpsonlineordering.netlify.app — the deploy preview of ordering PR #26 ("Catalog Review Sandbox —
-  DO NOT MERGE", a permanent draft, never merged). Its branch `catalog-review` = main + every open same-repo PR into main that
-  merges cleanly (PR-number order), rebuilt by ordering `scripts/catalog-review-sync.sh` (fast-forward commit, never a force
+  DO NOT MERGE", a permanent draft, never merged). Its branch `catalog-review` = main + every open same-repo PR into main that is
+  READY FOR OWNER REVIEW (non-draft, or a draft labelled `owner-review`) with ALL its checks green on its head and that
+  merges cleanly (PR-number order; drafts in progress, red/pending checks and conflicts are left out and listed), rebuilt by ordering `scripts/catalog-review-sync.sh` (fast-forward commit, never a force
   push; pushes only when content changed) and, once ordering PR #25 is merged, by the workflow `catalog-review-sandbox.yml` on
   every push to main / PR update. A conflicting PR is skipped and listed in `/catalog-review.json` on the sandbox; label
   `sandbox-exclude` leaves a PR out. Staff open it from Connect 360 → Catalog Preview (default address, TEST — Golden Sandbox
   dealer); the shop's STAGING rule + orders-api (preview token never creates) keep orders unrecorded. Single-PR previews still
   exist but are not the review address. Found 2026-11-03: Catalog Preview had defaulted to PR #12's frozen 31 Oct preview, so
   BongoRx / Dalton work never showed there. Netlify branch deploys stay OFF (no setting changed).
+  The shop's yellow PRIVATE CATALOG PREVIEW bar names the build's **review id** (hash of main + each included PR head) and the
+  unpublished changes by manufacturer; everything not named is live. **Release rule (owner, 2026-11-03):** the sandbox is never
+  permission to publish. The owner approves specific PRs naming a review id; before merging, the PR's head must equal the head
+  recorded under that review id — if it changed, the new version needs a fresh sandbox review. Process doc:
+  ordering `docs/catalog/REVIEW_SANDBOX.md`. Every finished manufacturer update: open its PR, label it `owner-review` when it is
+  ready, and it joins the sandbox once its checks pass.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
