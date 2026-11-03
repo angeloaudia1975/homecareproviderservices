@@ -17,9 +17,12 @@
   <div class="top"><div><h1>Catalog Preview</h1><div class="sub">Open the private, unpublished catalog preview as any dealer — real dealer pricing, full checkout, nothing recorded or sent to a manufacturer.</div></div></div>
   <div class="cp-note"><b>How the preview is protected.</b> The preview site is a Netlify deploy preview: only signed-in members of the HCPS Netlify team can open it.
    Inside it, prices come from the private price record for the dealer you choose (a 30-minute view-as-dealer link minted here).
-   Placing an order there records nothing: it shows the dealer's acknowledgment and the HCPS order email, and sends one copy of the HCPS email to angelo@homecareproviderservices.us marked <b>CATALOG PREVIEW — NOT AN ORDER</b>.</div>
+   Placing an order there records nothing: it shows the dealer's acknowledgment and the HCPS order email, and sends one copy of the HCPS email to angelo@homecareproviderservices.us marked <b>CATALOG PREVIEW — NOT AN ORDER</b>.
+   <br><b>Catalog Review Sandbox</b> (the default address): <code>main</code> plus every open catalog pull request, rebuilt automatically after each change —
+   <a href="https://deploy-preview-26--hcpsonlineordering.netlify.app/catalog-review.json" target="_blank" rel="noopener">what it includes</a> ·
+   <a href="https://github.com/angeloaudia1975/homecareproviderservicesordering/pull/26" target="_blank" rel="noopener">its build</a>.</div>
   <div class="cp-row">
-    <label>Preview site address<input id="base" placeholder="https://deploy-preview-12--hcpsonlineordering.netlify.app" autocomplete="off"></label>
+    <label>Preview site address<input id="base" placeholder="https://deploy-preview-26--hcpsonlineordering.netlify.app" autocomplete="off"></label>
     <label>Find a dealer<input id="q" placeholder="Type a dealer name (TEST dealers are marked)" autocomplete="off"></label>
   </div>
   <div id="body"><div class="msg">Loading dealers…</div></div>
@@ -29,9 +32,14 @@
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const DEFAULT_BASE="https://deploy-preview-12--hcpsonlineordering.netlify.app";
+/* The Catalog Review Sandbox (owner, 2026-11-03): ordering PR #26 is a permanent draft whose deploy preview is main + every
+   open catalog PR, rebuilt automatically — the one address for reviewing unpublished catalog work. */
+const DEFAULT_BASE="https://deploy-preview-26--hcpsonlineordering.netlify.app";
 let DEALERS=[];
-try{ $("#base").value=localStorage.getItem("hcps_catalog_preview_base")||DEFAULT_BASE; }catch(e){ $("#base").value=DEFAULT_BASE; }
+/* An address saved before the sandbox existed (a single PR's frozen preview) is replaced by the sandbox once. */
+try{ const saved=localStorage.getItem("hcps_catalog_preview_base"); const v=localStorage.getItem("hcps_catalog_preview_v");
+  if(v!=="sandbox"){ localStorage.setItem("hcps_catalog_preview_base",DEFAULT_BASE); localStorage.setItem("hcps_catalog_preview_v","sandbox"); }
+  $("#base").value=(v==="sandbox"&&saved)||DEFAULT_BASE; }catch(e){ $("#base").value=DEFAULT_BASE; }
 $("#base").addEventListener("change",()=>{ try{ localStorage.setItem("hcps_catalog_preview_base",$("#base").value.trim()); }catch(e){} });
 async function api(method,body){ const r=await fetch("/.netlify/functions/dealers-api",{method,headers:{"content-type":"application/json",authorization:"Bearer "+HCPS.token()},body:body?JSON.stringify(body):undefined}); return {status:r.status,body:await r.json().catch(()=>({}))}; }
 async function load(){
