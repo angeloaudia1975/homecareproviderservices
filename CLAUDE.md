@@ -1748,6 +1748,16 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   is never used for a BiWaze Cough part (or the reverse); a manual cover is used only for that manual's own SKU; two different
   photos under one name (the two "Aerogen power cable" files) are held until the owner says which is BK389. Audit table:
   ordering `docs/catalog/abm-image-library-2026-10-31.md`.
+- **One Catalog Review Sandbox (owner, 2026-11-03).** Unpublished catalog work is reviewed at ONE stable private address:
+  https://deploy-preview-26--hcpsonlineordering.netlify.app — the deploy preview of ordering PR #26 ("Catalog Review Sandbox —
+  DO NOT MERGE", a permanent draft, never merged). Its branch `catalog-review` = main + every open same-repo PR into main that
+  merges cleanly (PR-number order), rebuilt by ordering `scripts/catalog-review-sync.sh` (fast-forward commit, never a force
+  push; pushes only when content changed) and, once ordering PR #25 is merged, by the workflow `catalog-review-sandbox.yml` on
+  every push to main / PR update. A conflicting PR is skipped and listed in `/catalog-review.json` on the sandbox; label
+  `sandbox-exclude` leaves a PR out. Staff open it from Connect 360 → Catalog Preview (default address, TEST — Golden Sandbox
+  dealer); the shop's STAGING rule + orders-api (preview token never creates) keep orders unrecorded. Single-PR previews still
+  exist but are not the review address. Found 2026-11-03: Catalog Preview had defaulted to PR #12's frozen 31 Oct preview, so
+  BongoRx / Dalton work never showed there. Netlify branch deploys stay OFF (no setting changed).
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
