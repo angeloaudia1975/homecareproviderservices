@@ -1,6 +1,6 @@
 # Golden Commerce API — contract v1 (golden-commerce-v1)
 
-**Contract version:** 1.5.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3; 1.4.0 the Stage 4a read-only quote, batch B4, and 4b ship-to + validate-only orders; 1.5.0 the Stage 5 order history, batch B5) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
+**Contract version:** 1.6.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3; 1.4.0 the Stage 4a read-only quote, batch B4, and 4b ship-to + validate-only orders; 1.5.0 the Stage 5 order history, batch B5; 1.6.0 the Stage 4c order placement, batch B6) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
 **Committed byte-identical in:** `golden-dealer-portal/docs/contracts/` and `homecareproviderservices/docs/contracts/`.
 `golden-commerce-v1.lock.json` pins the SHA-256 of this file, the schema, the signing vectors and the shared
 signing module. Each repo's tests fail on drift. Change all copies together and bump the lock.
@@ -37,7 +37,7 @@ Golden decides and writes.
 | POST `/v1/quote` | `golden:read` | required | 4a | **built (B4a, read-only, 1.4.0)** |
 | GET `/v1/ship-to` | `golden:read` | required | 4b | **built (B4b, read-only, 1.4.0)** |
 | POST `/v1/orders` `mode:"validate"` | `golden:read` | required + `Idempotency-Key` | 4b | **built (B4b, validate-only, 1.4.0)** |
-| POST `/v1/orders` (placement) | `golden:order` | required + `Idempotency-Key` | 4c | not built (any other mode → 403 `ordering_disabled`) |
+| POST `/v1/orders` `mode:"submit"` (placement) | `golden:order` | required + `Idempotency-Key` | 4c | **built (B6, 1.6.0)** — behind `GOLDEN_V1_ORDERS` + link `golden_ordering_enabled` (any other mode → 403 `ordering_disabled`) |
 | GET `/v1/history`, `/v1/orders/{order_ref}` | `golden:history` | required | 5 | **built (B5, read-only, 1.5.0)** |
 
 A route that is not built does not exist. A later stage adds it with a **minor** contract bump and its
@@ -204,8 +204,8 @@ its verified branch's own default ship-to (`dealer_branches.ship_location_id`) �
 `{ mode:"validate", quote_hash, lines:[{ sku, fabric, color, tier?, footrest?, qty, reference_names?:[≤ qty names] }],
 split_order?, ship_to:{ id }, po_number?, contact:{ name, phone, email? }, attention?, notes? }` (unknown fields → 400).
 
-- **Places nothing.** No orders row, reservation, email or federation event. Any `mode` other than `validate` → 403
-  `ordering_disabled` (placement is Stage 4c).
+- **Places nothing.** No orders row, reservation, email or federation event. `mode:"submit"` is placement (§4h); any
+  other `mode` → 403 `ordering_disabled`.
 - Golden re-prices now with the same code as `/v1/quote` (dealer pricing, stock, S&H, the special-terms waiver of the chosen
   authorized ship-to). If the result's `quote_hash` differs from the one the dealer reviewed → 409 `prices_changed` with the
   new `quote` (nothing validated). A failed special-terms read → 503 `pricing_unavailable` (never shown as a price change).
@@ -213,17 +213,59 @@ split_order?, ship_to:{ id }, po_number?, contact:{ name, phone, email? }, atten
   account requires one. **A reused PO is valid** (§6). Free text (contact, attention, notes, reference names, PO) may not
   contain `<` `>`, control characters, or invisible / bidirectional format characters (Unicode Cf, U+2028, U+2029);
   CRLF line breaks in `notes` are kept as LF.
-- **200** (schema `orders_validate_200`): `{ mode:"validate", valid:true, ordering_enabled:false, idempotent_replay, engine,
+- **200** (schema `orders_validate_200`): `{ mode:"validate", valid:true, ordering_enabled, test_mode?, idempotent_replay, engine,
   order:{ po_number, po_auto, ship_to, contact, attention, notes, delivery_type:"business", split_order, lines[] }, quote,
-  emails:{ golden_order:{ recipient:"golden_order_desk", recipient_configured, subject, html },
+  emails:{ golden_order:{ recipient:"golden_order_desk"|"test_recipient", recipient_configured, subject, html },
   dealer_confirmation:{ to, subject, html, text } | null } }` — the emails are byte-identical to what `save-order` would
   send for this order (same `buildEmailHtml`, subject and confirmation template); the order desk address is not disclosed.
   Known differences from a placed order: no order id yet (the confirmation shows the PO, as `save-order` does when a PO is
-  set); an auto-PO is stamped at validation, so placement will carry a new one; liftgate / delivery add-ons are 0 (not in 4b).
+  set); an auto-PO stamped at validation is the PO placement uses (§4h); liftgate / delivery add-ons are 0.
 - Errors also: 422 `idempotency_conflict`, 409 `idempotency_in_progress` (retry), 503 `idempotency_unavailable`,
   503 `internal` (an unexpected failure after the key was claimed — the key is released, so the same attempt may retry).
   Each claim holds a claim token; a claim taken over after 2 minutes gets a new token, so the stalled original can no
   longer complete or release it.
+
+## 4h. Payloads (B6 order placement, contract 1.6.0)
+
+**POST /v1/orders** `mode:"submit"` with the SAME `Idempotency-Key` and the SAME body as the validation the dealer reviewed
+(only `mode` differs). Since 1.6.0 the validation's `ordering_enabled` says whether this dealer may place now (all locks
+below); `test_mode:true` (and `recipient:"test_recipient"`) when placement would be in test mode.
+
+- **Locks (403, nothing read or written beyond the link):** `GOLDEN_V1_ORDERS` on (`ordering_disabled`); client scope
+  `golden:order` (`scope`); delegation role `dealer` / `dealer_admin` — `staff_preview` and `hcps_staff` never place
+  (`ordering_not_permitted`); an account delegation — branch ordering is not designed yet (`branch_ordering_not_permitted`);
+  the verified link's `golden_ordering_enabled` (`ordering_not_enabled`); in test mode, a Golden account listed in
+  Golden's test-dealer setting (`ordering_disabled`).
+- **The validation is required.** The key must hold a completed, valid validation (200) of the SAME content for the SAME
+  dealer and branch, at most 2 hours old — else 409 `not_validated` / `validation_expired` (start a new attempt: new key).
+  A validation answer and a placement answer are separate records of the attempt and are never confused: a validate
+  replay of the key is always the validation.
+- Golden **re-prices now** exactly as the validation did (dealer pricing, stock, S&H, the special-terms waiver of the
+  authorized ship-to). A change → 409 `prices_changed` with the new `quote`, nothing placed, and that answer is the key's
+  for good. A temporary failure (503) stores nothing — the same attempt may retry.
+- **Atomic:** the Golden `orders` row (status `pending`, the linked Golden dealer, Golden's prices) and the key's
+  permanent answer are written in ONE database transaction. A retry, a lost response or a concurrent duplicate gets the
+  first answer (`idempotent_replay:true`) — exactly one order per attempt. A 503 after an unknown outcome is safe to retry.
+- PO: the PO the dealer reviewed (an auto-PO stamped at validation is the PO placed). PO numbers are not unique (§6).
+- **201** (schema `orders_submit_201`): `{ mode:"submit", placed:true, ordering_enabled:true, test_mode?, idempotent_replay,
+  order_ref:"P<id>", status:"submitted", placed_at, engine, order:{…as in validate}, quote, notifications? }`. `order_ref` is
+  the same reference `/v1/history` and `/v1/orders/{order_ref}` use: the order is in Golden's history at once, before any
+  sales order exists, and once. `notifications:{ order_desk, dealer_confirmation }` (`sent` · `failed` · `not_configured` ·
+  `suppressed` · `none`) only on the first answer.
+- **Emails only after the commit;** a failed email never undoes the order. A notification that was never recorded, or
+  failed, stays open and is tried again — by a retry of the attempt or Golden's 15-minute sweeper — at most every 5
+  minutes and 6 times, each send keyed (per order + recipient) so it is not delivered twice; then it is left for staff.
+  The mode is decided once, at placement, and stored with the answer (`test_mode`); every re-send uses it.
+  Production mode (Golden's production setting AND its production deploy): Golden's order desk + the dealer
+  confirmation, exactly as the dealer portal sends them. Test mode (everything else — fail closed): BOTH emails go
+  only to Golden's controlled test mailbox, marked `[TEST — Partner 360 preview]`, and the stored order notes start
+  "TEST ORDER — Partner 360 preview — do not process."
+- The database itself refuses to place anything but the validated order (same quote, same grand total, same PO as the
+  key's validation), whatever calls it.
+- Unlike a dealer-portal order, a Partner 360 placement emits no HCPS federation event (`order.created` /
+  `product.purchased`): Partner 360 placed it and already has Golden's answer.
+- Errors also: 422 `idempotency_conflict`, 503 `idempotency_unavailable` / `internal` / `pricing_unavailable` …,
+  409 `duplicate_po` only where an older per-account PO constraint exists.
 
 ## 4g. Payloads (B5 order history and tracking, contract 1.5.0)
 
@@ -299,7 +341,8 @@ sig = HMAC-SHA256(secret, join("\n",
 - Validate-only (4b): Golden records `(client_id, idempotency_key)` → `request_hash` + the first DETERMINATE answer (200 / 4xx)
   in `integration_order_requests` (`config/migrate-hcps-integration-v1-orders.sql`); a 503 releases the key so the same
   attempt can be retried. The answer for a key never changes; a new review (e.g. after `prices_changed`) = a new key.
-- Golden stores `(tenant_id, client_id, idempotency_key)` → `request_hash` + the full first response, in one transaction with the order:
+- Placement (4c, 1.6.0): the attempt's second record, `(client_id, idempotency_key, mode:"submit")`
+  (`config/migrate-hcps-integration-v1-submit.sql`), stores `request_hash` + the full first response, in one transaction with the order:
     - Same key and same body: Golden replays the stored response with `idempotent_replay:true`.
     - Concurrent duplicate while the first is still running: 409 `idempotency_in_progress` (retry).
     - Same key and a different body: 422 `idempotency_conflict`.

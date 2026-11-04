@@ -22,9 +22,18 @@
 //   attention?, notes? } → Golden POST /v1/orders mode "validate". PLACES NOTHING (no order, reservation or email).
 //   Golden re-prices and answers prices_changed with the new quote, or valid + the exact email previews. Allowed only
 //   on the staff preview path, or when phase2_flags.golden_p360_checkout is exactly true (OFF).
+// place_order (B6, contract 1.6.0): the SAME body and the SAME idempotency_key as the validate_order the dealer reviewed
+//   → Golden POST /v1/orders mode "submit". GOLDEN places the order (one transaction with its idempotency record) and is
+//   the only order of record — HCPS stores nothing. A retry with the same key replays Golden's first answer, so an
+//   unknown outcome (timeout, 5xx, unreadable answer) is answered reason:"outcome_unknown", retry:true — the page retries
+//   with the SAME key, never a new one. NEVER from a staff "view as dealer" token (any environment). Production needs
+//   golden_p360_catalog + golden_p360_checkout + golden_p360_ordering (all exactly true, OFF) + the pilot list.
+//   Preview environment: only a real dealer sign-in of a TEST dealership (dealers.is_test, and its head office) on a
+//   Partner 360 deploy preview, behind phase2_flags.golden_p360_preview_orders (OFF) — Golden then places in TEST mode.
 //
 // Preview environment (Partner 360 deploy previews, for staff review): header `x-hcps-golden-env: preview` is honoured
-// ONLY for a staff "view as dealer" token AND a request from a Partner 360 deploy-preview / branch address. It then
+// ONLY from a Partner 360 deploy-preview / branch address, for a staff "view as dealer" token, or (B6) a real dealer
+// sign-in of a TEST dealership while phase2_flags.golden_p360_preview_orders is exactly true. It then
 // talks to a Golden DEPLOY PREVIEW with the separate TEST key (_golden_client env "preview") — never production Golden,
 // never the production key — and does not need the production switches. Anything else asking for preview is refused.
 "use strict";
@@ -41,7 +50,7 @@ async function sbGet(path){ const r = await fetch(`${SUPABASE_URL}/rest/v1/${pat
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // Partner 360 deploy previews and branch deploys (never the production storefront).
 const ORDERING_PREVIEW_ORIGIN = /^https:\/\/(deploy-preview-\d+|(?!main--)[a-z0-9-]+)--hcpsonlineordering\.netlify\.app$/;   // never main-- (= production)
-const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", family: "/v1/catalog/family", config: "/v1/config", quote: "/v1/quote", ship_to: "/v1/ship-to", validate_order: "/v1/orders", history: "/v1/history", order: "/v1/orders/" };
+const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", family: "/v1/catalog/family", config: "/v1/config", quote: "/v1/quote", ship_to: "/v1/ship-to", validate_order: "/v1/orders", place_order: "/v1/orders", history: "/v1/history", order: "/v1/orders/" };
 const QUOTE_MAX_LINES = 30, QUOTE_MAX_QTY = 20;
 const SHIP_ID_RE = /^(primary|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 const IDEM_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -248,28 +257,49 @@ function cleanHistoryOrder(o, pv){
   if(pv && o.totals && typeof o.totals === "object") out.totals = { subtotal: num(o.totals.subtotal), freight: num(o.totals.freight), sh: num(o.totals.sh), total: num(o.totals.total) };
   return out;
 }
-function cleanValidation(g, sentHash){
+// The order + quote Golden answered for THIS request (validate or placement): allow-listed, all-or-nothing.
+function cleanOrderView(g, sentHash){
   const q = cleanQuote(g);
   const o = g && g.order;
-  if(!q || g.mode !== "validate" || g.valid !== true || g.ordering_enabled !== false || !o || typeof o !== "object") return null;
+  if(!q || !o || typeof o !== "object") return null;
   const ship = cleanShip(o.ship_to);
-  const e = g.emails || {}, go = e.golden_order || {}, dc = e.dealer_confirmation;
-  if(!ship || typeof go.html !== "string" || go.html.length > MAX_EMAIL_HTML || typeof go.subject !== "string") return null;
+  if(!ship) return null;
   const raw = Array.isArray(o.lines) ? o.lines : [];
   if(raw.length > QUOTE_MAX_LINES || raw.length !== q.lines.length || raw.some(l => !l || !CFG_SKU_RE.test(String(l.sku)))) return null;   // all-or-nothing, as the quote
-  if(String(q.quote_hash) !== String(sentHash)) return null;   // an answer for another quote is not this validation
+  if(String(q.quote_hash) !== String(sentHash)) return null;   // an answer for another quote is not this order
   const lines = raw.map(l => ({ sku: l.sku, reference_names: strs(l.reference_names, 40, QUOTE_MAX_QTY) }));
   return {
     order: { po_number: str(o.po_number, 30) || "", po_auto: o.po_auto === true, ship_to: ship,
       contact: { name: str(o.contact && o.contact.name, 80) || "", phone: str(o.contact && o.contact.phone, 30) || "", email: str(o.contact && o.contact.email, 190) || "" },
       attention: str(o.attention, 60) || "", notes: str(o.notes, 500) || "", delivery_type: "business", split_order: o.split_order === true, lines },
     quote: q,
+  };
+}
+function cleanValidation(g, sentHash){
+  if(!g || g.mode !== "validate" || g.valid !== true || typeof g.ordering_enabled !== "boolean") return null;
+  const v = cleanOrderView(g, sentHash);
+  const e = g.emails || {}, go = e.golden_order || {}, dc = e.dealer_confirmation;
+  if(!v || typeof go.html !== "string" || go.html.length > MAX_EMAIL_HTML || typeof go.subject !== "string") return null;
+  return {
+    order: v.order, quote: v.quote, ordering_enabled: g.ordering_enabled, test_mode: g.test_mode === true,
     emails: {
-      golden_order: { recipient: "golden_order_desk", recipient_configured: go.recipient_configured === true, subject: go.subject.slice(0, 300), html: go.html },
+      golden_order: { recipient: go.recipient === "test_recipient" ? "test_recipient" : "golden_order_desk", recipient_configured: go.recipient_configured === true, subject: go.subject.slice(0, 300), html: go.html },
       dealer_confirmation: dc && typeof dc === "object" && typeof dc.html === "string" && dc.html.length <= MAX_EMAIL_HTML
         ? { to: str(dc.to, 190) || "", subject: str(dc.subject, 300) || "", html: dc.html, text: str(dc.text, 4000) || "" } : null,
     },
   };
+}
+
+// Golden's placement answer (201): the order of record is Golden's; HCPS only shows it.
+const PLACED_REF_RE = /^P\d{1,12}$/;
+const NOTE_STATES = ["sent","failed","not_configured","suppressed","none"];
+function cleanPlacement(g, sentHash){
+  if(!g || g.mode !== "submit" || g.placed !== true || g.status !== "submitted" || !PLACED_REF_RE.test(String(g.order_ref))) return null;
+  const v = cleanOrderView(g, sentHash);
+  if(!v) return null;
+  const n = g.notifications && typeof g.notifications === "object" ? g.notifications : null;
+  return { order_ref: g.order_ref, status: "submitted", placed_at: str(g.placed_at, 40), test_mode: g.test_mode === true, order: v.order, quote: v.quote,
+    notifications: n ? { order_desk: oneOf(n.order_desk, NOTE_STATES) || "failed", dealer_confirmation: oneOf(n.dealer_confirmation, NOTE_STATES) || "failed" } : null };
 }
 
 async function dealerFromToken(event){
@@ -292,6 +322,14 @@ async function dealerFromPreview(event){
   return { dealer_id: r.dealer_id, actor: "staff-preview", preview: true };
 }
 
+// A TEST dealership: the dealer row AND its head office (when it is a branch) are marked dealers.is_test. Strict read.
+async function testDealership(dealerId){
+  const rows = await sbGet(`dealers?id=eq.${encodeURIComponent(dealerId)}&select=id,parent_id,is_test`);
+  const d = rows && rows[0]; if(!d || d.is_test !== true) return false;
+  if(!d.parent_id) return true;
+  const p = await sbGet(`dealers?id=eq.${encodeURIComponent(d.parent_id)}&select=id,is_test`);
+  return !!(p && p[0] && p[0].is_test === true);
+}
 // HCPS dealer row → canonical { sub_dealer (organisation), sub_branch }.
 async function canonical(dealerId){
   const rows = await sbGet(`dealers?id=eq.${encodeURIComponent(dealerId)}&select=id,parent_id`);
@@ -328,11 +366,13 @@ exports.handler = async (event) => {
     if(action === "order"){ if(typeof b.order_ref !== "string" || !ORDER_REF_RE.test(b.order_ref)) return json(400, { ok:false, error:"bad order" }); histRef = b.order_ref; }
     let quoteBody = null, idemKey = null;
     if(action === "quote"){ quoteBody = readQuoteBody(b); if(!quoteBody) return json(400, { ok:false, error:"bad quote" }); }
-    if(action === "validate_order"){
+    if(action === "validate_order" || action === "place_order"){
       if(typeof b.idempotency_key !== "string" || !IDEM_RE.test(b.idempotency_key)) return json(400, { ok:false, error:"bad idempotency key" });
       idemKey = b.idempotency_key.toLowerCase();
       quoteBody = readValidateBody(b); if(!quoteBody) return json(400, { ok:false, error:"bad order" });
+      if(action === "place_order") quoteBody.mode = "submit";   // the SAME body as the reviewed validation; only the mode differs
     }
+    const ordering = action === "place_order";
 
     let who = null;
     try{ who = (await dealerFromToken(event)) || (await dealerFromPreview(event)); }
@@ -341,12 +381,22 @@ exports.handler = async (event) => {
 
     const hdr = k => String((event.headers || {})[k] || (event.headers || {})[k.toLowerCase()] || "");
     const wantsPreview = hdr("x-hcps-golden-env").trim().toLowerCase() === "preview";
-    let envName = null;
+    let envName = null, hcpsOrdering = false;   // may THIS sign-in place orders (HCPS's own switches)? Golden decides the rest.
+    // A staff "view as dealer" token never places an order — in any environment.
+    if(ordering && who.preview) return json(403, { ok:false, error:"preview_not_allowed" });
     if(wantsPreview){
       const origin = (hdr("origin") || hdr("Origin")).trim();
-      if(!who.preview || !ORDERING_PREVIEW_ORIGIN.test(origin)) return json(403, { ok:false, error:"preview_not_allowed" });
+      if(!ORDERING_PREVIEW_ORIGIN.test(origin)) return json(403, { ok:false, error:"preview_not_allowed" });
+      if(!who.preview){
+        // A real dealer sign-in may use Golden's preview environment only for a TEST dealership, behind its own switch.
+        let pf; try{ pf = await flags(sbGet); }catch(e){ return json(503, { ok:false, error:"switches could not be read" }); }
+        if(pf.golden_p360_preview_orders !== true) return json(403, { ok:false, error:"preview_not_allowed" });
+        let isTest = false;
+        try{ isTest = await testDealership(who.dealer_id); }catch(e){ return json(503, { ok:false, error:"dealer could not be read" }); }
+        if(!isTest) return json(403, { ok:false, error:"preview_not_allowed" });
+      }
       if(!GC.configured("preview")) return json(200, { ok:true, enabled:false, preview:true, reason:"golden_preview_not_configured" });
-      envName = "preview";
+      envName = "preview"; hcpsOrdering = !who.preview;
     } else {
       // A staff "view as dealer" token never reaches Golden's production ordering path (it is a preview of the dealer).
       // ... nor reads a real dealer's production order history (history / order are preview-environment only for staff).
@@ -354,7 +404,9 @@ exports.handler = async (event) => {
       const f = await flags(sbGet);
       const pilot = Array.isArray(f.golden_p360_pilot_dealers) ? f.golden_p360_pilot_dealers.map(String) : [];
       if(f.golden_p360_catalog !== true) return json(200, { ok:true, enabled:false, reason:"switched_off" });
-      if(action === "validate_order" && f.golden_p360_checkout !== true) return json(200, { ok:true, enabled:false, reason:"checkout_switched_off" });
+      if((action === "validate_order" || ordering) && f.golden_p360_checkout !== true) return json(200, { ok:true, enabled:false, reason:"checkout_switched_off" });
+      if(ordering && f.golden_p360_ordering !== true) return json(200, { ok:true, enabled:false, reason:"ordering_switched_off" });
+      hcpsOrdering = !who.preview && f.golden_p360_checkout === true && f.golden_p360_ordering === true;
       if((action === "history" || action === "order") && f.golden_p360_history !== true) return json(200, { ok:true, enabled:false, reason:"history_switched_off" });
       who.pilot = pilot;
     }
@@ -364,7 +416,7 @@ exports.handler = async (event) => {
     if(!envName && !who.pilot.includes(String(c.sub_dealer)) && !who.pilot.includes(String(who.dealer_id))) return json(200, { ok:true, enabled:false, reason:"not_in_pilot" });
 
     const role = who.preview ? "staff_preview" : (c.sub_branch ? "branch_user" : "dealer");
-    const r = await GC.call({ method: (action === "quote" || action === "validate_order") ? "POST" : "GET", path: histRef ? ACTIONS.order + encodeURIComponent(histRef) : ACTIONS[action], env: envName || undefined, query: quoteBody ? undefined : (family ? { family } : (cfgQuery || histQuery || undefined)), body: quoteBody || undefined, idempotencyKey: idemKey || undefined,
+    const r = await GC.call({ method: (action === "quote" || action === "validate_order" || ordering) ? "POST" : "GET", path: histRef ? ACTIONS.order + encodeURIComponent(histRef) : ACTIONS[action], env: envName || undefined, query: quoteBody ? undefined : (family ? { family } : (cfgQuery || histQuery || undefined)), body: quoteBody || undefined, idempotencyKey: idemKey || undefined,
       delegation: { sub_dealer: c.sub_dealer, sub_branch: c.sub_branch, actor: who.actor, role } });
     const extra = envName ? { preview:true } : {};
     if(r.configured === false) return json(200, Object.assign({ ok:true, enabled:false, reason:"golden_not_configured" }, extra));
@@ -384,6 +436,33 @@ exports.handler = async (event) => {
       }
       if(r.status === 404) return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"not_found" }, extra));
       if(map[code]) return json(200, Object.assign({ ok:true, enabled:true, available: code !== "prices_not_visible", valid:false, reason: map[code], retry: code === "idempotency_in_progress" || (r.status === 503) }, extra));
+    }
+    if(ordering && !(r.ok && r.status === 201)){
+      // Placement: only a DEFINITE refusal says "not placed". Anything else may have placed the order — the page retries
+      // with the SAME key (Golden replays its first answer), never a new one.
+      const g0 = r.json || {}, code = g0.error && g0.error.code;
+      const base = { ok:true, enabled:true, available:true, placed:false };
+      if(r.status === 409 && code === "prices_changed") return json(200, Object.assign(base, { reason:"prices_changed", new_attempt:true, idempotent_replay: g0.idempotent_replay === true, quote: cleanQuote(g0), request_id: reqId(g0.request_id) }, extra));
+      const definite = { not_validated:"revalidate", validation_expired:"revalidate", idempotency_conflict:"idempotency_conflict", duplicate_po:"duplicate_po",
+        ordering_disabled:"ordering_unavailable", ordering_not_enabled:"ordering_unavailable", ordering_not_permitted:"ordering_unavailable", branch_ordering_not_permitted:"ordering_unavailable",
+        scope:"ordering_unavailable", prices_not_visible:"ordering_unavailable", not_linked:"ordering_unavailable", branch_not_permitted:"ordering_unavailable" };
+      if(r.status === 400 && code === "bad_request"){
+        const msg = g0.error && typeof g0.error.message === "string" ? g0.error.message : "";
+        const field = /^(ship_to|po_required|po_number|attention|notes|contact\.(name|phone|email)|(reference_names|color|qty|sku|fabric|tier|footrest)@\d{1,2})$/.test(msg) ? msg : "order";
+        return json(200, Object.assign(base, { reason:"invalid", field, new_attempt:true }, extra));
+      }
+      if(r.status >= 400 && r.status < 500 && definite[code]) return json(200, Object.assign(base, { reason: definite[code], new_attempt: definite[code] !== "ordering_unavailable" }, extra));
+      if(r.status === 404 && code === "not_found") return json(200, Object.assign(base, { reason:"not_found", new_attempt:true }, extra));
+      if(r.status === 409 && code === "pricing_unavailable") return json(200, Object.assign(base, { reason:"pricing_unavailable", new_attempt:true }, extra));
+      if(r.ok) console.warn("golden-proxy: unexpected placement status", JSON.stringify({ status: r.status, env: envName || "production" }));
+      else console.warn("golden-proxy: placement outcome unknown", JSON.stringify({ status: r.status, code: r.error, env: envName || "production" }));
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, placed:null, reason:"outcome_unknown", retry:true }, extra));
+    }
+    if(ordering){
+      const p = cleanPlacement(r.json || {}, quoteBody.quote_hash);
+      if(!p){ console.warn("golden-proxy: placement answer unreadable", JSON.stringify({ env: envName || "production" }));
+        return json(200, Object.assign({ ok:true, enabled:true, available:true, placed:null, reason:"outcome_unknown", retry:true }, extra)); }
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, placed:true, idempotent_replay: (r.json || {}).idempotent_replay === true, request_id: reqId((r.json || {}).request_id) }, p, extra));
     }
     if(!r.ok && (action === "history" || action === "order")){
       const code = r.error, reasons = { history_not_enabled:"history_not_enabled", branch_history_not_permitted:"branch_history_not_permitted", not_linked:"not_linked", history_unavailable:"history_unavailable" };
@@ -456,7 +535,8 @@ exports.handler = async (event) => {
     if(action === "validate_order"){
       const v = cleanValidation(g, quoteBody.quote_hash);
       if(!v) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
-      return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:true, ordering_enabled:false, idempotent_replay: g.idempotent_replay === true, request_id: reqId(g.request_id) }, v, extra));
+      v.ordering_enabled = v.ordering_enabled === true && hcpsOrdering;   // the Place order button needs Golden AND HCPS
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:true, idempotent_replay: g.idempotent_replay === true, request_id: reqId(g.request_id) }, v, extra));
     }
     if(action === "quote"){
       const q = cleanQuote(g);
