@@ -1817,6 +1817,18 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   this is a question for PediFix; their current on-sale status is his call. D09-TTU's count stays unresolved until confirmed.
   Every other inactive or retired PediFix SKU stays as it is. Keep researching current PediFix documents; no price change
   without his approval.
+- **Corsicana + PediFix PUBLISHED (owner approval 2026-11-03 23:05, review f0a655042c5b).** #29 at 3e7cd5d merged as
+  6ed0e2d, #31 at 5e8802f merged as 0e97fec (exact approved heads). An independent exact-head review said GO, and the 55
+  ordering test files pass on 0e97fec.
+  Production check as the TEST dealer:
+  · 14 Corsicana + 488 PediFix products visible. 502/502 lines priced the same by browser and server at qty 1, 6 and 12.
+  · The four frozen lines: 347/347 the same at qty 1 and 8.
+  · The 10 new photos load (HTTP 200), and P244 / P60 options and search work.
+  · The Customer MSRP Quote Builder shows the new P60 label. The protector orders as "Case (10 each)".
+  · preview_order was checked; nothing was recorded.
+  · No PediFix SKU was activated: the 14 candidates, P3095-115, the 6 holds and P3306 stay off, the server refuses 8520, and
+    P244-XLL / XLR are unchanged (on sale).
+  · Sandbox rebuilt as a527fdf5651c = main@0e97fec with nothing unpublished. #26 stays a draft and is never merged.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
