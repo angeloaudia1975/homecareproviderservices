@@ -1797,6 +1797,15 @@
         "image_side": "right"
       },
       {
+        "type": "video",
+        "eyebrow": "Watch how it works now!",
+        "headline": "Featured New Product",
+        "copy": "Advanced positioning that helps customers move with confidence.",
+        "embed": "https://youtube.com/shorts/Ed-urpUvV60?feature=share",
+        "checklist": [],
+        "video_side": ""
+      },
+      {
         "type": "products",
         "eyebrow": "The complete CorsicanaCare™ line",
         "title": "A full healthcare sleep collection behind the core product.",
@@ -1872,7 +1881,7 @@
           {
             "name": "Essentials Care Bundle",
             "badge": "Bedding bundle",
-            "image": "",
+            "image": "/assets/products/corsicana/bed-in-a-bag-mw2olwwf.jpg",
             "url": "",
             "description": "A ready-to-add bedding bundle: one pillow, one sheet set, and one mattress protector.",
             "tags": [],
