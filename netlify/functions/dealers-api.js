@@ -37,7 +37,7 @@ const rpc=(fn,args)=>sbSend("POST",`rpc/${fn}`,args,{Prefer:"return=minimal"});
 // Manufacturer lines retired / consolidated — never offered in the access grid or line list.
 // "golden" and "bongo" are the duplicate slugs merged into golden-technologies / airavant-bongorx
 // (see supabase/manufacturer_merge.sql); listed here so they never resurface even if a row lingers.
-const RETIRED=new Set(["complete-medical-supplies","golden","bongo"]);
+const RETIRED=new Set([...Object.keys(require("./_retired_lines.js").RETIRED_LINES),"golden","bongo"]);
 
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Supabase Auth admin API (create/update/delete auth users). Service-role only.

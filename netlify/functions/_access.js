@@ -12,12 +12,13 @@
 // your_accounts/available — it's surfaced only via `golden`.
 
 const ALL_DEALERS = ["access4u", "airavant-bongorx", "corsicana"];      // every dealer
-const STATE_RULES  = { bemis: ["IN","KY","OH"], pedifix: ["KY","TN","GA"], gce: ["IN","KY","TN","OH"],
+const STATE_RULES  = { bemis: ["IN","KY","OH"], pedifix: ["KY","TN","GA"],
                        dalton: ["KY","TN"] };
 const CLIMBING   = "climbing-steps";        // all dealers EXCEPT Mobility City
 const STRONGBACK = "strongback-mobility";   // Exclusive Territory (below)
 const OVATION    = "ovation-medical";       // per-account flag
-const NOT_REPRESENTED = new Set(["complete-medical-supplies"]);
+// Retired lines (_retired_lines.js): never orderable, never offered as "available", whatever the account rows say.
+const NOT_REPRESENTED = new Set(Object.keys(require("./_retired_lines.js").RETIRED_LINES));
 // Golden is ordered on Golden's own platform, not inline here — so it is never an orderable
 // line in your_accounts/available even if it's ticked in the admin grid. It's surfaced via `golden`.
 const GOLDEN_SLUGS = new Set(["golden", "golden-technologies"]);
