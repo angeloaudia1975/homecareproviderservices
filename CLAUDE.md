@@ -1765,6 +1765,16 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   recorded under that review id — if it changed, the new version needs a fresh sandbox review. Process doc:
   ordering `docs/catalog/REVIEW_SANDBOX.md`. Every finished manufacturer update: open its PR, label it `owner-review` when it is
   ready, and it joins the sandbox once its checks pass.
+  **Live 2026-11-03 (owner-approved; PR #25 merged at af49ce0 after two independent exact-head reviews, GO at 7401990):**
+  eligibility needs POSITIVE evidence — the Netlify `deploy-preview` status present and `success` (latest per context, not a
+  skipped/cancelled build), nothing failing or pending; no results = not eligible. The workflow runs main's copy only
+  (`pull_request_target` + default-branch checkout; PR code is never executed, only git-merged); every JSON file a merge
+  touches must parse (else rolled back, listed); a PR already in the sandbox keeps its last validated head (still an
+  ancestor, own checks still green) while a new commit is checked. Smoke test PR #27 (docs only) entered automatically once
+  green and left when closed (its branch could not be deleted from here — harmless). Open, owner's call: main has NO branch
+  protection; nothing technically blocks merging #26 (draft; never merge). PR #10 (Access4U ramp categories, Oct 27) is
+  superseded: 44 of its 60 re-categorisations are in main, the 8 TRR re-spelled codes carry the same subcategory, the 8 STRA
+  adjustable-rise SKUs left the Fall 2026 list — nothing to incorporate; left open for the owner to close.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
