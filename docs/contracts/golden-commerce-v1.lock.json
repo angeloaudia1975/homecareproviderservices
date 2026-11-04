@@ -4,8 +4,8 @@
   "blueprint_version": "1.3.0",
   "note": "SHA-256 of each shared file. hcps-s2s.js = Golden repo/functions/lib/hcps-s2s.js = HCPS netlify/functions/_golden_s2s.js.",
   "files": {
-    "golden-commerce-v1.md": "446781cb653dec5e5e6f66d20392e22ade640f1244e0de89d952423526e1f09c",
-    "golden-commerce-v1.schema.json": "10d7c932a6d2f6d04d0514548c7c58e2df9ddd22648b0f10b3b86995839f366b",
+    "golden-commerce-v1.md": "396fb73af0fc48af19027754e8b445f8322288b6da301bd97396ecb550dbbfa1",
+    "golden-commerce-v1.schema.json": "9ef96b71f57a7cf75864d696e5da37d419106f3462c9ac6131ab5a976acb6fec",
     "golden-commerce-v1.signing-vectors.json": "667890ec60957203e432c1211b6aeb884bbfe8248a544bfd021fd57f657979e7",
     "hcps-s2s.js": "4452fc4b175531b4ba552bcca14fc8f5a0c55c0efaa960f7e0d5ee2bb3f6d418",
     "FEDERATED_ARCHITECTURE.md": "e5e81259d5815bcdfa0dec33e6edcaf1039ac24ecde41714846d213229760b97"

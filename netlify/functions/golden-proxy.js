@@ -15,6 +15,13 @@
 // quote (B4a, contract 1.4.0): POST { action:"quote", lines:[{sku,fabric,color,tier?,footrest?,qty}], split_order?, ship_to?:{city,state} }
 //   → Golden POST /v1/quote. READ-ONLY: Golden prices every line and S&H; HCPS sends only the selection (never a price)
 //   and passes back an allow-listed answer. Only a dealer whose Golden prices are visible gets amounts.
+//   ship_to is { id } of one of Golden's own authorized ship-tos (action ship_to) — never a typed address.
+// ship_to (B4b): → Golden GET /v1/ship-to — the addresses Golden holds for this dealer (a branch: only its own).
+// validate_order (B4b): POST { action:"validate_order", idempotency_key (UUID v4, one per checkout attempt — never the
+//   PO), quote_hash, lines[+reference_names], split_order?, ship_to:{id}, po_number?, contact:{name,phone,email?},
+//   attention?, notes? } → Golden POST /v1/orders mode "validate". PLACES NOTHING (no order, reservation or email).
+//   Golden re-prices and answers prices_changed with the new quote, or valid + the exact email previews. Allowed only
+//   on the staff preview path, or when phase2_flags.golden_p360_checkout is exactly true (OFF).
 //
 // Preview environment (Partner 360 deploy previews, for staff review): header `x-hcps-golden-env: preview` is honoured
 // ONLY for a staff "view as dealer" token AND a request from a Partner 360 deploy-preview / branch address. It then
@@ -34,8 +41,10 @@ async function sbGet(path){ const r = await fetch(`${SUPABASE_URL}/rest/v1/${pat
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // Partner 360 deploy previews and branch deploys (never the production storefront).
 const ORDERING_PREVIEW_ORIGIN = /^https:\/\/(deploy-preview-\d+|(?!main--)[a-z0-9-]+)--hcpsonlineordering\.netlify\.app$/;   // never main-- (= production)
-const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", family: "/v1/catalog/family", config: "/v1/config", quote: "/v1/quote" };
+const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", family: "/v1/catalog/family", config: "/v1/config", quote: "/v1/quote", ship_to: "/v1/ship-to", validate_order: "/v1/orders" };
 const QUOTE_MAX_LINES = 30, QUOTE_MAX_QTY = 20;
+const SHIP_ID_RE = /^(primary|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+const IDEM_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CFG_SKU_RE = /^PR\d{3}-[A-Z]{3}$/, CFG_COLOR_RE = /^[A-Z0-9]{3}$/, CFG_FABRICS = ["std","xover","brisa"], CFG_TIERS = ["standard","irheat","hvib","nirvana"];
 const FAMILY_RE = /^[A-Z]{2}\d{3}[A-Z]?(?:-[A-Z0-9]{2,4})?$/;
 
@@ -167,12 +176,76 @@ function readQuoteBody(b){
     lines.push(o);   // nothing else from the browser is forwarded — never a price
   }
   const out = { lines, split_order: b.split_order === true };
-  const s = b.ship_to;
-  if(s && typeof s === "object"){
-    const city = typeof s.city === "string" ? s.city.trim().slice(0, 80) : "", state = typeof s.state === "string" ? s.state.trim().slice(0, 40) : "";
-    if(city || state) out.ship_to = { city, state };
+  if(b.ship_to != null){
+    const id = b.ship_to && typeof b.ship_to === "object" && !Array.isArray(b.ship_to) ? String(b.ship_to.id || "") : "";
+    if(!SHIP_ID_RE.test(id)) return null;
+    out.ship_to = { id };   // only the id of one of Golden's own records — never an address
   }
   return out;
+}
+
+// validate_order: the order fields Golden checks. Free text is rejected (not cleaned) when it holds markup or control
+// characters, exactly as Golden does, so the dealer sees the problem instead of a silently changed order.
+const TXT_BAD = /[<>\u0000-\u001F\u007F]/;
+const txt = (v, max, multiline) => {
+  if(v == null || v === "") return "";
+  if(typeof v !== "string") return null;
+  const t = v.trim();
+  if(t.length > max) return null;
+  if(multiline ? /[<>\u0000-\u0009\u000B-\u001F\u007F]/.test(t) : TXT_BAD.test(t)) return null;
+  return t;
+};
+function readValidateBody(b){
+  const q = readQuoteBody(b);
+  if(!q || !q.ship_to) return null;
+  if(typeof b.quote_hash !== "string" || !/^[0-9a-f]{64}$/.test(b.quote_hash)) return null;
+  const lines = q.lines.map((l, i) => {
+    const raw = b.lines[i] || {}; const refs = [];
+    if(raw.reference_names != null){
+      if(!Array.isArray(raw.reference_names) || raw.reference_names.length > l.qty) return null;
+      for(const n of raw.reference_names){ const t = txt(n, 40); if(t === null) return null; refs.push(t); }
+      while(refs.length && !refs[refs.length - 1]) refs.pop();
+    }
+    return refs.length ? Object.assign({}, l, { reference_names: refs }) : l;
+  });
+  if(lines.some(l => l === null)) return null;
+  const c = b.contact && typeof b.contact === "object" && !Array.isArray(b.contact) ? b.contact : null;
+  if(!c) return null;
+  const name = txt(c.name, 80), phone = txt(c.phone, 30), email = txt(c.email, 190);
+  const po = txt(b.po_number, 30), attention = txt(b.attention, 60), notes = txt(b.notes, 500, true);
+  if(!name || !phone || !/^[0-9+().\- xX]{7,30}$/.test(phone) || email === null || po === null || attention === null || notes === null) return null;
+  if(po && !/^[A-Za-z0-9][A-Za-z0-9 \-_/#.]{0,29}$/.test(po)) return null;
+  if(email && !/^[^\s@<>"']{1,64}@[A-Za-z0-9.-]{1,120}\.[A-Za-z]{2,24}$/.test(email)) return null;
+  const out = { mode: "validate", quote_hash: b.quote_hash, lines, ship_to: q.ship_to, contact: { name, phone } };
+  if(email) out.contact.email = email;
+  if(q.split_order) out.split_order = true;
+  if(po) out.po_number = po;
+  if(attention) out.attention = attention;
+  if(notes) out.notes = notes;
+  return out;
+}
+const cleanShip = x => (x && typeof x === "object" && SHIP_ID_RE.test(String(x.id))) ? { id: x.id, kind: oneOf(x.kind, ["primary","ship_location"]) || "ship_location",
+  label: str(x.label, 80) || "Ship-to", address: str(x.address, 160) || "", city: str(x.city, 80) || "", state: str(x.state, 40) || "", zip: str(x.zip, 20) || "" } : null;
+const MAX_EMAIL_HTML = 400000;
+function cleanValidation(g){
+  const q = cleanQuote(g);
+  const o = g && g.order;
+  if(!q || g.mode !== "validate" || g.valid !== true || g.ordering_enabled !== false || !o || typeof o !== "object") return null;
+  const ship = cleanShip(o.ship_to);
+  const e = g.emails || {}, go = e.golden_order || {}, dc = e.dealer_confirmation;
+  if(!ship || typeof go.html !== "string" || go.html.length > MAX_EMAIL_HTML || typeof go.subject !== "string") return null;
+  const lines = (Array.isArray(o.lines) ? o.lines : []).map(l => ({ sku: CFG_SKU_RE.test(String(l && l.sku)) ? l.sku : null, reference_names: strs(l && l.reference_names, 40, QUOTE_MAX_QTY) }));
+  return {
+    order: { po_number: str(o.po_number, 30) || "", po_auto: o.po_auto === true, ship_to: ship,
+      contact: { name: str(o.contact && o.contact.name, 80) || "", phone: str(o.contact && o.contact.phone, 30) || "", email: str(o.contact && o.contact.email, 190) || "" },
+      attention: str(o.attention, 60) || "", notes: str(o.notes, 500) || "", delivery_type: "business", split_order: o.split_order === true, lines },
+    quote: q,
+    emails: {
+      golden_order: { recipient: "golden_order_desk", recipient_configured: go.recipient_configured === true, subject: go.subject.slice(0, 300), html: go.html },
+      dealer_confirmation: dc && typeof dc === "object" && typeof dc.html === "string" && dc.html.length <= MAX_EMAIL_HTML
+        ? { to: str(dc.to, 190) || "", subject: str(dc.subject, 300) || "", html: dc.html, text: str(dc.text, 4000) || "" } : null,
+    },
+  };
 }
 
 async function dealerFromToken(event){
@@ -222,8 +295,13 @@ exports.handler = async (event) => {
       if(tier) cfgQuery.tier = tier;
       if(b.footrest === true) cfgQuery.footrest = "1";
     }
-    let quoteBody = null;
+    let quoteBody = null, idemKey = null;
     if(action === "quote"){ quoteBody = readQuoteBody(b); if(!quoteBody) return json(400, { ok:false, error:"bad quote" }); }
+    if(action === "validate_order"){
+      if(typeof b.idempotency_key !== "string" || !IDEM_RE.test(b.idempotency_key)) return json(400, { ok:false, error:"bad idempotency key" });
+      idemKey = b.idempotency_key.toLowerCase();
+      quoteBody = readValidateBody(b); if(!quoteBody) return json(400, { ok:false, error:"bad order" });
+    }
 
     let who = null;
     try{ who = (await dealerFromToken(event)) || (await dealerFromPreview(event)); }
@@ -242,6 +320,7 @@ exports.handler = async (event) => {
       const f = await flags(sbGet);
       const pilot = Array.isArray(f.golden_p360_pilot_dealers) ? f.golden_p360_pilot_dealers.map(String) : [];
       if(f.golden_p360_catalog !== true) return json(200, { ok:true, enabled:false, reason:"switched_off" });
+      if(action === "validate_order" && f.golden_p360_checkout !== true) return json(200, { ok:true, enabled:false, reason:"checkout_switched_off" });
       who.pilot = pilot;
     }
 
@@ -250,15 +329,32 @@ exports.handler = async (event) => {
     if(!envName && !who.pilot.includes(String(c.sub_dealer)) && !who.pilot.includes(String(who.dealer_id))) return json(200, { ok:true, enabled:false, reason:"not_in_pilot" });
 
     const role = who.preview ? "staff_preview" : (c.sub_branch ? "branch_user" : "dealer");
-    const r = await GC.call({ method: quoteBody ? "POST" : "GET", path: ACTIONS[action], env: envName || undefined, query: quoteBody ? undefined : (family ? { family } : (cfgQuery || undefined)), body: quoteBody || undefined,
+    const r = await GC.call({ method: (action === "quote" || action === "validate_order") ? "POST" : "GET", path: ACTIONS[action], env: envName || undefined, query: quoteBody ? undefined : (family ? { family } : (cfgQuery || undefined)), body: quoteBody || undefined, idempotencyKey: idemKey || undefined,
       delegation: { sub_dealer: c.sub_dealer, sub_branch: c.sub_branch, actor: who.actor, role } });
     const extra = envName ? { preview:true } : {};
     if(r.configured === false) return json(200, Object.assign({ ok:true, enabled:false, reason:"golden_not_configured" }, extra));
     if(!r.ok && action === "config" && r.status === 400 && r.error === "bad_request") return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"not_offered" }, extra));
     if(!r.ok && (action === "family" || action === "config") && r.status === 404) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"not_found" }, extra));
+    if(!r.ok && action === "validate_order"){
+      const g0 = r.json || {}, code = g0.error && g0.error.code;
+      if(r.status === 409 && code === "prices_changed"){
+        const q = cleanQuote(g0);
+        return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"prices_changed", idempotent_replay: g0.idempotent_replay === true, quote: q, request_id: g0.request_id || null }, extra));
+      }
+      const map = { prices_not_visible:"prices_not_visible", idempotency_conflict:"idempotency_conflict", idempotency_in_progress:"idempotency_in_progress", pricing_unavailable:"pricing_unavailable", ordering_disabled:"ordering_disabled" };
+      const msg = g0.error && typeof g0.error.message === "string" ? g0.error.message : "";
+      if(r.status === 400 && code === "bad_request"){
+        const field = /^(ship_to|po_required|po_number|attention|notes|contact\.(name|phone|email)|(reference_names|color|qty|sku|fabric|tier|footrest)@\d{1,2})$/.test(msg) ? msg : "order";
+        return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"invalid", field }, extra));
+      }
+      if(r.status === 404) return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"not_found" }, extra));
+      if(map[code]) return json(200, Object.assign({ ok:true, enabled:true, available: code !== "prices_not_visible", valid:false, reason: map[code], retry: code === "idempotency_in_progress" || (r.status === 503) }, extra));
+    }
+    if(!r.ok && action === "ship_to" && r.status === 403 && (r.json && r.json.error && r.json.error.code) === "prices_not_visible") return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"prices_not_visible" }, extra));
     if(!r.ok && action === "quote"){
       // Golden decides: a dealer without visible Golden prices, a line Golden won't build, or no price → no quote.
-      const reason = r.status === 403 && r.error === "prices_not_visible" ? "prices_not_visible" : r.status === 404 ? "not_found" : r.status === 400 ? "not_offered"
+      const msg0 = r.json && r.json.error && typeof r.json.error.message === "string" ? r.json.error.message : "";
+      const reason = r.status === 403 && r.error === "prices_not_visible" ? "prices_not_visible" : r.status === 404 ? "not_found" : (r.status === 400 && msg0 === "ship_to") ? "ship_to_invalid" : r.status === 400 ? "not_offered"
         : (r.status === 503 && r.error === "pricing_unavailable") ? "pricing_unavailable" : null;
       const msg = r.json && r.json.error && typeof r.json.error.message === "string" ? r.json.error.message : "";
       const line = /@(\d{1,2})$/.test(msg) ? Number(msg.match(/@(\d{1,2})$/)[1]) : null;
@@ -300,11 +396,20 @@ exports.handler = async (event) => {
       return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, linked: g.linked === true, engine: /^[0-9a-f]{16}$/.test(String(g.engine)) ? g.engine : null,
         etag: typeof g.etag === "string" ? g.etag : null, config: cfg, request_id: g.request_id || null }, extra));
     }
+    if(action === "ship_to"){
+      const list = (Array.isArray(g.ship_to) ? g.ship_to : []).slice(0, 50).map(cleanShip).filter(Boolean);
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, scope: g.scope === "branch" ? "branch" : "account", ship_to: list, request_id: g.request_id || null }, extra));
+    }
+    if(action === "validate_order"){
+      const v = cleanValidation(g);
+      if(!v) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:true, ordering_enabled:false, idempotent_replay: g.idempotent_replay === true, request_id: g.request_id || null }, v, extra));
+    }
     if(action === "quote"){
       const q = cleanQuote(g);
       if(!q || g.ordering_enabled !== false) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
       return json(200, Object.assign({ ok:true, enabled:true, available:true, as_of: str(g.as_of, 40), engine: /^[0-9a-f]{16}$/.test(String(g.engine)) ? g.engine : null,
-        sh_terms_checked: g.sh_terms_checked === true, ordering_enabled: false, quote: q, request_id: g.request_id || null }, extra));
+        sh_terms_checked: g.sh_terms_checked === true, ship_to_id: SHIP_ID_RE.test(String(g.ship_to_id)) ? g.ship_to_id : null, ordering_enabled: false, quote: q, request_id: g.request_id || null }, extra));
     }
     // inventory
     const items = (Array.isArray(g.items) ? g.items : []).filter(i => i && typeof i.sku === "string" && ["in","low","out","on_request"].includes(i.status))

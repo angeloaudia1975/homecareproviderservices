@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "golden-commerce-v1.schema.json",
-  "title": "Golden Commerce API v1 — wire schemas (routes built through batch B4a (quote 1.4.0))",
+  "title": "Golden Commerce API v1 — wire schemas (routes built through batch B4b (quote, ship-to, validate-only orders — 1.4.0))",
   "contract_version": "1.4.0",
   "$defs": {
     "uuid": {
@@ -1438,6 +1438,397 @@
             "quote_hash": {
               "type": "string",
               "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "ship_to_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ship_to": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "address",
+        "city",
+        "state",
+        "zip"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "primary",
+            "ship_location"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "city": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "zip": {
+          "type": "string"
+        }
+      }
+    },
+    "ship_to_200": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "scope",
+        "ship_to"
+      ],
+      "properties": {
+        "scope": {
+          "enum": [
+            "account",
+            "branch"
+          ]
+        },
+        "ship_to": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ship_to"
+          }
+        }
+      }
+    },
+    "orders_validate_200": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "mode",
+        "valid",
+        "ordering_enabled",
+        "idempotent_replay",
+        "order",
+        "quote",
+        "emails"
+      ],
+      "properties": {
+        "mode": {
+          "const": "validate"
+        },
+        "valid": {
+          "const": true
+        },
+        "ordering_enabled": {
+          "const": false
+        },
+        "idempotent_replay": {
+          "type": "boolean"
+        },
+        "engine": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        },
+        "sh_terms_checked": {
+          "type": "boolean"
+        },
+        "order": {
+          "type": "object",
+          "required": [
+            "po_number",
+            "po_auto",
+            "ship_to",
+            "contact",
+            "delivery_type",
+            "split_order",
+            "lines"
+          ],
+          "properties": {
+            "po_number": {
+              "type": "string"
+            },
+            "po_auto": {
+              "type": "boolean"
+            },
+            "ship_to": {
+              "$ref": "#/$defs/ship_to"
+            },
+            "contact": {
+              "type": "object",
+              "required": [
+                "name",
+                "phone",
+                "email"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "phone": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                }
+              }
+            },
+            "attention": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            },
+            "delivery_type": {
+              "const": "business"
+            },
+            "split_order": {
+              "type": "boolean"
+            },
+            "lines": {
+              "type": "array"
+            }
+          }
+        },
+        "quote": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lines",
+            "totals",
+            "freight",
+            "quote_hash"
+          ],
+          "properties": {
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "line",
+                  "sku",
+                  "qty",
+                  "unit_price",
+                  "line_total",
+                  "in_stock",
+                  "custom",
+                  "item_no"
+                ],
+                "properties": {
+                  "line": {
+                    "type": "integer"
+                  },
+                  "sku": {
+                    "type": "string"
+                  },
+                  "qty": {
+                    "type": "integer"
+                  },
+                  "fabric": {
+                    "enum": [
+                      "std",
+                      "xover",
+                      "brisa"
+                    ]
+                  },
+                  "color": {
+                    "type": "string"
+                  },
+                  "color_name": {
+                    "type": "string"
+                  },
+                  "tier": {
+                    "type": "string"
+                  },
+                  "footrest": {
+                    "type": "boolean"
+                  },
+                  "unit_price": {
+                    "type": "number"
+                  },
+                  "line_total": {
+                    "type": "number"
+                  },
+                  "details": {
+                    "type": "string"
+                  },
+                  "upgrades": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "breakdown": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "lead_note": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "in_stock": {
+                    "type": "boolean"
+                  },
+                  "custom": {
+                    "type": "boolean"
+                  },
+                  "item_no": {
+                    "type": "string"
+                  },
+                  "item_no_resolved": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "totals": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "subtotal",
+                "sh_total",
+                "grand_total",
+                "sh_rate",
+                "sh_waived",
+                "split",
+                "shipments"
+              ],
+              "properties": {
+                "subtotal": {
+                  "type": "number"
+                },
+                "sh_total": {
+                  "type": "number"
+                },
+                "grand_total": {
+                  "type": "number"
+                },
+                "sh_rate": {
+                  "type": "number"
+                },
+                "sh_waived": {
+                  "type": "boolean"
+                },
+                "split": {
+                  "type": "boolean"
+                },
+                "shipments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "group",
+                      "subtotal",
+                      "sh"
+                    ],
+                    "properties": {
+                      "group": {
+                        "enum": [
+                          "all",
+                          "in_stock",
+                          "build"
+                        ]
+                      },
+                      "subtotal": {
+                        "type": "number"
+                      },
+                      "sh": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "freight": {
+              "type": "object",
+              "properties": {
+                "included": {
+                  "const": false
+                },
+                "note": {
+                  "type": "string"
+                }
+              }
+            },
+            "quote_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "emails": {
+          "type": "object",
+          "required": [
+            "golden_order",
+            "dealer_confirmation"
+          ],
+          "properties": {
+            "golden_order": {
+              "type": "object",
+              "required": [
+                "recipient",
+                "recipient_configured",
+                "subject",
+                "html"
+              ],
+              "properties": {
+                "recipient": {
+                  "const": "golden_order_desk"
+                },
+                "recipient_configured": {
+                  "type": "boolean"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "html": {
+                  "type": "string"
+                }
+              }
+            },
+            "dealer_confirmation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "to": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "html": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
             }
           }
         }

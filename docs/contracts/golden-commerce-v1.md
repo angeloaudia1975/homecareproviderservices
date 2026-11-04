@@ -35,7 +35,9 @@ Golden decides and writes.
 | GET `/v1/catalog/family?family=` | `golden:read` | required | 2 | **built (B2 enrichment, 1.2.0)** |
 | GET `/v1/config?sku=&fabric=&color=&tier=&footrest=` | `golden:read` | required | 3 | **built (B3 configurator, 1.3.0)** |
 | POST `/v1/quote` | `golden:read` | required | 4a | **built (B4a, read-only, 1.4.0)** |
-| POST `/v1/orders` | `golden:order` | required + `Idempotency-Key` | 4 | not built |
+| GET `/v1/ship-to` | `golden:read` | required | 4b | **built (B4b, read-only, 1.4.0)** |
+| POST `/v1/orders` `mode:"validate"` | `golden:read` | required + `Idempotency-Key` | 4b | **built (B4b, validate-only, 1.4.0)** |
+| POST `/v1/orders` (placement) | `golden:order` | required + `Idempotency-Key` | 4c | not built (any other mode → 403 `ordering_disabled`) |
 | GET `/v1/orders/{order_id}`, `/v1/history` | `golden:history` | required | 5 | not built |
 
 A route that is not built does not exist. A later stage adds it with a **minor** contract bump and its
@@ -167,22 +169,53 @@ Query: `sku` (a configurable lift-chair size, `PR\d{3}-[A-Z]{3}`), optional `fab
 
 ## 4d. Payloads (B4a quote, contract 1.4.0)
 
-**POST /v1/quote → 200** (schema `quote_200`). Body `{ lines:[{ sku, fabric, color, tier?, footrest?, qty }], split_order?, ship_to?:{ city, state } }`
+**POST /v1/quote → 200** (schema `quote_200`). Body `{ lines:[{ sku, fabric, color, tier?, footrest?, qty }], split_order?, ship_to?:{ id } }`
 — 1 to 30 configured lift-chair lines (`sku` `PR\d{3}-[A-Z]{3}`, `color` required, `qty` 1–20). Answer
-`{ as_of, engine, sh_terms_checked, ordering_enabled:false, quote:{ lines[], totals, freight, quote_hash } }`.
+`{ as_of, engine, sh_terms_checked, ship_to_id, ordering_enabled:false, quote:{ lines[], totals, freight, quote_hash } }`.
 
 - **Golden decides every amount.** Each line is priced by the portal's own configurator (§4c) with this dealer's Golden
   pricing; S&H by the portal's one S&H rule (`golden-sh.priceOrder`, the function `save-order` stores orders with):
   per shipment `max(minimum, merchandise × rate)`, split into in-stock and build shipments when `split_order` is true,
   waived only by the account's own special terms for that ship-to. Any price sent by the caller is ignored.
+- `ship_to` names one of Golden's OWN authorized ship-tos by id (§4e) — a free-text address is refused (400 `ship_to`), so
+  special terms can only waive S&H for an address Golden holds for that dealer / branch. No ship-to = standard S&H.
 - Only a verified link whose Golden prices are visible may quote: otherwise 403 `prices_not_visible` (or the §4a link codes).
-- `quote_hash` (sha256 of engine + priced lines + totals) lets Stage 4b's order route refuse an order whose prices changed
+- `quote_hash` (sha256 of engine + priced lines + totals + ship-to id) lets Stage 4b's order route refuse an order whose prices changed
   since the dealer reviewed them. Freight and delivery add-ons are not in 4a (`freight.included:false`).
 - `sh_terms_checked:false` = the special-terms read failed and standard S&H was applied (as `save-order` does).
 - Errors: 400 `bad_request` (`message` names the field and line, e.g. `color@1`), 404 `not_found` (not a configurable
   size), 503 `pricing_unavailable` (no dealer cost on a line — not retryable; or the pricing read failed — retryable),
   503 `inventory_unavailable` · `config_unavailable`.
 - **Read-only.** No order, reservation, email or stock change. Ordering is Stage 4b (`POST /v1/orders`, `Idempotency-Key`).
+
+## 4e. Payloads (B4b ship-to, contract 1.4.0)
+
+**GET /v1/ship-to → 200** (schema `ship_to_200`) `{ scope:"account"|"branch", ship_to:[{ id, kind, label, address, city, state, zip }] }`.
+Golden's own records, never the caller's: an account delegation gets the Golden dealer's primary address (`id:"primary"`,
+from `dealer_locations`) and its saved ship-to locations (`dealer_ship_locations`, id = uuid); a branch delegation gets ONLY
+its verified branch's own default ship-to (`dealer_branches.ship_location_id`) — or none. Only a verified, price-visible link
+(else 403 `prices_not_visible` / the §4a link codes). A failed read is 503 `ship_to_unavailable`, never an empty list.
+
+## 4f. Payloads (B4b validate-only order, contract 1.4.0)
+
+**POST /v1/orders** with header `Idempotency-Key: <uuid v4>` (§6) and body
+`{ mode:"validate", quote_hash, lines:[{ sku, fabric, color, tier?, footrest?, qty, reference_names?:[≤ qty names] }],
+split_order?, ship_to:{ id }, po_number?, contact:{ name, phone, email? }, attention?, notes? }` (unknown fields → 400).
+
+- **Places nothing.** No orders row, reservation, email or federation event. Any `mode` other than `validate` → 403
+  `ordering_disabled` (placement is Stage 4c).
+- Golden re-prices now with the same code as `/v1/quote` (dealer pricing, stock, S&H, the special-terms waiver of the chosen
+  authorized ship-to). If the result's `quote_hash` differs from the one the dealer reviewed → 409 `prices_changed` with the
+  new `quote` (nothing validated). A failed special-terms read → 503 `pricing_unavailable` (never shown as a price change).
+- `po_number` optional (Golden's auto-PO `WEB-MMDDYY-HHMMSS` otherwise, `po_auto:true`); 400 `po_required` when the Golden
+  account requires one. **A reused PO is valid** (§6). Free text (contact, attention, notes, reference names, PO) may not
+  contain `<` `>` or control characters.
+- **200** (schema `orders_validate_200`): `{ mode:"validate", valid:true, ordering_enabled:false, idempotent_replay, engine,
+  order:{ po_number, po_auto, ship_to, contact, attention, notes, delivery_type:"business", split_order, lines[] }, quote,
+  emails:{ golden_order:{ recipient:"golden_order_desk", recipient_configured, subject, html },
+  dealer_confirmation:{ to, subject, html, text } | null } }` — the emails are byte-identical to what `save-order` would
+  send for this order (same `buildEmailHtml`, subject and confirmation template); the order desk address is not disclosed.
+- Errors also: 422 `idempotency_conflict`, 409 `idempotency_in_progress` (retry), 503 `idempotency_unavailable`.
 
 ## 5. Authentication: HMAC request signing (shared module `hcps-s2s.js`)
 
@@ -235,8 +268,12 @@ sig = HMAC-SHA256(secret, join("\n",
 ## 6. Retry safety and idempotency (binding for Stage 4)
 
 - `POST /v1/orders` requires `Idempotency-Key: <uuid v4>`. HCPS mints one key per checkout attempt and reuses it on every retry of that attempt.
+- Validate-only (4b): Golden records `(client_id, idempotency_key)` → `request_hash` + the first DETERMINATE answer (200 / 4xx)
+  in `integration_order_requests` (`config/migrate-hcps-integration-v1-orders.sql`); a 503 releases the key so the same
+  attempt can be retried. The answer for a key never changes; a new review (e.g. after `prices_changed`) = a new key.
 - Golden stores `(tenant_id, client_id, idempotency_key)` → `request_hash` + the full first response, in one transaction with the order:
     - Same key and same body: Golden replays the stored response with `idempotent_replay:true`.
+    - Concurrent duplicate while the first is still running: 409 `idempotency_in_progress` (retry).
     - Same key and a different body: 422 `idempotency_conflict`.
     - Concurrent duplicates: exactly one order.
 - **PO numbers are not unique and are not an idempotency key.** Dealers reuse a PO across several orders (2026-11-02 production check: 100 dealer/PO groups, 222 orders). Golden's existing PO behaviour is preserved, and no uniqueness constraint is added.

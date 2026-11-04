@@ -50,17 +50,22 @@ const LINE = { sku: "pr511-lar", fabric: "XOVER", color: "jbo", tier: "Nirvana",
 (async () => {
   await t("quote: Golden gets a POST with only the validated selection — never a price, never an unknown field", async () => {
     env(); const w = world();
-    const r = J(await load("golden-proxy.js").handler(post({ action: "quote", lines: [Object.assign({ unit_price: 1, price: 1, dealer_price: 1, extra: "x" }, LINE)], split_order: true, ship_to: { city: " Nashville ", state: "TN", zip: "37201" }, total: 5 })));
+    const r = J(await load("golden-proxy.js").handler(post({ action: "quote", lines: [Object.assign({ unit_price: 1, price: 1, dealer_price: 1, extra: "x" }, LINE)], split_order: true, ship_to: { id: "primary", city: "Nashville", state: "TN" }, total: 5 })));
     eq([r.ok, r.available], [true, true]);
     eq(w.golden.length, 1); const g = w.golden[0];
     eq([new URL(g.u).pathname, g.init.method, new URL(g.u).search], ["/v1/quote", "POST", ""]);
-    eq(JSON.parse(g.init.body), { lines: [{ sku: "PR511-LAR", fabric: "xover", color: "JBO", qty: 2, tier: "nirvana", footrest: true }], split_order: true, ship_to: { city: "Nashville", state: "TN" } });
+    eq(JSON.parse(g.init.body), { lines: [{ sku: "PR511-LAR", fabric: "xover", color: "JBO", qty: 2, tier: "nirvana", footrest: true }], split_order: true, ship_to: { id: "primary" } });
   });
 
   await t("quote: bad carts refused before Golden is called", async () => {
     const bad = [[], [Object.assign({}, LINE, { qty: 0 })], [Object.assign({}, LINE, { qty: 21 })], [Object.assign({}, LINE, { qty: 1.5 })], [Object.assign({}, LINE, { color: "" })],
       [Object.assign({}, LINE, { sku: "GB107B" })], [Object.assign({}, LINE, { fabric: "silk" })], [Object.assign({}, LINE, { tier: "turbo" })], [Object.assign({}, LINE, { footrest: "yes" })],
       Array.from({ length: 31 }, () => LINE), "x", [null]];
+    for (const st of [{ city: "Nashville", state: "TN" }, { id: "1 Main St" }, "primary"]) {
+      env(); const w = world();
+      const r = await load("golden-proxy.js").handler(post({ action: "quote", lines: [LINE], ship_to: st }));
+      eq(r.statusCode, 400, JSON.stringify(st)); eq(w.golden.length, 0);
+    }
     for (const lines of bad) {
       env(); const w = world();
       const r = await load("golden-proxy.js").handler(post({ action: "quote", lines }));

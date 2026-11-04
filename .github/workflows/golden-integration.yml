@@ -1,0 +1,29 @@
+name: Golden integration (golden-proxy) tests
+
+on:
+  pull_request:
+    paths:
+      - 'netlify/functions/golden-proxy.js'
+      - 'netlify/functions/_golden_client.js'
+      - 'netlify/functions/_golden_s2s.js'
+      - 'docs/contracts/golden-commerce-v1.*'
+      - 'test/golden-integration-*'
+      - '.github/workflows/golden-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  golden-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # The cross-repo round trips need ../golden-dealer-portal and are skipped here; they run locally before merge.
+      - name: Tests (synthetic data, no network)
+        run: for f in b1 b2 b3 b4 b4b; do node test/golden-integration-$f.test.js || exit 1; done
+      - name: Mutation checks
+        run: for f in b1 b2 b3 b4 b4b; do node test/golden-integration-$f.mutants.js || exit 1; done

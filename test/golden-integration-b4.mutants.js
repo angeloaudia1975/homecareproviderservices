@@ -14,9 +14,9 @@ const M=[
   ['golden-proxy.js','unknown shipment group passed','filter(s => s && GROUPS.includes(s.group) &&','filter(s => s &&'],
   ['golden-proxy.js','bad hash accepted','|| !/^[0-9a-f]{64}$/.test(String(q.quote_hash))) return null;',') return null;'],
   ['golden-proxy.js','ordering_enabled not checked','if(!q || g.ordering_enabled !== false)','if(!q)'],
-  ['golden-proxy.js','quote sent as GET','method: quoteBody ? "POST" : "GET"','method: "GET"'],
+  ['golden-proxy.js','quote sent as GET','method: (action === "quote" || action === "validate_order") ? "POST" : "GET"','method: (action === "validate_order") ? "POST" : "GET"'],
   ['golden-proxy.js','prices_not_visible hidden as outage','r.status === 403 && r.error === "prices_not_visible" ? "prices_not_visible" :','r.status === 403 && r.error === "prices_not_visible" ? null :'],
-  ['golden-proxy.js','zip forwarded in ship_to','if(city || state) out.ship_to = { city, state };','if(city || state) out.ship_to = Object.assign({}, s, { city, state });'],
+  ['golden-proxy.js','a typed address forwarded as ship-to','    out.ship_to = { id };   // only the id','    out.ship_to = Object.assign({}, b.ship_to, { id });   // only the id'],
 ];
 let killed=0, bad=0;
 for(const [file,label,find,repl] of M){
