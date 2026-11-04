@@ -12,7 +12,7 @@
 //   golden_p360_pilot_dealers  array of HCPS dealer ids allowed while piloting (empty/missing = nobody)
 // With the switch off the answer is { ok:true, enabled:false } and Golden is never called.
 //   POST { action:"eligibility" | "catalog" | "inventory" | "family" | "config" | "quote" }
-// quote (B4a, contract 1.4.0): POST { action:"quote", lines:[{sku,fabric,color,tier?,footrest?,qty}], split_order?, ship_to?:{city,state} }
+// quote (B4a, contract 1.4.0): POST { action:"quote", lines:[{sku,fabric,color,tier?,footrest?,qty}], split_order?, ship_to?:{id} }
 //   → Golden POST /v1/quote. READ-ONLY: Golden prices every line and S&H; HCPS sends only the selection (never a price)
 //   and passes back an allow-listed answer. Only a dealer whose Golden prices are visible gets amounts.
 //   ship_to is { id } of one of Golden's own authorized ship-tos (action ship_to) — never a typed address.
@@ -187,12 +187,14 @@ function readQuoteBody(b){
 // validate_order: the order fields Golden checks. Free text is rejected (not cleaned) when it holds markup or control
 // characters, exactly as Golden does, so the dealer sees the problem instead of a silently changed order.
 const TXT_BAD = /[<>\u0000-\u001F\u007F]/;
+const TXT_INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2028\u2029\u2060-\u2064\uFEFF]/;   // zero-width / bidi / line separators
 const txt = (v, max, multiline) => {
   if(v == null || v === "") return "";
   if(typeof v !== "string") return null;
   const t = v.trim();
   if(t.length > max) return null;
   if(multiline ? /[<>\u0000-\u0009\u000B-\u001F\u007F]/.test(t) : TXT_BAD.test(t)) return null;
+  if(TXT_INVISIBLE.test(t)) return null;
   return t;
 };
 function readValidateBody(b){
@@ -226,15 +228,19 @@ function readValidateBody(b){
 }
 const cleanShip = x => (x && typeof x === "object" && SHIP_ID_RE.test(String(x.id))) ? { id: x.id, kind: oneOf(x.kind, ["primary","ship_location"]) || "ship_location",
   label: str(x.label, 80) || "Ship-to", address: str(x.address, 160) || "", city: str(x.city, 80) || "", state: str(x.state, 40) || "", zip: str(x.zip, 20) || "" } : null;
+const reqId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(v)) ? v : null;   // Golden's request id, only in its known shape
 const MAX_EMAIL_HTML = 400000;
-function cleanValidation(g){
+function cleanValidation(g, sentHash){
   const q = cleanQuote(g);
   const o = g && g.order;
   if(!q || g.mode !== "validate" || g.valid !== true || g.ordering_enabled !== false || !o || typeof o !== "object") return null;
   const ship = cleanShip(o.ship_to);
   const e = g.emails || {}, go = e.golden_order || {}, dc = e.dealer_confirmation;
   if(!ship || typeof go.html !== "string" || go.html.length > MAX_EMAIL_HTML || typeof go.subject !== "string") return null;
-  const lines = (Array.isArray(o.lines) ? o.lines : []).map(l => ({ sku: CFG_SKU_RE.test(String(l && l.sku)) ? l.sku : null, reference_names: strs(l && l.reference_names, 40, QUOTE_MAX_QTY) }));
+  const raw = Array.isArray(o.lines) ? o.lines : [];
+  if(raw.length > QUOTE_MAX_LINES || raw.length !== q.lines.length || raw.some(l => !l || !CFG_SKU_RE.test(String(l.sku)))) return null;   // all-or-nothing, as the quote
+  if(String(q.quote_hash) !== String(sentHash)) return null;   // an answer for another quote is not this validation
+  const lines = raw.map(l => ({ sku: l.sku, reference_names: strs(l.reference_names, 40, QUOTE_MAX_QTY) }));
   return {
     order: { po_number: str(o.po_number, 30) || "", po_auto: o.po_auto === true, ship_to: ship,
       contact: { name: str(o.contact && o.contact.name, 80) || "", phone: str(o.contact && o.contact.phone, 30) || "", email: str(o.contact && o.contact.email, 190) || "" },
@@ -317,6 +323,8 @@ exports.handler = async (event) => {
       if(!GC.configured("preview")) return json(200, { ok:true, enabled:false, preview:true, reason:"golden_preview_not_configured" });
       envName = "preview";
     } else {
+      // A staff "view as dealer" token never reaches Golden's production ordering path (it is a preview of the dealer).
+      if(who.preview && action === "validate_order") return json(403, { ok:false, error:"preview_not_allowed" });
       const f = await flags(sbGet);
       const pilot = Array.isArray(f.golden_p360_pilot_dealers) ? f.golden_p360_pilot_dealers.map(String) : [];
       if(f.golden_p360_catalog !== true) return json(200, { ok:true, enabled:false, reason:"switched_off" });
@@ -339,7 +347,7 @@ exports.handler = async (event) => {
       const g0 = r.json || {}, code = g0.error && g0.error.code;
       if(r.status === 409 && code === "prices_changed"){
         const q = cleanQuote(g0);
-        return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"prices_changed", idempotent_replay: g0.idempotent_replay === true, quote: q, request_id: g0.request_id || null }, extra));
+        return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"prices_changed", idempotent_replay: g0.idempotent_replay === true, quote: q, request_id: reqId(g0.request_id) }, extra));
       }
       const map = { prices_not_visible:"prices_not_visible", idempotency_conflict:"idempotency_conflict", idempotency_in_progress:"idempotency_in_progress", pricing_unavailable:"pricing_unavailable", ordering_disabled:"ordering_disabled" };
       const msg = g0.error && typeof g0.error.message === "string" ? g0.error.message : "";
@@ -374,48 +382,48 @@ exports.handler = async (event) => {
         state: g.state, reason: g.reason || null,
         capabilities: { see_prices: caps.see_prices === true, order: caps.order === true && !who.preview, history: caps.history === true },
         order_route: who.preview ? null : (g.order_route || null),
-        request_id: g.request_id || null }, extra));
+        request_id: reqId(g.request_id) }, extra));
     }
     if(action === "catalog"){
       const pv = g.prices_visible === true;
       const products = (Array.isArray(g.products) ? g.products : []).filter(p => p && typeof p.sku === "string").map(p => cleanProduct(p, pv));
       return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, linked: g.linked === true,
-        as_of: g.as_of || null, etag: typeof g.etag === "string" ? g.etag : null, products, request_id: g.request_id || null }, extra));
+        as_of: g.as_of || null, etag: typeof g.etag === "string" ? g.etag : null, products, request_id: reqId(g.request_id) }, extra));
     }
     if(action === "family"){
       const pv = g.prices_visible === true;
       const fam = cleanFamily(g.family, pv);
       if(!fam) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
       return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, linked: g.linked === true,
-        enrichment_as_of: str(g.enrichment_as_of, 30), etag: typeof g.etag === "string" ? g.etag : null, family: fam, request_id: g.request_id || null }, extra));
+        enrichment_as_of: str(g.enrichment_as_of, 30), etag: typeof g.etag === "string" ? g.etag : null, family: fam, request_id: reqId(g.request_id) }, extra));
     }
     if(action === "config"){
       const pv = g.prices_visible === true;
       const cfg = cleanConfig(g.config, pv, g.linked === true);
       if(!cfg) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
       return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, linked: g.linked === true, engine: /^[0-9a-f]{16}$/.test(String(g.engine)) ? g.engine : null,
-        etag: typeof g.etag === "string" ? g.etag : null, config: cfg, request_id: g.request_id || null }, extra));
+        etag: typeof g.etag === "string" ? g.etag : null, config: cfg, request_id: reqId(g.request_id) }, extra));
     }
     if(action === "ship_to"){
       const list = (Array.isArray(g.ship_to) ? g.ship_to : []).slice(0, 50).map(cleanShip).filter(Boolean);
-      return json(200, Object.assign({ ok:true, enabled:true, available:true, scope: g.scope === "branch" ? "branch" : "account", ship_to: list, request_id: g.request_id || null }, extra));
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, scope: g.scope === "branch" ? "branch" : "account", ship_to: list, request_id: reqId(g.request_id) }, extra));
     }
     if(action === "validate_order"){
-      const v = cleanValidation(g);
+      const v = cleanValidation(g, quoteBody.quote_hash);
       if(!v) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
-      return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:true, ordering_enabled:false, idempotent_replay: g.idempotent_replay === true, request_id: g.request_id || null }, v, extra));
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:true, ordering_enabled:false, idempotent_replay: g.idempotent_replay === true, request_id: reqId(g.request_id) }, v, extra));
     }
     if(action === "quote"){
       const q = cleanQuote(g);
       if(!q || g.ordering_enabled !== false) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
       return json(200, Object.assign({ ok:true, enabled:true, available:true, as_of: str(g.as_of, 40), engine: /^[0-9a-f]{16}$/.test(String(g.engine)) ? g.engine : null,
-        sh_terms_checked: g.sh_terms_checked === true, ship_to_id: SHIP_ID_RE.test(String(g.ship_to_id)) ? g.ship_to_id : null, ordering_enabled: false, quote: q, request_id: g.request_id || null }, extra));
+        sh_terms_checked: g.sh_terms_checked === true, ship_to_id: SHIP_ID_RE.test(String(g.ship_to_id)) ? g.ship_to_id : null, ordering_enabled: false, quote: q, request_id: reqId(g.request_id) }, extra));
     }
     // inventory
     const items = (Array.isArray(g.items) ? g.items : []).filter(i => i && typeof i.sku === "string" && ["in","low","out","on_request"].includes(i.status))
       .map(i => ({ sku: i.sku, status: i.status, qty: Number.isInteger(i.qty) ? i.qty : null }));
     return json(200, Object.assign({ ok:true, enabled:true, available:true, as_of: g.as_of || null, stale: g.stale !== false,
-      low_stock_threshold: Number.isInteger(g.low_stock_threshold) ? g.low_stock_threshold : 50, items, request_id: g.request_id || null }, extra));
+      low_stock_threshold: Number.isInteger(g.low_stock_threshold) ? g.low_stock_threshold : 50, items, request_id: reqId(g.request_id) }, extra));
   }catch(e){
     console.error("golden-proxy error", e && e.message);
     return json(500, { ok:false, error:"golden-proxy failed" });

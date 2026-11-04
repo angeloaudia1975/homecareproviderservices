@@ -115,6 +115,35 @@ const ON = { flags: { golden_p360_checkout: true } };
     eq([r.available, r.reason, r.emails], [false, "golden_unavailable", undefined], "a validation that says ordering is on is not shown");
   });
 
+  await t("validate_order: Golden's answer must be for THIS quote and these lines — otherwise no validation is shown", async () => {
+    const res = (status, body) => ({ ok: status < 400, status, text: async () => JSON.stringify(body), json: async () => body });
+    for (const bad of [g => { g.quote = Object.assign({}, g.quote, { quote_hash: "c".repeat(64) }); }, g => { g.order.lines.push({ sku: "PR511-LAR" }); }, g => { g.order.lines[0] = null; }]) {
+      env(); world(Object.assign({ golden: () => { const g = VALID(); bad(g); return res(200, g); } }, ON));
+      const r = J(await load("golden-proxy.js").handler(post(ORDER())));
+      eq([r.available, r.reason, r.emails], [false, "golden_unavailable", undefined]);
+    }
+  });
+
+  await t("validate_order: request_id only in Golden's known shape; invisible / bidi characters refused before Golden", async () => {
+    const res = (status, body) => ({ ok: status < 400, status, text: async () => JSON.stringify(body), json: async () => body });
+    env(); world(Object.assign({ golden: () => res(200, Object.assign(VALID(), { request_id: "<img src=x>" })) }, ON));
+    eq(J(await load("golden-proxy.js").handler(post(ORDER()))).request_id, null);
+    env(); world(Object.assign({ golden: () => res(200, VALID()) }, ON));
+    eq(J(await load("golden-proxy.js").handler(post(ORDER()))).request_id, "req_v");
+    for (const over of [{ notes: "a\u202Eb" }, { po_number: "PO\u200B1" }, { contact: { name: "Pa\u2028t", phone: "937-555-0100" } }]) {
+      env(); const w = world(ON);
+      eq((await load("golden-proxy.js").handler(post(ORDER(over)))).statusCode, 400, JSON.stringify(over)); eq(w.golden.length, 0);
+    }
+  });
+
+  await t("validate_order: a staff view-as token never reaches the production ordering path, even with checkout on", async () => {
+    env(); const w = world(ON);
+    const ev = { httpMethod: "POST", headers: { "x-hcps-preview": "a".repeat(48) }, body: JSON.stringify(ORDER()) };
+    const g0 = global.fetch; global.fetch = async (u, i) => /dealer_preview_tokens/.test(String(u)) ? { ok: true, status: 200, json: async () => [{ dealer_id: D_HQ, expires_at: null }], text: async () => "" } : g0(u, i);
+    const r = await load("golden-proxy.js").handler(ev);
+    eq([r.statusCode, J(r).error], [403, "preview_not_allowed"]); eq(w.golden.length, 0);
+  });
+
   // ── Real cross-repo round trip ──
   const gFN = path.join(GOLDEN, "repo", "functions");
   if (!fs.existsSync(path.join(gFN, "v1-orders.js"))) { skipped++; console.log("skip  cross-repo validate round trip (Golden B4b not checked out at " + GOLDEN + ")"); }

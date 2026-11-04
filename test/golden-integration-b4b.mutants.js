@@ -4,6 +4,11 @@ const fs=require('fs'), path=require('path'), {spawnSync}=require('child_process
 const FN=path.join(__dirname,'..','netlify','functions');
 const M=[
   [null,'control (no change)',null,null],
+  ['golden-proxy.js','answer for another quote accepted','if(String(q.quote_hash) !== String(sentHash)) return null;',''],
+  ['golden-proxy.js','answer lines not all-or-nothing','if(raw.length > QUOTE_MAX_LINES || raw.length !== q.lines.length || raw.some(l => !l || !CFG_SKU_RE.test(String(l.sku)))) return null;','if(raw.length > QUOTE_MAX_LINES) return null;'],
+  ['golden-proxy.js','request_id passed through unchecked','const reqId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(v)) ? v : null;','const reqId = v => v || null;'],
+  ['golden-proxy.js','invisible characters allowed','  if(TXT_INVISIBLE.test(t)) return null;\n',''],
+  ['golden-proxy.js','staff view-as token on the production ordering path','if(who.preview && action === "validate_order") return json(403','if(false) return json(403'],
   ['golden-proxy.js','checkout switch ignored','if(action === "validate_order" && f.golden_p360_checkout !== true) return','if(false) return'],
   ['golden-proxy.js','idempotency key not required','if(typeof b.idempotency_key !== "string" || !IDEM_RE.test(b.idempotency_key)) return json(400','if(false) return json(400'],
   ['golden-proxy.js','markup allowed in notes','if(multiline ? /[<>\\u0000-\\u0009\\u000B-\\u001F\\u007F]/.test(t) : TXT_BAD.test(t)) return null;','if(!multiline && TXT_BAD.test(t)) return null;'],
