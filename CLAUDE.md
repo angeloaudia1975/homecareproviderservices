@@ -1829,6 +1829,22 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   · No PediFix SKU was activated: the 14 candidates, P3095-115, the 6 holds and P3306 stay off, the server refuses 8520, and
     P244-XLL / XLR are unchanged (on sale).
   · Sandbox rebuilt as a527fdf5651c = main@0e97fec with nothing unpublished. #26 stays a draft and is never merged.
+- **Ohio Medical / GCE retired; Yuwell is the 12th partner (owner, 2026-11-04 — C3-02).**
+  · **Preserve everything:** the 340 active `dealer_manufacturers` rows (`ohio-medical`), their account numbers,
+    monthly_sales, commissions, report history, the `manufacturers` row (still used by the sales and commission
+    imports), the capture profile and Zoho mappings. Never delete, rename or expose them.
+  · **One shared rule:** `_retired_lines.js`, identical in both repos and checked by the `retired-lines` tests, lists
+    complete-medical-supplies, `ohio-medical` AND `gce`. catalog-feed / catalog-layers (410), the storefront list
+    filter, quotableLine, `_pricing`, `_access`, dealers-api and territory-api all refuse those lines, so an identifier
+    correction on either side can never re-open them. Only removing a line from both lists (owner decision) reopens it.
+  · **Drafts:** ordering #34 and admin #82. Admin merges first. Nothing is merged or deployed without Angelo's approval.
+  · **Yuwell:** one identifier, `yuwell`, everywhere (no aliases). The plan is in admin #83
+    (`docs/catalog/YUWELL_ONBOARDING.md`); the registration SQL is a draft and NOT run. Yuwell stays unorderable until
+    its price list, freight terms, catalog, testing and owner approval are complete. Never invent product data,
+    costs, MSRP or freight.
+  · **Website:** another conversation owns the Yuwell website imagery and marketing page. Do not edit those pages or
+    images concurrently. The website `src/_data/manufacturers.json` is SHARED: the Yuwell entry and the Ohio Medical
+    hide (`hidden:true`, plus a 301 to /manufacturers/) land in one coordinated change.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
