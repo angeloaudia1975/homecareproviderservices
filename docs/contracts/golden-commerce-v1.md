@@ -1,6 +1,6 @@
 # Golden Commerce API — contract v1 (golden-commerce-v1)
 
-**Contract version:** 1.3.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
+**Contract version:** 1.4.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3; 1.4.0 the Stage 4a read-only quote, batch B4) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
 **Committed byte-identical in:** `golden-dealer-portal/docs/contracts/` and `homecareproviderservices/docs/contracts/`.
 `golden-commerce-v1.lock.json` pins the SHA-256 of this file, the schema, the signing vectors and the shared
 signing module. Each repo's tests fail on drift. Change all copies together and bump the lock.
@@ -34,7 +34,7 @@ Golden decides and writes.
 | GET `/v1/inventory` | `golden:read` | required | 2 | **built (B2)** |
 | GET `/v1/catalog/family?family=` | `golden:read` | required | 2 | **built (B2 enrichment, 1.2.0)** |
 | GET `/v1/config?sku=&fabric=&color=&tier=&footrest=` | `golden:read` | required | 3 | **built (B3 configurator, 1.3.0)** |
-| POST `/v1/quote` | `golden:quote` | required | 4 | not built |
+| POST `/v1/quote` | `golden:read` | required | 4a | **built (B4a, read-only, 1.4.0)** |
 | POST `/v1/orders` | `golden:order` | required + `Idempotency-Key` | 4 | not built |
 | GET `/v1/orders/{order_id}`, `/v1/history` | `golden:history` | required | 5 | not built |
 
@@ -164,6 +164,25 @@ Query: `sku` (a configurable lift-chair size, `PR\d{3}-[A-Z]{3}`), optional `fab
   it), 404 `not_found` (not a configurable model or size), 503 `inventory_unavailable` · `pricing_unavailable` ·
   `config_unavailable`. Never a guessed price or stock level.
 - Ordering a configuration is Stage 4 (`POST /v1/orders`); this route never reserves stock or records anything.
+
+## 4d. Payloads (B4a quote, contract 1.4.0)
+
+**POST /v1/quote → 200** (schema `quote_200`). Body `{ lines:[{ sku, fabric, color, tier?, footrest?, qty }], split_order?, ship_to?:{ city, state } }`
+— 1 to 30 configured lift-chair lines (`sku` `PR\d{3}-[A-Z]{3}`, `color` required, `qty` 1–20). Answer
+`{ as_of, engine, sh_terms_checked, ordering_enabled:false, quote:{ lines[], totals, freight, quote_hash } }`.
+
+- **Golden decides every amount.** Each line is priced by the portal's own configurator (§4c) with this dealer's Golden
+  pricing; S&H by the portal's one S&H rule (`golden-sh.priceOrder`, the function `save-order` stores orders with):
+  per shipment `max(minimum, merchandise × rate)`, split into in-stock and build shipments when `split_order` is true,
+  waived only by the account's own special terms for that ship-to. Any price sent by the caller is ignored.
+- Only a verified link whose Golden prices are visible may quote: otherwise 403 `prices_not_visible` (or the §4a link codes).
+- `quote_hash` (sha256 of engine + priced lines + totals) lets Stage 4b's order route refuse an order whose prices changed
+  since the dealer reviewed them. Freight and delivery add-ons are not in 4a (`freight.included:false`).
+- `sh_terms_checked:false` = the special-terms read failed and standard S&H was applied (as `save-order` does).
+- Errors: 400 `bad_request` (`message` names the field and line, e.g. `color@1`), 404 `not_found` (not a configurable
+  size), 503 `pricing_unavailable` (no dealer cost on a line — not retryable; or the pricing read failed — retryable),
+  503 `inventory_unavailable` · `config_unavailable`.
+- **Read-only.** No order, reservation, email or stock change. Ordering is Stage 4b (`POST /v1/orders`, `Idempotency-Key`).
 
 ## 5. Authentication: HMAC request signing (shared module `hcps-s2s.js`)
 

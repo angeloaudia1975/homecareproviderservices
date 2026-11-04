@@ -15,7 +15,7 @@ const M=[
   ['golden-proxy.js','preview uses the production key','env: envName || undefined,','env: undefined,'],
   ['_golden_client.js','test key may reach production Golden','base: PREVIEW_BASE_RE.test(b) ? b : "", usable: !!kid && S2S.secretUsable(secret) && PREVIEW_BASE_RE.test(b) && distinct','base: b, usable: !!kid && S2S.secretUsable(secret) && distinct'],
   ['_golden_client.js','test key may equal the production key','&& PREVIEW_BASE_RE.test(b) && distinct };','&& PREVIEW_BASE_RE.test(b) };'],
-  ['golden-proxy.js','orders action reachable','config: "/v1/config" };','config: "/v1/config", orders: "/v1/orders" };'],
+  ['golden-proxy.js','orders action reachable','quote: "/v1/quote" };','quote: "/v1/quote", orders: "/v1/orders" };'],
   ['golden-proxy.js','malformed family code forwarded','if(action === "family" && !FAMILY_RE.test(family)) return','if(false) return'],
   ['golden-proxy.js','second primary photo kept','if(seenPrimary) g.primary = false;','if(false) g.primary = false;'],
   ['golden-proxy.js','video embed from Golden\'s answer trusted','embed: "https://www.youtube-nocookie.com/embed/" + v.youtube_id,','embed: v.embed,'],
