@@ -176,7 +176,7 @@ const ON = { flags: { golden_p360_checkout: true } };
       const nonces = new Set(); const sent = [];
       const goldenSb = createMock({ tables: {
         integration_clients: [{ kid: "hcps-p360-1", client_id: "hcps-partner360", tenant_id: "hcps", scopes: ["golden:read"], active: true, secret_fingerprint: gS.fingerprint(SECRET) }],
-        dealer_integration_map: [{ id: "aaaaaaaa-0000-4000-8000-000000000001", tenant_id: "hcps", client_id: "hcps-partner360", hcps_dealer_id: D_HQ, golden_dealer_id: "dealer-a", status: "verified", price_visibility: "dealer" }],
+        dealer_integration_map: [{ id: "aaaaaaaa-0000-4000-8000-000000000001", tenant_id: "hcps", client_id: "hcps-partner360", hcps_dealer_id: D_HQ, golden_dealer_id: "dealer-a", status: "verified", price_visibility: "dealer", history_enabled: false }],
         dealer_integration_branch_map: [], dealers: [{ id: "dealer-a", active: true, customer_no: "100001" }], dealer_branches: [],
         dealer_ship_locations: [{ id: LOC, dealer_id: "dealer-a", label: "Store", ship_address: "1 Main St", ship_city: "Cincinnati", ship_state: "OH", ship_zip: "45202", created_at: "2026-01-01" }],
         dealer_locations: [], dealer_special_terms: [], orders: [],

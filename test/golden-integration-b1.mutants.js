@@ -7,7 +7,7 @@ const M=[
   [null,'control (no change)',null,null],
   ['_golden_client.js','delegation lifetime not 90 s','exp: now + 90 };','exp: now + 600 };'],
   ['_golden_client.js','follows redirects with a signed request','redirect: "error"','redirect: "follow"'],
-  ['_golden_client.js','any path accepted','if(!/^\\/v1\\/[a-z0-9/_-]+$/.test(String(path||""))) throw new Error("golden-client: bad path");',''],
+  ['_golden_client.js','any path accepted','if(!/^\\/v1\\/[A-Za-z0-9/_-]+$/.test(String(path||""))) throw new Error("golden-client: bad path");',''],
   ['_golden_client.js','short secret treated as configured','return { kid, secret, base: base(), usable: !!kid && S2S.secretUsable(secret) };','return { kid, secret, base: base(), usable: !!kid && !!secret };'],
   ['_golden_client.js','network error reported as success','return { configured:true, ok:false, status:0, json:null, error:"golden_unreachable" };','return { configured:true, ok:true, status:200, json:{state:"account",capabilities:{}}, error:null };'],
   ['golden-proxy.js','master switch ignored','if(f.golden_p360_catalog !== true) return json(200, { ok:true, enabled:false, reason:"switched_off" });',''],

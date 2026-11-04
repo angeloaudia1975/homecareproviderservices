@@ -1,6 +1,6 @@
 # Golden Commerce API — contract v1 (golden-commerce-v1)
 
-**Contract version:** 1.4.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3; 1.4.0 the Stage 4a read-only quote, batch B4) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
+**Contract version:** 1.5.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3; 1.4.0 the Stage 4a read-only quote, batch B4, and 4b ship-to + validate-only orders; 1.5.0 the Stage 5 order history, batch B5) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
 **Committed byte-identical in:** `golden-dealer-portal/docs/contracts/` and `homecareproviderservices/docs/contracts/`.
 `golden-commerce-v1.lock.json` pins the SHA-256 of this file, the schema, the signing vectors and the shared
 signing module. Each repo's tests fail on drift. Change all copies together and bump the lock.
@@ -38,7 +38,7 @@ Golden decides and writes.
 | GET `/v1/ship-to` | `golden:read` | required | 4b | **built (B4b, read-only, 1.4.0)** |
 | POST `/v1/orders` `mode:"validate"` | `golden:read` | required + `Idempotency-Key` | 4b | **built (B4b, validate-only, 1.4.0)** |
 | POST `/v1/orders` (placement) | `golden:order` | required + `Idempotency-Key` | 4c | not built (any other mode → 403 `ordering_disabled`) |
-| GET `/v1/orders/{order_id}`, `/v1/history` | `golden:history` | required | 5 | not built |
+| GET `/v1/history`, `/v1/orders/{order_ref}` | `golden:history` | required | 5 | **built (B5, read-only, 1.5.0)** |
 
 A route that is not built does not exist. A later stage adds it with a **minor** contract bump and its
 schema. Field names, codes and meanings in this file never change within v1.
@@ -224,6 +224,26 @@ split_order?, ship_to:{ id }, po_number?, contact:{ name, phone, email? }, atten
   503 `internal` (an unexpected failure after the key was claimed — the key is released, so the same attempt may retry).
   Each claim holds a claim token; a claim taken over after 2 minutes gets a new token, so the stalled original can no
   longer complete or release it.
+
+## 4g. Payloads (B5 order history and tracking, contract 1.5.0)
+
+**GET /v1/history?limit=&before=** (schema `history_200`) and **GET /v1/orders/{order_ref}** (schema `order_200`).
+Golden's OWN canonical history of the linked account — the same reconciliation the Golden dealer portal shows: portal
+submissions merged with Golden's booked sales orders through active order links, Golden-only sales orders, revisions,
+invoicing and shipments. Scope `golden:history`. Only a verified link with `history_enabled` (else 403 `not_linked` /
+`history_not_enabled`); a branch delegation is refused (403 `branch_history_not_permitted`) until branch-scoped history
+is designed. Newest first, `limit` 1–50 (default 20), `before` = an `order_ref` from the previous page's `next_before`.
+Unknown query parameters → 400.
+
+- Each order: `{ order_ref, source:"portal"|"golden"|"linked", status, placed_on, po_number, so_numbers[], ship_to:{ city,
+  state }, expected_date, items:[{ sku, description, qty }], tracking:[{ so_number, carrier, tracking_number, ship_date }],
+  lifecycle:[{ type, at, so_number, label }], totals? }`. `order_ref` is Golden's opaque, stable reference (`P<portal id>` /
+  `G<SO number>`) — not the future `order_id` UUID (§5.3 of the blueprint). `status` uses the blueprint vocabulary
+  (`submitted`, `acknowledged`, `revised`, `partially_shipped`, `shipped`, `invoiced`, `cancelled`).
+- `totals:{ subtotal, freight, sh, total }` only when the link may see Golden prices (`prices_visible`).
+- Never returned: the contact's name, phone or email, notes, street address, ZIP, another account's orders.
+- Errors: 400 `bad_request` (`limit`, `before`, `order_ref`, `unknown_param:<name>`), 404 `not_found` (an order that is
+  not this account's), 503 `history_unavailable` (a failed read — never an empty or partial list). **Read-only.**
 
 ## 5. Authentication: HMAC request signing (shared module `hcps-s2s.js`)
 

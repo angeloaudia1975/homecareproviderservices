@@ -41,7 +41,7 @@ async function sbGet(path){ const r = await fetch(`${SUPABASE_URL}/rest/v1/${pat
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // Partner 360 deploy previews and branch deploys (never the production storefront).
 const ORDERING_PREVIEW_ORIGIN = /^https:\/\/(deploy-preview-\d+|(?!main--)[a-z0-9-]+)--hcpsonlineordering\.netlify\.app$/;   // never main-- (= production)
-const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", family: "/v1/catalog/family", config: "/v1/config", quote: "/v1/quote", ship_to: "/v1/ship-to", validate_order: "/v1/orders" };
+const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", family: "/v1/catalog/family", config: "/v1/config", quote: "/v1/quote", ship_to: "/v1/ship-to", validate_order: "/v1/orders", history: "/v1/history", order: "/v1/orders/" };
 const QUOTE_MAX_LINES = 30, QUOTE_MAX_QTY = 20;
 const SHIP_ID_RE = /^(primary|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 const IDEM_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -230,6 +230,24 @@ const cleanShip = x => (x && typeof x === "object" && SHIP_ID_RE.test(String(x.i
   label: str(x.label, 80) || "Ship-to", address: str(x.address, 160) || "", city: str(x.city, 80) || "", state: str(x.state, 40) || "", zip: str(x.zip, 20) || "" } : null;
 const reqId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(v)) ? v : null;   // Golden's request id, only in its known shape
 const MAX_EMAIL_HTML = 400000;
+// history / order (B5, contract 1.5.0): Golden's own order history + tracking. Allow-listed; amounts only when Golden
+// says prices are visible. Never a contact, phone, email, note, street or ZIP (Golden does not send them either).
+const ORDER_REF_RE = /^[PG][A-Za-z0-9-]{1,40}$/;
+const HSTATUS = ["submitted","pending_review","acknowledged","processing","revised","partially_shipped","shipped","invoiced","completed","cancelled"];
+const HEVENTS = ["submitted","booked","revised","invoiced","shipped","replacement","resubmitted"];
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const day = v => (typeof v === "string" && DAY_RE.test(v)) ? v : null;
+function cleanHistoryOrder(o, pv){
+  if(!o || typeof o !== "object" || !ORDER_REF_RE.test(String(o.order_ref)) || !HSTATUS.includes(o.status)) return null;
+  const out = { order_ref: o.order_ref, source: oneOf(o.source, ["portal","golden","linked"]) || "portal", status: o.status, placed_on: day(o.placed_on), po_number: str(o.po_number, 60) || "",
+    so_numbers: strs(o.so_numbers, 40, 20), ship_to: { city: str(o.ship_to && o.ship_to.city, 80) || "", state: str(o.ship_to && o.ship_to.state, 40) || "" }, expected_date: day(o.expected_date),
+    items: (Array.isArray(o.items) ? o.items : []).slice(0, 200).filter(i => i && typeof i.sku === "string" && i.sku).map(i => ({ sku: i.sku.slice(0, 40), description: str(i.description, 200) || "", qty: Number.isInteger(i.qty) ? i.qty : null })),
+    tracking: (Array.isArray(o.tracking) ? o.tracking : []).slice(0, 20).filter(x => x && typeof x === "object").map(x => ({ so_number: str(x.so_number, 40) || "", carrier: str(x.carrier, 60) || "",
+      tracking_number: (typeof x.tracking_number === "string" && /^[A-Za-z0-9 -]{0,80}$/.test(x.tracking_number)) ? x.tracking_number : "", ship_date: day(x.ship_date) })),
+    lifecycle: (Array.isArray(o.lifecycle) ? o.lifecycle : []).slice(0, 50).filter(e => e && HEVENTS.includes(e.type)).map(e => ({ type: e.type, at: day(e.at), so_number: str(e.so_number, 40) || null, label: str(e.label, 160) || "" })) };
+  if(pv && o.totals && typeof o.totals === "object") out.totals = { subtotal: num(o.totals.subtotal), freight: num(o.totals.freight), sh: num(o.totals.sh), total: num(o.totals.total) };
+  return out;
+}
 function cleanValidation(g, sentHash){
   const q = cleanQuote(g);
   const o = g && g.order;
@@ -301,6 +319,13 @@ exports.handler = async (event) => {
       if(tier) cfgQuery.tier = tier;
       if(b.footrest === true) cfgQuery.footrest = "1";
     }
+    let histQuery = null, histRef = null;
+    if(action === "history"){
+      histQuery = {};
+      if(b.limit != null){ if(!Number.isInteger(b.limit) || b.limit < 1 || b.limit > 50) return json(400, { ok:false, error:"bad limit" }); histQuery.limit = String(b.limit); }
+      if(b.before != null){ if(typeof b.before !== "string" || !ORDER_REF_RE.test(b.before)) return json(400, { ok:false, error:"bad before" }); histQuery.before = b.before; }
+    }
+    if(action === "order"){ if(typeof b.order_ref !== "string" || !ORDER_REF_RE.test(b.order_ref)) return json(400, { ok:false, error:"bad order" }); histRef = b.order_ref; }
     let quoteBody = null, idemKey = null;
     if(action === "quote"){ quoteBody = readQuoteBody(b); if(!quoteBody) return json(400, { ok:false, error:"bad quote" }); }
     if(action === "validate_order"){
@@ -329,6 +354,7 @@ exports.handler = async (event) => {
       const pilot = Array.isArray(f.golden_p360_pilot_dealers) ? f.golden_p360_pilot_dealers.map(String) : [];
       if(f.golden_p360_catalog !== true) return json(200, { ok:true, enabled:false, reason:"switched_off" });
       if(action === "validate_order" && f.golden_p360_checkout !== true) return json(200, { ok:true, enabled:false, reason:"checkout_switched_off" });
+      if((action === "history" || action === "order") && f.golden_p360_history !== true) return json(200, { ok:true, enabled:false, reason:"history_switched_off" });
       who.pilot = pilot;
     }
 
@@ -337,7 +363,7 @@ exports.handler = async (event) => {
     if(!envName && !who.pilot.includes(String(c.sub_dealer)) && !who.pilot.includes(String(who.dealer_id))) return json(200, { ok:true, enabled:false, reason:"not_in_pilot" });
 
     const role = who.preview ? "staff_preview" : (c.sub_branch ? "branch_user" : "dealer");
-    const r = await GC.call({ method: (action === "quote" || action === "validate_order") ? "POST" : "GET", path: ACTIONS[action], env: envName || undefined, query: quoteBody ? undefined : (family ? { family } : (cfgQuery || undefined)), body: quoteBody || undefined, idempotencyKey: idemKey || undefined,
+    const r = await GC.call({ method: (action === "quote" || action === "validate_order") ? "POST" : "GET", path: histRef ? ACTIONS.order + encodeURIComponent(histRef) : ACTIONS[action], env: envName || undefined, query: quoteBody ? undefined : (family ? { family } : (cfgQuery || histQuery || undefined)), body: quoteBody || undefined, idempotencyKey: idemKey || undefined,
       delegation: { sub_dealer: c.sub_dealer, sub_branch: c.sub_branch, actor: who.actor, role } });
     const extra = envName ? { preview:true } : {};
     if(r.configured === false) return json(200, Object.assign({ ok:true, enabled:false, reason:"golden_not_configured" }, extra));
@@ -357,6 +383,11 @@ exports.handler = async (event) => {
       }
       if(r.status === 404) return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"not_found" }, extra));
       if(map[code]) return json(200, Object.assign({ ok:true, enabled:true, available: code !== "prices_not_visible", valid:false, reason: map[code], retry: code === "idempotency_in_progress" || (r.status === 503) }, extra));
+    }
+    if(!r.ok && (action === "history" || action === "order")){
+      const code = r.error, reasons = { history_not_enabled:"history_not_enabled", branch_history_not_permitted:"branch_history_not_permitted", not_linked:"not_linked", history_unavailable:"history_unavailable" };
+      if(r.status === 404 && action === "order") return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"not_found" }, extra));
+      if(reasons[code]) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason: reasons[code], retry: code === "history_unavailable" }, extra));
     }
     if(!r.ok && action === "ship_to" && r.status === 403 && (r.json && r.json.error && r.json.error.code) === "prices_not_visible") return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"prices_not_visible" }, extra));
     if(!r.ok && action === "quote"){
@@ -407,6 +438,19 @@ exports.handler = async (event) => {
     if(action === "ship_to"){
       const list = (Array.isArray(g.ship_to) ? g.ship_to : []).slice(0, 50).map(cleanShip).filter(Boolean);
       return json(200, Object.assign({ ok:true, enabled:true, available:true, scope: g.scope === "branch" ? "branch" : "account", ship_to: list, request_id: reqId(g.request_id) }, extra));
+    }
+    if(action === "history" || action === "order"){
+      const pv = g.prices_visible === true;
+      if(action === "order"){
+        const o = cleanHistoryOrder(g.order, pv);
+        if(!o || o.order_ref !== histRef) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
+        return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, order: o, request_id: reqId(g.request_id) }, extra));
+      }
+      const raw = Array.isArray(g.orders) ? g.orders : null;
+      const list = raw ? raw.slice(0, 50).map(o => cleanHistoryOrder(o, pv)) : null;
+      if(!list || list.some(o => !o)) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));   // all-or-nothing
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, orders: list,
+        next_before: (typeof g.next_before === "string" && ORDER_REF_RE.test(g.next_before)) ? g.next_before : null, request_id: reqId(g.request_id) }, extra));
     }
     if(action === "validate_order"){
       const v = cleanValidation(g, quoteBody.quote_hash);

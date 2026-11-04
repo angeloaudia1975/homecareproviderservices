@@ -36,7 +36,7 @@ function configured(envName){ return creds(envName).usable; }
 async function call({ method = "GET", path, query, body, delegation, env, idempotencyKey }){
   const c = creds(env);
   if(!c.usable) return { configured:false, ok:false, status:0, error:"golden_not_configured" };
-  if(!/^\/v1\/[a-z0-9/_-]+$/.test(String(path||""))) throw new Error("golden-client: bad path");
+  if(!/^\/v1\/[A-Za-z0-9/_-]+$/.test(String(path||""))) throw new Error("golden-client: bad path");
   const q = query || {};
   const bodyStr = body == null ? "" : JSON.stringify(body);
   let d = null;
