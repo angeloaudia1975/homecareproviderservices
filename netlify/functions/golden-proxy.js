@@ -238,8 +238,8 @@ const HEVENTS = ["submitted","booked","revised","invoiced","shipped","replacemen
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const day = v => (typeof v === "string" && DAY_RE.test(v)) ? v : null;
 function cleanHistoryOrder(o, pv){
-  if(!o || typeof o !== "object" || !ORDER_REF_RE.test(String(o.order_ref)) || !HSTATUS.includes(o.status)) return null;
-  const out = { order_ref: o.order_ref, source: oneOf(o.source, ["portal","golden","linked"]) || "portal", status: o.status, placed_on: day(o.placed_on), po_number: str(o.po_number, 60) || "",
+  if(!o || typeof o !== "object" || !ORDER_REF_RE.test(String(o.order_ref)) || !HSTATUS.includes(o.status) || !["portal","golden","linked"].includes(o.source)) return null;
+  const out = { order_ref: o.order_ref, source: o.source, status: o.status, placed_on: day(o.placed_on), po_number: str(o.po_number, 60) || "",
     so_numbers: strs(o.so_numbers, 40, 20), ship_to: { city: str(o.ship_to && o.ship_to.city, 80) || "", state: str(o.ship_to && o.ship_to.state, 40) || "" }, expected_date: day(o.expected_date),
     items: (Array.isArray(o.items) ? o.items : []).slice(0, 200).filter(i => i && typeof i.sku === "string" && i.sku).map(i => ({ sku: i.sku.slice(0, 40), description: str(i.description, 200) || "", qty: Number.isInteger(i.qty) ? i.qty : null })),
     tracking: (Array.isArray(o.tracking) ? o.tracking : []).slice(0, 20).filter(x => x && typeof x === "object").map(x => ({ so_number: str(x.so_number, 40) || "", carrier: str(x.carrier, 60) || "",
@@ -349,7 +349,8 @@ exports.handler = async (event) => {
       envName = "preview";
     } else {
       // A staff "view as dealer" token never reaches Golden's production ordering path (it is a preview of the dealer).
-      if(who.preview && action === "validate_order") return json(403, { ok:false, error:"preview_not_allowed" });
+      // ... nor reads a real dealer's production order history (history / order are preview-environment only for staff).
+      if(who.preview && (action === "validate_order" || action === "history" || action === "order")) return json(403, { ok:false, error:"preview_not_allowed" });
       const f = await flags(sbGet);
       const pilot = Array.isArray(f.golden_p360_pilot_dealers) ? f.golden_p360_pilot_dealers.map(String) : [];
       if(f.golden_p360_catalog !== true) return json(200, { ok:true, enabled:false, reason:"switched_off" });

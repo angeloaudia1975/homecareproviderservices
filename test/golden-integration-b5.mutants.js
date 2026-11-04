@@ -13,6 +13,8 @@ const M=[
   ['golden-proxy.js','answer for another order shown','if(!o || o.order_ref !== histRef) return','if(!o) return'],
   ['golden-proxy.js','unsafe tracking text passed','(typeof x.tracking_number === "string" && /^[A-Za-z0-9 -]{0,80}$/.test(x.tracking_number)) ? x.tracking_number : ""','str(x.tracking_number, 80) || ""'],
   ['golden-proxy.js','lifecycle events not allow-listed','.filter(e => e && HEVENTS.includes(e.type))','.filter(e => e)'],
+  ['golden-proxy.js','staff preview reads production history','if(who.preview && (action === "validate_order" || action === "history" || action === "order"))','if(who.preview && (action === "validate_order"))'],
+  ['golden-proxy.js','unknown order source relabelled','|| !["portal","golden","linked"].includes(o.source)) return null;',') return null;'],
   ['golden-proxy.js','order 404 shown as unavailable','if(r.status === 404 && action === "order") return json(200','if(false) return json(200'],
 ];
 let killed=0, bad=0;

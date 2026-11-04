@@ -92,6 +92,20 @@ const ON = { flags: { golden_p360_history: true } };
     }
   });
 
+  await t("staff preview token on the PRODUCTION path never reads a dealer's history; an unknown source = no history (all-or-nothing)", async () => {
+    const PT = "ab12".repeat(12);
+    for (const b of [{ action: "history" }, { action: "order", order_ref: "P501" }]) {
+      env(); const w = world(ON); const saved = global.fetch;
+      global.fetch = async (u, i) => /dealer_users|auth\/v1\/user/.test(String(u)) ? { ok: true, status: 200, json: async () => [], text: async () => "[]" }
+        : /dealer_preview_tokens/.test(String(u)) ? { ok: true, status: 200, json: async () => [{ dealer_id: D_HQ, expires_at: new Date(Date.now() + 3600e3).toISOString() }], text: async () => "" } : saved(u, i);
+      const r = await load("golden-proxy.js").handler({ httpMethod: "POST", headers: { "x-hcps-preview": PT }, body: JSON.stringify(b) });
+      eq([r.statusCode, J(r).error], [403, "preview_not_allowed"], JSON.stringify(b)); eq(w.golden.length, 0);
+    }
+    const res = (status, body) => ({ ok: true, status, text: async () => JSON.stringify(body), json: async () => body });
+    env(); world(Object.assign({ golden: () => res(200, HIST({ orders: [ORDER(), ORDER({ source: "teleported" })] })) }, ON));
+    eq(J(await load("golden-proxy.js").handler(post({ action: "history" }))).reason, "golden_unavailable");
+  });
+
   // ── Real cross-repo round trip ──
   const gFN = path.join(GOLDEN, "repo", "functions");
   if (!fs.existsSync(path.join(gFN, "v1-history.js"))) { skipped++; console.log("skip  cross-repo history round trip (Golden B5 not checked out at " + GOLDEN + ")"); }
