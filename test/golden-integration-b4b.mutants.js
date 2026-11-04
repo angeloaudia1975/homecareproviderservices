@@ -9,6 +9,8 @@ const M=[
   ['golden-proxy.js','request_id passed through unchecked','const reqId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(v)) ? v : null;','const reqId = v => v || null;'],
   ['golden-proxy.js','invisible characters allowed','  if(TXT_INVISIBLE.test(t)) return null;\n',''],
   ['golden-proxy.js','staff view-as token on the production ordering path','if(who.preview && action === "validate_order") return json(403','if(false) return json(403'],
+  ['golden-proxy.js','CRLF notes refused','(multiline ? v.replace(/\\r\\n?/g, "\\n") : v)','v'],
+  ['golden-proxy.js','Golden internal error not mapped to a retry','const map = { internal:"temporarily_unavailable", ','const map = { '],
   ['golden-proxy.js','checkout switch ignored','if(action === "validate_order" && f.golden_p360_checkout !== true) return','if(false) return'],
   ['golden-proxy.js','idempotency key not required','if(typeof b.idempotency_key !== "string" || !IDEM_RE.test(b.idempotency_key)) return json(400','if(false) return json(400'],
   ['golden-proxy.js','markup allowed in notes','if(multiline ? /[<>\\u0000-\\u0009\\u000B-\\u001F\\u007F]/.test(t) : TXT_BAD.test(t)) return null;','if(!multiline && TXT_BAD.test(t)) return null;'],

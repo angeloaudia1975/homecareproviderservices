@@ -130,10 +130,20 @@ const ON = { flags: { golden_p360_checkout: true } };
     eq(J(await load("golden-proxy.js").handler(post(ORDER()))).request_id, null);
     env(); world(Object.assign({ golden: () => res(200, VALID()) }, ON));
     eq(J(await load("golden-proxy.js").handler(post(ORDER()))).request_id, "req_v");
-    for (const over of [{ notes: "a\u202Eb" }, { po_number: "PO\u200B1" }, { contact: { name: "Pa\u2028t", phone: "937-555-0100" } }]) {
+    for (const over of [{ notes: "a\u202Eb" }, { po_number: "PO\u200B1" }, { contact: { name: "Pa\u2028t", phone: "937-555-0100" } }, { attention: "a\u2066b" }, { notes: "x\u00ADy" }]) {
       env(); const w = world(ON);
       eq((await load("golden-proxy.js").handler(post(ORDER(over)))).statusCode, 400, JSON.stringify(over)); eq(w.golden.length, 0);
     }
+  });
+
+  await t("validate_order: CRLF notes forwarded as line breaks; Golden's 503 internal = a calm retry (same attempt)", async () => {
+    env(); const w = world(ON);
+    await load("golden-proxy.js").handler(post(ORDER({ notes: "one\r\ntwo" })));
+    eq(JSON.parse(w.golden[0].init.body).notes, "one\ntwo");
+    const res = (status, body) => ({ ok: status < 400, status, text: async () => JSON.stringify(body), json: async () => body });
+    env(); world(Object.assign({ golden: () => res(503, { error: { code: "internal", message: "internal", retryable: true } }) }, ON));
+    const r = J(await load("golden-proxy.js").handler(post(ORDER())));
+    eq([r.valid, r.reason, r.retry], [false, "temporarily_unavailable", true]);
   });
 
   await t("validate_order: a staff view-as token never reaches the production ordering path, even with checkout on", async () => {

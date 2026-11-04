@@ -187,11 +187,11 @@ function readQuoteBody(b){
 // validate_order: the order fields Golden checks. Free text is rejected (not cleaned) when it holds markup or control
 // characters, exactly as Golden does, so the dealer sees the problem instead of a silently changed order.
 const TXT_BAD = /[<>\u0000-\u001F\u007F]/;
-const TXT_INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2028\u2029\u2060-\u2064\uFEFF]/;   // zero-width / bidi / line separators
+const TXT_INVISIBLE = /[\p{Cf}\u2028\u2029]/u;   // invisible / bidi format characters + line separators — the same set Golden refuses
 const txt = (v, max, multiline) => {
   if(v == null || v === "") return "";
   if(typeof v !== "string") return null;
-  const t = v.trim();
+  const t = (multiline ? v.replace(/\r\n?/g, "\n") : v).trim();   // CRLF notes are normal line breaks (as Golden)
   if(t.length > max) return null;
   if(multiline ? /[<>\u0000-\u0009\u000B-\u001F\u007F]/.test(t) : TXT_BAD.test(t)) return null;
   if(TXT_INVISIBLE.test(t)) return null;
@@ -349,7 +349,7 @@ exports.handler = async (event) => {
         const q = cleanQuote(g0);
         return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"prices_changed", idempotent_replay: g0.idempotent_replay === true, quote: q, request_id: reqId(g0.request_id) }, extra));
       }
-      const map = { prices_not_visible:"prices_not_visible", idempotency_conflict:"idempotency_conflict", idempotency_in_progress:"idempotency_in_progress", pricing_unavailable:"pricing_unavailable", ordering_disabled:"ordering_disabled" };
+      const map = { internal:"temporarily_unavailable", prices_not_visible:"prices_not_visible", idempotency_conflict:"idempotency_conflict", idempotency_in_progress:"idempotency_in_progress", pricing_unavailable:"pricing_unavailable", ordering_disabled:"ordering_disabled" };
       const msg = g0.error && typeof g0.error.message === "string" ? g0.error.message : "";
       if(r.status === 400 && code === "bad_request"){
         const field = /^(ship_to|po_required|po_number|attention|notes|contact\.(name|phone|email)|(reference_names|color|qty|sku|fabric|tier|footrest)@\d{1,2})$/.test(msg) ? msg : "order";
