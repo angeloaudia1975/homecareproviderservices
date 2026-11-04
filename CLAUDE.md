@@ -1808,6 +1808,15 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     names). Record discrepancies in ordering docs/catalog/pedifix-exceptions.md. Never change PediFix prices: the July 2025
     list stays the source; flag what can't be confirmed. Built in ordering PR #31 (sandbox only).
   · The stored "pedifix-catalog-2025.pdf" is really the 2021–2022 OTC catalog.
+- **Corsicana + PediFix final review decisions (owner, 2026-11-03 22:53 — RULES).** #29 and #31 stay in the sandbox and are NOT
+  merged or published until Angelo confirms his visual review. Keep Corsicana's 14 prices, the case-of-10 protector, and the
+  exclusion of disputed specs. Keep PediFix's sourced descriptions, photos and families. **14** reactivation candidates (the 15
+  minus P3095-115) wait for his SEPARATE authorization; a confirmation list gives the exact SKU, availability and price-source
+  status. **P3095-115 is never reactivated** (it duplicates 3095-115). **P244:** never activate unsupported XL variations
+  only because an older catalog shows them. P244-XLL/XLR are on the July 2025 list but pedifix.com's #2404 is M/L only, so
+  this is a question for PediFix; their current on-sale status is his call. D09-TTU's count stays unresolved until confirmed.
+  Every other inactive or retired PediFix SKU stays as it is. Keep researching current PediFix documents; no price change
+  without his approval.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
