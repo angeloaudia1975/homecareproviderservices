@@ -1794,6 +1794,20 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   6 hold (8621, P3305-PACKET-100, M905RFG, M905SUB, R3295, D28) — owner decides; nothing activated, retired or repriced.
   pedifix.com (Shopify) publishes almost no feature bullets or specs; the 2025 catalog PDF (/assets/docs/pedifix-catalog-2025.pdf)
   is image-only and needs OCR — its display pages (1–8) cover the D-display photos/specs.
+- **Corsicana finalization + PediFix development (owner, 2026-11-03 22:21 — RULES).**
+  · **Corsicana (#29):** stays in the sandbox until Angelo gives final visual approval; 14 identities and prices kept.
+    C-6 case of 10 RESOLVED: the price list prices the case of 10, and the catalog file already has unit Case, case_qty 10.
+    Never invent disputed capacities, pillow counts, firmness or clinical claims.
+  · **PediFix reactivation:** 15 SKUs (8520, 8521, 8620, P3012, P3012-12, P3095-115, P3305, P3355-STR, the seven Darco 6210) are
+    PREPARED only. Activate none until Angelo approves. The switch lives in the shared product_overrides (production too), so
+    restore it with Product Catalog → Restore after approval. P3095-115 is held: the owner merged it into 3095-115 on 2026-10-11.
+    Keep 8621, P3305-PACKET-100, M905RFG, M905SUB, R3295 and D28 inactive. Never restore P3306.
+  · **Families (approved):** P244 System 9 WIDE = one page of six exact options. P60 = one family, with the single OSFM bandage
+    labelled apart from the pairs. These are content-overrides `_families` rules; no SKU, price or packaging rule changes.
+  · **PediFix enrichment:** only from pedifix.com and the PediFix catalog, read against the page IMAGES (never invent specs from
+    names). Record discrepancies in ordering docs/catalog/pedifix-exceptions.md. Never change PediFix prices: the July 2025
+    list stays the source; flag what can't be confirmed. Built in ordering PR #31 (sandbox only).
+  · The stored "pedifix-catalog-2025.pdf" is really the 2021–2022 OTC catalog.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
