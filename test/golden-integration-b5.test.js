@@ -101,6 +101,15 @@ const ON = { flags: { golden_p360_history: true } };
       const r = await load("golden-proxy.js").handler({ httpMethod: "POST", headers: { "x-hcps-preview": PT }, body: JSON.stringify(b) });
       eq([r.statusCode, J(r).error], [403, "preview_not_allowed"], JSON.stringify(b)); eq(w.golden.length, 0);
     }
+    // …while the PREVIEW environment (deploy-preview origin + x-hcps-golden-env: preview) still serves it to staff.
+    {
+      env({ GOLDEN_P360_TEST_KEY_ID: "hcps-p360-test-1", GOLDEN_P360_TEST_SECRET: "f".repeat(64), GOLDEN_TEST_API_BASE: "https://deploy-preview-283--goldenonlineordering.netlify.app" });
+      const w = world({}); const saved = global.fetch;
+      global.fetch = async (u, i) => /deploy-preview-283--goldenonlineordering/.test(String(u)) ? (w.golden.push({ u: String(u), init: i }), { ok: true, status: 200, json: async () => HIST(), text: async () => JSON.stringify(HIST()) })
+        : /dealer_preview_tokens/.test(String(u)) ? { ok: true, status: 200, json: async () => [{ dealer_id: D_HQ, expires_at: new Date(Date.now() + 3600e3).toISOString() }], text: async () => "" } : saved(u, i);
+      const r = J(await load("golden-proxy.js").handler({ httpMethod: "POST", headers: { "x-hcps-preview": PT, "x-hcps-golden-env": "preview", origin: "https://deploy-preview-32--hcpsonlineordering.netlify.app" }, body: JSON.stringify({ action: "history" }) }));
+      eq([r.available, r.orders && r.orders.length, w.golden.length, new URL(w.golden[0].u).pathname], [true, 2, 1, "/v1/history"]);
+    }
     const res = (status, body) => ({ ok: true, status, text: async () => JSON.stringify(body), json: async () => body });
     env(); world(Object.assign({ golden: () => res(200, HIST({ orders: [ORDER(), ORDER({ source: "teleported" })] })) }, ON));
     eq(J(await load("golden-proxy.js").handler(post({ action: "history" }))).reason, "golden_unavailable");
