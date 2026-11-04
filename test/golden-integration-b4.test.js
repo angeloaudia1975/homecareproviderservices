@@ -129,7 +129,7 @@ const LINE = { sku: "pr511-lar", fabric: "XOVER", color: "jbo", tier: "Nirvana",
       const nonces = new Set();
       const goldenSb = createMock({ tables: {
         integration_clients: [{ kid: "hcps-p360-1", client_id: "hcps-partner360", tenant_id: "hcps", scopes: ["golden:read"], active: true, secret_fingerprint: gS.fingerprint(SECRET) }],
-        dealer_integration_map: [{ id: "aaaaaaaa-0000-4000-8000-000000000001", tenant_id: "hcps", client_id: "hcps-partner360", hcps_dealer_id: D_HQ, golden_dealer_id: "dealer-a", status: "verified", price_visibility: visibility, history_enabled: false }],
+        dealer_integration_map: [{ id: "aaaaaaaa-0000-4000-8000-000000000001", tenant_id: "hcps", client_id: "hcps-partner360", hcps_dealer_id: D_HQ, golden_dealer_id: "dealer-a", status: "verified", price_visibility: visibility, golden_ordering_enabled: false, history_enabled: false }],
         dealer_integration_branch_map: [], dealers: [{ id: "dealer-a", active: true }], dealer_special_terms: [],
         inventory: [{ sku: "PR511-LAR", size: "LAR", fabcode: "SKN", color_code: "SUM", avail: 3, pool: null }],
       }, rpc: {
