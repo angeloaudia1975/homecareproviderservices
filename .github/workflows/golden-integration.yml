@@ -24,6 +24,6 @@ jobs:
           node-version: '22'
       # The cross-repo round trips need ../golden-dealer-portal and are skipped here; they run locally before merge.
       - name: Tests (synthetic data, no network)
-        run: for f in b1 b2 b3 b4 b4b; do node test/golden-integration-$f.test.js || exit 1; done
+        run: for f in b1 b2 b3 b4 b4b b5; do node test/golden-integration-$f.test.js || exit 1; done
       - name: Mutation checks
-        run: for f in b1 b2 b3 b4 b4b; do node test/golden-integration-$f.mutants.js || exit 1; done
+        run: for f in b1 b2 b3 b4 b4b b5; do node test/golden-integration-$f.mutants.js || exit 1; done
