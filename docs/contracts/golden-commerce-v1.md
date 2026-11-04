@@ -231,8 +231,13 @@ split_order?, ship_to:{ id }, po_number?, contact:{ name, phone, email? }, atten
 (only `mode` differs). Since 1.6.0 the validation's `ordering_enabled` says whether this dealer may place now (all locks
 below); `test_mode:true` (and `recipient:"test_recipient"`) when placement would be in test mode.
 
-- **Locks (403, nothing read or written beyond the link):** `GOLDEN_V1_ORDERS` on (`ordering_disabled`); client scope
-  `golden:order` (`scope`); delegation role `dealer` / `dealer_admin` — `staff_preview` and `hcps_staff` never place
+- **Replay first.** Before any lock below is looked at, Golden looks up the key's stored placement answer: a retry of an
+  attempt that was already answered (placed or refused) gets THAT answer (`idempotent_replay:true`) even if ordering was
+  switched off or the link changed since. So every refusal below is definite: nothing was placed under that key. The key
+  belongs to the HCPS dealer/branch that made it (another one → 409 `attempt_other_dealer`); the same key with other
+  content → 422 `idempotency_conflict`.
+- **Locks (403, nothing written):** `GOLDEN_V1_ORDERS` on (`ordering_disabled`); client scope
+  `golden:order` (`order_scope`); delegation role `dealer` / `dealer_admin` — `staff_preview` and `hcps_staff` never place
   (`ordering_not_permitted`); an account delegation — branch ordering is not designed yet (`branch_ordering_not_permitted`);
   the verified link's `golden_ordering_enabled` (`ordering_not_enabled`); in test mode, a Golden account listed in
   Golden's test-dealer setting (`ordering_disabled`).
@@ -247,21 +252,23 @@ below); `test_mode:true` (and `recipient:"test_recipient"`) when placement would
   permanent answer are written in ONE database transaction. A retry, a lost response or a concurrent duplicate gets the
   first answer (`idempotent_replay:true`) — exactly one order per attempt. A 503 after an unknown outcome is safe to retry.
 - PO: the PO the dealer reviewed (an auto-PO stamped at validation is the PO placed). PO numbers are not unique (§6).
-- **201** (schema `orders_submit_201`): `{ mode:"submit", placed:true, ordering_enabled:true, test_mode?, idempotent_replay,
+- **201** (schema `orders_submit_201`): `{ mode:"submit", placed:true, ordering_enabled:true, test_mode, idempotent_replay,
   order_ref:"P<id>", status:"submitted", placed_at, engine, order:{…as in validate}, quote, notifications? }`. `order_ref` is
   the same reference `/v1/history` and `/v1/orders/{order_ref}` use: the order is in Golden's history at once, before any
   sales order exists, and once. `notifications:{ order_desk, dealer_confirmation }` (`sent` · `failed` · `not_configured` ·
   `suppressed` · `none`) only on the first answer.
 - **Emails only after the commit;** a failed email never undoes the order. A notification that was never recorded, or
   failed, stays open and is tried again — by a retry of the attempt or Golden's 15-minute sweeper — at most every 5
-  minutes and 6 times, each send keyed (per order + recipient) so it is not delivered twice; then it is left for staff.
-  The mode is decided once, at placement, and stored with the answer (`test_mode`); every re-send uses it.
+  minutes and 6 times (counted when claimed), each send keyed per checkout attempt + recipient so it is not delivered twice;
+  then it is left for staff. A re-send is rebuilt only from the stored order and answer.
+  The mode is decided once, at placement, and stored with the answer (`test_mode` true/false); every re-send uses it, and
+  anything but an explicit `false` is test mode.
   Production mode (Golden's production setting AND its production deploy): Golden's order desk + the dealer
   confirmation, exactly as the dealer portal sends them. Test mode (everything else — fail closed): BOTH emails go
   only to Golden's controlled test mailbox, marked `[TEST — Partner 360 preview]`, and the stored order notes start
   "TEST ORDER — Partner 360 preview — do not process."
 - The database itself refuses to place anything but the validated order (same quote, same grand total, same PO as the
-  key's validation), whatever calls it.
+  key's validation), whatever calls it — a mismatch is a definite `not_validated`, never a retryable error.
 - Unlike a dealer-portal order, a Partner 360 placement emits no HCPS federation event (`order.created` /
   `product.purchased`): Partner 360 placed it and already has Golden's answer.
 - Errors also: 422 `idempotency_conflict`, 503 `idempotency_unavailable` / `internal` / `pricing_unavailable` …,

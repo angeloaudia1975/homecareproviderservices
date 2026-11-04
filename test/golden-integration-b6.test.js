@@ -159,14 +159,18 @@ const PREVIEW_H = { "x-hcps-golden-env": "preview", origin: PREVIEW_ORIGIN };
 
   await t("place_order: only a DEFINITE refusal says not placed; everything else is outcome_unknown → retry with the SAME key", async () => {
     const cases = [
-      [409, { error: { code: "prices_changed" }, quote: Object.assign({}, QUOTE, { quote_hash: "b".repeat(64) }) }, { placed: false, reason: "prices_changed", new_attempt: true }],
+      [409, { error: { code: "prices_changed" }, quote: Object.assign({}, QUOTE, { quote_hash: "b".repeat(64) }) }, { placed: false, definite: true, reason: "prices_changed", new_attempt: true }],
       [409, { error: { code: "not_validated" } }, { placed: false, reason: "revalidate", new_attempt: true }],
       [409, { error: { code: "validation_expired" } }, { placed: false, reason: "revalidate", new_attempt: true }],
-      [422, { error: { code: "idempotency_conflict" } }, { placed: false, reason: "idempotency_conflict", new_attempt: true }],
+      [422, { error: { code: "idempotency_conflict" } }, { placed: null, reason: "unconfirmed", retry: false }],
+      [409, { error: { code: "attempt_other_dealer" } }, { placed: null, reason: "unconfirmed", retry: false }],
+      [403, { error: { code: "scope" } }, { placed: null, reason: "outcome_unknown", retry: true }],
+      [401, { error: { code: "bad_signature" } }, { placed: null, reason: "outcome_unknown", retry: true }],
       [409, { error: { code: "duplicate_po" } }, { placed: false, reason: "duplicate_po", new_attempt: true }],
-      [403, { error: { code: "ordering_not_enabled" } }, { placed: false, reason: "ordering_unavailable", new_attempt: false }],
+      [403, { error: { code: "ordering_not_enabled" } }, { placed: false, definite: true, reason: "ordering_unavailable", new_attempt: false }],
+      [403, { error: { code: "ordering_disabled" } }, { placed: false, definite: true, reason: "ordering_unavailable", new_attempt: false }],
       [403, { error: { code: "ordering_not_permitted" } }, { placed: false, reason: "ordering_unavailable", new_attempt: false }],
-      [403, { error: { code: "scope" } }, { placed: false, reason: "ordering_unavailable", new_attempt: false }],
+      [403, { error: { code: "order_scope" } }, { placed: false, definite: true, reason: "ordering_unavailable", new_attempt: false }],
       [400, { error: { code: "bad_request", message: "po_required" } }, { placed: false, reason: "invalid", field: "po_required" }],
       [400, { error: { code: "bad_request", message: "weird<x>" } }, { placed: false, reason: "invalid", field: "order" }],
       [503, { error: { code: "idempotency_unavailable" } }, { placed: null, reason: "outcome_unknown", retry: true }],
@@ -228,10 +232,13 @@ const PREVIEW_H = { "x-hcps-golden-env": "preview", origin: PREVIEW_ORIGIN };
       integration_order_submit: ({ p }) => { const k = rk(p, "submit"), s = recs.get(k);
         if (s) return s.h !== p.request_hash ? { state: "conflict" } : { state: "replay", status: s.st, response: s.resp, order_id: s.oid };
         if (!valOk(recs.get(rk(p, "validate")), p)) return { state: "not_validated" };
-        if (p.refusal) { recs.set(k, { h: p.request_hash, st: p.refusal.status, resp: p.refusal.response }); return { state: "refused", status: p.refusal.status, response: p.refusal.response }; }
+        const ident = { d: p.hcps_dealer_id, b: p.hcps_branch_id || null, g: p.golden_dealer_id };
+        if (p.refusal) { recs.set(k, Object.assign({ h: p.request_hash, st: p.refusal.status, resp: p.refusal.response }, ident)); return { state: "refused", status: p.refusal.status, response: p.refusal.response }; }
         const id = nextId++; orders.push(Object.assign({}, p.order_row, { id, status: "pending", order_source: "online", created_at: new Date().toISOString(), sales_order_no: null }));
         const resp = Object.assign({}, p.response, { order_ref: "P" + id, status: "submitted", placed_at: new Date().toISOString() });
-        recs.set(k, { h: p.request_hash, st: 201, resp, oid: id }); return { state: "created", status: 201, response: resp, order_id: id, email_claim: crypto.randomUUID() }; },
+        recs.set(k, Object.assign({ h: p.request_hash, st: 201, resp, oid: id }, ident)); return { state: "created", status: 201, response: resp, order_id: id, email_claim: crypto.randomUUID() }; },
+      integration_order_submit_find: ({ p }) => { const s = recs.get(rk(p, "submit")); return s ? { found: true, request_hash: s.h, hcps_dealer_id: s.d, hcps_branch_id: s.b, golden_dealer_id: s.g,
+        status: s.st, response: s.resp, order_id: s.oid == null ? null : s.oid, email_open: false } : { found: false }; },
       integration_order_email_claim: () => null,
       integration_order_email_done: ({ p }) => { const s = recs.get(rk(p, "submit")); s.done = p.result; return true; },
     };
@@ -240,7 +247,7 @@ const PREVIEW_H = { "x-hcps-golden-env": "preview", origin: PREVIEW_ORIGIN };
       env({ GOLDEN_API_BASE: "https://golden.test" });
       Object.assign(process.env, { SUPABASE_SERVICE_KEY: "svc", GOLDEN_V1_API: "true", HCPS_P360_KEYS: JSON.stringify({ "hcps-p360-1": SECRET }),
         ORDER_EMAIL_TO: "desk@golden.example", ORDER_EMAIL_FROM: "p@golden.example", RESEND_API_KEY: "re_test",
-        GOLDEN_V1_ORDERS: "true", P360_TEST_DEALERS: "dealer-a", P360_TEST_EMAIL_TO: "angelo@homecareproviderservices.us" });
+        GOLDEN_V1_ORDERS: process.env.__B6_ORDERS_OFF ? "false" : "true", P360_TEST_DEALERS: "dealer-a", P360_TEST_EMAIL_TO: "angelo@homecareproviderservices.us" });
       delete process.env.P360_ORDER_ENV; delete process.env.CONTEXT;
       const nonces = new Set();
       const goldenSb = createMock({ tables: {
@@ -289,10 +296,15 @@ const PREVIEW_H = { "x-hcps-golden-env": "preview", origin: PREVIEW_ORIGIN };
     ok(!JSON.stringify(p).includes("desk@golden.example"), "the order desk address never reaches HCPS");
     const again = await call(Object.assign({ action: "place_order" }, base));
     eq([again.placed, again.order_ref, again.idempotent_replay], [true, "P1661", true]); eq(orders.length, 1); eq(sent.length, 2, "a replay sends nothing");
+    // Golden's ordering switched off AFTER the placement: the retry still gets the placed order (replay first)
+    process.env.__B6_ORDERS_OFF = "1";
+    const off = await call(Object.assign({ action: "place_order" }, base));
+    delete process.env.__B6_ORDERS_OFF;
+    eq([off.placed, off.order_ref, off.idempotent_replay], [true, "P1661", true], "never 'not placed' for a placed attempt"); eq(orders.length, 1);
     const vAgain = await call(Object.assign({ action: "validate_order" }, base));
     eq([vAgain.valid, vAgain.idempotent_replay, vAgain.order_ref], [true, true, undefined], "the validation stays the validation");
     const conflict = await call(Object.assign({ action: "place_order" }, base, { po_number: "PO-56" }));
-    eq([conflict.placed, conflict.reason], [false, "idempotency_conflict"], "same key, different content after placement → conflict; never a second order"); eq(orders.length, 1);
+    eq([conflict.placed, conflict.reason], [null, "unconfirmed"], "same key, different content after placement → never 'not placed', never a second order"); eq(orders.length, 1);
     const h = await call({ action: "history" });
     eq(h.orders.filter(o => o.order_ref === "P1661").length, 1, "in Golden's history at once, and once");
     eq(h.orders.find(o => o.order_ref === "P1661").status, "submitted");

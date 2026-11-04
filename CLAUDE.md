@@ -4130,8 +4130,10 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
   separate Golden records (validate, submit): `golden-proxy place_order` sends the SAME body as the reviewed
   `validate_order` with `mode:"submit"`; Golden requires that key's valid validation (≤ 2 h, same content/dealer),
   re-prices, and writes the `orders` row + the key's answer in ONE transaction (contract 1.6.0 §4h). Only a DEFINITE
-  refusal means "not placed"; a timeout / 5xx / unreadable answer is `outcome_unknown, retry:true` — the page retries
-  with the SAME key (Golden replays), never a new one. A staff view-as token never places, in any environment.
+  refusal (`placed:false, definite:true`) means "not placed" — Golden looks up the key's stored answer BEFORE any switch,
+  link or permission check, so a placed attempt is always replayed; a timeout / 5xx / unreadable answer is
+  `outcome_unknown, retry:true` (retry with the SAME key), a key conflict / other dealer is `unconfirmed` (check My
+  Orders) — the page never drops an attempt that may have placed an order and never mints a new key for it. A staff view-as token never places, in any environment.
   Switches (exactly true, all OFF): production = `golden_p360_catalog` + `golden_p360_checkout` + `golden_p360_ordering`
   + pilot list; preview environment = a real dealer sign-in of a TEST dealership (`dealers.is_test`, head office too)
   from a Partner 360 deploy preview + `golden_p360_preview_orders`. Validate's `ordering_enabled` = Golden's AND HCPS's

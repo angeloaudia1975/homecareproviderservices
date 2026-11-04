@@ -1858,7 +1858,8 @@
         "status",
         "placed_at",
         "order",
-        "quote"
+        "quote",
+        "test_mode"
       ],
       "properties": {
         "mode": {
@@ -1874,7 +1875,7 @@
           "type": "boolean"
         },
         "test_mode": {
-          "const": true
+          "type": "boolean"
         },
         "engine": {
           "type": "string",

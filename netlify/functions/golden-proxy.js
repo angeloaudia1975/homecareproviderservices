@@ -438,14 +438,16 @@ exports.handler = async (event) => {
       if(map[code]) return json(200, Object.assign({ ok:true, enabled:true, available: code !== "prices_not_visible", valid:false, reason: map[code], retry: code === "idempotency_in_progress" || (r.status === 503) }, extra));
     }
     if(ordering && !(r.ok && r.status === 201)){
-      // Placement: only a DEFINITE refusal says "not placed". Anything else may have placed the order — the page retries
-      // with the SAME key (Golden replays its first answer), never a new one.
+      // Placement: only a DEFINITE refusal says "not placed" (definite:true). Golden looks up the key's stored answer
+      // BEFORE any switch, link or permission check (contract §4h), so a placed attempt is always replayed and these
+      // refusals mean nothing was placed under this key. Anything else may have placed the order: the page keeps the
+      // attempt and retries with the SAME key (outcome_unknown), or asks the dealer to check My Orders (unconfirmed).
       const g0 = r.json || {}, code = g0.error && g0.error.code;
-      const base = { ok:true, enabled:true, available:true, placed:false };
+      const base = { ok:true, enabled:true, available:true, placed:false, definite:true };
       if(r.status === 409 && code === "prices_changed") return json(200, Object.assign(base, { reason:"prices_changed", new_attempt:true, idempotent_replay: g0.idempotent_replay === true, quote: cleanQuote(g0), request_id: reqId(g0.request_id) }, extra));
-      const definite = { not_validated:"revalidate", validation_expired:"revalidate", idempotency_conflict:"idempotency_conflict", duplicate_po:"duplicate_po",
+      const definite = { not_validated:"revalidate", validation_expired:"revalidate", duplicate_po:"duplicate_po",
         ordering_disabled:"ordering_unavailable", ordering_not_enabled:"ordering_unavailable", ordering_not_permitted:"ordering_unavailable", branch_ordering_not_permitted:"ordering_unavailable",
-        scope:"ordering_unavailable", prices_not_visible:"ordering_unavailable", not_linked:"ordering_unavailable", branch_not_permitted:"ordering_unavailable" };
+        order_scope:"ordering_unavailable", prices_not_visible:"ordering_unavailable", not_linked:"ordering_unavailable", branch_not_permitted:"ordering_unavailable", link_ambiguous:"ordering_unavailable" };
       if(r.status === 400 && code === "bad_request"){
         const msg = g0.error && typeof g0.error.message === "string" ? g0.error.message : "";
         const field = /^(ship_to|po_required|po_number|attention|notes|contact\.(name|phone|email)|(reference_names|color|qty|sku|fabric|tier|footrest)@\d{1,2})$/.test(msg) ? msg : "order";
@@ -454,6 +456,9 @@ exports.handler = async (event) => {
       if(r.status >= 400 && r.status < 500 && definite[code]) return json(200, Object.assign(base, { reason: definite[code], new_attempt: definite[code] !== "ordering_unavailable" }, extra));
       if(r.status === 404 && code === "not_found") return json(200, Object.assign(base, { reason:"not_found", new_attempt:true }, extra));
       if(r.status === 409 && code === "pricing_unavailable") return json(200, Object.assign(base, { reason:"pricing_unavailable", new_attempt:true }, extra));
+      // The key is held by another request content or another dealer: Golden refused to replay it here, but an order may
+      // exist under it — never "not placed"; the dealer checks My Orders / HCPS.
+      if(code === "idempotency_conflict" || code === "attempt_other_dealer") return json(200, Object.assign({ ok:true, enabled:true, available:true, placed:null, reason:"unconfirmed", retry:false }, extra));
       if(r.ok) console.warn("golden-proxy: unexpected placement status", JSON.stringify({ status: r.status, env: envName || "production" }));
       else console.warn("golden-proxy: placement outcome unknown", JSON.stringify({ status: r.status, code: r.error, env: envName || "production" }));
       return json(200, Object.assign({ ok:true, enabled:true, available:true, placed:null, reason:"outcome_unknown", retry:true }, extra));
