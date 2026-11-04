@@ -1775,6 +1775,14 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   protection; nothing technically blocks merging #26 (draft; never merge). PR #10 (Access4U ramp categories, Oct 27) is
   superseded: 44 of its 60 re-categorisations are in main, the 8 TRR re-spelled codes carry the same subcategory, the 8 STRA
   adjustable-rise SKUs left the Fall 2026 list — nothing to incorporate; left open for the owner to close.
+- **Dalton Medical published (owner-approved 2026-11-03 20:30 CT; ordering PR #24 merged 9c01729 at the reviewed head 769e441,
+  sandbox review id 676b9fa22758).** Independent exact-head review GO; 53 test files pass on the combined build. Production
+  verified as the TEST dealer (read-only preview link): 331 active SKUs, all priced, 331 with descriptions, 256 photos load, the
+  8 owner retirements hidden, name fixes shown, K2 shows no capacity; production commercial fingerprint = the sandbox's, whose
+  server price check is 331/0. Sandbox refreshed itself to main only ("none — this is the live catalog"). Open manufacturer
+  questions stay in ordering `docs/catalog/dalton-exceptions.md` (D-1, D-4…D-15, 13 no-page SKUs). Note: the B-MATT-M436/M442
+  feature "…prevent static fatigue and pressure ulcers" is Dalton's own verbatim feature line (kept, attributed by source).
+  Access4U PR #10 closed as superseded (comment on the PR). PediFix + Corsicana completeness audit started read-only.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
