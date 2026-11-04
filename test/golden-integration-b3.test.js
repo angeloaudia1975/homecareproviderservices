@@ -59,6 +59,14 @@ const J = r => JSON.parse(r.body);
     eq([new URL(w.golden[0]).pathname, q.get("sku"), q.get("fabric"), q.get("color"), q.get("tier"), q.get("footrest"), q.has("extra")], ["/v1/config", "PR511-LAR", "xover", "JBO", "nirvana", "1", false]);
   });
 
+  await t("config: footrest is asked for only when the dealer ticked it (true), never by default or on a non-boolean", async () => {
+    for (const fr of [undefined, false, "true", 1]) {
+      env(); const w = world();
+      await load("golden-proxy.js").handler(post({ action: "config", sku: "PR511-LAR", fabric: "std", color: "SUM", footrest: fr }));
+      eq(new URL(w.golden[0]).searchParams.has("footrest"), false, "footrest " + JSON.stringify(fr));
+    }
+  });
+
   await t("config: bad selections refused before Golden is called", async () => {
     for (const b of [{ sku: "GB107B" }, { sku: "PR511-LAR", color: "T;P" }, { sku: "PR511-LAR", fabric: "silk" }, { sku: "PR511-LAR", tier: "turbo" }, { sku: "PR511-LAR'" }]) {
       env(); const w = world();

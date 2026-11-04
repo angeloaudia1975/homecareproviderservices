@@ -11,7 +11,17 @@
 //   golden_p360_catalog        master switch for Golden inside Partner 360
 //   golden_p360_pilot_dealers  array of HCPS dealer ids allowed while piloting (empty/missing = nobody)
 // With the switch off the answer is { ok:true, enabled:false } and Golden is never called.
-//   POST { action:"eligibility" | "catalog" | "inventory" }
+//   POST { action:"eligibility" | "catalog" | "inventory" | "family" | "config" | "quote" }
+// quote (B4a, contract 1.4.0): POST { action:"quote", lines:[{sku,fabric,color,tier?,footrest?,qty}], split_order?, ship_to?:{id} }
+//   → Golden POST /v1/quote. READ-ONLY: Golden prices every line and S&H; HCPS sends only the selection (never a price)
+//   and passes back an allow-listed answer. Only a dealer whose Golden prices are visible gets amounts.
+//   ship_to is { id } of one of Golden's own authorized ship-tos (action ship_to) — never a typed address.
+// ship_to (B4b): → Golden GET /v1/ship-to — the addresses Golden holds for this dealer (a branch: only its own).
+// validate_order (B4b): POST { action:"validate_order", idempotency_key (UUID v4, one per checkout attempt — never the
+//   PO), quote_hash, lines[+reference_names], split_order?, ship_to:{id}, po_number?, contact:{name,phone,email?},
+//   attention?, notes? } → Golden POST /v1/orders mode "validate". PLACES NOTHING (no order, reservation or email).
+//   Golden re-prices and answers prices_changed with the new quote, or valid + the exact email previews. Allowed only
+//   on the staff preview path, or when phase2_flags.golden_p360_checkout is exactly true (OFF).
 //
 // Preview environment (Partner 360 deploy previews, for staff review): header `x-hcps-golden-env: preview` is honoured
 // ONLY for a staff "view as dealer" token AND a request from a Partner 360 deploy-preview / branch address. It then
@@ -31,7 +41,10 @@ async function sbGet(path){ const r = await fetch(`${SUPABASE_URL}/rest/v1/${pat
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // Partner 360 deploy previews and branch deploys (never the production storefront).
 const ORDERING_PREVIEW_ORIGIN = /^https:\/\/(deploy-preview-\d+|(?!main--)[a-z0-9-]+)--hcpsonlineordering\.netlify\.app$/;   // never main-- (= production)
-const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", family: "/v1/catalog/family", config: "/v1/config" };
+const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", family: "/v1/catalog/family", config: "/v1/config", quote: "/v1/quote", ship_to: "/v1/ship-to", validate_order: "/v1/orders" };
+const QUOTE_MAX_LINES = 30, QUOTE_MAX_QTY = 20;
+const SHIP_ID_RE = /^(primary|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+const IDEM_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CFG_SKU_RE = /^PR\d{3}-[A-Z]{3}$/, CFG_COLOR_RE = /^[A-Z0-9]{3}$/, CFG_FABRICS = ["std","xover","brisa"], CFG_TIERS = ["standard","irheat","hvib","nirvana"];
 const FAMILY_RE = /^[A-Z]{2}\d{3}[A-Z]?(?:-[A-Z0-9]{2,4})?$/;
 
@@ -130,6 +143,117 @@ function cleanConfig(c, pv, linked){
   return out;
 }
 
+// Golden's quote answer (schema quote_200). Every field rebuilt from an allow-list; Golden decides every amount.
+// HCPS shows it and STORES NOTHING. quote_hash is kept so Stage 4b can refuse an order whose prices changed.
+const GROUPS = ["all","in_stock","build"];
+function cleanQuote(g){
+  const q = g && g.quote;
+  if(!q || typeof q !== "object" || !Array.isArray(q.lines) || !q.totals || !/^[0-9a-f]{64}$/.test(String(q.quote_hash))) return null;
+  const lines = q.lines.slice(0, QUOTE_MAX_LINES).filter(l => l && CFG_SKU_RE.test(String(l.sku)) && Number.isInteger(l.qty) && num(l.unit_price) != null && num(l.line_total) != null).map(l => ({
+    line: Number.isInteger(l.line) ? l.line : null, sku: l.sku, qty: l.qty, fabric: oneOf(l.fabric, CFG_FABRICS) || "std",
+    color: CFG_COLOR_RE.test(String(l.color)) ? l.color : null, color_name: str(l.color_name, 60), tier: oneOf(l.tier, CFG_TIERS) || "standard", footrest: l.footrest === true,
+    unit_price: l.unit_price, line_total: l.line_total, details: str(l.details, 400), upgrades: strs(l.upgrades, 120, 8), breakdown: str(l.breakdown, 300), lead_note: str(l.lead_note, 200),
+    in_stock: l.in_stock === true, custom: l.custom === true, item_no: /^[A-Z0-9-]{3,40}$/.test(String(l.item_no)) ? l.item_no : l.sku, item_no_resolved: l.item_no_resolved === true }));
+  if(lines.length !== q.lines.length) return null;   // a line we cannot show faithfully = no quote, never a partial one
+  const t = q.totals;
+  for(const k of ["subtotal","sh_total","grand_total","sh_rate"]) if(num(t[k]) == null) return null;
+  const totals = { subtotal: t.subtotal, sh_total: t.sh_total, grand_total: t.grand_total, sh_rate: t.sh_rate, sh_waived: t.sh_waived === true, split: t.split === true,
+    shipments: (Array.isArray(t.shipments) ? t.shipments : []).filter(s => s && GROUPS.includes(s.group) && num(s.subtotal) != null && num(s.sh) != null).slice(0, 3).map(s => ({ group: s.group, subtotal: s.subtotal, sh: s.sh })) };
+  return { lines, totals, freight: { included: false, note: str(q.freight && q.freight.note, 300) }, quote_hash: q.quote_hash };
+}
+function readQuoteBody(b){
+  const ls = Array.isArray(b.lines) ? b.lines : null;
+  if(!ls || !ls.length || ls.length > QUOTE_MAX_LINES) return null;
+  const lines = [];
+  for(const l of ls){
+    if(!l || typeof l !== "object") return null;
+    const sku = String(l.sku || "").trim().toUpperCase(), color = String(l.color || "").trim().toUpperCase();
+    const fabric = String(l.fabric || "std").trim().toLowerCase(), tier = l.tier == null || l.tier === "" ? null : String(l.tier).trim().toLowerCase();
+    const qty = Number(l.qty);
+    if(!CFG_SKU_RE.test(sku) || !CFG_COLOR_RE.test(color) || !CFG_FABRICS.includes(fabric) || (tier !== null && !CFG_TIERS.includes(tier))) return null;
+    if(!Number.isInteger(qty) || qty < 1 || qty > QUOTE_MAX_QTY || (l.footrest != null && typeof l.footrest !== "boolean")) return null;
+    const o = { sku, fabric, color, qty }; if(tier) o.tier = tier; if(l.footrest === true) o.footrest = true;
+    lines.push(o);   // nothing else from the browser is forwarded — never a price
+  }
+  const out = { lines, split_order: b.split_order === true };
+  if(b.ship_to != null){
+    const id = b.ship_to && typeof b.ship_to === "object" && !Array.isArray(b.ship_to) ? String(b.ship_to.id || "") : "";
+    if(!SHIP_ID_RE.test(id)) return null;
+    out.ship_to = { id };   // only the id of one of Golden's own records — never an address
+  }
+  return out;
+}
+
+// validate_order: the order fields Golden checks. Free text is rejected (not cleaned) when it holds markup or control
+// characters, exactly as Golden does, so the dealer sees the problem instead of a silently changed order.
+const TXT_BAD = /[<>\u0000-\u001F\u007F]/;
+const TXT_INVISIBLE = /[\p{Cf}\u2028\u2029]/u;   // invisible / bidi format characters + line separators — the same set Golden refuses
+const txt = (v, max, multiline) => {
+  if(v == null || v === "") return "";
+  if(typeof v !== "string") return null;
+  const t = (multiline ? v.replace(/\r\n?/g, "\n") : v).trim();   // CRLF notes are normal line breaks (as Golden)
+  if(t.length > max) return null;
+  if(multiline ? /[<>\u0000-\u0009\u000B-\u001F\u007F]/.test(t) : TXT_BAD.test(t)) return null;
+  if(TXT_INVISIBLE.test(t)) return null;
+  return t;
+};
+function readValidateBody(b){
+  const q = readQuoteBody(b);
+  if(!q || !q.ship_to) return null;
+  if(typeof b.quote_hash !== "string" || !/^[0-9a-f]{64}$/.test(b.quote_hash)) return null;
+  const lines = q.lines.map((l, i) => {
+    const raw = b.lines[i] || {}; const refs = [];
+    if(raw.reference_names != null){
+      if(!Array.isArray(raw.reference_names) || raw.reference_names.length > l.qty) return null;
+      for(const n of raw.reference_names){ const t = txt(n, 40); if(t === null) return null; refs.push(t); }
+      while(refs.length && !refs[refs.length - 1]) refs.pop();
+    }
+    return refs.length ? Object.assign({}, l, { reference_names: refs }) : l;
+  });
+  if(lines.some(l => l === null)) return null;
+  const c = b.contact && typeof b.contact === "object" && !Array.isArray(b.contact) ? b.contact : null;
+  if(!c) return null;
+  const name = txt(c.name, 80), phone = txt(c.phone, 30), email = txt(c.email, 190);
+  const po = txt(b.po_number, 30), attention = txt(b.attention, 60), notes = txt(b.notes, 500, true);
+  if(!name || !phone || !/^[0-9+().\- xX]{7,30}$/.test(phone) || email === null || po === null || attention === null || notes === null) return null;
+  if(po && !/^[A-Za-z0-9][A-Za-z0-9 \-_/#.]{0,29}$/.test(po)) return null;
+  if(email && !/^[^\s@<>"']{1,64}@[A-Za-z0-9.-]{1,120}\.[A-Za-z]{2,24}$/.test(email)) return null;
+  const out = { mode: "validate", quote_hash: b.quote_hash, lines, ship_to: q.ship_to, contact: { name, phone } };
+  if(email) out.contact.email = email;
+  if(q.split_order) out.split_order = true;
+  if(po) out.po_number = po;
+  if(attention) out.attention = attention;
+  if(notes) out.notes = notes;
+  return out;
+}
+const cleanShip = x => (x && typeof x === "object" && SHIP_ID_RE.test(String(x.id))) ? { id: x.id, kind: oneOf(x.kind, ["primary","ship_location"]) || "ship_location",
+  label: str(x.label, 80) || "Ship-to", address: str(x.address, 160) || "", city: str(x.city, 80) || "", state: str(x.state, 40) || "", zip: str(x.zip, 20) || "" } : null;
+const reqId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(v)) ? v : null;   // Golden's request id, only in its known shape
+const MAX_EMAIL_HTML = 400000;
+function cleanValidation(g, sentHash){
+  const q = cleanQuote(g);
+  const o = g && g.order;
+  if(!q || g.mode !== "validate" || g.valid !== true || g.ordering_enabled !== false || !o || typeof o !== "object") return null;
+  const ship = cleanShip(o.ship_to);
+  const e = g.emails || {}, go = e.golden_order || {}, dc = e.dealer_confirmation;
+  if(!ship || typeof go.html !== "string" || go.html.length > MAX_EMAIL_HTML || typeof go.subject !== "string") return null;
+  const raw = Array.isArray(o.lines) ? o.lines : [];
+  if(raw.length > QUOTE_MAX_LINES || raw.length !== q.lines.length || raw.some(l => !l || !CFG_SKU_RE.test(String(l.sku)))) return null;   // all-or-nothing, as the quote
+  if(String(q.quote_hash) !== String(sentHash)) return null;   // an answer for another quote is not this validation
+  const lines = raw.map(l => ({ sku: l.sku, reference_names: strs(l.reference_names, 40, QUOTE_MAX_QTY) }));
+  return {
+    order: { po_number: str(o.po_number, 30) || "", po_auto: o.po_auto === true, ship_to: ship,
+      contact: { name: str(o.contact && o.contact.name, 80) || "", phone: str(o.contact && o.contact.phone, 30) || "", email: str(o.contact && o.contact.email, 190) || "" },
+      attention: str(o.attention, 60) || "", notes: str(o.notes, 500) || "", delivery_type: "business", split_order: o.split_order === true, lines },
+    quote: q,
+    emails: {
+      golden_order: { recipient: "golden_order_desk", recipient_configured: go.recipient_configured === true, subject: go.subject.slice(0, 300), html: go.html },
+      dealer_confirmation: dc && typeof dc === "object" && typeof dc.html === "string" && dc.html.length <= MAX_EMAIL_HTML
+        ? { to: str(dc.to, 190) || "", subject: str(dc.subject, 300) || "", html: dc.html, text: str(dc.text, 4000) || "" } : null,
+    },
+  };
+}
+
 async function dealerFromToken(event){
   const auth = event.headers["authorization"] || event.headers["Authorization"] || "";
   const tok = auth.replace(/^Bearer\s+/i, "").trim(); if(!tok) return null;
@@ -177,6 +301,13 @@ exports.handler = async (event) => {
       if(tier) cfgQuery.tier = tier;
       if(b.footrest === true) cfgQuery.footrest = "1";
     }
+    let quoteBody = null, idemKey = null;
+    if(action === "quote"){ quoteBody = readQuoteBody(b); if(!quoteBody) return json(400, { ok:false, error:"bad quote" }); }
+    if(action === "validate_order"){
+      if(typeof b.idempotency_key !== "string" || !IDEM_RE.test(b.idempotency_key)) return json(400, { ok:false, error:"bad idempotency key" });
+      idemKey = b.idempotency_key.toLowerCase();
+      quoteBody = readValidateBody(b); if(!quoteBody) return json(400, { ok:false, error:"bad order" });
+    }
 
     let who = null;
     try{ who = (await dealerFromToken(event)) || (await dealerFromPreview(event)); }
@@ -192,9 +323,12 @@ exports.handler = async (event) => {
       if(!GC.configured("preview")) return json(200, { ok:true, enabled:false, preview:true, reason:"golden_preview_not_configured" });
       envName = "preview";
     } else {
+      // A staff "view as dealer" token never reaches Golden's production ordering path (it is a preview of the dealer).
+      if(who.preview && action === "validate_order") return json(403, { ok:false, error:"preview_not_allowed" });
       const f = await flags(sbGet);
       const pilot = Array.isArray(f.golden_p360_pilot_dealers) ? f.golden_p360_pilot_dealers.map(String) : [];
       if(f.golden_p360_catalog !== true) return json(200, { ok:true, enabled:false, reason:"switched_off" });
+      if(action === "validate_order" && f.golden_p360_checkout !== true) return json(200, { ok:true, enabled:false, reason:"checkout_switched_off" });
       who.pilot = pilot;
     }
 
@@ -203,12 +337,37 @@ exports.handler = async (event) => {
     if(!envName && !who.pilot.includes(String(c.sub_dealer)) && !who.pilot.includes(String(who.dealer_id))) return json(200, { ok:true, enabled:false, reason:"not_in_pilot" });
 
     const role = who.preview ? "staff_preview" : (c.sub_branch ? "branch_user" : "dealer");
-    const r = await GC.call({ method:"GET", path: ACTIONS[action], env: envName || undefined, query: family ? { family } : (cfgQuery || undefined),
+    const r = await GC.call({ method: (action === "quote" || action === "validate_order") ? "POST" : "GET", path: ACTIONS[action], env: envName || undefined, query: quoteBody ? undefined : (family ? { family } : (cfgQuery || undefined)), body: quoteBody || undefined, idempotencyKey: idemKey || undefined,
       delegation: { sub_dealer: c.sub_dealer, sub_branch: c.sub_branch, actor: who.actor, role } });
     const extra = envName ? { preview:true } : {};
     if(r.configured === false) return json(200, Object.assign({ ok:true, enabled:false, reason:"golden_not_configured" }, extra));
     if(!r.ok && action === "config" && r.status === 400 && r.error === "bad_request") return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"not_offered" }, extra));
     if(!r.ok && (action === "family" || action === "config") && r.status === 404) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"not_found" }, extra));
+    if(!r.ok && action === "validate_order"){
+      const g0 = r.json || {}, code = g0.error && g0.error.code;
+      if(r.status === 409 && code === "prices_changed"){
+        const q = cleanQuote(g0);
+        return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"prices_changed", idempotent_replay: g0.idempotent_replay === true, quote: q, request_id: reqId(g0.request_id) }, extra));
+      }
+      const map = { internal:"temporarily_unavailable", prices_not_visible:"prices_not_visible", idempotency_conflict:"idempotency_conflict", idempotency_in_progress:"idempotency_in_progress", pricing_unavailable:"pricing_unavailable", ordering_disabled:"ordering_disabled" };
+      const msg = g0.error && typeof g0.error.message === "string" ? g0.error.message : "";
+      if(r.status === 400 && code === "bad_request"){
+        const field = /^(ship_to|po_required|po_number|attention|notes|contact\.(name|phone|email)|(reference_names|color|qty|sku|fabric|tier|footrest)@\d{1,2})$/.test(msg) ? msg : "order";
+        return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"invalid", field }, extra));
+      }
+      if(r.status === 404) return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"not_found" }, extra));
+      if(map[code]) return json(200, Object.assign({ ok:true, enabled:true, available: code !== "prices_not_visible", valid:false, reason: map[code], retry: code === "idempotency_in_progress" || (r.status === 503) }, extra));
+    }
+    if(!r.ok && action === "ship_to" && r.status === 403 && (r.json && r.json.error && r.json.error.code) === "prices_not_visible") return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"prices_not_visible" }, extra));
+    if(!r.ok && action === "quote"){
+      // Golden decides: a dealer without visible Golden prices, a line Golden won't build, or no price → no quote.
+      const msg0 = r.json && r.json.error && typeof r.json.error.message === "string" ? r.json.error.message : "";
+      const reason = r.status === 403 && r.error === "prices_not_visible" ? "prices_not_visible" : r.status === 404 ? "not_found" : (r.status === 400 && msg0 === "ship_to") ? "ship_to_invalid" : r.status === 400 ? "not_offered"
+        : (r.status === 503 && r.error === "pricing_unavailable") ? "pricing_unavailable" : null;
+      const msg = r.json && r.json.error && typeof r.json.error.message === "string" ? r.json.error.message : "";
+      const line = /@(\d{1,2})$/.test(msg) ? Number(msg.match(/@(\d{1,2})$/)[1]) : null;
+      if(reason) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason, line }, extra));
+    }
     if(!r.ok){
       // Never guess: Golden's answer is the only source. Show "not available right now". The precise reason
       // (e.g. a key or signature problem) is logged here, never sent to the dealer's browser.
@@ -223,33 +382,48 @@ exports.handler = async (event) => {
         state: g.state, reason: g.reason || null,
         capabilities: { see_prices: caps.see_prices === true, order: caps.order === true && !who.preview, history: caps.history === true },
         order_route: who.preview ? null : (g.order_route || null),
-        request_id: g.request_id || null }, extra));
+        request_id: reqId(g.request_id) }, extra));
     }
     if(action === "catalog"){
       const pv = g.prices_visible === true;
       const products = (Array.isArray(g.products) ? g.products : []).filter(p => p && typeof p.sku === "string").map(p => cleanProduct(p, pv));
       return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, linked: g.linked === true,
-        as_of: g.as_of || null, etag: typeof g.etag === "string" ? g.etag : null, products, request_id: g.request_id || null }, extra));
+        as_of: g.as_of || null, etag: typeof g.etag === "string" ? g.etag : null, products, request_id: reqId(g.request_id) }, extra));
     }
     if(action === "family"){
       const pv = g.prices_visible === true;
       const fam = cleanFamily(g.family, pv);
       if(!fam) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
       return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, linked: g.linked === true,
-        enrichment_as_of: str(g.enrichment_as_of, 30), etag: typeof g.etag === "string" ? g.etag : null, family: fam, request_id: g.request_id || null }, extra));
+        enrichment_as_of: str(g.enrichment_as_of, 30), etag: typeof g.etag === "string" ? g.etag : null, family: fam, request_id: reqId(g.request_id) }, extra));
     }
     if(action === "config"){
       const pv = g.prices_visible === true;
       const cfg = cleanConfig(g.config, pv, g.linked === true);
       if(!cfg) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
       return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, linked: g.linked === true, engine: /^[0-9a-f]{16}$/.test(String(g.engine)) ? g.engine : null,
-        etag: typeof g.etag === "string" ? g.etag : null, config: cfg, request_id: g.request_id || null }, extra));
+        etag: typeof g.etag === "string" ? g.etag : null, config: cfg, request_id: reqId(g.request_id) }, extra));
+    }
+    if(action === "ship_to"){
+      const list = (Array.isArray(g.ship_to) ? g.ship_to : []).slice(0, 50).map(cleanShip).filter(Boolean);
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, scope: g.scope === "branch" ? "branch" : "account", ship_to: list, request_id: reqId(g.request_id) }, extra));
+    }
+    if(action === "validate_order"){
+      const v = cleanValidation(g, quoteBody.quote_hash);
+      if(!v) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:true, ordering_enabled:false, idempotent_replay: g.idempotent_replay === true, request_id: reqId(g.request_id) }, v, extra));
+    }
+    if(action === "quote"){
+      const q = cleanQuote(g);
+      if(!q || g.ordering_enabled !== false) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, as_of: str(g.as_of, 40), engine: /^[0-9a-f]{16}$/.test(String(g.engine)) ? g.engine : null,
+        sh_terms_checked: g.sh_terms_checked === true, ship_to_id: SHIP_ID_RE.test(String(g.ship_to_id)) ? g.ship_to_id : null, ordering_enabled: false, quote: q, request_id: reqId(g.request_id) }, extra));
     }
     // inventory
     const items = (Array.isArray(g.items) ? g.items : []).filter(i => i && typeof i.sku === "string" && ["in","low","out","on_request"].includes(i.status))
       .map(i => ({ sku: i.sku, status: i.status, qty: Number.isInteger(i.qty) ? i.qty : null }));
     return json(200, Object.assign({ ok:true, enabled:true, available:true, as_of: g.as_of || null, stale: g.stale !== false,
-      low_stock_threshold: Number.isInteger(g.low_stock_threshold) ? g.low_stock_threshold : 50, items, request_id: g.request_id || null }, extra));
+      low_stock_threshold: Number.isInteger(g.low_stock_threshold) ? g.low_stock_threshold : 50, items, request_id: reqId(g.request_id) }, extra));
   }catch(e){
     console.error("golden-proxy error", e && e.message);
     return json(500, { ok:false, error:"golden-proxy failed" });

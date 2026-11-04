@@ -32,7 +32,8 @@ function creds(envName){
 function configured(envName){ return creds(envName).usable; }
 
 // delegation: { sub_dealer, sub_branch?, actor?, role }  → iat/exp/aud added here (90-second lifetime)
-async function call({ method = "GET", path, query, body, delegation, env }){
+// idempotencyKey: Stage 4 order routes only (contract §6) — sent as the Idempotency-Key header, a UUID v4.
+async function call({ method = "GET", path, query, body, delegation, env, idempotencyKey }){
   const c = creds(env);
   if(!c.usable) return { configured:false, ok:false, status:0, error:"golden_not_configured" };
   if(!/^\/v1\/[a-z0-9/_-]+$/.test(String(path||""))) throw new Error("golden-client: bad path");
@@ -46,6 +47,10 @@ async function call({ method = "GET", path, query, body, delegation, env }){
   }
   const headers = S2S.sign({ kid: c.kid, secret: c.secret, method, path, query: q, body: bodyStr, delegation: d });
   if(bodyStr) headers["content-type"] = "application/json";
+  if(idempotencyKey != null){
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(idempotencyKey))) throw new Error("golden-client: bad idempotency key");
+    headers["Idempotency-Key"] = String(idempotencyKey);
+  }
   const qs = S2S.canonicalQuery(q);
   const ctrl = new AbortController(); const timer = setTimeout(()=>ctrl.abort(), TIMEOUT_MS);
   try{

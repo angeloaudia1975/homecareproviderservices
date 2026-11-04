@@ -4068,6 +4068,17 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
   0 links, Propose disabled (switch off). Long SQL is also handed over as a file so a cut-off paste can be spotted.
 - Tests: `node test/golden-integration-b1.test.js` (includes a real cross-repo round trip when `../golden-dealer-portal` is checked
   out) and `node test/golden-integration-b1.mutants.js`.
+- **B4 checkout rules (Angelo, 2026-11-03 20:07 CT).** Golden is the SOLE pricing and order-processing authority: HCPS never
+  computes a Golden dealer price, S&H or total — it shows Golden's `/v1/quote` / `/v1/orders` answer (allow-listed). Golden's
+  S&H waivers / special terms apply ONLY to Golden's own authorized ship-to records for that dealer (a branch: its own
+  ship-to only) — HCPS sends a ship-to `{ id }` from `/v1/ship-to`, never a typed address. Order submission is
+  VALIDATE-ONLY until Angelo approves placement: `golden-proxy validate_order` → Golden `/v1/orders` mode `validate`
+  (re-pricing against the reviewed `quote_hash`, server-enforced idempotency with one `Idempotency-Key` UUID v4 per
+  checkout attempt — never the PO —, exact email previews; no order, reservation or email). Production path additionally
+  needs `phase2_flags.golden_p360_checkout` exactly true (OFF); the staff preview path does not. Synthetic linked dealers
+  only in tests; no real verified dealer link without Angelo's approval. Golden idempotency table
+  `config/migrate-hcps-integration-v1-orders.sql` is run by Angelo. Tests: `test/golden-integration-b4.test.js`,
+  `-b4b.test.js` (+ mutants); CI `.github/workflows/golden-integration.yml`.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
