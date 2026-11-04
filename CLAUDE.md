@@ -1783,6 +1783,17 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   questions stay in ordering `docs/catalog/dalton-exceptions.md` (D-1, D-4…D-15, 13 no-page SKUs). Note: the B-MATT-M436/M442
   feature "…prevent static fatigue and pressure ulcers" is Dalton's own verbatim feature line (kept, attributed by source).
   Access4U PR #10 closed as superseded (comment on the PR). PediFix + Corsicana completeness audit started read-only.
+- **Corsicana content batch (owner-directed 2026-11-03; ordering PR #29, in the sandbox, NOT merged).** 14 pages rewritten only
+  from official Corsicana sources: CorsicanaCare 2026 Product Lineup spec cards (HCPS copy
+  /assets/docs/corsicana-healthcare-catalog.pdf, attached as a document), corsicanamattress.com product pages, the 2026 price
+  list's product text. Disputed values withheld (capacity 1,500 vs 750 lb, bundle pillow count, Essentials firmness, 6ESSENTIALS
+  memory foam); open questions C-1…C-10 in ordering docs/catalog/corsicana-exceptions.md. Corsicana has 0 product_content DB rows,
+  so the static content file is what dealers see. Sandbox check: 14 priced, server = browser, freight server = browser.
+- **PediFix completion prep (2026-11-03, read-only).** Latest authoritative list found = 2025 OTC Price List eff. 2025-07-01
+  (REV1025); no 2026 list is public. Of 21 SKUs switched off in the catalog layer but on the list: 15 recommended reactivate,
+  6 hold (8621, P3305-PACKET-100, M905RFG, M905SUB, R3295, D28) — owner decides; nothing activated, retired or repriced.
+  pedifix.com (Shopify) publishes almost no feature bullets or specs; the 2025 catalog PDF (/assets/docs/pedifix-catalog-2025.pdf)
+  is image-only and needs OCR — its display pages (1–8) cover the D-display photos/specs.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
