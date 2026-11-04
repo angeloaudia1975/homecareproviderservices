@@ -153,9 +153,9 @@ const ON = { flags: { golden_p360_checkout: true } };
     const gS = fresh("lib/hcps-s2s.js");
     const rows = new Map();
     const idem = {
-      integration_order_claim: ({ p }) => { const k = p.idempotency_key, r = rows.get(k); if (!r) { rows.set(k, { h: p.request_hash, s: "pending" }); return { state: "new" }; }
+      integration_order_claim: ({ p }) => { const k = p.idempotency_key, r = rows.get(k); if (!r) { const tok = crypto.randomUUID(); rows.set(k, { h: p.request_hash, s: "pending", tok }); return { state: "new", claim_token: tok }; }
         if (r.h !== p.request_hash) return { state: "conflict" }; if (r.s === "done") return { state: "replay", status: r.st, response: r.resp }; return { state: "in_progress" }; },
-      integration_order_complete: ({ p }) => { const r = rows.get(p.idempotency_key); r.s = "done"; r.st = p.status; r.resp = p.response; return true; },
+      integration_order_complete: ({ p }) => { const r = rows.get(p.idempotency_key); if (!r || r.tok !== p.claim_token) throw new Error("no pending claim"); r.s = "done"; r.st = p.status; r.resp = p.response; return true; },
       integration_order_release: ({ p }) => { rows.delete(p.idempotency_key); return true; },
     };
     let cost = 1100;

@@ -176,7 +176,9 @@ Query: `sku` (a configurable lift-chair size, `PR\d{3}-[A-Z]{3}`), optional `fab
 - **Golden decides every amount.** Each line is priced by the portal's own configurator (§4c) with this dealer's Golden
   pricing; S&H by the portal's one S&H rule (`golden-sh.priceOrder`, the function `save-order` stores orders with):
   per shipment `max(minimum, merchandise × rate)`, split into in-stock and build shipments when `split_order` is true,
-  waived only by the account's own special terms for that ship-to. Any price sent by the caller is ignored.
+  waived only by the account's own special terms for that ship-to. Only the fields above are accepted: any other field,
+  at the top level or on a line (e.g. a price), is refused (400 `unknown_field:<name>` / `line_field@<line>`), and each
+  field must be of its own type (`split_order` boolean; `sku`, `color`, `fabric`, `tier` strings).
 - `ship_to` names one of Golden's OWN authorized ship-tos by id (§4e) — a free-text address is refused (400 `ship_to`), so
   special terms can only waive S&H for an address Golden holds for that dealer / branch. No ship-to = standard S&H.
 - Only a verified link whose Golden prices are visible may quote: otherwise 403 `prices_not_visible` (or the §4a link codes).
@@ -209,13 +211,19 @@ split_order?, ship_to:{ id }, po_number?, contact:{ name, phone, email? }, atten
   new `quote` (nothing validated). A failed special-terms read → 503 `pricing_unavailable` (never shown as a price change).
 - `po_number` optional (Golden's auto-PO `WEB-MMDDYY-HHMMSS` otherwise, `po_auto:true`); 400 `po_required` when the Golden
   account requires one. **A reused PO is valid** (§6). Free text (contact, attention, notes, reference names, PO) may not
-  contain `<` `>` or control characters.
+  contain `<` `>`, control characters, or invisible / bidirectional format characters (Unicode Cf, U+2028, U+2029);
+  CRLF line breaks in `notes` are kept as LF.
 - **200** (schema `orders_validate_200`): `{ mode:"validate", valid:true, ordering_enabled:false, idempotent_replay, engine,
   order:{ po_number, po_auto, ship_to, contact, attention, notes, delivery_type:"business", split_order, lines[] }, quote,
   emails:{ golden_order:{ recipient:"golden_order_desk", recipient_configured, subject, html },
   dealer_confirmation:{ to, subject, html, text } | null } }` — the emails are byte-identical to what `save-order` would
   send for this order (same `buildEmailHtml`, subject and confirmation template); the order desk address is not disclosed.
-- Errors also: 422 `idempotency_conflict`, 409 `idempotency_in_progress` (retry), 503 `idempotency_unavailable`.
+  Known differences from a placed order: no order id yet (the confirmation shows the PO, as `save-order` does when a PO is
+  set); an auto-PO is stamped at validation, so placement will carry a new one; liftgate / delivery add-ons are 0 (not in 4b).
+- Errors also: 422 `idempotency_conflict`, 409 `idempotency_in_progress` (retry), 503 `idempotency_unavailable`,
+  503 `internal` (an unexpected failure after the key was claimed — the key is released, so the same attempt may retry).
+  Each claim holds a claim token; a claim taken over after 2 minutes gets a new token, so the stalled original can no
+  longer complete or release it.
 
 ## 5. Authentication: HMAC request signing (shared module `hcps-s2s.js`)
 
