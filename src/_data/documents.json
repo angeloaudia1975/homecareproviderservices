@@ -1068,6 +1068,19 @@
       "popular": true,
       "keywords": "application credit application dealer dealer application new customer yuwell spirit-3 oxygen respiratory",
       "sortPriority": 100
+    },
+    {
+      "id": "abm-respiratory-dealer-application-mw3tt0vo",
+      "title": "ABM Respiratory Dealer Application",
+      "type": "dealer-application",
+      "manufacturer": "abm-respiratory-care",
+      "format": "pdf",
+      "file": "/assets/docs/abm-respiratory-care-dealer-application-2026-mw3trycz.pdf",
+      "url": "",
+      "description": "ABM Respiratory Care Dealer Application to get started. Please email all dealer applications to HomeCare Provider Services.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
