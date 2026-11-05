@@ -26,9 +26,9 @@ const CONFIG = pv => ({ contract_version: "1.3.0", tenant: "hcps", request_id: "
     sizes: [Object.assign({ sku: "PR511-LAR", code: "LAR", label: "Large", msrp: 2992, status: "in", qty: 120 }, pv ? { dealer_price: 1100 } : { dealer_price: 9999 }), { sku: "<script>", code: "x" }],
     tabs: [{ key: "std", label: "Standard fabric", colors: [{ code: "TCP", name: "Calypso", hex: "#4A7FAA", swatch: "https://d3325uqufdmhie.cloudfront.net/a.jpg", status: "in", qty: 120 },
       { code: "TCM", name: "Camel", hex: "red;x", swatch: "javascript:alert(1)", status: "weird" }, { code: "<b>", name: "x" }] },
-      Object.assign({ key: "xover", label: "Cross-Over", colors: [] }, pv ? { upcharge: 142 } : { upcharge: 142 }), { key: "silk", label: "x", colors: [] }],
+      Object.assign({ key: "xover", label: "Cross-Over", msrp: 286, colors: [] }, pv ? { upcharge: 142 } : { upcharge: 142 }), { key: "silk", label: "x", colors: [] }],
     tiers: { included: false, included_text: null, options: [Object.assign({ key: "nirvana", msrp: 600, prebuilt_status: "in", prebuilt: 3 }, { upcharge: 200 }), { key: "turbo" }] },
-    footrest: { eligible: true, part: "RM621FRE-L", upcharge: 78 },
+    footrest: { eligible: true, part: "RM621FRE-L", upcharge: 78, msrp: "156" },
     quote: Object.assign({ ok: true, sku: "PR511-LAR", fabric: "xover", color: "JBO", color_name: "JZ Bourbon", tier: "nirvana", footrest: true, lead_note: "⏱ Custom build",
       in_stock: false, custom: true, item_no: "PR511-LAR", item_no_resolved: false, upgrades: ["Nirvana +$200"], details: "Cross-Over: JZ Bourbon (+$142)", internal: "LEAK2" },
       { unit_price: 1608, breakdown: "Base: $1,188 + …" }) } });
@@ -84,6 +84,7 @@ const J = r => JSON.parse(r.body);
     eq([c.tabs[0].colors[1].hex, c.tabs[0].colors[1].swatch, c.tabs[0].colors[1].status], [null, null, "out"]);
     eq(c.tiers.options.map(x => x.key), ["nirvana"]);
     eq([c.quote.unit_price, c.quote.item_no, c.footrest.upcharge], [1608, "PR511-LAR", 78]);
+    eq([c.tabs[0].msrp, c.tabs[1].msrp, c.footrest.msrp], [null, 286, null], "1.6.1 retail upgrade prices pass as numbers only (a non-number never crosses)");
     ok(!/LEAK/.test(JSON.stringify(r)), "fields outside the contract never cross");
     env(); world({ pv: false });
     r = J(await load("golden-proxy.js").handler(post({ action: "config", sku: "PR511-LAR", color: "JBO" })));
@@ -91,6 +92,7 @@ const J = r => JSON.parse(r.body);
     ok(!/dealer_price|unit_price|breakdown|upcharge|9999|\$/.test(s), "no price of any kind when Golden hides prices, even in Golden's text: " + s.slice(0, 120));
     ok(!/"qty"|"prebuilt"/.test(s), "no stock quantity without a verified link");
     eq([r.config.quote.details, r.config.quote.upgrades], ["Cross-Over: JZ Bourbon", ["Nirvana"]]);
+    eq(r.config.tabs[1].msrp, 286, "retail upgrade prices are not dealer prices: they show even when Golden hides dealer prices");
   });
 
   await t("config: Golden's 400/404/outage become a calm 'not offered / not available', never a guess", async () => {

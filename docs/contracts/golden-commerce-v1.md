@@ -1,6 +1,6 @@
 # Golden Commerce API — contract v1 (golden-commerce-v1)
 
-**Contract version:** 1.6.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3; 1.4.0 the Stage 4a read-only quote, batch B4, and 4b ship-to + validate-only orders; 1.5.0 the Stage 5 order history, batch B5; 1.6.0 the Stage 4c order placement, batch B6) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
+**Contract version:** 1.6.1 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3; 1.4.0 the Stage 4a read-only quote, batch B4, and 4b ship-to + validate-only orders; 1.5.0 the Stage 5 order history, batch B5; 1.6.0 the Stage 4c order placement, batch B6; 1.6.1 adds retail upgrade prices to the configurator, batch B6.1) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
 **Committed byte-identical in:** `golden-dealer-portal/docs/contracts/` and `homecareproviderservices/docs/contracts/`.
 `golden-commerce-v1.lock.json` pins the SHA-256 of this file, the schema, the signing vectors and the shared
 signing module. Each repo's tests fail on drift. Change all copies together and bump the lock.
@@ -152,11 +152,14 @@ Query: `sku` (a configurable lift-chair size, `PR\d{3}-[A-Z]{3}`), optional `fab
 `std`), `color` (3-character Golden colour code), `tier` (`standard` · `irheat` · `hvib` · `nirvana`), `footrest` (`0`|`1`).
 
 - `config.sizes[]` — every size of the model `{ sku, code, label, msrp, status }` (+ `dealer_price` with prices visible).
-- `config.tabs[]` — the fabric tabs the portal offers for the model `{ key, label, colors[] }` (+ `upcharge` with prices
+- `config.tabs[]` — the fabric tabs the portal offers for the model `{ key, label, msrp, colors[] }` (+ `upcharge` with prices
   visible); each colour `{ code, name, hex, swatch, status }` with `status` in · low · out for the selected size and tier.
+  `msrp` (1.6.1) is the fabric's RETAIL upgrade price from Golden's own upgrade table (`std` = 0, part of the chair's MSRP;
+  the wide LXW frame has its own figure); null when Golden has no figure. Retail only — never a dealer price.
 - `config.tiers` — `{ included, included_text, options[{ key, msrp, prebuilt_status }] }` (+ `upcharge`). An `included`
   model (PR447, PR442) has exactly its built-in tier at no charge.
-- `config.footrest` — `{ eligible, part }` (+ `upcharge`). A chair with a footrest extension is always a custom build.
+- `config.footrest` — `{ eligible, part, msrp }` (+ `upcharge`). `msrp` (1.6.1) is the extension's retail upgrade price
+  from the same table (null when Golden has none). A chair with a footrest extension is always a custom build.
 - `config.quote` (only when `color` is given) — `{ ok:true, sku, fabric, color, color_name, tier, footrest, lead_note,
   in_stock, custom, item_no, item_no_resolved, upgrades[], details }` (+ `unit_price`, `breakdown` with prices visible).
   `item_no` is Golden's full item number only for the matching in-stock unit of the SAME tier (portal rules #143 /

@@ -134,13 +134,13 @@ function cleanConfig(c, pv, linked){
     low_stock_threshold: Number.isInteger(c.low_stock_threshold) ? c.low_stock_threshold : 50,
     sizes: (Array.isArray(c.sizes) ? c.sizes : []).filter(x => x && CFG_SKU_RE.test(String(x.sku))).slice(0, 12).map(x =>
       price(qty({ sku: x.sku, code: str(x.code, 8), label: str(x.label, 40) || x.code, msrp: num(x.msrp), status: oneOf(x.status, ["in","out"]) }, x.qty), "dealer_price", x.dealer_price)),
-    tabs: (Array.isArray(c.tabs) ? c.tabs : []).filter(t => t && CFG_FABRICS.includes(t.key)).map(t => price({ key: t.key, label: str(t.label, 40) || t.key,
+    tabs: (Array.isArray(c.tabs) ? c.tabs : []).filter(t => t && CFG_FABRICS.includes(t.key)).map(t => price({ key: t.key, label: str(t.label, 40) || t.key, msrp: num(t.msrp),
       colors: (Array.isArray(t.colors) ? t.colors : []).filter(x => x && CFG_COLOR_RE.test(String(x.code))).slice(0, 40).map(x => qty({ code: x.code, name: str(x.name, 60) || x.code,
         hex: /^#[0-9a-f]{6}$/i.test(String(x.hex)) ? x.hex : null, swatch: httpsOrNull(x.swatch), status: oneOf(x.status, STATUS) || "out" }, x.qty)) }, "upcharge", t.upcharge)),
     tiers: { included: !!(c.tiers && c.tiers.included === true), included_text: str(c.tiers && c.tiers.included_text, 120),
       options: (c.tiers && Array.isArray(c.tiers.options) ? c.tiers.options : []).filter(o => o && CFG_TIERS.includes(o.key)).map(o => {
         const r = { key: o.key, msrp: num(o.msrp), prebuilt_status: o.prebuilt_status === "in" ? "in" : "none" }; if(linked && Number.isInteger(o.prebuilt)) r.prebuilt = o.prebuilt; return price(r, "upcharge", o.upcharge); }) },
-    footrest: c.footrest && c.footrest.eligible === true ? price({ eligible: true, part: str(c.footrest.part, 20) }, "upcharge", c.footrest.upcharge) : { eligible: false },
+    footrest: c.footrest && c.footrest.eligible === true ? price({ eligible: true, part: str(c.footrest.part, 20), msrp: num(c.footrest.msrp) }, "upcharge", c.footrest.upcharge) : { eligible: false },
   };
   const q = c.quote;
   if(q && q.ok === true && CFG_SKU_RE.test(String(q.sku))){
