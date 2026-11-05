@@ -4484,6 +4484,39 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
   live (staff view-as, read-only): AdaptHealth HQ and branch → eligibility account, prices visible, 84 products; Golden
   health ok, orders capability on. Staff view-as never orders (by design); the first real dealer order is the first
   production placement. Scooters, power chairs and beds stay Browse only until the mobility ordering build (next).
+- **B7 — account pricing, multi-location shipping, HCPS address management (owner directive 2026-11-05 16:51 CT — RULES;
+  supersede the earlier "Golden-held ship-to only", name-matching and branch-own-ship-to rules; never disable live
+  lift-chair ordering while building it).**
+  · **The Golden account number recorded in HCPS Admin is the pricing contract.** No HCPS Golden account number (the
+    location's own, or its head office's) = no Golden shopping, pricing, configuration, checkout or history. Names never
+    have to match (legal / DBA / corporate / contract names differ legitimately); a name difference is never a reason to
+    refuse. Prices come only from Golden's own pricing for THAT account number — never another account's, never invented.
+    An HCPS account number with no Golden pricing record is a synchronization exception: pricing and checkout fail closed
+    for that account and it is reported; it is never treated as ineligible merely for lacking a Golden portal login, and
+    no duplicate dealer portal account is created to fix it.
+  · **Multi-location:** every HCPS location (branch or separate head office) carrying the same Golden account number shares
+    that account's pricing contract AND its saved shipping addresses; any authorized user at any of them may ship to any of
+    them (an exception to D2 for Golden ship-to only). Unrelated accounts never see each other's prices or addresses.
+  · **HCPS is the shipping-address system of record** (reuses `dealer_addresses`). In the guided Golden checkout:
+    Ship to saved address · Add new shipping address (recipient/business, street, city, state, ZIP, delivery phone when
+    required; validated; saved in HCPS and usable for this order at once). NO HCPS Admin approval for ship-to addresses
+    (supersedes the C3-07 Stage 3 request/approve rule for ship-to only); dealers edit / remove their saved addresses;
+    never re-entered in Golden's portal.
+  · **Personal default per user:** each login has its own default ship-to, pre-selected at checkout; any other authorized
+    address can be chosen or made the default; one user's default never changes another's; no default → pre-select only
+    when exactly one authorized address exists; a removed / no-longer-authorized default forces a new choice.
+  · **Golden stays authoritative** for contract prices, configuration prices, freight, S&H, special terms, validation and
+    placement. Golden accepts an HCPS-authorized address only inside the signed server-to-server request (HCPS verifies the
+    dealer, the account number and the address's ownership on the server; the browser's account number or address is never
+    trusted); destination-dependent freight / terms are computed on the actual address; any change in charges needs the
+    dealer's review before placing; Golden's validation, idempotency, audit and order record are never bypassed. No admin
+    address-approval step.
+  · Guided checkout B6.3 unchanged in shape: add → Checkout Golden order → review → Golden's automatic total → one "Place
+    order with Golden" click → Golden order number + HCPS My Orders. Never auto-place, never redirect to Golden's portal;
+    Golden's own portal keeps working in parallel.
+  · Process: draft PRs, independent review, automated tests; no artificial production orders, no unnecessary order emails,
+    no historical order changes, no unsupported product families activated. After this: plan scooters / power chairs / beds
+    without touching live lift-chair ordering.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
