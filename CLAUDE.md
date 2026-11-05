@@ -1880,6 +1880,26 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     Angelo).
   · **Yuwell stays unorderable:** no `dealer_manufacturers` rows and no commercial record.
   · Note: `manufacturer_meta.active=false` is NOT read by the storefront today, so it is not a gate.
+  · **Yuwell commercial terms (owner, 2026-11-04 21:10 CT).** Figures are kept only in the private record, never
+    in git.
+    - The list's "Yuwell U.S. Price" IS the dealer price.
+    - MSRP = 2× the dealer price, stored as an explicit msrp in the private record. No MAP yet.
+    - **SP-3 special:** a 4+ unit break with free shipping, valid through Dec 31, 2026. It is a private tier
+      plus a price_note. The engine has no expiring tiers, so a new commercial version must remove it on
+      Jan 1, 2027.
+    - **Freight:** the SP-3 always ships free, and any Yuwell order containing an SP-3 ships free (everything
+      in it). Otherwise actual shipping. This is `qty_threshold` on SP-3, freeAtQty 1.
+    - **Units:** no case quantities; each line is 1 unit (Each).
+  · **Yuwell territory and sources (owner, 2026-11-04 21:10 CT).**
+    - **Territory:** all HCPS territories (southern IN, southwest OH, KY, TN, northern GA). `_access`
+      ALL_DEALERS gains yuwell, and the grant SQL is in admin #83, not run.
+    - **Content:** product content comes only from the owner-supplied Yuwell brochures and official product
+      images.
+    - The SPIRIT-3 brochure settles size and weight: 22×8×22 cm, 2.2–2.4 kg.
+    - **Never used:** the sales sheet's "equivalent continuous flow" figure. Every SPIRIT-3 page carries the
+      prescription / pulse-dose notice.
+    - **No prices or shipping offers on the public website.**
+    - **Registration:** the public file identity 6f20b076… is registered in `scripts/p0-lines.js` as a new line.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
