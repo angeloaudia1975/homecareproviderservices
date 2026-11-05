@@ -413,11 +413,17 @@ exports.handler = async (event) => {
       hcpsOrdering = !who.preview && f.golden_p360_checkout === true && f.golden_p360_ordering === true;
       if((action === "history" || action === "order") && f.golden_p360_history !== true) return json(200, { ok:true, enabled:false, reason:"history_switched_off" });
       who.pilot = pilot;
+      // Go-live (Angelo, 2026-11-05): golden_p360_all_linked = every dealer with a VERIFIED Golden link may use Golden
+      // (Golden's link still decides prices / ordering / history); golden_p360_branch_as_account = an HCPS branch orders
+      // under its head office's Golden account (Golden has no branch records for most accounts). Both exactly true = on.
+      who.allLinked = f.golden_p360_all_linked === true;
+      who.branchAsAccount = f.golden_p360_branch_as_account === true;
     }
 
     let c; try{ c = await canonical(who.dealer_id); }catch(e){ return json(503, { ok:false, error:"dealer could not be read" }); }
     if(!c || !UUID_RE.test(String(c.sub_dealer)) || (c.sub_branch && !UUID_RE.test(String(c.sub_branch)))) return json(200, { ok:true, enabled:false, reason:"dealer_not_found" });
-    if(!envName && !who.pilot.includes(String(c.sub_dealer)) && !who.pilot.includes(String(who.dealer_id))) return json(200, { ok:true, enabled:false, reason:"not_in_pilot" });
+    if(!envName && c.sub_branch && who.branchAsAccount) c = { sub_dealer: c.sub_dealer, sub_branch: null };
+    if(!envName && !who.allLinked && !who.pilot.includes(String(c.sub_dealer)) && !who.pilot.includes(String(who.dealer_id))) return json(200, { ok:true, enabled:false, reason:"not_in_pilot" });
 
     const role = who.preview ? "staff_preview" : (c.sub_branch ? "branch_user" : "dealer");
     const r = await GC.call({ method: (action === "quote" || action === "validate_order" || ordering) ? "POST" : "GET", path: histRef ? ACTIONS.order + encodeURIComponent(histRef) : ACTIONS[action], env: envName || undefined, query: quoteBody ? undefined : (family ? { family } : (cfgQuery || histQuery || undefined)), body: quoteBody || undefined, idempotencyKey: idemKey || undefined,
