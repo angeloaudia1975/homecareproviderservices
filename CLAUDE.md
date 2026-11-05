@@ -4233,6 +4233,19 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
   `golden_ordering_enabled`, test-dealer list; outside its production deploy Golden is in TEST mode (both emails only to
   `P360_TEST_EMAIL_TO`, order notes marked TEST). Tests `test/golden-integration-b6.test.js` (+ mutants, incl. a real
   cross-repo round trip). Golden PR #284 first, then HCPS, then Partner 360.
+- **B6.1 unified shopping (Angelo, 2026-11-04 — RULES; merged Golden #285 → HCPS #85 → ordering #36, Published, ordering
+  still OFF).** A Golden configurable lift chair page ends with the HCPS action row: qty + orange **Add to cart**, **Print
+  Brochure**, **Add to a quote** — never "Add to Golden cart". Golden chairs show as a *Golden Technologies* group in the
+  HCPS cart and in the header count, but live only in `GCART` (never `CART`, `hcpsCartOrders`, submit-order or orders-api);
+  review / validate / place stay golden-proxy only, one Idempotency-Key per attempt, separate confirmation; Golden's
+  amounts appear only after Golden prices them. Edits are refused while an attempt is pending in this OR another tab. A
+  Golden refresh never takes the dealer's place in an HCPS field. Brochure = Golden's own content + official sell-sheet
+  links, no dealer price; from the configurator it names the configuration and its retail MSRP. Quote = exact model /
+  size / fabric / colour / upgrades at Golden retail (`/v1/configurator` tab + footrest `msrp`, contract 1.6.1); any part
+  without a Golden retail figure → "MSRP not provided", never estimated, never dealer cost. Golden items that are not
+  configurable lift chairs (scooters, power chairs, beds, non-configurable models) are labelled **Browse only** —
+  brochure + quote, never Add to cart — until Golden's `/v1/orders` accepts them (needs a mobility configurator, item
+  mapping and a contract extension). The renderCart change is a p0parity exact-text exception.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
