@@ -1248,7 +1248,285 @@
         ]
       }
     ],
-    "resourceLogo": "/assets/logos/ohio-medical-badge.jpg"
+    "resourceLogo": "/assets/logos/ohio-medical-badge.jpg",
+    "hidden": true
+  },
+  {
+    "id": "yuwell",
+    "name": "Yuwell",
+    "category": "Portable oxygen & home monitoring",
+    "description": "Yuwell portable oxygen and home monitoring — the SPIRIT-3 portable oxygen concentrator, upper-arm and wrist blood pressure monitors, infrared thermometers and finger pulse oximeters, with selected models stocked in the U.S. Represented by HCPS in Southern Indiana, Southwest Ohio, Kentucky, Tennessee and Northern Georgia.",
+    "website": "",
+    "logo": "/assets/logos/yuwell.jpg",
+    "featured": false,
+    "ordering_url": "",
+    "brand": {
+      "accent": "#d7002f",
+      "dark": "#0b1f33"
+    },
+    "sections": [
+      {
+        "type": "hero",
+        "eyebrow": "Portable oxygen & home monitoring — Yuwell",
+        "headline": "SPIRIT-3 portable oxygen, backed by the Yuwell monitoring line.",
+        "lead": "Yuwell gives dealers a focused assortment across four high-demand categories — the SPIRIT-3 portable oxygen concentrator, blood pressure monitors, thermometers and pulse oximeters — with selected models stocked in the U.S. for faster replenishment. A practical fit for HME/DME, pharmacy, cash retail and showroom add-on sales.",
+        "card_title": "",
+        "card_intro": "",
+        "checklist": [],
+        "image": "",
+        "stats": [],
+        "heroImage": "/assets/manufacturers/heroes/yuwell.jpg"
+      },
+      {
+        "type": "stats",
+        "items": [
+          {
+            "value": "4 Categories",
+            "label": "Oxygen, blood pressure, thermometers, oximeters"
+          },
+          {
+            "value": "9 Models",
+            "label": "Selected for U.S. dealers"
+          },
+          {
+            "value": "Up to 5 Hours",
+            "label": "SPIRIT-3 battery runtime"
+          },
+          {
+            "value": "≤55 dB(A)",
+            "label": "SPIRIT-3 sound level"
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "headline": "SPIRIT-3 Portable Oxygen Concentrator",
+        "copy": "Portable oxygen support for active, on-the-go lifestyles. The SPIRIT-3 is a pulse-dose portable concentrator with four settings, a rechargeable battery plus AC and vehicle DC power, and a carry bag — an easy device to demonstrate and a natural lead product for a Yuwell assortment.",
+        "checklist": [
+          "Carry-ready design with shoulder bag",
+          "Rechargeable battery plus AC and vehicle DC power",
+          "Simple controls with battery display",
+          "Low oxygen, no-breath, and low-battery alerts"
+        ],
+        "checks": [],
+        "image": "",
+        "image_side": "right"
+      },
+      {
+        "type": "table",
+        "title": "SPIRIT-3 technical at a glance.",
+        "intro": "From Yuwell's FDA 510(k) summary (K242736) and the HCPS Dealer Product Guide 2026. Confirm current specifications with the user manual before quoting a patient.",
+        "columns": [
+          "Specification",
+          "SPIRIT-3"
+        ],
+        "rows": [
+          [
+            "Flow settings",
+            "Pulse, settings 1–4"
+          ],
+          [
+            "Battery runtime",
+            "Up to 5 hours"
+          ],
+          [
+            "Sound level",
+            "≤55 dB(A)"
+          ],
+          [
+            "Oxygen concentration",
+            "90% (−3% / +6%) at all settings"
+          ],
+          [
+            "Max outlet pressure",
+            "150 kPa"
+          ],
+          [
+            "Power",
+            "Rechargeable battery, AC supply and vehicle DC"
+          ],
+          [
+            "In the box",
+            "Battery, AC supply, DC cable, cannulas, carry bag, manual"
+          ],
+          [
+            "FDA 510(k)",
+            "K242736"
+          ]
+        ]
+      },
+      {
+        "type": "products",
+        "eyebrow": "Blood pressure monitors",
+        "title": "Upper-arm and wrist options for good, better and connected monitoring.",
+        "intro": "Four models from an everyday upper-arm monitor to a Bluetooth wrist unit.",
+        "items": [
+          {
+            "name": "YE660E Upper Arm Blood Pressure Monitor",
+            "badge": "Upper arm",
+            "image": "",
+            "url": "",
+            "description": "An everyday upper-arm monitor with voice broadcast and a large LCD.",
+            "tags": [],
+            "bullets": [
+              "Voice broadcast",
+              "Large LCD",
+              "99 memories",
+              "Irregular heartbeat indication"
+            ]
+          },
+          {
+            "name": "YE620B Upper Arm Blood Pressure Monitor",
+            "badge": "Upper arm",
+            "image": "",
+            "url": "",
+            "description": "A backlit upper-arm monitor with a wide-range cuff and adapter included.",
+            "tags": [],
+            "bullets": [
+              "Voice broadcast",
+              "Large backlit LCD",
+              "22–45 cm cuff",
+              "Adapter included"
+            ]
+          },
+          {
+            "name": "YE680B Upper Arm Blood Pressure Monitor",
+            "badge": "Upper arm",
+            "image": "",
+            "url": "",
+            "description": "A two-user upper-arm monitor that averages three readings.",
+            "tags": [],
+            "bullets": [
+              "Voice broadcast",
+              "Large backlit LCD",
+              "2-user memory",
+              "Average of 3 readings",
+              "Bluetooth option available"
+            ]
+          },
+          {
+            "name": "YE8800AR Wrist Blood Pressure Monitor",
+            "badge": "Wrist · Bluetooth",
+            "image": "",
+            "url": "",
+            "description": "A compact Bluetooth wrist monitor with a rechargeable lithium battery.",
+            "tags": [],
+            "bullets": [
+              "Bluetooth",
+              "Compact wrist design",
+              "Lithium battery",
+              "USB Type-C"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "products",
+        "eyebrow": "Thermometers & pulse oximeters",
+        "title": "Everyday monitoring for families, pharmacy and retail cash sales.",
+        "intro": "Two infrared thermometers and two finger pulse oximeters.",
+        "items": [
+          {
+            "name": "YT-1 Infrared Thermometer",
+            "badge": "Touch-free",
+            "image": "",
+            "url": "",
+            "description": "A touch-free infrared thermometer with a hard case.",
+            "tags": [],
+            "bullets": [
+              "Touch-free",
+              "Rapid measurement",
+              "Includes hard case",
+              "2 x AAA batteries"
+            ]
+          },
+          {
+            "name": "YHT101 Infrared Ear Thermometer",
+            "badge": "Ear",
+            "image": "",
+            "url": "",
+            "description": "An infrared ear thermometer with disposable covers and a hard case.",
+            "tags": [],
+            "bullets": [
+              "Rapid ear measurement",
+              "Disposable covers included",
+              "Includes hard case",
+              "2 x AAA batteries"
+            ]
+          },
+          {
+            "name": "YX103 Finger Pulse Oximeter",
+            "badge": "Better",
+            "image": "",
+            "url": "",
+            "description": "A finger pulse oximeter with a high-visibility red LED display.",
+            "tags": [],
+            "bullets": [
+              "High-visibility red LED display",
+              "Fast reading",
+              "Includes lanyard"
+            ]
+          },
+          {
+            "name": "YX306 Finger Pulse Oximeter",
+            "badge": "Best",
+            "image": "",
+            "url": "",
+            "description": "A finger pulse oximeter with an auto-rotating OLED display and pulse wave.",
+            "tags": [],
+            "bullets": [
+              "Easy-to-read OLED display",
+              "Auto-rotate display",
+              "Pulse wave measurement",
+              "Includes lanyard and carry bag"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "headline": "Why add Yuwell with HCPS?",
+        "copy": "A focused assortment built for retail-ready home monitoring and account growth — a practical, consumer-friendly line to create incremental revenue and strengthen your home monitoring offering.",
+        "checklist": [],
+        "checks": [
+          "Compact assortment across four high-demand categories",
+          "Selected models stocked in the U.S. for faster replenishment",
+          "Great fit for pharmacy, HME/DME, cash retail and showroom add-on sales",
+          "Easy-to-demonstrate products that are simple for customers to understand",
+          "HCPS support for onboarding, merchandising and sales development"
+        ],
+        "image": "",
+        "image_side": "left"
+      },
+      {
+        "type": "table",
+        "title": "Suggested opening assortment.",
+        "intro": "A starting mix HCPS recommends for a new Yuwell account.",
+        "columns": [
+          "Category",
+          "Models"
+        ],
+        "rows": [
+          [
+            "Portable oxygen concentrator",
+            "1 — SPIRIT-3"
+          ],
+          [
+            "Blood pressure monitors",
+            "4 — YE660E, YE620B, YE680B, YE8800AR"
+          ],
+          [
+            "Thermometers",
+            "2 — YT-1, YHT101"
+          ],
+          [
+            "Pulse oximeters",
+            "2 — YX103, YX306"
+          ]
+        ]
+      }
+    ],
+    "resourceLogo": "/assets/logos/yuwell-badge.jpg"
   },
   {
     "id": "airavant-bongorx",

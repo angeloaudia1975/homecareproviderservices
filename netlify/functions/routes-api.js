@@ -1089,7 +1089,7 @@ exports.handler = async (event)=>{
         "airavant-bongorx":"airavant-bongorx.jpg", bemis:"bemis.jpg", "climbing-steps":"climbing-steps.jpg",
         corsicana:"corsicana.jpg", dalton:"dalton-mublvxul.jpg", "golden-technologies":"golden-technologies.jpg",
         "ohio-medical":"ohio-medical.jpg", gce:"ohio-medical.jpg", "ovation-medical":"ovation-medical.jpg",
-        pedifix:"pedifix.jpg", "strongback-mobility":"strongback-mobility.jpg" };
+        pedifix:"pedifix.jpg", "strongback-mobility":"strongback-mobility.jpg", yuwell:"yuwell.jpg" };
       for(const sl in PUBLIC_LOGOS){ if(!logoBySlug[sl]) logoBySlug[sl]=`${PUBLIC_BASE}/assets/logos/${PUBLIC_LOGOS[sl]}`; }
       try{ const mm=await fetchJson(`${ORDERING_BASE}/data/manufacturers.json`); (mm||[]).forEach(m=>{ if(m&&m.slug&&m.logo&&!logoBySlug[m.slug]){ const p=String(m.logo); logoBySlug[m.slug]=p.startsWith("http")?p:(ORDERING_BASE+p); } }); }catch(e){}
       if(!logoBySlug["golden-technologies"]) logoBySlug["golden-technologies"]=ORDERING_BASE+"/assets/logos/golden-technologies.jpg";
