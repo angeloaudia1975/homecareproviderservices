@@ -1081,6 +1081,19 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "ovation-medical-dealer-application-mw3tuchg",
+      "title": "Ovation Medical Dealer Application",
+      "type": "dealer-application",
+      "manufacturer": "ovation-medical",
+      "format": "pdf",
+      "file": "/assets/docs/ovation-medical-new-customer-credit-application-rev-082017-mw3ttkj5.pdf",
+      "url": "",
+      "description": "Ovation Medical Dealer Application to get started. Please email all dealer applications to HomeCare Provider Services.",
+      "access": "public",
+      "dealers": [],
+      "featured": false
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
