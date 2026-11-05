@@ -13,6 +13,7 @@
  .itbl{width:100%;font-size:12.5px;margin-top:4px}
  .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
  .caret{cursor:pointer;color:var(--gray);font-weight:700;user-select:none}
+.acctnote{display:inline-block;margin:4px 0 0;padding:3px 8px;border-radius:6px;background:#fff7e6;border:1px solid #f1d9a6;color:#8a5a00;font-size:12px;font-weight:700}
 </style>
 </head><body>
 <header id="ac-head"></header>
@@ -51,7 +52,7 @@ async function load(){
   if(r.status===401){ gate("Your session ended — sign in again."); return; }
   const j=r.body;
   if(j&&j.error==="tables_missing"){ $("#body").innerHTML=`<div class="msg">No orders yet. The order queue fills in as dealers submit orders on the portal.</div>`; return; }
-  if(!j||!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc((j&&(j.error||j.message))||"Couldn't load.")}</div>`; return; }
+  if(!j||!j.ok){ $("#body").innerHTML=`<div class="msg err">${esc((j&&(j.message||j.error))||"Couldn't load.")}</div>`; return; }
   ORDERS=j.orders||[]; STATS=j.stats||{}; MANAGE=!!j.manage;
   render();
 }
@@ -74,7 +75,9 @@ function render(){
       const main=`<tr>
         <td><span class="caret" onclick="toggle('${o.id}')">${open?"▾":"▸"}</span></td>
         <td class="lbl"><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(o.dealer_id||"")}">${esc(o.dealer)}</a>
-          <div class="hint" style="margin:0">${esc(o.manufacturer)}${o.po?" · PO "+esc(o.po):""}${o.rep?" · "+esc(o.rep):""}</div></td>
+          <div class="hint" style="margin:0">${esc(o.manufacturer)}${o.po?" · PO "+esc(o.po):""}${o.rep?" · "+esc(o.rep):""}</div>
+          ${o.account_notice?`<div class="acctnote">⚠ ${esc(o.account_notice)}</div>`:""}
+          ${/email failed|resubmitted/i.test(o.admin_notes||"")?`<div class="acctnote">⚠ ${esc(/email failed/i.test(o.admin_notes)?"HCPS order email failed — confirm by hand":"Dealer resubmitted this order — recorded once; confirm the HCPS order email arrived")}</div>`:""}</td>
         <td class="num">${o.item_count}</td>
         <td class="num">${money(o.subtotal)}${o.estimated_total!=null&&o.freight_fee>0?`<div class="hint" style="margin:0">+ ${money(o.freight_fee)} freight = ${money(o.estimated_total)}</div>`:""}</td>
         <td>${o.submitted_at?new Date(o.submitted_at).toLocaleDateString():""}</td>
@@ -124,7 +127,7 @@ function printOrder(id){
   const w=window.open("","_blank"); if(!w) return;
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Order ${esc(o.po||o.id)}</title><style>body{font:13px Arial,sans-serif;color:#10263f;margin:28px}h1{font-size:18px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin-top:12px}td,th{border-bottom:1px solid #ddd;padding:6px;text-align:left}.k{color:#6b7280;width:150px}</style></head><body>
   <h1>${esc(o.manufacturer)} — dealer order received by HCPS</h1><div class="k">Not yet placed with the manufacturer unless marked below.</div>
-  <table><tr><td class="k">Dealer</td><td>${esc(o.dealer)}</td></tr><tr><td class="k">PO</td><td>${esc(o.po||"—")}</td></tr><tr><td class="k">Ship to</td><td>${esc(o.ship||"—")}</td></tr>
+  <table><tr><td class="k">Dealer</td><td>${esc(o.dealer)}</td></tr><tr><td class="k">PO</td><td>${esc(o.po||"—")}</td></tr>${o.account_notice?`<tr><td class="k">Account</td><td><b>${esc(o.account_notice)}</b></td></tr>`:""}<tr><td class="k">Ship to</td><td>${esc(o.ship||"—")}</td></tr>
   <tr><td class="k">Contact</td><td>${esc([o.contact.name,o.contact.phone,o.contact.email].filter(Boolean).join(" · "))}</td></tr><tr><td class="k">Submitted</td><td>${o.submitted_at?new Date(o.submitted_at).toLocaleString():""}</td></tr><tr><td class="k">Status</td><td>${esc(LBL[o.status]||o.status)}</td></tr></table>
   <table><thead><tr><th>Item #</th><th>Description</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Line</th></tr></thead><tbody>${rows}</tbody></table>
   <p style="text-align:right"><b>Merchandise subtotal: ${money(o.subtotal)}</b>${o.freight_fee>0?`<br>Freight: ${money(o.freight_fee)}<br><b>Total: ${money(o.estimated_total)}</b>`:""}</p>

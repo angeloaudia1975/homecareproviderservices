@@ -1952,6 +1952,33 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   is in git and Eleventy never deletes old output, so a stale page file survives the build and Netlify serves it
   instead of applying a (non-forced) redirect — /manufacturers/ohio-medical/ kept showing the old page until
   `_site/manufacturers/ohio-medical/index.html` was removed (128c1ac).
+- **C3-06 — first real dealer order + post-launch ordering rules (owner, 2026-11-05).**
+  · **First real dealer order (milestone; replaces the PediFix pilot order, which is CANCELLED):** Plaza Drug, London KY,
+    Ovation Medical, PO 3991, submitted 2026-11-04 16:45 UTC, 21 lines / 46 units, server-priced and recorded with its
+    lines, freight 0 recorded, status submitted, no email-failure flag. Read-only audit only — never duplicate, resend,
+    edit or re-price it. Its remaining lifecycle (placed → confirmed with confirmation # + actual freight → shipped with
+    tracking → completed) is done by HCPS staff in Order Review.
+  · **One checkout = one order (RULE).** The storefront gives each manufacturer order of a checkout a `submission_key`
+    (kept while THAT order is retried unchanged — items, PO, notes, ship-to — dropped once recorded; editing one
+    manufacturer's order never re-keys the others). orders-api never records the same manufacturer order twice under
+    one key — a repeat is answered "already recorded", noted on the order for staff, and never re-emailed. The check
+    runs BEFORE re-pricing. An order row without its lines never counts as recorded; a withdrawn order frees its key
+    first. Only "column does not exist" means the SQL has not run — any other key-check failure, or an unreadable
+    manufacturer list, records nothing (503). Needs `supabase/orders_submission_key.sql` (column + partial unique index; Angelo runs it);
+    before that the key is ignored and ordering is unchanged.
+  · **New manufacturer account notice (RULE).** `_account_notice.js NOTICE_LINES` (today: yuwell). A dealer ordering
+    such a line with no active dealer_manufacturers row carrying an account number is NEVER blocked; the order shows
+    "New Yuwell Manufacturer Account Required" on the dealer confirmation, the HCPS intake email (subject prefix
+    "[New account required]"), Order Review and My Orders. Unreadable account rows → staff see "verify"; the dealer
+    sees nothing guessed. It clears by itself once HCPS records the account number.
+  · **Order reads are strict (RULE).** Order Review (orders-admin list) and My Orders (order-history-api) answer an
+    error when orders, dealers or sales history can't be read — never an empty list; the storefront never caches a
+    failed history read as "no orders". notification_failed and resubmission notes APPEND to admin_notes.
+  · My Orders shows the PO and the tracking number HCPS recorded; "Request tracking" asks HCPS (never the manufacturer)
+    and is hidden once a tracking number exists.
+  · **No-grid dealers (6):** they see territory lines (Yuwell, Access4U, AirAvant, Corsicana) but the order server
+    needs an active dealer_manufacturers row, so they cannot price or order them — a known pre-existing gap; no
+    entitlement is changed without verification and Angelo's decision.
     - **Release order:** #82 → #34 → #84 + #35 + #83 (code) → SQL. #83 carries the server engine copy that
       matches #35, so ship them together.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
