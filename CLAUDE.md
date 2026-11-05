@@ -1829,6 +1829,22 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   · No PediFix SKU was activated: the 14 candidates, P3095-115, the 6 holds and P3306 stay off, the server refuses 8520, and
     P244-XLL / XLR are unchanged (on sale).
   · Sandbox rebuilt as a527fdf5651c = main@0e97fec with nothing unpublished. #26 stays a draft and is never merged.
+- **Ohio Medical / GCE retired; Yuwell is the 12th partner (owner, 2026-11-04 — C3-02).**
+  · **Preserve everything:** the 340 active `dealer_manufacturers` rows (`ohio-medical`), their account numbers,
+    monthly_sales, commissions, report history, the `manufacturers` row (still used by the sales and commission
+    imports), the capture profile and Zoho mappings. Never delete, rename or expose them.
+  · **One shared rule:** `_retired_lines.js`, identical in both repos and checked by the `retired-lines` tests, lists
+    complete-medical-supplies, `ohio-medical` AND `gce`. catalog-feed / catalog-layers (410), the storefront list
+    filter, quotableLine, `_pricing`, `_access`, dealers-api and territory-api all refuse those lines, so an identifier
+    correction on either side can never re-open them. Only removing a line from both lists (owner decision) reopens it.
+  · **Drafts:** ordering #34 and admin #82. Admin merges first. Nothing is merged or deployed without Angelo's approval.
+  · **Yuwell:** one identifier, `yuwell`, everywhere (no aliases). The plan is in admin #83
+    (`docs/catalog/YUWELL_ONBOARDING.md`); the registration SQL is a draft and NOT run. Yuwell stays unorderable until
+    its price list, freight terms, catalog, testing and owner approval are complete. Never invent product data,
+    costs, MSRP or freight.
+  · **Website:** another conversation owns the Yuwell website imagery and marketing page. Do not edit those pages or
+    images concurrently. The website `src/_data/manufacturers.json` is SHARED: the Yuwell entry and the Ohio Medical
+    hide (`hidden:true`, plus a 301 to /manufacturers/) land in one coordinated change.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
@@ -4125,6 +4141,22 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
   only in tests; no real verified dealer link without Angelo's approval. Golden idempotency table
   `config/migrate-hcps-integration-v1-orders.sql` is run by Angelo. Tests: `test/golden-integration-b4.test.js`,
   `-b4b.test.js` (+ mutants); CI `.github/workflows/golden-integration.yml`.
+- **B6 order placement (Angelo, 2026-11-04 10:16 CT — development authorized; nothing switched on).** Golden places the
+  order and is the only order of record; HCPS stores nothing. One checkout attempt = ONE `Idempotency-Key` with two
+  separate Golden records (validate, submit): `golden-proxy place_order` sends the SAME body as the reviewed
+  `validate_order` with `mode:"submit"`; Golden requires that key's valid validation (≤ 2 h, same content/dealer),
+  re-prices, and writes the `orders` row + the key's answer in ONE transaction (contract 1.6.0 §4h). Only a DEFINITE
+  refusal (`placed:false, definite:true`) means "not placed" — Golden looks up the key's stored answer BEFORE any switch,
+  link or permission check, so a placed attempt is always replayed; a timeout / 5xx / unreadable answer is
+  `outcome_unknown, retry:true` (retry with the SAME key), a key conflict / other dealer is `unconfirmed` (check My
+  Orders) — the page never drops an attempt that may have placed an order and never mints a new key for it. A staff view-as token never places, in any environment.
+  Switches (exactly true, all OFF): production = `golden_p360_catalog` + `golden_p360_checkout` + `golden_p360_ordering`
+  + pilot list; preview environment = a real dealer sign-in of a TEST dealership (`dealers.is_test`, head office too)
+  from a Partner 360 deploy preview + `golden_p360_preview_orders`. Validate's `ordering_enabled` = Golden's AND HCPS's
+  switches (the Place order button). Golden locks: `GOLDEN_V1_ORDERS`, scope `golden:order`, link
+  `golden_ordering_enabled`, test-dealer list; outside its production deploy Golden is in TEST mode (both emails only to
+  `P360_TEST_EMAIL_TO`, order notes marked TEST). Tests `test/golden-integration-b6.test.js` (+ mutants, incl. a real
+  cross-repo round trip). Golden PR #284 first, then HCPS, then Partner 360.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
