@@ -1879,7 +1879,8 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   · **Merge order when approved:** admin #82 → ordering #34 → admin #84 + ordering Yuwell → Yuwell SQL (#83, run by
     Angelo).
   · **Yuwell stays unorderable:** no `dealer_manufacturers` rows and no commercial record.
-  · Note: `manufacturer_meta.active=false` is NOT read by the storefront today, so it is not a gate.
+  · `manufacturer_meta.active=false` IS a gate since C3-05 (storefront unlists, order server refuses), so the
+    Yuwell register SQL inserts `active = true` — false would hide Yuwell from everyone, the TEST preview included.
   · **Yuwell commercial terms (owner, 2026-11-04 21:10 CT).** Figures are kept only in the private record, never
     in git.
     - The list's "Yuwell U.S. Price" IS the dealer price.
@@ -1903,14 +1904,19 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   · **C3-05 (owner, 2026-11-04 21:35 CT):**
     - **Eligibility:** Yuwell goes to ALL authorized HCPS ordering dealers, in every territory, with no geographic
       or dealer restriction. "Authorized ordering dealer" means active, non-TEST, account class blank or dealer,
-      with at least one active non-Golden, non-retired ordering line. `supabase/yuwell_activation.sql` (admin #83)
+      status not prospect / closed / inactive / dormant, with at least one active ordering line that is not
+      Golden, a retired line, the old `bongo` slug or Yuwell (slugs and status trimmed, any case). A branch is
+      judged on its own rows. Golden-only dealers are left out pending Angelo's decision. `supabase/yuwell_activation.sql` (admin #83)
       reports read-only first, then grants, and proves no eligible dealer is missed and no ineligible dealer is
       included, or rolls back.
     - **Preview:** only the designated TEST dealer, TEST — Golden Sandbox `3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b`.
       This step is separate from real activation.
     - **Promotions end on the server:** a quantity break may carry `until`, an ISO instant at which it ends.
-      `liveTiers` in the storefront engine, which the order server also runs, ignores the break from that instant.
-      An unreadable `until` ends the break.
+      The storefront engine (unitPrice / lineRatePrice / tierLadder; the order server runs the same text) ignores
+      the break from that instant. `until` must be a full ISO instant with a time zone; anything else ends the
+      break. **Every tier writer keeps `until`** (catalog-feed + `_pricing.feedRows`, catalog-api cleanTiers /
+      keepPools, Product Catalog price edits and price-list imports merge with the current ladder; an unreadable
+      ladder is 503) — a save must never silently turn a time-limited break into a permanent one.
       - SP-3: `until` = 2027-01-01T06:00:00Z (midnight Central).
       - The end-of-special SQL is a backup only, never run automatically.
       - A scheduled task on 2027-01-01 08:00 CT reminds Angelo; it changes nothing.
