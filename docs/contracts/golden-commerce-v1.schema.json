@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "golden-commerce-v1.schema.json",
-  "title": "Golden Commerce API v1 — wire schemas (routes built through batch B5 (quote, ship-to, validate-only orders — 1.4.0; order history — 1.5.0; order placement — 1.6.0; retail upgrade prices — 1.6.1))",
-  "contract_version": "1.6.1",
+  "title": "Golden Commerce API v1 — wire schemas (routes built through batch B5 (quote, ship-to, validate-only orders — 1.4.0; order history — 1.5.0; order placement — 1.6.0; retail upgrade prices — 1.6.1; freight — 1.7.0))",
+  "contract_version": "1.7.0",
   "$defs": {
     "uuid": {
       "type": "string",
@@ -25,7 +25,8 @@
             "1.4.0",
             "1.5.0",
             "1.6.0",
-            "1.6.1"
+            "1.6.1",
+            "1.7.0"
           ]
         },
         "tenant": {
@@ -1384,16 +1385,22 @@
               "additionalProperties": false,
               "required": [
                 "subtotal",
+                "freight_total",
                 "sh_total",
                 "grand_total",
                 "sh_rate",
                 "sh_waived",
                 "split",
+                "free_freight_units",
                 "shipments"
               ],
               "properties": {
                 "subtotal": {
                   "type": "number"
+                },
+                "freight_total": {
+                  "type": "number",
+                  "minimum": 0
                 },
                 "sh_total": {
                   "type": "number"
@@ -1418,7 +1425,8 @@
                     "required": [
                       "group",
                       "subtotal",
-                      "sh"
+                      "sh",
+                      "freight"
                     ],
                     "properties": {
                       "group": {
@@ -1433,17 +1441,30 @@
                       },
                       "sh": {
                         "type": "number"
+                      },
+                      "freight": {
+                        "type": "number",
+                        "minimum": 0
                       }
                     }
                   }
+                },
+                "free_freight_units": {
+                  "type": "integer",
+                  "minimum": 1
                 }
               }
             },
             "freight": {
               "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "included",
+                "note"
+              ],
               "properties": {
                 "included": {
-                  "const": false
+                  "const": true
                 },
                 "note": {
                   "type": "string"
@@ -1723,16 +1744,22 @@
               "additionalProperties": false,
               "required": [
                 "subtotal",
+                "freight_total",
                 "sh_total",
                 "grand_total",
                 "sh_rate",
                 "sh_waived",
                 "split",
+                "free_freight_units",
                 "shipments"
               ],
               "properties": {
                 "subtotal": {
                   "type": "number"
+                },
+                "freight_total": {
+                  "type": "number",
+                  "minimum": 0
                 },
                 "sh_total": {
                   "type": "number"
@@ -1757,7 +1784,8 @@
                     "required": [
                       "group",
                       "subtotal",
-                      "sh"
+                      "sh",
+                      "freight"
                     ],
                     "properties": {
                       "group": {
@@ -1772,17 +1800,30 @@
                       },
                       "sh": {
                         "type": "number"
+                      },
+                      "freight": {
+                        "type": "number",
+                        "minimum": 0
                       }
                     }
                   }
+                },
+                "free_freight_units": {
+                  "type": "integer",
+                  "minimum": 1
                 }
               }
             },
             "freight": {
               "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "included",
+                "note"
+              ],
               "properties": {
                 "included": {
-                  "const": false
+                  "const": true
                 },
                 "note": {
                   "type": "string"
@@ -2065,16 +2106,22 @@
               "additionalProperties": false,
               "required": [
                 "subtotal",
+                "freight_total",
                 "sh_total",
                 "grand_total",
                 "sh_rate",
                 "sh_waived",
                 "split",
+                "free_freight_units",
                 "shipments"
               ],
               "properties": {
                 "subtotal": {
                   "type": "number"
+                },
+                "freight_total": {
+                  "type": "number",
+                  "minimum": 0
                 },
                 "sh_total": {
                   "type": "number"
@@ -2099,7 +2146,8 @@
                     "required": [
                       "group",
                       "subtotal",
-                      "sh"
+                      "sh",
+                      "freight"
                     ],
                     "properties": {
                       "group": {
@@ -2114,17 +2162,30 @@
                       },
                       "sh": {
                         "type": "number"
+                      },
+                      "freight": {
+                        "type": "number",
+                        "minimum": 0
                       }
                     }
                   }
+                },
+                "free_freight_units": {
+                  "type": "integer",
+                  "minimum": 1
                 }
               }
             },
             "freight": {
               "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "included",
+                "note"
+              ],
               "properties": {
                 "included": {
-                  "const": false
+                  "const": true
                 },
                 "note": {
                   "type": "string"

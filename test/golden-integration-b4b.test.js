@@ -25,8 +25,8 @@ function env(extra) {
 const HASH = "a".repeat(64);
 const QUOTE = { lines: [{ line: 0, sku: "PR511-LAR", qty: 2, fabric: "std", color: "SUM", color_name: "Summit", tier: "nirvana", footrest: false, unit_price: 1300, line_total: 2600,
   details: "Std", upgrades: [], breakdown: "b", lead_note: null, in_stock: true, custom: false, item_no: "PR511-LAR-SKN-SUM", item_no_resolved: true }],
-  totals: { subtotal: 2600, sh_total: 78, grand_total: 2678, sh_rate: 0.03, sh_waived: false, split: false, shipments: [{ group: "all", subtotal: 2600, sh: 78 }] },
-  freight: { included: false, note: "n" }, quote_hash: HASH };
+  totals: { subtotal: 2600, freight_total: 70, sh_total: 78, grand_total: 2748, sh_rate: 0.03, sh_waived: false, split: false, free_freight_units: 4, shipments: [{ group: "all", subtotal: 2600, sh: 78, freight: 70 }] },
+  freight: { included: true, note: "n" }, quote_hash: HASH };
 const VALID = () => ({ contract_version: "1.4.0", request_id: "req_v", mode: "validate", valid: true, ordering_enabled: false, idempotent_replay: false, engine: "0123456789abcdef",
   order: { internal_note: "LEAK", po_number: "PO-1", po_auto: false, ship_to: { id: LOC, kind: "ship_location", label: "Store", address: "1 Main St", city: "Cincinnati", state: "OH", zip: "45202", secret: "LEAK" },
     contact: { name: "Pat", phone: "937-555-0100", email: "pat@d.example" }, attention: "", notes: "", delivery_type: "business", split_order: false, lines: [{ sku: "PR511-LAR", reference_names: ["Mrs. Smith"], cost: "LEAK" }] },
@@ -77,7 +77,7 @@ const ON = { flags: { golden_p360_checkout: true } };
     env(); world(ON);
     const r = J(await load("golden-proxy.js").handler(post(ORDER())));
     eq([r.quote.totals.grand_total, r.order.ship_to.address, r.order.lines[0].reference_names, r.emails.golden_order.html, r.emails.dealer_confirmation.to],
-      [2678, "1 Main St", ["Mrs. Smith"], "<html>golden</html>", "pat@d.example"]);
+      [2748, "1 Main St", ["Mrs. Smith"], "<html>golden</html>", "pat@d.example"]);
     ok(!/LEAK/.test(JSON.stringify(r)), "nothing outside the contract crosses");
   });
 
@@ -151,6 +151,9 @@ const ON = { flags: { golden_p360_checkout: true } };
     env(); world(Object.assign({ golden: () => res(503, { error: { code: "internal", message: "internal", retryable: true } }) }, ON));
     const r = J(await load("golden-proxy.js").handler(post(ORDER())));
     eq([r.valid, r.reason, r.retry], [false, "temporarily_unavailable", true]);
+    env(); world(Object.assign({ golden: () => res(409, { error: { code: "freight_quote_required", message: "x", retryable: false } }) }, ON));
+    const f = J(await load("golden-proxy.js").handler(post(ORDER())));
+    eq([f.valid, f.reason, f.retry], [false, "freight_quote_required", false], "an order Golden must quote freight for by hand is named, never validated");
   });
 
   await t("validate_order: a staff view-as token never reaches the production ordering path, even with checkout on", async () => {

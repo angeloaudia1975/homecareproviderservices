@@ -25,8 +25,9 @@ const HASH = "a".repeat(64);
 const QUOTE = () => ({ contract_version: "1.4.0", tenant: "hcps", request_id: "req_q", as_of: "2026-11-03T00:00:00Z", engine: "0123456789abcdef", sh_terms_checked: true, ordering_enabled: false,
   quote: { lines: [{ line: 0, sku: "PR511-LAR", qty: 2, fabric: "xover", color: "JBO", color_name: "JZ Bourbon", tier: "nirvana", footrest: true, unit_price: 1608, line_total: 3216,
       details: "Cross-Over: JZ Bourbon", upgrades: ["Nirvana"], breakdown: "Base …", lead_note: "Custom build", in_stock: false, custom: true, item_no: "PR511-LAR", item_no_resolved: false, cost_basis: "LEAK" }],
-    totals: { subtotal: 3216, sh_total: 160.8, grand_total: 3376.8, sh_rate: 0.05, sh_waived: false, split: false, shipments: [{ group: "all", subtotal: 3216, sh: 160.8 }, { group: "weird", subtotal: 1, sh: 1 }], margin: "LEAK" },
-    freight: { included: false, note: "Freight and delivery add-ons are confirmed at checkout." }, quote_hash: HASH }, customer_no: "LEAK" });
+    totals: { subtotal: 3216, freight_total: 70, sh_total: 160.8, grand_total: 3446.8, sh_rate: 0.05, sh_waived: false, split: false, free_freight_units: 4,
+      shipments: [{ group: "all", subtotal: 3216, sh: 160.8, freight: 70 }, { group: "weird", subtotal: 1, sh: 1, freight: 1 }], margin: "LEAK" },
+    freight: { included: true, note: "Golden freight: $70.00 (2-unit rate)." }, quote_hash: HASH }, customer_no: "LEAK" });
 
 function world(o) {
   o = o || {}; const golden = [];
@@ -76,16 +77,18 @@ const LINE = { sku: "pr511-lar", fabric: "XOVER", color: "jbo", tier: "Nirvana",
   await t("quote: allow-list — Golden's amounts pass through unchanged, nothing outside the contract crosses", async () => {
     env(); world();
     const r = J(await load("golden-proxy.js").handler(post({ action: "quote", lines: [LINE] })));
-    eq([r.quote.lines[0].unit_price, r.quote.lines[0].line_total, r.quote.totals.grand_total, r.quote.totals.sh_total, r.quote.quote_hash], [1608, 3216, 3376.8, 160.8, HASH]);
-    eq(r.quote.totals.shipments, [{ group: "all", subtotal: 3216, sh: 160.8 }]);
-    eq([r.ordering_enabled, r.sh_terms_checked, r.quote.freight.included], [false, true, false]);
+    eq([r.quote.lines[0].unit_price, r.quote.lines[0].line_total, r.quote.totals.grand_total, r.quote.totals.sh_total, r.quote.totals.freight_total, r.quote.quote_hash], [1608, 3216, 3446.8, 160.8, 70, HASH]);
+    eq(r.quote.totals.shipments, [{ group: "all", subtotal: 3216, sh: 160.8, freight: 70 }]);
+    eq([r.ordering_enabled, r.sh_terms_checked, r.quote.freight.included, r.quote.freight.note, r.quote.totals.free_freight_units], [false, true, true, "Golden freight: $70.00 (2-unit rate).", 4]);
     ok(!/LEAK|margin|cost_basis|customer_no/.test(JSON.stringify(r)), "fields outside the contract never cross");
   });
 
   await t("quote: a line or total HCPS can't show faithfully = no quote at all (never partial), and ordering_enabled must be false", async () => {
     const mk = f => { const q = QUOTE(); f(q); return q; };
     for (const [name, body] of [["bad price", mk(q => { q.quote.lines[0].unit_price = "1608"; })], ["bad total", mk(q => { q.quote.totals.grand_total = null; })],
-      ["bad hash", mk(q => { q.quote.quote_hash = "x"; })], ["ordering on", mk(q => { q.ordering_enabled = true; })], ["no quote", mk(q => { delete q.quote; })]]) {
+      ["bad hash", mk(q => { q.quote.quote_hash = "x"; })], ["ordering on", mk(q => { q.ordering_enabled = true; })], ["no quote", mk(q => { delete q.quote; })],
+      ["no freight total", mk(q => { delete q.quote.totals.freight_total; })], ["negative freight", mk(q => { q.quote.totals.freight_total = -1; })],
+      ["freight not included", mk(q => { q.quote.freight.included = false; })], ["no freight object", mk(q => { delete q.quote.freight; })]]) {
       env(); world({ golden: () => ({ ok: true, status: 200, json: async () => body, text: async () => "" }) });
       const r = J(await load("golden-proxy.js").handler(post({ action: "quote", lines: [LINE] })));
       eq([r.available, r.reason, r.quote], [false, "golden_unavailable", undefined], name);
@@ -95,7 +98,7 @@ const LINE = { sku: "pr511-lar", fabric: "XOVER", color: "jbo", tier: "Nirvana",
   await t("quote: Golden's refusals become calm reasons with the line named — never a guessed price", async () => {
     const res = (status, body) => ({ ok: false, status, text: async () => JSON.stringify(body), json: async () => body });
     for (const [st, code, msg, reason, line] of [[403, "prices_not_visible", null, "prices_not_visible", null], [400, "bad_request", "color@1", "not_offered", 1],
-      [404, "not_found", "not_configurable@0", "not_found", 0], [503, "pricing_unavailable", "line@2", "pricing_unavailable", 2], [503, "inventory_unavailable", null, "golden_unavailable", undefined],
+      [404, "not_found", "not_configurable@0", "not_found", 0], [409, "freight_quote_required", null, "freight_quote_required", null], [503, "pricing_unavailable", "line@2", "pricing_unavailable", 2], [503, "inventory_unavailable", null, "golden_unavailable", undefined],
       [401, "key_mismatch", null, "golden_unavailable", undefined]]) {
       env(); world({ golden: () => res(st, { error: { code, message: msg } }) });
       const r = J(await load("golden-proxy.js").handler(post({ action: "quote", lines: [LINE, LINE, LINE] })));
@@ -155,7 +158,7 @@ const LINE = { sku: "pr511-lar", fabric: "XOVER", color: "jbo", tier: "Nirvana",
     };
     const q = await run("dealer", { lines: [{ sku: "PR511-LAR", fabric: "std", color: "SUM", tier: "nirvana", qty: 2, unit_price: 1 }] });
     eq([q.available, q.ordering_enabled, q.quote.lines[0].unit_price, q.quote.lines[0].line_total, q.quote.lines[0].in_stock], [true, false, 1301, 2602, true]);
-    ok(q.quote.totals.subtotal === 2602 && q.quote.totals.grand_total === q.quote.totals.subtotal + q.quote.totals.sh_total, "grand total = subtotal + S&H, all Golden's");
+    ok(q.quote.totals.subtotal === 2602 && q.quote.totals.freight_total === 70 && q.quote.totals.grand_total === Number((q.quote.totals.subtotal + q.quote.totals.freight_total + q.quote.totals.sh_total).toFixed(2)), "grand total = subtotal + freight + S&H, all Golden's");
     ok(/^[0-9a-f]{64}$/.test(q.quote.quote_hash));
     const again = await run("dealer", { lines: [{ sku: "PR511-LAR", fabric: "std", color: "SUM", tier: "nirvana", qty: 2 }] });
     eq(again.quote.quote_hash, q.quote.quote_hash, "same cart, same prices → same hash");
