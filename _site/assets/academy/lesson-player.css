@@ -123,6 +123,10 @@
 .hl-card[aria-expanded="true"]{border-color:var(--blue);background:#eaf3fa}
 .hl-card-title{font-weight:700;color:var(--navy)}
 .hl-hint{margin:0;color:var(--muted)}
+/* explorer with a lesson picture: the picture first, full width (diagrams and charts stay legible), then the interaction */
+.hl-visual{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.hl-visual-pic{max-width:760px;width:100%;justify-self:center}
+.hl-visual-body{min-width:0}
 .hl-hotspots{position:relative;margin-bottom:10px}
 .hl-dot{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:3px solid #fff;background:var(--orange);color:#fff;font-weight:800;box-shadow:0 2px 6px rgba(0,0,0,.3)}
 .hl-dot[aria-pressed="true"]{background:var(--navy)}

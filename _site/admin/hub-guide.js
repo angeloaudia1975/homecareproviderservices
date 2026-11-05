@@ -15,6 +15,14 @@
  */
 window.HUB_GUIDE = {
 
+  "Catalog Preview": {
+    tagline: "See the finished, unpublished multi-manufacturer catalog exactly as a dealer would — before anything goes live.",
+    what: "Opens the private catalog preview (a Netlify deploy preview only HCPS's Netlify team can open) as any dealer, with that dealer's real protected pricing. Every new catalog, product page, gallery, category, option, freight rule and the full cart and checkout can be reviewed there. Placing an order in the preview records nothing: it shows the dealer's order-received acknowledgment and the HCPS intake email, and sends one copy of the HCPS email to the owner marked CATALOG PREVIEW — NOT AN ORDER. Nothing reaches a manufacturer.",
+    features: ["View-as-dealer link (30 minutes) minted for the preview site only", "Real dealer pricing from the private price record", "Checkout that records nothing and sends nothing to a dealer or manufacturer", "Both order emails rendered for review"],
+    data: "Mints a dealer_preview_tokens row (read-only view-as-dealer); the preview site prices through orders-api preview actions, which never write an order.",
+    actions: ["Set the preview site address", "Pick a dealer (TEST dealers listed first) and open the preview"]
+  },
+
   /* ---------------- SALES & MARKETING ---------------- */
   "Scheduling Console": {
     tagline: "The command center for every dealer appointment — self-booked or rep-scheduled — with Outlook, Zoom, reminders, and Dealer 360 all wired in behind the scenes.",
@@ -434,6 +442,15 @@ window.HUB_GUIDE = {
     problems: "Keep every automated dealer email sounding like a knowledgeable rep bringing a real opportunity — never desperate or generic — and change the rules in one place.",
     intelligence: "Injected into every AI email prompt; drafts that slip in a banned phrase are auto-regenerated."
   },
+  "Email Learning": {
+    tagline: "What HCPS drafted, beside what you actually sent — and the writing rules learned from your edits. Owner only.",
+    what: "Smart Email Learning. Each email draft HCPS writes for you (pre-visit heads-up, visit follow-up, Dealer 360 AI emails) is kept as drafted and, once Outlook accepts the send, beside the version you sent. When the same edit repeats in 3+ sent emails to 2+ dealers it is suggested as a writing rule; nothing is used until you approve it, and approved rules don't change any email until Phase 3 is switched on.",
+    features: ["Original draft and sent version side by side", "Line-by-line comparison", "Suggested writing rules with masked evidence (no names, dealers, dates or numbers)", "Approve (in your own words), reject, retire", "Numbered versions with restore and reset", "Your own emails only; text removed after 12 months"],
+    data: "email_drafts, email_learning_rules, email_learning_profiles, email_learning_rule_events (all locked; written only through checked database functions).",
+    actions: ["Review what you changed before sending", "Approve or reject suggested rules", "Restore an earlier version of your rules"],
+    reports: [],
+    connects: ["Scheduled Routes heads-up and follow-up", "Dealer 360 AI email composer", "Outlook sending"]
+  },
   "Product Interest": {
     tagline: "Turn portal browsing into targeted campaigns — dealers who show intent but haven't ordered.",
     what: "Reads the behavioral signals flowing in from the ordering and Golden portals and answers the campaign question directly: for any product or manufacturer line, which dealers viewed, searched, or carted it recently but haven't actually ordered it? Select them and build a ready-to-use campaign audience in one click.",
@@ -445,6 +462,14 @@ window.HUB_GUIDE = {
     problems: "Converts real buying signals into precise re-marketing — pitch the exact line a dealer has been eyeing, not a generic blast.",
     workflow: "Weekly: pick a line you want to grow, pull the interested non-buyers, and launch a targeted campaign.",
     intelligence: "Behavioral intent scoring with automatic buyer exclusion."
+  },
+  "Golden Partner Links": {
+    tagline: "Tell Golden which HCPS dealer is which Golden account — Golden checks and confirms.",
+    what: "Stage 1 of putting Golden inside Partner 360. Golden stays the authority: HCPS only proposes that one of its dealers is a given Golden account, and a Golden administrator verifies or rejects it on the Golden admin side. Until a link is verified, Partner 360 shows Golden as not available for that dealer. Verifying never turns on ordering.",
+    features: ["Candidates from Golden activity — each Golden account already seen on events, with the HCPS dealer it matched", "Account-number match flag", "Propose a link (organisation level, never a branch)", "Refresh a dealer's state from Golden", "Connection status — configured, reachable, which Golden capabilities are on"],
+    data: "Golden's /v1 API (signed server-to-server) for status and proposals; HCPS keeps golden_dealer_links as its record of what it proposed and what Golden last reported. No Golden prices or stock are stored.",
+    actions: ["Check the Golden connection", "Propose links for the pilot dealers", "Refresh after Golden verifies"],
+    reports: ["Candidates", "Proposed / verified links"],
   },
   "Golden Activity": {
     tagline: "A live window into the Golden ordering platform — every dealer touch, in one dashboard.",
@@ -475,6 +500,14 @@ window.HUB_GUIDE = {
     features: ["Image upload and replace", "Per-product association", "Library management"],
     connects: ["Images render across the ordering portal and catalog"],
     problems: "A polished, visual catalog that helps dealers buy with confidence."
+  },
+  "Catalog Exceptions": {
+    tagline: "One queue for every manufacturer's open catalog work.",
+    what: "Reads every line's master record, product pages, public catalog file, price-list sources and Gold Standard runs, and sorts what is left to do into eight categories: missing or unverified prices, part-number mismatches and duplicates, units and case packs, missing descriptions, photos, freight, retired items still offered, and what is ready. It never shows a price. Bulk corrections turns the queue into a plan: filter by manufacturer, category or part number, see each item's original value, proposed correction, evidence and affected SKUs, validate, then record the review decisions (duplicate classifications, photo review states) with a reason — undoable, and the queue recalculates.",
+    features: ["Eight categories with totals", "Per-line detail with the exact part numbers or pages", "Blockers-only filter", "Frozen Gold Standard lines marked read-only", "CSV export (codes only)", "Bulk corrections: preview → validate → record → undo, append-only history"],
+    connects: ["Manufacturer Center (prices, units, freight, verification)", "Product Content Enrichment (descriptions, features, pages)", "Product Images", "Product Catalog"],
+    problems: "Shows exactly what stands between each manufacturer and a complete, orderable catalog — without anyone rebuilding the list by hand.",
+    workflow: "Open the queue → pick a category or a line → open the tool that owns the fix, or use Bulk corrections for duplicate reviews and photo review states → the queue recalculates."
   },
   "Product Content Enrichment & Review": {
     tagline: "Merge manufacturer website + PDF catalog with your HCPS record, pick the best version, and approve before dealers see it.",

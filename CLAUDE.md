@@ -1979,6 +1979,14 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   tracking privacy/retention · D5 credit-application data retention. **Stage 0 LIVE 2026-11-05 (ordering #41, 32ff98f):
   brochure email requires an approved dealer sign-in (was an open relay), reply-to = the dealer, subject CR/LF stripped.**
   Never probe a live email endpoint with a request that could send mail — verify with an OPTIONS/CORS or 401-only check.
+  **Stage 1 LIVE 2026-11-05 (admin #89 5c05968, ordering #42 16114b6): Shop opens a landing page of every partner.**
+  Roster = the website's `/data/partners.json` (src/partners-feed.njk from activeManufacturers; public fields only; CORS
+  *), artwork = the website partner cards (uncropped, 2 a row / 1 on phones); roster unreadable or slow (5 s) → the
+  storefront's own list. A tile does only what the account allows (orderable → catalog; request_access → Request access;
+  Golden in-platform ONLY when goldenEntitled(), else the dashboard's Golden section; anything else "ask your HCPS rep",
+  never a link). "All manufacturers" in the breadcrumb, Manufacturer filter, product page and empty-line messages.
+  Storefront line logos come from the website's logo files (`/assets/logos/<slug>.jpg`). Tests: ordering
+  test/shop-landing.browser.js (+ test/_shop-harness.js, needs ../homecareproviderservices/_site built).
   Rules: staged reviewed PRs, independent review per stage; preserve ordering/configurators/carts/PO/history,
   frozen lines, Yuwell promo + freight, Ohio Medical retired, Golden workstream untouched; RLS + dealer isolation; test
   desktop/tablet/mobile and REAL interactions; no real orders, real credit applications, live test emails or social posts

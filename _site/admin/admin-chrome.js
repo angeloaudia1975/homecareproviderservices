@@ -63,6 +63,9 @@
         { href:"/admin/dealers.html",            label:"Contract Pricing",           icon:"💲", group:"commerce", xref:true, desc:"Per-dealer negotiated pricing that overrides the standard dealer price" },
         { href:"/admin/order-fulfillment.html",  label:"Order Review & Fulfillment", icon:"🧾", group:"commerce", desc:"See, confirm & track submitted dealer orders" },
         { href:"/admin/manufacturer-center.html", label:"Manufacturer Center",       icon:"🏭", status:"new", group:"commerce", desc:"From a manufacturer's files to a verified line: source register, HCPS decisions, freight terms, the freeze on Gold Standard lines, and the full verification suite (cards, cart, server pricing, freight, emails)" },
+        { href:"/admin/catalog-preview.html", label:"Catalog Preview", icon:"🔍", status:"new", group:"commerce", desc:"Open the private, unpublished catalog preview as any dealer — real pricing and full checkout, nothing recorded or sent to a manufacturer" },
+        { href:"/admin/golden-links.html",       label:"Golden Partner Links",     icon:"🔗", status:"new", group:"commerce", desc:"Propose which HCPS dealer is which Golden account — Golden verifies; nothing reaches Partner 360 until it does" },
+        { href:"/admin/catalog-exceptions.html", label:"Catalog Exceptions",        icon:"🧭", status:"new", group:"commerce", desc:"Every manufacturer line's open catalog work in one queue — prices, part numbers, units, content, photos, freight, retired items and what is ready — with links to the tool that fixes each, plus bulk review corrections (no prices, nothing published)" },
         { href:"/admin/featured.html",           label:"Featured Products",          icon:"⭐", group:"partner",  desc:"Curate the promoted items dealers see first" },
         { href:"/admin/home-editor.html",        label:"Portal Home Content",        icon:"🏠", group:"partner",  desc:"Hero banner, promos & the “what's new” tiles" },
         { href:"/admin/dealers.html#logins",     label:"Dealer Portal Accounts",     icon:"🔑", group:"partner", xref:true,  desc:"Registrations, approvals & which manufacturer lines each dealer can order" },
@@ -101,6 +104,7 @@
         { href:"/admin/audiences.html",     label:"Target Audiences",      icon:"🎯", desc:"Build campaign lists from dealers & contacts" },
         { href:"/admin/campaigns.html",     label:"Campaign Studio",       icon:"✉️", desc:"Brief → audience, copy & sequence → Zoho Campaigns" },
         { href:"/admin/ai-style-guide.html", label:"AI Style Guide",       icon:"🖋️", status:"new", desc:"The writing rules every AI email generator follows — edit once, applies everywhere" },
+        { href:"/admin/email-learning.html", label:"Email Learning",       icon:"🧠", status:"new", desc:"Owner only — each HCPS email draft beside what you actually sent, and writing rules learned from your edits" },
         { href:"/admin/product-interest.html", label:"Product Interest",    icon:"🎯", status:"new", desc:"Dealers showing product intent who haven't ordered — build a campaign audience" },
         { href:"/admin/scheduling-console.html", label:"Scheduling Console", icon:"📆", desc:"Dealer Hub service requests — assign a rep, book Outlook & log to Dealer 360" },
         { href:"/admin/academy.html",       label:"Academy Command Center", icon:"🎓", status:"new", desc:"Training & Certification Academy — courses, versions, product facts, learners & credentials (administrators)" }

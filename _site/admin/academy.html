@@ -212,6 +212,8 @@ async function viewCourses(){
       <td data-l="Training available">${trainPill(c)}</td><td data-l="Versions" class="small">${vCounts(c)}</td><td data-l="Course record">${recPill(c.status)}</td></tr>`).join("")
       ||`<tr><td colspan="6" class="muted">No courses yet. Start with “New course”.</td></tr>`}
     </tbody></table></div>
+    <div class="card"><div class="bar"><h2 class="grow" style="margin:0">Student view</h2><a class="go dk sm" href="/admin/academy-student.html" target="_blank" rel="noopener">👁 View a course as a student</a></div>
+      <p class="muted small" style="margin-top:8px">Walk any course version — drafts included — exactly as a learner sees it: the course page, every lesson in the learner player, practice checks and a sample final exam with its result. Desktop, tablet and phone widths. Nothing is saved, and no learner, enrollment, attempt or certificate is created.</p></div>
     <div class="card"><div class="bar"><h2 class="grow" style="margin:0">Lesson player preview</h2>
       <a class="go ghost sm" href="/admin/academy-preview.html?sample=A" target="_blank" rel="noopener">Sample A · Comfort Zones</a>
       <a class="go ghost sm" href="/admin/academy-preview.html?sample=B" target="_blank" rel="noopener">Sample B · Cloud family</a></div>
@@ -219,6 +221,107 @@ async function viewCourses(){
   $("#cfilt").onchange=e=>{COURSE_FILTER=e.target.value;viewCourses();};
   $("#newc").onclick=newCourse;
   $("#view").querySelectorAll("tr.click").forEach(tr=>tr.onclick=()=>viewCourse(tr.dataset.id));
+  paymentsCard();
+}
+
+/* ---------- paid access (Phase 2 / M8 — Stripe TEST mode only) ----------
+   Prices and eligibility overrides: the President only (checked by the server and the database). Access is granted only
+   by the verified Stripe webhook; refunds are issued in the Stripe Dashboard and recorded here automatically. */
+const money=(c,cur)=>c==null?"—":(Number(c)/100).toLocaleString("en-US",{style:"currency",currency:String(cur||"usd").toUpperCase()});
+let PAY=null;
+async function paymentsCard(){
+  const box=document.createElement("div"); box.className="card"; box.id="paycard"; box.innerHTML=`<h2>Paid access (outside dealerships)</h2><p class="muted">Loading…</p>`;
+  $("#view").appendChild(box);
+  const r=await api({action:"payments"});
+  if(r.status!==200){ box.innerHTML=`<h2>Paid access (outside dealerships)</h2><div class="note warn">${esc(errText(r))}</div>`; return; }
+  PAY=r.body; const pres=!!(WHO.may&&WHO.may.publish);
+  const mode={test:["p-on","Sandbox key set"],live:["p-off","Sandbox slot holds a LIVE key"],missing:["p-off","Sandbox key not set"],invalid:["p-off","Sandbox key not valid"]}[PAY.stripe_mode]||["p-off",PAY.stripe_mode];
+  const L=PAY.live||{}; const isLive=PAY.mode==="live";
+  const lkey={live:["p-on","Live key set"],test:["p-off","Live slot holds a TEST key"],missing:["p-off","Live key not set"],invalid:["p-off","Live key not valid"]}[L.key_mode]||["p-off","Live key ?"];
+  const T=PAY.totals||{}, LT=PAY.live_totals||{};
+  const tline=o=>["paid","open","refunded","partially_refunded","disputed","review","failed","expired","superseded"].filter(k=>o[k]).map(k=>`${n(o[k])} ${esc(k.replace("_"," "))}`).join(" · ");
+  box.innerHTML=`<div class="bar"><h2 class="grow" style="margin:0">Paid access (outside dealerships)</h2>
+      <span class="pill ${PAY.switch_on?"p-on":"p-off"}">sales: ${PAY.switch_on?"ON":"OFF"}</span>
+      <span class="pill ${isLive?"p-on":"p-off"}">${isLive?"LIVE — real cards":"Sandbox — test cards only"}</span></div>
+    <div class="bar" style="margin-top:6px;flex-wrap:wrap;gap:6px">
+      <span class="muted small">Sandbox:</span><span class="pill ${mode[0]}">${esc(mode[1])}</span>
+      <span class="pill ${PAY.webhook_configured?"p-on":"p-off"}">webhook secret ${PAY.webhook_configured?"set":"not set"}</span>
+      <span class="muted small">Live:</span><span class="pill ${lkey[0]}">${esc(lkey[1])}</span>
+      <span class="pill ${L.webhook_configured?"p-on":"p-off"}">webhook secret ${L.webhook_configured?"set":"not set"}</span>
+      <span class="pill ${L.switch_on?"p-on":"p-off"}">live switch ${L.switch_on?"ON":"OFF"}</span>
+      <span class="pill ${L.tax_switch_on?"p-on":""}">sales tax ${L.tax_switch_on?"added by Stripe Tax":"not collected"}</span></div>
+    ${PAY.installed&&PAY.m9_installed===false?`<div class="note" style="margin-top:8px">The live-payments database step (M9) is not installed yet — the Academy can only take sandbox payments.</div>`:""}
+    ${L.switch_on&&!L.ready?`<div class="note warn" style="margin-top:8px">The live switch is on but the live key or live webhook secret is missing, so checkout is closed.</div>`:""}
+    ${PAY.installed?"":`<div class="note warn" style="margin-top:8px">The payments database step (M8) is not installed yet — prices and purchases appear here once the President runs it.</div>`}
+    <p class="muted small" style="margin:8px 0">HCPS network dealers are always included at no charge. Outside dealerships buy on Stripe's page; access is added only after Stripe's signed confirmation. A manufacturer course (Golden) stays off sale until the manufacturer's commercial-use permission is recorded. ${isLive?"Live mode — real cards are charged.":"Sandbox mode — no real card is charged."}</p>
+    ${PAY.access_installed?"":`<div class="note warn" style="margin-top:8px">The free-launch database step (F1) is not installed yet — course access policies appear here once the President runs it.</div>`}
+    <table class="stack"><thead><tr><th>Course</th><th>Access</th><th>Outside price</th><th>HCPS dealers</th><th>Outside sale</th><th>Manufacturer rights</th><th></th></tr></thead><tbody>
+    ${PAY.courses.map(c=>{const p=c.price||{}, a=c.access;return `<tr><td data-l="Course"><b>${esc(c.title)}</b><div class="muted mono">${esc(c.slug)}</div></td>
+      <td data-l="Access">${!a?`<span class="pill p-off">not set (price rules)</span>`:a.mode==="free"?`<span class="pill p-on">Free during launch</span>`:a.mode==="paid"?`<span class="pill p-on">Paid</span>`:`<span class="pill p-off">Off</span>`}${c.free_enrollments?`<div class="muted small">${n(c.free_enrollments)} free enrollment${c.free_enrollments===1?"":"s"}</div>`:""}${pres&&PAY.access_installed&&c.course_type!=="manufacturer_program"?`<div><button class="go ghost sm" data-access="${esc(c.id)}">Set access</button></div>`:""}</td>
+      <td data-l="Outside price">${money(p.price_outside_cents,p.currency)}</td>
+      <td data-l="HCPS dealers">${p.network_included===false?`<span class="pill p-off">charged</span>`:`<span class="pill p-on">included</span>`}</td>
+      <td data-l="Outside sale">${p.outside_sale_allowed?`<span class="pill p-on">on sale</span>`:`<span class="pill p-off">not on sale</span>`}</td>
+      <td data-l="Rights">${c.needs_rights?(p.commercial_rights_confirmed?`<span class="pill p-on">confirmed</span>`:`<span class="pill p-off">not confirmed</span>`):"HCPS-owned"}</td>
+      <td data-l="">${pres&&PAY.installed?`<button class="go ghost sm" data-price="${esc(c.id)}">Set price</button>`:""}</td></tr>`;}).join("")||`<tr><td colspan="7" class="muted">No courses.</td></tr>`}
+    </tbody></table>
+    <p class="muted small">Access is independent of the price: a free course keeps its price on record but is never sold, and learners who enrolled free keep their access if the course later becomes paid.</p>
+    <div class="bar" style="margin:16px 0 6px"><h3 class="grow" style="margin:0">Purchases</h3><button class="go ghost sm" id="reconbtn">Check Stripe against HCPS</button></div>
+    <div id="reconout"></div>
+    <p class="muted small"><b>Live:</b> ${tline(LT)||"none yet"} · <b>Sandbox:</b> ${tline(T)||"none"}</p>
+    <table class="stack"><thead><tr><th>When</th><th>Buyer</th><th>Course</th><th>Amount</th><th>Status</th></tr></thead><tbody>
+    ${PAY.purchases.slice(0,50).map(p=>`<tr><td data-l="When">${when(p.created_at)}</td><td data-l="Buyer">${esc(p.full_name)}<div class="muted small">${esc(p.company)} · ${esc(p.email)}</div></td>
+      <td data-l="Course">${esc(p.course||"")}</td><td data-l="Amount">${money(p.amount_cents,p.currency)}${p.amount_tax_cents?`<div class="muted small">+ tax ${money(p.amount_tax_cents,p.currency)}</div>`:""}${p.amount_refunded_cents?`<div class="muted small">refunded ${money(p.amount_refunded_cents,p.currency)}</div>`:""}</td>
+      <td data-l="Status">${p.livemode?`<span class="pill p-on">LIVE</span> `:`<span class="pill">test</span> `}${stPill(p.status)}${p.review_reason?`<div class="muted small">${esc(p.review_reason)}</div>`:""}</td></tr>`).join("")||`<tr><td colspan="5" class="muted">No purchases yet.</td></tr>`}
+    </tbody></table>
+    <div class="bar" style="margin-top:14px"><h3 class="grow" style="margin:0">Free-access overrides</h3>${pres&&PAY.installed?`<button class="go ghost sm" id="eligbtn">Override a dealership</button>`:""}</div>
+    <p class="muted small">Standard rule: an active dealership (account class blank or dealer; a branch follows its head office) is included free. The President can include or exclude one dealership, with a reason.</p>
+    ${PAY.eligibility_overrides.length?`<table class="stack"><tbody>${PAY.eligibility_overrides.map(o=>`<tr><td data-l="Dealership">${esc(o.dealer||o.dealer_id)}</td><td data-l="Override">${o.eligible?"included free":"must pay"}</td><td data-l="Reason">${esc(o.reason)}</td><td data-l="Set">${when(o.set_at)}</td></tr>`).join("")}</tbody></table>`:`<p class="muted small">No overrides.</p>`}`;
+  box.querySelectorAll("[data-price]").forEach(b=>b.onclick=()=>priceModal(PAY.courses.find(c=>c.id===b.dataset.price)));
+  box.querySelectorAll("[data-access]").forEach(b=>b.onclick=()=>accessModal(PAY.courses.find(c=>c.id===b.dataset.access)));
+  const eb=$("#eligbtn"); if(eb)eb.onclick=eligModal;
+  const rb=$("#reconbtn"); if(rb)rb.onclick=async()=>{
+    rb.disabled=true; const out=$("#reconout"); out.innerHTML=`<p class="muted small">Checking the last 14 days in Stripe…</p>`;
+    const r=await api({action:"payments_reconcile",days:14}); rb.disabled=false;
+    if(r.status!==200){ out.innerHTML=`<div class="note warn">${esc(errText(r))}</div>`; return; }
+    const m=r.body.modes||{}; const ms=Object.entries(m).map(([k,v])=>`${esc(k)}: ${typeof v==="object"?n(v.completed)+" completed":esc(v)}`).join(" · ");
+    out.innerHTML=r.body.problems.length?`<div class="note warn"><b>${n(r.body.problems.length)} payment(s) in Stripe without access in HCPS</b> (${ms})<ul>${r.body.problems.map(p=>`<li>${esc(p.mode)} · ${when(p.created)} · ${money(p.amount_total,"usd")} · ${esc(p.email||"")} · HCPS: ${esc(p.hcps_status)} · <span class="mono">${esc(p.session_id)}</span></li>`).join("")}</ul></div>`
+      :`<div class="note" style="margin-bottom:8px">Every paid Stripe checkout in the last 14 days has its HCPS record (${ms}).</div>`;
+  };
+}
+function priceModal(c){
+  const p=c.price||{};
+  formModal("Price — "+c.title,`
+    ${field("pprice","Outside-dealer price (USD, e.g. 19.99; blank = no price)",'inputmode="decimal" maxlength="9"',p.price_outside_cents==null?"":(p.price_outside_cents/100).toFixed(2))}
+    ${select("pincl","HCPS network dealers",[["true","Included at no charge"],["false","Also charged"]],String(p.network_included!==false))}
+    ${select("psale","Sell to outside dealerships",[["false","Not on sale"],["true","On sale"]],String(!!p.outside_sale_allowed))}
+    ${c.needs_rights?select("prights","Manufacturer commercial-use permission",[["false","Not confirmed"],["true","Confirmed in writing"]],String(!!p.commercial_rights_confirmed)):""}
+    ${area("pnote","Rights note (who confirmed, when, reference)",p.rights_note||"")}
+    <p class="muted small" style="margin-top:8px">A changed price applies to new checkouts; an open checkout at the old price is closed. ${c.needs_rights?"This is a manufacturer course: it cannot go on sale until the permission is confirmed.":""}</p>`,
+    "Save price",async()=>{
+      const raw=val("pprice").trim(); let cents=null;
+      if(raw){ if(!/^\d{1,4}(\.\d{1,2})?$/.test(raw)){ const m=$("#mmsg"); m.className="msg err"; m.textContent="Enter a price like 19.99."; return; } cents=Math.round(Number(raw)*100); }
+      const body={action:"set_price",course_id:c.id,price_outside_cents:cents,network_included:val("pincl")==="true",outside_sale_allowed:val("psale")==="true",rights_note:val("pnote")};
+      if(c.needs_rights)body.commercial_rights_confirmed=val("prights")==="true";
+      await change(body,"mmsg",()=>viewCourses());
+    },{intro:"The President's decision; recorded in the Academy audit history."});
+}
+function accessModal(c){
+  const a=c.access||{};
+  formModal("Access — "+c.title,`
+    ${select("amode","Access",[["free","Free during launch (no card)"],["paid","Paid (outside dealerships buy on Stripe)"],["off","Off (no new enrollments)"]],a.mode||"free")}
+    ${field("anote","Public note (optional, shown with the course)",'maxlength="300"',a.note||"")}
+    ${area("areason","Reason (required)","")}
+    <p class="muted small" style="margin-top:8px">The price is not changed. Free: anyone can sign up and enroll without a card; open checkouts are closed. Learners who enrolled free keep their enrollment, progress and certificate whatever you choose later.</p>`,
+    "Save access",async()=>{ await change({action:"set_course_access",course_id:c.id,mode:val("amode"),note:val("anote"),reason:val("areason")},"mmsg",()=>viewCourses()); },
+    {intro:"The President's decision; recorded in the Academy audit history."});
+}
+function eligModal(){
+  formModal("Free-access override",`
+    ${field("edealer","Dealership id (from Dealer 360)",'maxlength="36" placeholder="00000000-0000-0000-0000-000000000000"')}
+    ${select("eelig","Decision",[["true","Include free"],["false","Must pay (outside price)"],["","Remove override (standard rule)"]],"true")}
+    ${area("ereason","Reason (required)","")}`,"Save override",async()=>{
+      const e=val("eelig"); await change({action:"set_eligibility",dealer_id:val("edealer").trim(),eligible:e===""?null:e==="true",reason:val("ereason")},"mmsg",()=>viewCourses());
+    });
 }
 const mname=s=>{ if(!s)return "—"; const m=MFRS.find(x=>x.slug===s); return m?m.name:s; };
 function newCourse(){
@@ -260,7 +363,10 @@ async function viewCourse(id){
       ${isMfr?`<tr><td data-l="Link"><b>Manufacturer training</b></td><td><a class="lnk" href="${esc(safeUrl(c.external_url))}" target="_blank" rel="noopener noreferrer">${esc(c.external_url)}</a></td></tr>`:""}
     </tbody></table>
     <div class="bar" style="margin-top:10px"><button class="go ghost sm" id="editc">Edit details</button>${c.locked&&!WHO.may.publish?`<span class="muted small">Learners have seen this course: only the President can change its details.</span>`:""}</div></div>
-   ${isMfr?`<div class="card"><p class="muted">A manufacturer program is taught and examined by the manufacturer, so it has no HCPS versions, lessons or exam. Learners' manufacturer credentials appear under Certifications.</p></div>`:
+   ${isMfr?`<div class="card"><p class="muted">A manufacturer program is taught and examined by the manufacturer, so it has no HCPS versions, lessons or exam. Learners' manufacturer credentials appear under Certifications.</p>
+     <div class="bar" style="margin-top:10px">${!WHO.may.publish?`<span class="muted small">Publishing is reserved for the President.</span>`:
+       c.status==="published"?`<span class="pill p-on">Shown to learners</span><button class="go warn sm" id="mretire">Retire…</button>`:
+       c.status==="draft"?`<button class="go dk sm" id="mpub">Publish for learners…</button><span class="muted small">Learners then see it under “${esc(mname(c.manufacturer_slug))} technical certifications” with a button to the manufacturer’s link.</span>`:`<span class="muted small">Retired.</span>`}</div></div>`:
    `<div class="card"><div class="bar" style="margin-bottom:8px"><h2 class="grow" style="margin:0">Versions</h2><button class="go dk sm" id="newv">+ New draft version</button></div>
     <table class="stack"><thead><tr><th>Version</th><th>Status</th><th>Pass mark</th><th>Exam questions</th><th>Valid for</th><th>Published</th></tr></thead><tbody>
     ${vs.slice().reverse().map(v=>`<tr class="click" data-id="${esc(v.id)}"><td data-l="Version"><b>v${esc(v.version)}</b></td><td data-l="Status">${stPill(v.status)}</td><td data-l="Pass mark">${esc(v.pass_mark)}%</td>
@@ -272,11 +378,45 @@ async function viewCourse(id){
       <p class="muted small" style="margin-top:8px">The short name, type and issuer of a course never change.</p>`,"Save",async()=>{
       const b={action:"update_course",id:c.id,title:val("etitle"),category:val("ecat")}; if(isMfr)b.external_url=val("eurl");
       await change(b,"mmsg",()=>viewCourse(c.id)); });
+  if(isMfr) programCard(c);
+  const mp=$("#mpub"); if(mp)mp.onclick=()=>formModal("Publish "+c.title,`<p>Learners will see <b>${esc(c.title)}</b> in the HCPS Academy with a button that opens:</p><p class="mono small">${esc(c.external_url)}</p><p class="muted small">It stays ${esc(mname(c.manufacturer_slug))}-issued: HCPS never issues this credential. You can retire it later.</p>`,
+    "Publish",async()=>{ await change({action:"publish_course",id:c.id},"mmsg",()=>viewCourse(c.id)); },{intro:"The President's decision; recorded in the Academy audit history."});
+  const mr=$("#mretire"); if(mr)mr.onclick=()=>formModal("Retire "+c.title,`${area("mrreason","Reason (required)","")}<p class="muted small">Learners stop seeing it. Credentials already recorded are kept.</p>`,
+    "Retire",async()=>{ await change({action:"retire_course",id:c.id,reason:val("mrreason")},"mmsg",()=>viewCourse(c.id)); });
   if(!isMfr){
     $("#newv").onclick=()=>formModal("New draft version",`${field("vpass","Pass mark (%)",'type="number" min="1" max="100"',80)}${field("vq","Exam questions per attempt",'type="number" min="1" max="200"',25)}${field("vvalid","Certificate valid for (months; blank = no expiry)",'type="number" min="1" max="120"',12)}`,
       "Create draft",async()=>{ await change({action:"create_version",course_id:c.id,pass_mark:val("vpass"),exam_questions:val("vq"),validity_months:val("vvalid")},"mmsg",b=>viewVersion(b.version.id)); });
     $("#view").querySelectorAll("tr.click").forEach(tr=>tr.onclick=()=>viewVersion(tr.dataset.id));
   }
+}
+/* Manufacturer program page (F2, issue #32): the official video + the manufacturer's quiz link + overview. Administrators. */
+async function programCard(c){
+  const box=document.createElement("div"); box.className="card"; box.id="progcard"; box.innerHTML=`<h2>Program page (what learners see)</h2><p class="muted">Loading…</p>`;
+  $("#view").appendChild(box);
+  const r=await api({action:"get_program",course_id:c.id});
+  if(r.status!==200){ box.innerHTML=`<h2>Program page</h2><div class="note warn">${esc(errText(r))}</div>`; return; }
+  if(!r.body.installed){ box.innerHTML=`<h2>Program page (what learners see)</h2><div class="note warn">The program-page database step (F2) is not installed yet. Until it is, learners see the quiz link only.</div>`; return; }
+  const d=r.body.details||{};
+  box.innerHTML=`<div class="bar"><h2 class="grow" style="margin:0">Program page (what learners see)</h2><a class="go ghost sm" href="/admin/academy-student.html" target="_blank" rel="noopener">👁 View as a student</a></div>
+    <p class="muted small" style="margin:6px 0 10px">Learners watch the official video inside the HCPS Academy, then take ${esc(mname(c.manufacturer_slug))}'s own quiz on its form. ${esc(mname(c.manufacturer_slug))} grades the quiz and issues the certificate; HCPS records it after checking the certificate (Certifications tab).</p>
+    <table class="stack"><tbody>
+      <tr><td><b>Official video</b></td><td>${d.video_url?`<a class="lnk" href="${esc(safeUrl("https://www.youtube.com/watch?v="+String(d.video_url).split("/").pop()))}" target="_blank" rel="noopener noreferrer">${esc(d.video_title||d.video_url)}</a>`:`<span class="muted">not set</span>`}</td></tr>
+      <tr><td><b>Official quiz</b></td><td>${d.quiz_url?`<a class="lnk" href="${esc(safeUrl(d.quiz_url))}" target="_blank" rel="noopener noreferrer">${esc(d.quiz_url)}</a>`:`<span class="muted">not set — the course link is used: ${esc(c.external_url||"none")}</span>`}</td></tr>
+      <tr><td><b>Manufacturer page</b></td><td>${d.manufacturer_page_url?esc(d.manufacturer_page_url):`<span class="muted">not set</span>`}</td></tr>
+      <tr><td><b>Overview</b></td><td>${esc(d.overview||"—")}</td></tr>
+      <tr><td><b>Quiz note</b></td><td>${esc(d.quiz_note||"—")}</td></tr>
+    </tbody></table>
+    <div class="bar" style="margin-top:10px"><button class="go dk sm" id="editprog">Edit program page</button>${d.updated_at?`<span class="muted small">Last changed ${day(d.updated_at)} by ${esc(String(d.updated_by||"").replace("staff:",""))}</span>`:""}</div>`;
+  $("#editprog").onclick=()=>formModal("Program page — "+c.title,`
+    ${field("pvid","Official video (YouTube link)",'maxlength="300" placeholder="https://www.youtube.com/watch?v=…"',d.video_url?("https://www.youtube.com/watch?v="+String(d.video_url).split("/").pop()):"")}
+    ${field("pvtitle","Video title",'maxlength="200"',d.video_title||"")}
+    ${field("pquiz","Official quiz link (https://)",'maxlength="500"',d.quiz_url||c.external_url||"")}
+    ${field("ppage","Manufacturer's certification page (https://)",'maxlength="500"',d.manufacturer_page_url||"")}
+    ${area("pover","Overview (shown above the steps)",d.overview||"")}
+    ${area("pnote","Quiz note (passing score, retakes, how the certificate arrives — as the manufacturer states it)",d.quiz_note||"")}
+    <p class="muted small" style="margin-top:8px">The video plays in YouTube's privacy-enhanced player, never autoplays, and always offers "Watch on YouTube". The quiz opens on the manufacturer's own form in a new tab; HCPS never copies or grades it.</p>`,
+    "Save",async()=>{ await change({action:"set_program",course_id:c.id,video_url:val("pvid"),video_title:val("pvtitle"),quiz_url:val("pquiz"),manufacturer_page_url:val("ppage"),overview:val("pover"),quiz_note:val("pnote")},"mmsg",()=>viewCourse(c.id)); },
+    {intro:"Recorded in the Academy audit history."});
 }
 async function viewVersion(id){
   loading(); const r=await api({action:"get_version",id}); if(r.status!==200)return failed(r);
@@ -296,7 +436,10 @@ async function viewVersion(id){
     ${v.status==="in_review"?`<div class="bar" style="margin-top:10px">${pres?`<button class="go dk sm" id="pub">Publish v${esc(v.version)}…</button>`:`<span class="muted small">Publishing is reserved for the President.</span>`}</div>`:""}
     ${v.status==="draft"?`<p class="muted small" style="margin-top:10px">Submit this version for review before it can be published.</p>`:""}
     ${v.status==="published"&&pres?`<div class="bar" style="margin-top:10px"><button class="go warn sm" id="retire">Retire v${esc(v.version)}…</button></div>`:""}
-    <div class="bar" style="margin-top:10px"><a class="go dk sm" id="builder" href="/admin/academy-builder.html?version=${esc(v.id)}">${ed?"Open course builder":"Open course builder (read only)"}</a></div>
+    ${!ed&&pres?`<div class="note" style="margin-top:10px"><b>To edit this version:</b> a ${v.status==="published"?"published":esc(v.status.replace("_"," "))} version never changes, so learners' records stay exactly as they took it. <b>Edit as a new version</b> copies everything — modules, lessons, screens, pictures, questions, fact links and the exam distribution — into a new draft you can change freely in the course builder; publishing it replaces this version for new learners.</div>
+      <div class="bar" style="margin-top:8px"><button class="go dk sm" id="copyv">✎ Edit as a new version…</button></div>`:""}
+    <div class="bar" style="margin-top:10px"><a class="go dk sm" id="builder" href="/admin/academy-builder.html?version=${esc(v.id)}">${ed?"Open course builder":"Open course builder (read only)"}</a>
+      <a class="go ghost sm" href="/admin/academy-student.html?version=${esc(v.id)}" target="_blank" rel="noopener" aria-label="View v${esc(v.version)} as a student (opens in a new tab)">👁 View as a student</a></div>
     <p class="muted small" style="margin-top:10px">Lesson screens, pictures, the question bank and the exam distribution are edited in the <b>course builder</b>. <b>Preview</b> beside a lesson shows it in the learner lesson player, staff only; nothing is saved. Answer keys are never shown on this screen.</p></div>
    <div class="card"><div class="bar" style="margin-bottom:8px"><h2 class="grow" style="margin:0">Modules &amp; lessons</h2>${ed?`<button class="go dk sm" id="addm">+ Module</button>`:""}</div>
     ${mods.map(m=>`<div class="mod"><div class="bar"><b class="grow">${esc(m.position)}. ${esc(m.title)}</b>${ed?`<button class="go ghost sm" data-em="${esc(m.id)}">Edit</button><button class="go ghost sm" data-al="${esc(m.id)}">+ Lesson</button>${m.lessons.length?"":`<button class="go warn sm" data-dm="${esc(m.id)}">Remove</button>`}`:""}</div>
@@ -304,6 +447,24 @@ async function viewVersion(id){
       ${m.lessons.map(l=>`<div class="lesson"><span class="grow">${esc(m.position)}.${esc(l.position)} ${esc(l.title)} <span class="muted">· ${esc(l.est_minutes)} min · ${n(l.blocks)} block(s)</span></span><a class="go ghost sm" href="/admin/academy-preview.html?lesson=${esc(l.id)}" target="_blank" rel="noopener" aria-label="Preview lesson ${esc(m.position)}.${esc(l.position)} (opens in a new tab)">Preview</a>${ed?`<button class="go ghost sm" data-el="${esc(l.id)}">Edit</button><button class="go warn sm" data-dl="${esc(l.id)}">Remove</button>`:""}</div>`).join("")}</div>`).join("")
       ||`<p class="muted">No modules yet.</p>`}</div>`;
   $("#back").onclick=()=>viewCourse(v.course_id);
+  const cv=$("#copyv"); if(cv)cv.onclick=()=>formModal("Edit "+(c.title||"course")+" — new version",`<p>This makes <b>a new draft version</b> with a full copy of v${esc(v.version)}. v${esc(v.version)} stays live for learners until you publish the new version.</p>
+      <ul class="small"><li>Learners already in v${esc(v.version)} keep their progress, attempts and certificates.</li><li>Publishing the new version retires v${esc(v.version)} for new enrollments.</li><li>Nothing learners see changes until you publish.</li></ul><div id="copyprog" class="muted small" aria-live="polite"></div>`,
+    "Make the editable copy",async()=>{
+      const pg=$("#copyprog"), m=$("#mmsg");
+      let to=null, label="";
+      const st=await api({action:"copy_version_start",from_version_id:v.id});
+      if(st.status===200&&st.body.ok){ to=st.body.version.id; label="v"+st.body.version.version; }
+      else if(st.body&&st.body.error==="draft_exists"&&st.body.draft_id&&cv.dataset.resume!==st.body.draft_id){
+        cv.dataset.resume=st.body.draft_id; if(m){m.className="msg err";m.textContent=errText(st)+" To finish an interrupted copy into it instead, press the button again.";} return; }
+      else if(st.body&&st.body.error==="draft_exists"&&st.body.draft_id){ to=st.body.draft_id; label="v"+st.body.draft_version; }
+      else { if(m){m.className="msg err";m.textContent=errText(st);} return; }
+      let r=null, steps=0;
+      do { pg.textContent="Copying into "+label+"…"+(r?` (${n(r.body.made.lessons)} lessons, ${n(r.body.made.questions)} questions, ${n(r.body.made.screens)} lesson screens in the last step)`:"");
+        r=await api({action:"copy_version_continue",from_version_id:v.id,to_version_id:to}); steps++;
+        if(r.status!==200){ if(m){m.className="msg err";m.textContent=errText(r)+" The draft "+label+" was kept; press the button again to continue the copy.";} return; }
+      } while(!r.body.done && steps<40);
+      closeModal(); viewVersion(to);
+    },{intro:"The President's decision; every step is recorded in the Academy audit history."});
   const reload=()=>viewVersion(id);
   const q1=s=>$("#view").querySelectorAll(s);
   if(ed){
@@ -442,21 +603,30 @@ async function viewCreds(){
   loading();
   const [h,x]=await Promise.all([api({action:"list_certificates"}),api({action:"list_external_certs"})]);
   if(h.status!==200)return failed(h); if(x.status!==200)return failed(x);
-  const H=h.body.certificates, X=x.body.credentials, certsOn=!!(WHO.switches||{}).academy_certificates;
+  const H=h.body.certificates, X=x.body.credentials, certsOn=!!(WHO.switches||{}).academy_certificates, pres=!!(WHO.may&&WHO.may.publish), S=h.body.summary||{};
+  const cstat=c=>c.display_status==="revoked"?`<span class="pill p-off">revoked</span><div class="muted small">${esc(c.revoked_reason||"")}${c.revoked_by?" · "+esc(String(c.revoked_by).replace("staff:","")):""}</div>`
+    :c.display_status==="expired"?`<span class="pill p-off">expired</span>`:c.expiring_soon?`<span class="pill p-in_review">expires in ${esc(c.days_left)} days</span>`:`<span class="pill p-published">valid</span>`;
   $("#view").innerHTML=`<div class="card"><div class="bar"><h2 class="grow" style="margin:0">HCPS-issued certifications</h2>${credPill("hcps")}</div>
-    <div class="cred h" style="margin:10px 0">${esc(h.body.issuer.note)} Certificate issuing is <b>${certsOn?"ON":"OFF"}</b>${certsOn?"":" — none can be issued until the President approves it"}. Certificates are never edited; a revocation is its own recorded decision.</div>
-    <table class="stack"><thead><tr><th>Certificate</th><th>Learner</th><th>Course</th><th>Issued</th><th>Expires</th><th>Status</th></tr></thead><tbody>
+    <div class="cred h" style="margin:10px 0">${esc(h.body.issuer.note)} Certificate issuing is <b>${certsOn?"ON":"OFF"}</b>${certsOn?"":" — none can be issued until the President approves it"}. Certificates are never edited; a revocation is the President's own recorded decision. HCPS courses are independently developed and administered by HCPS; HCPS certificates are not issued, sponsored or endorsed by Golden Technologies.</div>
+    <p class="small" style="margin:0 0 8px"><b>${esc(S.valid||0)}</b> valid · <b>${esc(S.expiring_soon||0)}</b> expiring within 60 days · <b>${esc(S.expired||0)}</b> expired · <b>${esc(S.revoked||0)}</b> revoked <span class="muted">(TEST courses not counted)</span></p>
+    <table class="stack"><thead><tr><th>Certificate</th><th>Learner</th><th>Course</th><th>Issued</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>
     ${H.map(c=>`<tr><td data-l="Certificate" class="mono">${esc(c.cert_number)}</td><td data-l="Learner">${esc(c.learner_name)}<div class="muted small">${esc(c.dealer_name||"")}</div></td><td data-l="Course">${esc(c.course||"")} ${c.version?"v"+esc(c.version):""}</td>
-      <td data-l="Issued">${day(c.issued_at)}</td><td data-l="Expires">${c.expires_at?day(c.expires_at):"—"}</td><td data-l="Status">${c.status==="valid"?`<span class="pill p-published">valid</span>`:`<span class="pill p-off">revoked</span><div class="muted small">${esc(c.revoked_reason||"")}</div>`}</td></tr>`).join("")
-      ||`<tr><td colspan="6" class="muted">No HCPS certificates have been issued.</td></tr>`}</tbody></table></div>
+      <td data-l="Issued">${day(c.issued_at)}</td><td data-l="Expires">${c.expires_at?day(c.expires_at):"—"}</td><td data-l="Status">${cstat(c)}${c.test?` <span class="pill p-off">TEST</span>`:""}</td>
+      <td data-l="">${pres&&c.status==="valid"?`<button class="go ghost sm" data-rk="${esc(c.id)}" data-rn="${esc(c.cert_number)}">Revoke…</button>`:""}</td></tr>`).join("")
+      ||`<tr><td colspan="7" class="muted">No HCPS certificates have been issued.</td></tr>`}</tbody></table></div>
    <div class="card"><div class="bar"><h2 class="grow" style="margin:0">Manufacturer-issued credentials</h2>${credPill("manufacturer")}</div>
     <div class="cred m" style="margin:10px 0">${esc(x.body.issuer.note)} Opening the manufacturer's exam or a learner's own report never counts as passing: only the manufacturer's certificate or another manufacturer confirmation, checked here, makes it verified.</div>
     <table class="stack"><thead><tr><th>Learner</th><th>Program</th><th>Issued by</th><th>Status</th><th>Evidence</th><th></th></tr></thead><tbody>
     ${X.map(c=>`<tr><td data-l="Learner">${esc(c.learner||"")}<div class="muted small">${esc(c.learner_email||"")}</div></td><td data-l="Program">${esc(c.course||"")}</td><td data-l="Issued by">${esc(c.issued_by)}</td>
       <td data-l="Status"><span class="pill ${c.status==="verified"?"p-published":c.status==="rejected"?"p-off":"p-in_review"}">${esc(String(c.status||"").replace(/_/g," "))}</span>${c.awaiting_review?`<div class="muted small">needs review</div>`:""}</td>
-      <td data-l="Evidence">${c.evidence_type?esc(c.evidence_type.replace("_"," "))+(c.evidence_ref?" · "+esc(c.evidence_ref):""):(c.has_upload?"Certificate file uploaded — not yet checked":"—")}${c.verified_by?`<div class="muted small">checked by ${esc(String(c.verified_by).replace("staff:",""))} ${day(c.verified_at)}</div>`:""}${c.note?`<div class="muted small">${esc(c.note)}</div>`:""}</td>
+      <td data-l="Evidence">${c.evidence_type?esc(c.evidence_type.replace("_"," "))+(c.evidence_ref?" · "+esc(c.evidence_ref):""):(c.has_upload?"Certificate file uploaded — not yet checked":"—")}${c.evidence_url?`<div><a class="lnk" href="${esc(safeUrl(c.evidence_url))}" target="_blank" rel="noopener noreferrer">Open the uploaded certificate (private link, 10 min)</a></div>`:""}${c.exam_reported_at?`<div class="muted small">quiz submitted (learner's report) ${day(c.exam_reported_at)}</div>`:""}${c.verified_by?`<div class="muted small">checked by ${esc(String(c.verified_by).replace("staff:",""))} ${day(c.verified_at)}</div>`:""}${c.note?`<div class="muted small">${esc(c.note)}</div>`:""}</td>
       <td data-l="">${(c.status!=="verified"&&c.status!=="rejected")?`<button class="go ghost sm" data-rv="${esc(c.id)}">Review…</button>`:""}</td></tr>`).join("")
       ||`<tr><td colspan="6" class="muted">No manufacturer credentials are being tracked yet.</td></tr>`}</tbody></table></div>`;
+  $("#view").querySelectorAll("[data-rk]").forEach(b=>b.onclick=()=>{
+    formModal("Revoke HCPS certificate "+b.dataset.rn,`${area("rkr","Reason (5–500 characters; kept in the audit history, never shown publicly)")}
+      <p class="muted small" style="margin-top:8px">The certificate stays on record and will verify as <b>revoked</b>. This cannot be undone; a new certificate is not issued automatically.</p>`,
+      "Revoke certificate",async()=>{ await change({action:"revoke_certificate",id:b.dataset.rk,reason:val("rkr")},"mmsg",viewCreds); },{danger:true});
+  });
   $("#view").querySelectorAll("[data-rv]").forEach(b=>b.onclick=()=>{
     formModal("Review manufacturer credential",`${select("rd","Decision",[["verified","Verified — the manufacturer issued it"],["rejected","Rejected — evidence not sufficient"]],"verified")}
       <div id="evwrap">${select("ret","Evidence",[["golden_certificate","Manufacturer certificate (uploaded)"],["manufacturer_confirmation","Confirmation from the manufacturer"]],"golden_certificate")}${field("rer","Evidence reference (required for a confirmation)",'maxlength="300"')}</div>

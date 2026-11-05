@@ -62,8 +62,8 @@ async function load(){
       <div class="row">
         <div><label class="fl">State</label><select id="stateSel" onchange="renderState()"></select></div>
         <div style="display:flex;gap:8px;align-items:center">
-          <button class="go sm" style="background:#fff;color:var(--navy)" onclick="allState(true)">Select all</button>
-          <button class="go sm" style="background:#fff;color:var(--navy)" onclick="allState(false)">Clear</button>
+          <button class="go sm" style="background:#fff;color:var(--navy)" onclick="allState(true,this)">Select all</button>
+          <button class="go sm" style="background:#fff;color:var(--navy)" onclick="allState(false,this)">Clear</button>
           <span class="saved" id="saved">Saved ✓</span>
         </div>
       </div>
@@ -84,19 +84,45 @@ function renderState(){
   $("#mfrgrid").innerHTML=MFRS.map(m=>`<label class="mfr ${have.has(m.slug)?"on":""}">
     <input type="checkbox" ${have.has(m.slug)?"checked":""} onchange="toggle('${esc(m.slug)}',this.checked,this)"> ${esc(m.name)}</label>`).join("");
 }
-async function toggle(slug,on,el){
-  const st=$("#stateSel").value;
-  el.closest(".mfr").classList.toggle("on",on);
-  ASN[st]=ASN[st]||[];
-  if(on){ if(!ASN[st].includes(slug))ASN[st].push(slug); } else { ASN[st]=ASN[st].filter(x=>x!==slug); }
-  const {body:j}=await api("POST",{action:"set_line",state:st,manufacturer:slug,on});
-  if(j&&j.ok){ flashSaved(); fillStates(); renderSummary(); }
+/* SAVES ARE CONFIRMED, NEVER ASSUMED. The tick used to change on screen and in the summary before
+   the server answered, and a failed save (expired sign-in, network, server error) said nothing — the
+   page showed a line as represented that was never stored. Now the box is disabled while saving,
+   a failure puts it back and says so, and an expired session goes to sign-in. */
+function saveError(status,j){
+  if(status===401){ gate("Your session ended — sign in again. That change was not saved."); return; }
+  const m=$("#saved"); if(!m) return;
+  m.textContent="Not saved — "+((j&&(j.message||j.error))||"try again"); m.style.color="#b42323"; m.classList.add("show");
+  clearTimeout(flashSaved._t); flashSaved._t=setTimeout(()=>{ m.classList.remove("show"); },4000);
 }
-async function allState(on){
+function flashOk(){ const m=$("#saved"); if(m){ m.textContent="Saved ✓"; m.style.color=""; } flashSaved(); }
+async function toggle(slug,on,el){
+  const st=$("#stateSel").value, box=el.closest(".mfr");
+  el.disabled=true;
+  let res; try{ res=await api("POST",{action:"set_line",state:st,manufacturer:slug,on}); }catch(e){ res={status:0,body:{message:"no connection"}}; }
+  el.disabled=false;
+  const j=res.body;
+  if(res.status===200&&j&&j.ok){
+    ASN[st]=ASN[st]||[];
+    if(on){ if(!ASN[st].includes(slug))ASN[st].push(slug); } else { ASN[st]=ASN[st].filter(x=>x!==slug); }
+    box.classList.toggle("on",on); flashOk(); fillStates(); renderSummary(); return;
+  }
+  el.checked=!on; box.classList.toggle("on",!on);   // put it back the way the server has it
+  saveError(res.status,j);
+}
+/* "Clear" removes every line in a state with one tap, so it asks — inside the page, not a browser
+   dialog: the button turns into a confirm for a few seconds. */
+let CLEAR_ARMED=null;
+async function allState(on,btn){
   const st=$("#stateSel").value;
-  ASN[st]= on ? MFRS.map(m=>m.slug) : [];
-  const {body:j}=await api("POST",{action:"set_state",state:st,manufacturers:ASN[st]});
-  if(j&&j.ok){ flashSaved(); renderState(); fillStates(); renderSummary(); }
+  if(!on && (ASN[st]||[]).length){
+    if(CLEAR_ARMED!==st){ CLEAR_ARMED=st; if(btn){ btn.dataset.t=btn.textContent; btn.textContent=`Clear all ${ASN[st].length} in ${st}?`; btn.style.color="#b42323"; }
+      setTimeout(()=>{ if(CLEAR_ARMED===st){ CLEAR_ARMED=null; if(btn){ btn.textContent=btn.dataset.t||"Clear"; btn.style.color=""; } } },4000); return; }
+    CLEAR_ARMED=null; if(btn){ btn.textContent=btn.dataset.t||"Clear"; btn.style.color=""; }
+  }
+  const want= on ? MFRS.map(m=>m.slug) : [];
+  let res; try{ res=await api("POST",{action:"set_state",state:st,manufacturers:want}); }catch(e){ res={status:0,body:{message:"no connection"}}; }
+  if(res.status===200&&res.body&&res.body.ok){ ASN[st]=want; flashOk(); renderState(); fillStates(); renderSummary(); return; }
+  saveError(res.status,res.body);
 }
 function renderSummary(){
   const sts=Object.keys(ASN).filter(st=>(ASN[st]||[]).length).sort();

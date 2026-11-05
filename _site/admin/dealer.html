@@ -342,6 +342,7 @@ function render(D,A){
   const acctCard=`<div class="card"><h2>Manufacturer account numbers</h2><div id="acctcard"><div class="hint">Loading…</div></div></div>`;
   const intelCard=`<div class="card"><h2>Digital activity &amp; interest</h2><div id="intel"><div class="hint">Loading activity…</div></div></div>`;
   const mfrIntelCard=`<div class="card" id="mfrIntelCard" style="display:none"><h2>Manufacturer-reported intelligence</h2><div id="mfrintel"></div></div>`;
+  const academyCard=`<div class="card" id="academyCard" style="display:none"><h2>HCPS Academy</h2><div id="academy360"></div></div>`;
   const salesCard=`<div class="card" id="salesCard"><h2>Monthly sales &amp; product detail</h2><div id="sales"><div class="hint">Loading sales…</div></div></div>`;
   const commCard=`<div class="card"><h2>Commission — paid vs. outstanding</h2><div id="commled"><div class="hint">Loading…</div></div></div>`;
   const emailCard=`<div class="card" id="emailCard"><h2>Outlook email <span id="emailCount" style="float:right;font-size:11px;color:var(--gray);font-weight:600"></span></h2>
@@ -379,10 +380,10 @@ function render(D,A){
   $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
       <div>${notesCard}${contactsCard}${emailCard}${callCard}${touchCard}${visitsCard}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
-      <div>${tasksCard}${signals}${addrCard}${acctCard}${mfrIntelCard}</div>
+      <div>${tasksCard}${signals}${addrCard}${acctCard}${academyCard}${mfrIntelCard}</div>
     </div>`;
   if(CUR!==d.id) TOUCH_LAST_STATUS=""; // Do not carry a previous dealer\'s save notice to a different account.
-  CUR=d.id; DPHONE=d.phone||""; VLIM=25; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadVisits(); loadHandout(); loadMfrIntel();
+  CUR=d.id; DPHONE=d.phone||""; VLIM=25; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadVisits(); loadHandout(); loadMfrIntel(); loadAcademy360();
 }
 function nextBestAction(d,lines,monthsSince,cart,sess){
   const due=(lines||[]).filter(l=>l.status==="due");
@@ -681,11 +682,19 @@ function renderCompose(){
       <textarea id="cx_body" rows="10" placeholder="The AI draft appears here — review and edit before sending." style="width:100%"></textarea>
       <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
         <button class="btn sm orange" id="cx_send" onclick="sendEmail()">✅ Approve &amp; send</button>
+        <span id="cx_stylewrap"></span>
         <button class="btn sm" onclick="genEmail()">↻ Regenerate</button>
         <button class="btn sm" onclick="openInOutlook()">↗ Open in Outlook</button>
         <span id="cx_msg" class="hint" style="margin:0"></span>
       </div>
       <div class="hint" style="margin-top:4px">Review &amp; edit above, then Approve &amp; send — it goes from your Outlook and logs to the timeline.</div>
+      <div id="cx_alt" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:9px;background:#f7f9fc;padding:9px 11px">
+        <div class="hint" style="margin:0 0 4px"><b>New suggestion</b> — your edited text above is unchanged.</div>
+        <div id="cx_alt_warn"></div>
+        <div id="cx_alt_sub" style="font-weight:700;margin:0 0 4px"></div>
+        <div id="cx_alt_body" style="white-space:pre-wrap;font-size:13px;line-height:1.45;max-height:260px;overflow:auto"></div>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm" onclick="cxAltKeep()">Keep my text</button><button class="btn sm orange" onclick="cxAltUse()">Use this version</button></div>
+      </div>
     </div>`;
 }
 /* ── Situation-driven product picker ─────────────────────────────────────────
@@ -816,17 +825,60 @@ async function genEmail(){
   const tpl=($("#cx_tpl")||{}).value||"follow_up";
   const st=$("#cx_status"); const gen=$("#cx_gen");
   if(st){ st.style.color=""; st.textContent="Drafting with AI…"; } if(gen) gen.disabled=true;
-  let j; try{ j=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"draft",dealer_id:CUR,template:tpl,contact_email:to,contact_name:name,
+  /* Phase 3 (only when the server said writing styles are on): a regenerate over EDITED text is a suggestion beside it —
+     the rep's text stays until they choose the new one, and it keeps the draft id it came from. */
+  const subjEl=$("#cx_subj"), bodyEl=$("#cx_body"), drEl=$("#cx_draft");
+  const edited=!!(COMPOSE.styles && drEl && drEl.style.display!=="none" && subjEl && bodyEl
+    && (subjEl.value!==COMPOSE.genSubj || bodyEl.value!==COMPOSE.genBody));
+  const style=COMPOSE.styles?((($("#cx_style")||{}).value)||undefined):undefined;
+  if(!edited) COMPOSE.draft_id=null; // a failed regenerate must never tie hand-written text to the earlier draft
+  let j; try{ j=await fetch("/.netlify/functions/ai-email-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"draft",dealer_id:CUR,template:tpl,contact_email:to,contact_name:name,style,
     product: CXPROD.manufacturer?{manufacturer:CXPROD.manufacturer,mfr_name:CXPROD.mfr_name,code:CXPROD.code,image_url:CXPROD.image_url}:null})}).then(r=>r.json()); }catch(e){ j=null; }
   if(gen) gen.disabled=false;
   if(!j||!j.ok){ if(st){ st.style.color="#b45309"; st.textContent=(j&&j.message)||"Couldn't generate a draft — try again."; } return; }
   if(st) st.textContent="";
+  cxStyles(j);
+  if(edited){ cxAltShow(j, to, name); return; }
   COMPOSE.to=to; COMPOSE.name=name; COMPOSE.sig=j.signature||"";
+  COMPOSE.draft_id=(typeof j.draft_id==="string")?j.draft_id:null;   // Smart Email Learning: pairs the sent version with this draft
   COMPOSE.html=j.html||""; COMPOSE.product_url=j.product_url||"";
   if(j.product_warning&&st){ st.style.color="#b45309"; st.textContent=j.product_warning; }
   const subj=$("#cx_subj"); if(subj) subj.value=j.subject||"";
   const body=$("#cx_body"); if(body) body.value=(j.body||"")+(j.signature?("\n\n"+j.signature):"");
   const dr=$("#cx_draft"); if(dr) dr.style.display="";
+  COMPOSE.genSubj=subj?subj.value:""; COMPOSE.genBody=body?body.value:"";
+  if(j.features&&j.features.checked) cxWarn(j.warnings);   // only for drafts the Phase 3 guards checked (off = as before)
+}
+/* Phase 3 helpers: the style picker (shown only when the server reports writing styles on), warnings the no-invention
+   guards found, and the suggestion box for a regenerate over edited text. */
+function cxStyles(j){
+  const f=(j&&j.features)||{}; COMPOSE.styles=f.styles===true;
+  const w=$("#cx_stylewrap"); if(!w) return;
+  if(!COMPOSE.styles||!Array.isArray(f.style_list)){ w.innerHTML=""; return; }
+  const cur=(($("#cx_style")||{}).value)||j.style||"";
+  w.innerHTML=`<select id="cx_style" aria-label="Writing style" style="min-width:150px">${f.style_list.map(x=>`<option value="${esc(x.key)}"${x.key===cur?" selected":""}>${esc(x.label)}</option>`).join("")}</select>`;
+}
+function cxWarn(list){
+  const st=$("#cx_status"); if(!st||!Array.isArray(list)||!list.length) return;
+  st.style.color="#b45309"; st.textContent=list.join(" ");
+}
+function cxAltShow(j, to, name){
+  COMPOSE.alt={subject:j.subject||"", body:(j.body||"")+(j.signature?("\n\n"+j.signature):""), draft_id:(typeof j.draft_id==="string")?j.draft_id:null,
+    sig:j.signature||"", html:j.html||"", product_url:j.product_url||"", to, name, warnings:Array.isArray(j.warnings)?j.warnings:[]};
+  const box=$("#cx_alt"); if(!box) return;
+  $("#cx_alt_sub").textContent=COMPOSE.alt.subject; $("#cx_alt_body").textContent=COMPOSE.alt.body;
+  const w=$("#cx_alt_warn"); if(w){ w.innerHTML=""; (Array.isArray(j.warnings)?j.warnings:[]).forEach(x=>{ const d=document.createElement("div"); d.className="hint"; d.style.color="#b45309"; d.textContent=x; w.appendChild(d); }); }
+  box.style.display="";
+}
+function cxAltKeep(){ COMPOSE.alt=null; const b=$("#cx_alt"); if(b) b.style.display="none"; }
+function cxAltUse(){
+  const a=COMPOSE.alt; if(!a) return;
+  const subj=$("#cx_subj"), body=$("#cx_body"); if(subj) subj.value=a.subject; if(body) body.value=a.body;
+  COMPOSE.draft_id=a.draft_id; COMPOSE.sig=a.sig; COMPOSE.html=a.html; COMPOSE.product_url=a.product_url; COMPOSE.to=a.to; COMPOSE.name=a.name;
+  COMPOSE.genSubj=a.subject; COMPOSE.genBody=a.body; COMPOSE.alt=null;
+  // the status line belongs to the text in the editor: the chosen version's findings replace the old ones (review M2)
+  const st=$("#cx_status"); if(st){ st.style.color=""; st.textContent=""; } cxWarn(a.warnings);
+  const b=$("#cx_alt"); if(b) b.style.display="none";
 }
 async function sendEmail(){
   const to=($("#cx_to")||{}).value||COMPOSE.to;
@@ -837,9 +889,9 @@ async function sendEmail(){
   if(!confirm("Send this email to "+to+" from your Outlook?")) return;
   if(msg){ msg.style.color=""; msg.textContent="Sending from your Outlook…"; }
   const btn=$("#cx_send"); if(btn) btn.disabled=true;
-  let j; try{ j=await esapi({action:"send",dealer_id:CUR,to,subject,body_text:body}); }catch(e){ j=null; }
+  let j; try{ j=await esapi({action:"send",dealer_id:CUR,to,subject,body_text:body,draft_id:COMPOSE.draft_id||undefined}); }catch(e){ j=null; }
   if(btn) btn.disabled=false;
-  if(j&&j.ok){ if(msg){ msg.style.color="#1f7a44"; msg.textContent="✓ Sent to "+j.to+" — logged to the timeline."; } const dr=$("#cx_draft"); if(dr) dr.style.display="none"; loadCRM(); loadEmails(); return; }
+  if(j&&j.ok){ COMPOSE.draft_id=null; if(msg){ msg.style.color="#1f7a44"; msg.textContent="✓ Sent to "+j.to+" — logged to the timeline."; } const dr=$("#cx_draft"); if(dr) dr.style.display="none"; loadCRM(); loadEmails(); return; }
   if(j&&j.fallback){ if(msg){ msg.style.color="#b45309"; msg.textContent=(j.message||"Couldn't send from Outlook.")+" Use ‘Open in Outlook’ to send it manually."; } return; }
   if(msg){ msg.style.color="#b42323"; msg.textContent=(j&&j.message)||"Couldn't send."; }
 }
@@ -974,7 +1026,11 @@ function emModalEnsure(){
     +'<div id="emMeta" class="hint" style="margin:3px 0 0"></div></div>'
     +'<button type="button" onclick="emClose()" title="Close (Esc)" style="flex:none;border:1px solid var(--line);background:#f6f8fa;border-radius:8px;width:30px;height:30px;font-size:15px;cursor:pointer;color:var(--gray)">✕</button></div>'
     +'<div id="emBody"></div></div>';
-  wrap.addEventListener("click",function(e){ if(e.target===wrap) emClose(); });
+  /* Close only when the press AND the release are on the backdrop: a text selection released
+     outside the box used to count as a backdrop click and close it (same defect as the Scheduled
+     Routes email editor, 2026-10-30). */
+  let emDown=false; wrap.addEventListener("pointerdown",function(e){ emDown=(e.target===wrap); });
+  wrap.addEventListener("click",function(e){ const ok=emDown&&e.target===wrap; emDown=false; if(ok) emClose(); });
   document.body.appendChild(wrap);
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") emClose(); });
 }
@@ -1644,7 +1700,8 @@ function xsModalEnsure(){
     +'<button type="button" onclick="closeModal()" title="Close (Esc)" style="flex:none;border:1px solid var(--line);background:#f6f8fa;border-radius:8px;width:30px;height:30px;font-size:15px;cursor:pointer;color:var(--gray)">✕</button></div>'
     +'<div id="xsBody" style="padding:15px 16px"></div>'
     +'<div id="xsFoot" style="display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);background:#fafbfc"></div></div>';
-  w.addEventListener("click",e=>{ if(e.target===w) closeModal(); });
+  let xsDown=false; w.addEventListener("pointerdown",e=>{ xsDown=(e.target===w); });   // see emModalEnsure
+  w.addEventListener("click",e=>{ const ok=xsDown&&e.target===w; xsDown=false; if(ok) closeModal(); });
   document.body.appendChild(w);
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
 }
@@ -1820,6 +1877,41 @@ async function loadMfrIntel(){
       ${obs?`<ul style="margin:6px 0 0 16px;padding:0;font-size:12px">${obs}</ul>`:""}
     </div>`;}).join("");
   card.style.display="";
+}
+/* HCPS Academy (crm-api academy, switch academy_dealer360): who here is in training — course progress, exam passed /
+   not passed with the attempt count, HCPS certificates and expiry. Status only: never a score. Hidden while switched off. */
+async function loadAcademy360(){
+  const card=document.getElementById("academyCard"), box=document.getElementById("academy360"); if(!card||!box) return;
+  let j=null; try{ j=await crm({action:"academy",dealer_id:CUR}); }catch(e){ j=null; }
+  if(!j||j.ok===false){ if(j&&j.error){ box.innerHTML=`<div class="hint">${esc(j.message||j.error)}</div>`; card.style.display=""; } else card.style.display="none"; return; }
+  if(!j.enabled){ card.style.display="none"; return; }
+  const S=j.summary||{}, P=j.people||[];
+  const fmt=d=>{ if(!d) return ""; const x=new Date(d); return isNaN(x)?"":x.toLocaleDateString([], {month:"short",day:"numeric",year:"numeric"}); };
+  const chip=(n,label,cls)=>`<span class="pill2 ${cls||""}" style="margin:0 6px 6px 0;display:inline-block">${esc(String(n))} ${esc(label)}</span>`;
+  const test=(j.dealers||[]).some(d=>d.test&&!d.branch);
+  let h=test?`<div class="hint" style="margin-bottom:6px">TEST dealership — kept out of real Academy figures.</div>`:"";
+  if(!P.length){
+    h+=`<div class="hint">No one from this dealership is in the HCPS Academy yet.${S.pending_invites?` ${esc(String(S.pending_invites))} invitation(s) waiting to be accepted.`:""} Invitations are sent from the Academy Command Center or by the dealership's Training Manager.</div>`;
+    box.innerHTML=h; card.style.display=""; return;
+  }
+  h+=`<div style="margin-bottom:4px">${chip(S.active||0,"active")}${chip(S.enrolled||0,"enrolled")}${chip(S.passed||0,"passed","ok")}${chip(S.certified||0,"certified","ok")}${S.expiring_soon?chip(S.expiring_soon,"expiring within 60 days","due"):""}${S.expired?chip(S.expired,"expired","due"):""}${S.revoked?chip(S.revoked,"revoked","none"):""}${S.pending_invites?chip(S.pending_invites,"invitation(s) pending","none"):""}</div>`;
+  const multi=(j.dealers||[]).length>1;
+  h+=P.map(p=>{
+    const role=p.role==="training_manager"?"Training Manager":"Learner";
+    const head=`<div style="font-weight:700;color:var(--navy)">${esc(p.name)} <span class="hint" style="font-weight:400">· ${esc(role)}${multi?" · "+esc(p.dealer):""}${p.access==="ended"?" · access ended "+esc(fmt(p.ended_at)):""}</span></div>`;
+    const rows=(p.courses||[]).map(c=>{
+      const exam=c.exam.passed?"Exam passed":c.exam.attempts?`Exam not passed yet (${c.exam.attempts} attempt${c.exam.attempts===1?"":"s"})`:"Exam not taken";
+      let cert="";
+      if(c.certificate){ const x=c.certificate;
+        cert=x.status==="valid"?` · <span class="pill2 ${x.expiring_soon?"due":"ok"}" style="text-transform:none;letter-spacing:0;font-size:11px">HCPS certificate ${esc(x.cert_number)} · valid until ${esc(fmt(x.expires_at))}</span>`
+            :x.status==="expired"?` · <span class="pill2 due" style="text-transform:none;letter-spacing:0;font-size:11px">Certificate ${esc(x.cert_number)} expired ${esc(fmt(x.expires_at))}</span>`
+            :` · <span class="pill2 none" style="text-transform:none;letter-spacing:0;font-size:11px">Certificate ${esc(x.cert_number)} revoked</span>`; }
+      return `<div style="font-size:12px;margin:2px 0 0 0">${esc(c.course)}${c.test_course?" (TEST)":""}: ${esc(String(c.lessons_completed))}/${esc(String(c.lessons_total))} lessons · ${esc(exam)}${c.status==="withdrawn"?" · withdrawn":""}${cert}</div>`;
+    }).join("")||`<div class="hint" style="font-size:12px">Not enrolled in a course yet.</div>`;
+    return `<div style="margin:8px 0">${head}${rows}</div>`;
+  }).join("");
+  h+=`<div class="hint" style="margin-top:6px">Status only — exam scores are not shown here. HCPS certificates are HCPS sales certifications, not Golden Technologies credentials.</div>`;
+  box.innerHTML=h; card.style.display="";
 }
 async function loadVisits(){
   const el=$("#visits"); if(!el||!CUR) return;

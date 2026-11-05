@@ -57,6 +57,7 @@
     nav.hidden = !ME; nav.replaceChildren();
     if (!ME) return;
     nav.appendChild(el('button', { type: 'button', text: 'My courses', onclick: function () { go('courses'); }, 'aria-current': ROUTE === 'courses' ? 'page' : null }));
+    nav.appendChild(el('button', { type: 'button', text: 'My certificates', onclick: function () { go('certificates'); }, 'aria-current': ROUTE === 'certificates' || ROUTE === 'certificate' ? 'page' : null }));
     if (ME.training_manager) nav.appendChild(el('button', { type: 'button', text: 'My team', onclick: function () { go('team'); }, 'aria-current': ROUTE === 'team' ? 'page' : null }));
     nav.appendChild(el('button', { type: 'button', text: 'Sign out', onclick: signOut }));
   }
@@ -68,7 +69,10 @@
     if (name === 'lesson' && params.get('e') && params.get('l')) { ROUTE = 'lesson'; drawNav(); return lesson(params.get('e'), params.get('l')); }
     if (name === 'team' && ME.training_manager) { ROUTE = 'team'; drawNav(); return team(); }
     if (name === 'exam' && params.get('e')) { ROUTE = 'exam'; drawNav(); return exam(params.get('e')); }
+    if (name === 'certificates') { ROUTE = 'certificates'; drawNav(); return certificates(); }
+    if (name === 'certificate' && params.get('c')) { ROUTE = 'certificate'; drawNav(); return certificate(params.get('c')); }
     if (name === 'take' && params.get('a')) { ROUTE = 'take'; drawNav(); return take(params.get('a'), params.get('e')); }
+    if (name === 'program' && params.get('c')) { ROUTE = 'program'; drawNav(); return program(params.get('c')); }
     ROUTE = 'courses'; drawNav(); courses();
   }
   window.addEventListener('hashchange', function () { if (ME) route(); });
@@ -124,9 +128,72 @@
       var dealers = (ME.memberships || []).map(function (m) { return m.dealer; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
       var head = [el('h1', { text: 'Hello, ' + (ME.learner.full_name || 'there') }), el('p', { cls: 'ac-muted', text: dealers.join(' · ') })];
       var list = r.body.courses || [];
-      if (!list.length) { show(head.concat(el('div', { cls: 'ac-card' }, [el('h2', { text: 'No courses yet' }), el('p', { text: 'Your Training Manager or HCPS will enroll you in a course. It will appear here.' })]))); focusMain(); return; }
+      var free = el('div', { id: 'freebox' });
+      if (!list.length) { var mfr0 = el('div', { id: 'mfrbox' }); show(head.concat(el('div', { cls: 'ac-card' }, [el('h2', { text: 'No courses yet' }), el('p', { text: 'Add a free course below, or your Training Manager or HCPS will enroll you in a course. It will appear here.' })]), free, mfr0)); focusMain(); freeCourses(free); mfrPrograms(mfr0); return; }
       EXAMS_OPEN = !!r.body.exams_open;
-      show(head.concat(el('div', { cls: 'ac-courses' }, list.map(courseCard)))); focusMain();
+      var mfr = el('div', { id: 'mfrbox' });
+      show(head.concat(el('div', { cls: 'ac-courses' }, list.map(courseCard)), free, mfr)); focusMain(); freeCourses(free); mfrPrograms(mfr);
+    });
+  }
+  /* Manufacturer technical certifications (issue #32): taught (official video), examined (official quiz) and issued by the
+     manufacturer. The card opens the program page (/assets/academy/program-page.js): video, then the manufacturer's quiz,
+     then the learner's own reports and HCPS's verification. */
+  function mfrPrograms(box) {
+    api({ action: 'manufacturer_programs' }).then(function (r) {
+      var list = (r.status === 200 && r.body.programs) || [];
+      if (!list.length) return;
+      var groups = {}; list.forEach(function (p) { (groups[p.manufacturer] = groups[p.manufacturer] || []).push(p); });
+      box.replaceChildren.apply(box, Object.keys(groups).map(function (m) {
+        return el('section', { cls: 'ac-card' }, [el('h2', { text: m + ' technical certifications' }),
+          el('p', { cls: 'ac-small ac-muted', text: 'Taught, examined and issued by ' + m + ' — not by HCPS. Watch ' + (/s$/i.test(m) ? m + '’' : m + '’s') + ' official training video here, then take the official quiz.' }),
+          el('ul', { cls: 'ac-stack' }, groups[m].map(function (p) {
+            return el('li', { cls: 'ac-row' }, [el('span', null, [el('b', { text: p.title }),
+              p.credential ? el('span', { cls: 'ac-pill' + (p.credential.status === 'verified' ? ' ok' : ''), text: ' ' + (p.credential.label || p.credential.status) }) : null]),
+              el('button', { type: 'button', cls: 'ac-btn pri', text: p.credential ? 'Continue' : 'Start the training', onclick: function () { go('program', { c: p.id }); } })]);
+          }))]);
+      }));
+    });
+  }
+  function fileData(f) { return new Promise(function (ok, bad) { var r = new FileReader(); r.onload = function () { ok(String(r.result).split(',')[1] || ''); }; r.onerror = bad; r.readAsDataURL(f); }); }
+  function program(id) {
+    show(el('p', { cls: 'ac-muted', text: 'Loading the program…' }));
+    api({ action: 'program', course_id: id }).then(function (r) {
+      if (r.status !== 200) { show([msg(text(r, 'This program could not be loaded.'), true), el('button', { type: 'button', cls: 'ac-btn sec', text: '← My courses', onclick: function () { go('courses'); } })]); return; }
+      var box = el('div', { cls: 'ac-program' }); show(box);
+      window.HCPSProgram.render(box, r.body.program, {
+        uploadsOpen: !!r.body.uploads_open, contact: 'info@homecareproviderservices.us',
+        back: function () { go('courses'); }, reload: function () { program(id); },
+        step: function (step) { return api({ action: 'program_step', course_id: id, step: step }).then(function (x) { return x.status === 200 ? x.body : { ok: false, message: text(x) }; }); },
+        upload: function (f) {
+          return fileData(f).then(function (data) {
+            return fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', 'x-academy-request': '1', 'x-academy-upload': '1' },
+              body: JSON.stringify({ action: 'program_certificate', course_id: id, file_name: f.name, data: data }) })
+              .then(function (x) { return x.json().catch(function () { return {}; }).then(function (j) { return x.status === 200 ? j : { ok: false, message: j.message }; }); });
+          });
+        }
+      });
+      focusMain();
+    });
+  }
+  /* F1 free launch: published FREE courses the learner can add themselves (no card). Enrolling is idempotent. */
+  function freeCourses(box) {
+    api({ action: 'free_courses' }).then(function (r) {
+      var open = ((r.body && r.body.courses) || []).filter(function (c) { return !c.enrolled; });
+      if (r.status !== 200 || !open.length) return;
+      var out = el('div', { 'aria-live': 'polite' });
+      box.replaceChildren(el('section', { cls: 'ac-card' }, [el('h2', { text: 'Free courses' }),
+        el('p', { cls: 'ac-small ac-muted', text: 'Free during launch · No credit card required.' }),
+        el('ul', { cls: 'ac-stack' }, open.map(function (c) {
+          var b = el('button', { type: 'button', cls: 'ac-btn pri', text: 'Enroll free' });
+          b.addEventListener('click', function () {
+            busy(b, true, 'Enrolling…');
+            api({ action: 'enroll_free', course_slug: c.slug }).then(function (x) {
+              if (x.status === 200) { courses(); return; }
+              busy(b, false, 'Enroll free'); out.replaceChildren(msg(text(x), true));
+            });
+          });
+          return el('li', { cls: 'ac-row' }, [el('span', { text: c.title + (c.note ? ' — ' + c.note : '') }), b]);
+        })), out]));
     });
   }
   function courseCard(c) {
@@ -146,6 +213,7 @@
       el('p', { cls: 'ac-muted ac-small', text: 'Version ' + c.version + (c.due_on ? ' · due ' + c.due_on : '') + (c.version_status === 'retired' ? ' · an older version you started' : '') }),
       el('div', { cls: 'ac-progress', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': 'Lessons completed' }, el('span', { style: 'width:' + pct + '%' })),
       el('p', { cls: 'ac-small', text: c.lessons_completed + ' of ' + c.lessons_total + ' lessons complete' }),
+      c.certificate ? el('p', { cls: 'ac-row ac-small' }, [certPill(c.certificate), el('button', { type: 'button', cls: 'ac-btn sec', text: 'View certificate', onclick: function () { go('certificate', { c: c.certificate.id }); } })]) : null,
       el('div', { cls: 'ac-row' }, [cont, toggle, EXAMS_OPEN ? el('button', { type: 'button', cls: 'ac-btn sec', text: 'Final exam', onclick: function () { go('exam', { e: c.enrollment_id }); } }) : null]), outline]);
   }
 
@@ -319,9 +387,13 @@
         show([el('h1', { text: R.passed ? 'You passed' : 'Not passed this time' }),
           el('section', { cls: 'ac-card ac-stack' }, [el('p', { cls: 'ac-score', text: (R.score != null ? R.score + '%' : '') }),
             R.expired ? msg('Time ran out: the answers saved before the deadline were graded.') : null,
-            R.passed ? el('p', { text: 'Well done.' }) : el('p', { text: 'Review the topics below, then try again after the break.' }),
+            R.passed && R.certificate ? el('p', { text: 'Well done — you have earned your HCPS certificate for ' + (R.certificate.course || 'this course') + ' (' + R.certificate.cert_number + ').' }) : null,
+            R.passed && R.certificate_pending ? msg('Well done. Your passing result is kept; your HCPS certificate will be issued shortly — it will appear under My certificates.') : null,
+            R.passed && !R.certificate && !R.certificate_pending ? el('p', { text: 'Well done.' }) : null,
+            R.passed ? null : el('p', { text: 'Review the topics below, then try again after the break.' }),
             topics.length ? el('div', null, [el('h2', { text: 'Topics to review' }), el('ul', null, topics)]) : null].filter(Boolean)),
-          el('div', { cls: 'ac-row' }, [el('button', { type: 'button', cls: 'ac-btn pri', text: 'Back to the exam page', onclick: function () { go('exam', { e: eid }); } }),
+          el('div', { cls: 'ac-row' }, [R.certificate ? el('button', { type: 'button', cls: 'ac-btn pri', text: 'View your certificate', onclick: function () { go('certificate', { c: R.certificate.id }); } }) : null,
+            el('button', { type: 'button', cls: R.certificate ? 'ac-btn sec' : 'ac-btn pri', text: 'Back to the exam page', onclick: function () { go('exam', { e: eid }); } }),
             el('button', { type: 'button', cls: 'ac-btn sec', text: 'My courses', onclick: function () { go('courses'); } })])]);
         focusMain();
       };
@@ -346,6 +418,54 @@
       window.addEventListener('beforeunload', guard);
       show([el('div', { cls: 'ac-examhead' }, [el('h1', { text: 'Final exam' }), clock]), saved, body]);
       tick(); timer = setInterval(tick, 1000); draw(); focusMain();
+    });
+  }
+
+  /* ------------------------------------------------------------ HCPS certificates (A2F) */
+  var DISCLOSURE = 'Issued by Home Care Provider Services (HCPS). This course is independently developed and administered by HCPS; it is not issued, sponsored or endorsed by Golden Technologies.';
+  function fmtDate(v) { if (!v) return ''; var d = new Date(v); return isNaN(d) ? String(v).slice(0, 10) : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Chicago' }); }
+  function certPill(c) {
+    if (c.status === 'revoked') return el('span', { cls: 'ac-pill ended', text: 'Revoked' });
+    if (c.status === 'expired') return el('span', { cls: 'ac-pill ended', text: 'Expired ' + fmtDate(c.expires_at) });
+    return el('span', { cls: 'ac-pill ok', text: c.expiring_soon ? 'Valid — expires ' + fmtDate(c.expires_at) : 'Valid until ' + fmtDate(c.expires_at) });
+  }
+  function certificates() {
+    show(el('p', { cls: 'ac-muted', text: 'Loading your certificates…' }));
+    api({ action: 'my_certificates' }).then(function (r) {
+      if (r.status !== 200) { show(msg(text(r), true)); return; }
+      var list = r.body.certificates || [];
+      show([el('h1', { text: 'My certificates' }), el('p', { cls: 'ac-muted ac-small', text: DISCLOSURE }),
+        list.length ? el('div', { cls: 'ac-courses' }, list.map(function (c) {
+          return el('section', { cls: 'ac-card ac-stack' }, [el('h2', { text: c.course }), el('p', { cls: 'ac-row' }, [certPill(c), el('span', { cls: 'ac-small ac-muted', text: c.cert_number })]),
+            el('p', { cls: 'ac-small', text: 'Issued ' + fmtDate(c.issued_at) + ' · ' + c.dealer_name }),
+            el('div', { cls: 'ac-row' }, [el('button', { type: 'button', cls: 'ac-btn pri', text: 'View and print', onclick: function () { go('certificate', { c: c.id }); } })])]);
+        })) : el('div', { cls: 'ac-card' }, [el('h2', { text: 'No certificates yet' }), el('p', { text: r.body.issuing ? 'Pass a course’s final exam to earn its HCPS certificate.' : 'HCPS certificates are not being issued yet.' })])]);
+      focusMain();
+    });
+  }
+  function certificate(id) {
+    show(el('p', { cls: 'ac-muted', text: 'Loading your certificate…' }));
+    api({ action: 'my_certificates' }).then(function (r) {
+      if (r.status !== 200) { show(msg(text(r), true)); return; }
+      var c = (r.body.certificates || []).filter(function (x) { return x.id === id; })[0];
+      if (!c) { show([msg('Certificate not found.', true), el('button', { type: 'button', cls: 'ac-btn sec', text: 'My certificates', onclick: function () { go('certificates'); } })]); return; }
+      var verifyAt = location.origin + '/academy/verify/#' + c.cert_number;
+      var doc = el('article', { cls: 'ac-cert' + (c.status !== 'valid' ? ' void' : ''), 'aria-label': 'Certificate ' + c.cert_number }, [
+        el('p', { cls: 'ac-cert-issuer', text: 'Home Care Provider Services · HCPS Academy' }),
+        el('h1', { cls: 'ac-cert-title', text: 'Certificate of Completion' }),
+        el('p', { cls: 'ac-cert-line', text: 'This certifies that' }),
+        el('p', { cls: 'ac-cert-name', text: c.learner_name }),
+        el('p', { cls: 'ac-cert-line', text: 'of ' + c.dealer_name + ' has passed the final examination of' }),
+        el('p', { cls: 'ac-cert-course', text: c.course }),
+        el('dl', { cls: 'ac-cert-facts' }, [el('dt', { text: 'Certificate number' }), el('dd', { text: c.cert_number }),
+          el('dt', { text: 'Issued' }), el('dd', { text: fmtDate(c.issued_at) }),
+          el('dt', { text: c.status === 'expired' ? 'Expired' : 'Valid until' }), el('dd', { text: fmtDate(c.expires_at) }),
+          el('dt', { text: 'Verify' }), el('dd', { text: verifyAt })]),
+        c.status !== 'valid' ? el('p', { cls: 'ac-cert-void', text: c.status === 'revoked' ? 'REVOKED — this certificate is no longer valid.' : 'EXPIRED' }) : null,
+        el('p', { cls: 'ac-cert-disclosure', text: DISCLOSURE })]);
+      var pr = el('button', { type: 'button', cls: 'ac-btn pri', text: 'Print or save as PDF' }); pr.addEventListener('click', function () { window.print(); });
+      show([el('div', { cls: 'ac-row ac-noprint' }, [pr, el('button', { type: 'button', cls: 'ac-btn sec', text: 'My certificates', onclick: function () { go('certificates'); } })]), doc]);
+      focusMain();
     });
   }
 
@@ -387,6 +507,8 @@
         var holder = el('div');
         var courseLines = p.courses.map(function (c) {
           var ex = c.exam && c.exam.attempts ? (c.exam.passed ? ' · exam passed' : ' · exam not passed yet (' + c.exam.attempts + (c.exam.attempts === 1 ? ' attempt)' : ' attempts)')) : '';
+          var ce = c.certificate ? ' · HCPS certificate ' + c.certificate.cert_number + ' ' + (c.certificate.status === 'valid' ? (c.certificate.expiring_soon ? 'expires soon (' + fmtDate(c.certificate.expires_at) + ')' : 'valid until ' + fmtDate(c.certificate.expires_at)) : c.certificate.status) : '';
+          ex += ce;
         return el('div', { cls: 'ac-row ac-small' }, [el('span', { text: c.course + ' v' + c.version + ' — ' + c.lessons_completed + '/' + c.lessons_total + ' lessons' + ex + (c.status === 'withdrawn' ? ' (withdrawn)' : '') + (c.due_on ? ' · due ' + c.due_on : '') }),
             c.status !== 'withdrawn' && c.status !== 'completed' ? el('button', { type: 'button', cls: 'ac-btn sec', text: 'Withdraw', onclick: function () { askReason(holder, 'Why withdraw this course?', function (b, why) { call(b, { action: 'withdraw', enrollment_id: c.enrollment_id, reason: why }, 'Course withdrawn.'); }); } }) : null]);
         });

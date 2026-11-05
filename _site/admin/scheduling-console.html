@@ -195,7 +195,7 @@ function openReq(id){
     <div>${!cancelled?`<span class="link" style="color:#b42323" onclick="doCancel()">Cancel this request</span>`:`<span class="link" onclick="doReopen()">Reopen</span>`}</div>
     <button class="go ghost" onclick="closeModal()">Close</button></div>`;
 
-  $("#modal").innerHTML=`<div class="dlg" onclick="if(event.target===this)closeModal()"><div class="dlgbox">
+  $("#modal").innerHTML=`<div class="dlg" onpointerdown="this._d=(event.target===this)" onclick="if(this._d&&event.target===this)closeModal();this._d=false"><div class="dlgbox">
     <div class="inl" style="justify-content:space-between"><h3 style="margin:0;color:var(--navy)">${esc(r.service)} <span class="pill ${r.status||'requested'}">${SLABEL[r.status]||"Requested"}</span></h3></div>
     ${detail}${dealerBox}${actionBox}${statusBox}${completeBox}${footer}
   </div></div>`;

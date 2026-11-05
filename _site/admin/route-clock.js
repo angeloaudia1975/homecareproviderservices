@@ -112,7 +112,11 @@
    *   legs         driving legs [{duration_s}] — one per hop
    *   leadingLeg   true when legs[0] is home-base -> first stop (a round trip)
    *   startDate    'YYYY-MM-DD'
-   *   startMinutes minutes past midnight, in the FIRST stop's zone
+   *   startMinutes minutes past midnight, in startTz — the zone the day STARTS in
+   *   startTz      the zone of the place the rep leaves from. On a round trip that is the home
+   *                base, not the first stop: "leave Cottontown, TN at 9:00" is 9:00 CENTRAL, and
+   *                reading it in Louisville's Eastern zone put every arrival an hour early.
+   *                Defaults to the first stop's zone (a one-way route starts there).
    *   defaultVisit minutes to allow at a stop with no visit_min of its own
    *
    * Returns one item per stop: { arriveAbs, departAbs, tz, dayIndex, dateISO,
@@ -130,7 +134,7 @@
     if (legs.length < stops.length - 1 + lead) return [];
 
     const defVisit = o.defaultVisit == null ? 30 : Number(o.defaultVisit) || 0;
-    const firstTz = tzForStop(stops[0].state, stops[0].lng);
+    const firstTz = o.startTz || tzForStop(stops[0].state, stops[0].lng);
     let abs = localToAbs(start.y, start.mo, start.dd,
       (o.startMinutes == null ? 8 * 60 : Number(o.startMinutes) || 0), firstTz);
 
@@ -165,12 +169,42 @@
     return out;
   }
 
+  // Minutes past local midnight of instant ms in tz (0–1439).
+  function localMinutes(ms, tz) {
+    try {
+      const p = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour12: false, hour: "2-digit", minute: "2-digit" })
+        .formatToParts(new Date(ms)).reduce((a, x) => { a[x.type] = x.value; return a; }, {});
+      let hh = parseInt(p.hour, 10); if (hh === 24) hh = 0;
+      return hh * 60 + parseInt(p.minute, 10);
+    } catch (e) { return null; }
+  }
+
+  /* THE TIME A DEALER CAN BE TOLD. A route with no overnight on a stop that should end the day
+     runs its clock straight through the night (kept on purpose — the clock does not invent a
+     night), which is how a heads-up offered a dealer "around 1:21 AM". An arrival outside the
+     working day is never a time to put in an email: the field app flags it on the stop and leaves
+     it out of the heads-up. Default working day 7:00 AM – 7:00 PM in the stop's own zone. */
+  const WORK_FROM = 7 * 60, WORK_TO = 19 * 60;
+  function outsideHours(ms, tz, from, to) {
+    if (ms == null || !isFinite(ms)) return false;
+    const m = localMinutes(ms, tz); if (m == null) return false;
+    const a = from == null ? WORK_FROM : from, b = to == null ? WORK_TO : to;
+    return m < a || m > b;
+  }
+
   /* How many days a route actually spans, for a header that currently claims one. */
   function dayCount(items) {
     if (!items || !items.length) return 0;
     return items[items.length - 1].dayIndex + 1;
   }
 
+  // A two-letter state at the end of a free-form address ("…, Cottontown, TN 37048"), lower or upper case.
+  function stateFromAddr(q) {
+    const m = String(q || "").toUpperCase().match(/,\s*([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?\s*$/);
+    return m ? m[1] : "";
+  }
+
   return { TZ_E, TZ_C, TZ_STATE, tzForStop, tzOffMin, tzShort, localToAbs,
-           fmtAbs, isoDateIn, parseISODate, parseTimeMin, routeItinerary, dayCount };
+           fmtAbs, isoDateIn, parseISODate, parseTimeMin, routeItinerary, dayCount,
+           localMinutes, outsideHours, stateFromAddr, WORK_FROM, WORK_TO };
 });

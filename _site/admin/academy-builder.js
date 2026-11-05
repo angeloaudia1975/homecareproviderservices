@@ -259,7 +259,34 @@
       kids.forEach(function (k) { grid.lastChild.appendChild(k); });
       grid.lastChild.setAttribute('aria-label', (on ? 'Selected: ' : 'Use ') + (m.alt_text || m.kind));
     });
+    // a long library gets a search box (filters by the picture's description / the video's title)
+    if (recs.length > 6) {
+      var q = el('input', { type: 'search', placeholder: 'Search ' + (kinds.indexOf('image') >= 0 ? 'pictures' : 'files') + '…', 'aria-label': 'Search the ' + label.toLowerCase(), cls: 'pick-q' });
+      q.addEventListener('input', function () {
+        var w = q.value.trim().toLowerCase();
+        Array.prototype.forEach.call(grid.children, function (b) { if (!b.dataset.mid) return; b.hidden = !!w && (b.getAttribute('aria-label') || '').toLowerCase().indexOf(w) < 0; });
+      });
+      box.appendChild(q);
+    }
     box.appendChild(grid);
+    Array.prototype.forEach.call(grid.children, function (b, k) { if (k >= (o.allowNone ? 1 : 0)) b.dataset.mid = '1'; });
+    // a video can be added right here from a pasted YouTube / Vimeo link (stored as the privacy-enhanced embed link)
+    if (kinds.length === 1 && kinds[0] === 'video' && editable()) {
+      var vu = el('input', { type: 'url', placeholder: 'https://www.youtube.com/watch?v=…', 'aria-label': 'YouTube or Vimeo link' });
+      var vt = el('input', { type: 'text', maxlength: 300, placeholder: 'Video title (who made it)', 'aria-label': 'Video title' });
+      var addV = btn('Add this video', function () {
+        if (!vu.value.trim() || vt.value.trim().length < 3) { toast('Paste the link and give the video a title.', true); return; }
+        addV.disabled = true;
+        api({ action: 'add_link_media', kind: 'video', url: vu.value.trim(), title: vt.value.trim(), rights: 'link_only' }).then(function (r) {
+          addV.disabled = false;
+          if (r.status !== 200 || !r.body.media) { toast(msgOf(r), true); return; }
+          var id = r.body.media.id;
+          refreshData().then(function () { obj[key] = id; structural(); toast('Video added and placed on this screen.'); });
+        });
+      }, { 'data-w': 1 });
+      box.appendChild(el('div', { cls: 'sub-card add-video' }, [el('label', { cls: 'f', text: 'Or add a video by its link' }), vu, vt, addV,
+        el('p', { cls: 'hint', text: 'YouTube watch, share or embed links and Vimeo links work. The video is linked, never copied.' })]));
+    }
     box.appendChild(el('p', { cls: 'hint' }, ['Files are added and approved under ', btn('Pictures & media', function () { go('media'); }, { cls: '', style: 'min-height:32px;padding:0 8px' }), '.']));
     return box;
   }
