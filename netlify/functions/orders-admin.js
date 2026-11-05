@@ -10,6 +10,9 @@ const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","cache-control":"no-store"},body:JSON.stringify(o)});
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 const SC = require("./_scope.js");
+const AN = require("./_account_notice.js");
+/* AN.readRows takes (method, path) like orders-api's sb(); this file reads with sbGet(path). */
+const sbGet2=(m,path)=>sbGet(path);
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
 async function sbSend(method,path,body,extra){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{...H(),"content-type":"application/json",...(extra||{})},body:body!=null?JSON.stringify(body):undefined}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); const t=await r.text(); return t?JSON.parse(t):null; }
 const clean=(v,n)=>{ const s=(v==null?"":String(v)).trim(); return s?s.slice(0,n||500):null; };
@@ -50,12 +53,21 @@ exports.handler = async (event)=>{
     catch(e){ return json(200,{ok:false,error:"tables_missing",message:"No orders table yet — it's created the first time a dealer submits an order on the portal."}); }
 
     if(b.action==="list"){
-      const [orders,dealers,OI,mfrs]=await Promise.all([
-        sbGet("orders?select=id,dealer_id,hcps_account,manufacturer,status,po_number,notes,admin_notes,tracking_number,subtotal,freight_fee,estimated_total,submitted_at,updated_at,ship_name,ship_address,ship_city,ship_state,ship_zip,contact_name,contact_email,contact_phone,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=500").catch(()=>[]),
-        sbGet("dealers?select=id,business_name").catch(()=>[]),
-        SC.ownerIndex(sbGet).catch(()=>null),           // who owns each dealer (Phase 0D)
-        sbGet("manufacturers?select=slug,name").catch(()=>[]),
-      ]);
+      /* Strict (C3-06): an unreadable order list is an error on screen, never "no orders". */
+      let orders,dealers,OI,mfrs;
+      try{
+        [orders,dealers,OI,mfrs]=await Promise.all([
+          sbGet("orders?select=id,dealer_id,hcps_account,manufacturer,status,po_number,notes,admin_notes,tracking_number,subtotal,freight_fee,estimated_total,submitted_at,updated_at,ship_name,ship_address,ship_city,ship_state,ship_zip,contact_name,contact_email,contact_phone,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=500"),
+          sbGet("dealers?select=id,business_name"),
+          SC.ownerIndex(sbGet).catch(()=>null),           // who owns each dealer (Phase 0D) — display only
+          sbGet("manufacturers?select=slug,name"),
+        ]);
+      }catch(e){ console.error("order list read failed",e&&e.message); return json(503,{ok:false,error:"orders_unavailable",message:"The orders could not be loaded right now — nothing is missing; please reload."}); }
+      /* New manufacturer account notice (C3-06): worked out from the dealer's account numbers NOW, so it clears by itself
+         once HCPS records the account. A failed read marks the notice "verify", never hides it. */
+      let acctRows=null;
+      const noticeDealers=(orders||[]).filter(o=>o.status!=="cancelled" && AN.noticeFor(o.manufacturer)).map(o=>o.dealer_id);
+      if(noticeDealers.length){ try{ acctRows=await AN.readRows(sbGet2,noticeDealers); }catch(e){ acctRows=null; } }
       const nameById={}; for(const d of dealers) nameById[d.id]=d.business_name;
       const repByName=(OI&&OI.repByName)||{};
       const mfrName={}; for(const m of mfrs) mfrName[m.slug]=m.name||m.slug;
@@ -70,6 +82,9 @@ exports.handler = async (event)=>{
           contact:{name:o.contact_name||"",email:o.contact_email||"",phone:o.contact_phone||""},
           items:(o.order_items||[]).map(i=>({code:i.code,name:i.name,qty:i.qty,unit:num(i.unit_price),line:num(i.line_total)})),
           item_count:(o.order_items||[]).reduce((n,i)=>n+num(i.qty),0),
+          account_notice:(()=>{ if(o.status==="cancelled"||!AN.noticeFor(o.manufacturer)) return "";
+            if(!acctRows) return AN.noticeFor(o.manufacturer,mfrName[o.manufacturer])+" (account status could not be checked — verify)";
+            return AN.missingAccounts(acctRows,o.dealer_id,[o.manufacturer]).length?AN.noticeFor(o.manufacturer,mfrName[o.manufacturer]):""; })(),
         };
       });
       // reps see only their book

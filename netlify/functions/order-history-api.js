@@ -11,6 +11,7 @@
 //   • orders/order_items — portal orders saved by orders-api (and future Golden), source "portal"/"golden"
 // No new tables, no writes. Service-role, server-side only.  ENV: SUPABASE_URL, SUPABASE_SERVICE_ROLE.
 
+const AN = require("./_account_notice.js");
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const CORS = {
@@ -87,10 +88,8 @@ async function consolidate(dealerId, mfrName) {
   const out = [];
 
   // 1) Imported sales history (monthly_sales) — grouped per (period, manufacturer) into one record.
-  let ms = [];
-  try {
-    ms = await sbAll(`monthly_sales?dealer_id=eq.${encodeURIComponent(dealerId)}&select=manufacturer,period,product_code,product_name,qty,amount&order=period.desc`);
-  } catch (e) { ms = []; }
+  /* Strict (C3-06): an unreadable sales history is an error, never "no purchases". */
+  const ms = await sbAll(`monthly_sales?dealer_id=eq.${encodeURIComponent(dealerId)}&select=manufacturer,period,product_code,product_name,qty,amount&order=period.desc`);
   const groups = new Map();
   for (const r of ms) {
     const p = ym(r.period); if (!p.ym) continue;
@@ -105,10 +104,13 @@ async function consolidate(dealerId, mfrName) {
   for (const g of groups.values()) { g.freight = null; g.total = g.cost; out.push(g); }
 
   // 2) Portal / Golden orders (orders + order_items).
-  let ord = [];
-  try {
-    ord = await sb("GET", `orders?dealer_id=eq.${encodeURIComponent(dealerId)}&select=id,manufacturer,status,po_number,subtotal,freight_fee,estimated_total,submitted_at,env,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=1000`);
-  } catch (e) { ord = []; }
+  /* Strict (C3-06): if the portal orders can't be read, My Orders says so — it never shows a history with the
+     dealer's own orders silently missing. */
+  const ord = await sb("GET", `orders?dealer_id=eq.${encodeURIComponent(dealerId)}&select=id,manufacturer,status,po_number,tracking_number,subtotal,freight_fee,estimated_total,submitted_at,env,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=1000`);
+  /* New manufacturer account notice (C3-06) on open orders of a line the dealer has no account number for yet. Shown to
+     the dealer only when the account rows were read (an unreadable read shows nothing; HCPS sees it in Order Review). */
+  let acct = null;
+  if ((ord || []).some((o) => o.status !== "cancelled" && AN.noticeFor(o.manufacturer))) { try { acct = await AN.readRows(sb, [dealerId]); } catch (e) { acct = null; } }
   for (const o of (ord || [])) {
     const slug = o.manufacturer || "";
     // Golden-synced orders (once federation writes them) are tagged via env/source; default portal.
@@ -117,6 +119,8 @@ async function consolidate(dealerId, mfrName) {
     out.push({
       id: o.id, date: o.submitted_at || null, ym: ym(o.submitted_at).ym, source,
       status: o.status || "submitted", manufacturer: slug, manufacturerName: mfrName[slug] || slug || "—",
+      po: o.po_number || "", tracking: o.tracking_number || "",
+      account_notice: (o.status !== "cancelled" && AN.noticeFor(slug) && acct && AN.missingAccounts(acct, dealerId, [slug]).length) ? AN.noticeFor(slug, mfrName[slug]) : "",
       lines: items, cost: round2(o.subtotal != null ? o.subtotal : items.reduce((s, i) => s + i.line, 0)),
       units: items.reduce((s, i) => s + i.qty, 0),
     });
@@ -192,6 +196,6 @@ exports.handler = async (event) => {
     }));
     return json(200, { ok: true, dealer: who.dealer, ...agg, recent });
   } catch (e) {
-    return json(500, { error: String(e.message || e) });
+    return json(500, { ok: false, error: String(e.message || e) });
   }
 };

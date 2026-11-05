@@ -83,5 +83,49 @@ await t('submit-order: a part on the order twice (plain + railing upgrade) keeps
     [{manufacturer_slug:'a',subtotal:3,order_id:'o',items:[{code:'RS1x36',qty:1,unit:1,name:'Ramp'},{code:'RS1x36',upgrade:'Picket',qty:1,unit:2,name:'Ramp — Picket upgrade'}]}]);
   eq(out[0].items.map(i=>[i.unit,i.name]),[[1,'Ramp'],[2,'Ramp — Picket upgrade']]);
 });
+/* ---- C3-06: Order Review reads strictly and shows the new-account notice ---- */
+function adminWorld(o){
+  const W=M.createWorld({ tokens:{staff:'p@x.com'}, failRead:(t)=>(o.failOrders&&t==='orders'&&o.failOrders())||(o.failAcct&&t==='dealer_manufacturers')||(o.failDealers&&t==='dealers')?500:0, tables:{ staff_users:[{email:'p@x.com',role:'president',active:true}],
+    dealers:[{id:'d1',business_name:'D One'},{id:'d2',business_name:'D Two'}], manufacturers:[{slug:'yuwell',name:'Yuwell'},{slug:'acme',name:'Acme'}],
+    dealer_manufacturers:o.acct||[],
+    orders:[{id:'y1',dealer_id:'d1',manufacturer:'yuwell',status:'submitted',subtotal:30,submitted_at:'2026-11-05T01:00:00Z',order_items:[]},
+            {id:'y2',dealer_id:'d2',manufacturer:'yuwell',status:'submitted',subtotal:30,submitted_at:'2026-11-05T02:00:00Z',order_items:[]},
+            {id:'y3',dealer_id:'d1',manufacturer:'yuwell',status:'cancelled',subtotal:30,submitted_at:'2026-11-05T03:00:00Z',order_items:[]},
+            {id:'a1',dealer_id:'d1',manufacturer:'acme',status:'submitted',subtotal:10,submitted_at:'2026-11-05T04:00:00Z',order_items:[]}] }});
+  const inner=W.fetch; W.fetch=async(u,x)=>String(u).startsWith(M.BASE+'/auth/v1/user')?{ok:true,status:200,json:async()=>({id:'s',email:'p@x.com'})}:inner(u,x);
+  return M.load('orders-admin.js',W,{},ROOT);
+}
+const listOf=async C=>M.call(C,{action:'list'},{headers:{authorization:'Bearer staff'}});
+await t('Order Review: "New Yuwell Manufacturer Account Required" on open Yuwell orders of dealers with no Yuwell account number',async()=>{
+  const r=await listOf(adminWorld({acct:[{dealer_id:'d2',manufacturer:'yuwell',account_ref:'YW-2',active:true}]}));
+  eq(r.status,200,JSON.stringify(r.body).slice(0,200));
+  const by=Object.fromEntries(r.body.orders.map(o=>[o.id,o.account_notice]));
+  eq([by.y1,by.y2,by.y3,by.a1],['New Yuwell Manufacturer Account Required','','',''],'d1 no account; d2 has one; cancelled and other lines never');
+});
+await t('Order Review: unreadable account numbers → the notice says "verify", never hidden',async()=>{
+  const r=await listOf(adminWorld({failAcct:true}));
+  eq(r.status,200); ok(/could not be checked — verify/.test(r.body.orders.find(o=>o.id==='y1').account_notice),'verify');
+});
+await t('Order Review: an unreadable order list is an error on screen, never an empty list',async()=>{
+  let n=0; const r=await listOf(adminWorld({failOrders:()=>++n>1}));   // the table probe passes, the list read fails
+  eq(r.status,503,JSON.stringify(r.body)); eq(r.body.error,'orders_unavailable');
+});
+await t('Order Review: unreadable dealer names are an error too (an order never shows without its dealer)',async()=>{
+  const r=await listOf(adminWorld({failDealers:true})); eq(r.status,503,JSON.stringify(r.body));
+  const r2=await listOf(adminWorld({})); eq(r2.body.orders.find(o=>o.id==='y1').dealer,'D One','dealer name shown');
+});
+await t('Order Review page shows the notice and the email-failed / resubmitted flags',async()=>{
+  const html=fs.readFileSync(path.join(__dirname,'..','src','admin','order-fulfillment.html'),'utf8');
+  ok(/o\.account_notice/.test(html)&&/acctnote/.test(html),'notice badge'); ok(/resubmitted/i.test(html),'resubmitted flag'); ok(/j\.message/.test(html),'error message shown');
+});
+await t('submit-order: the intake email puts the account notice first, in the subject and the text',async()=>{
+  const S=require(SUBMIT);
+  const e=S._buildEmail({business:'B',email:'b@x.com'},{manufacturer_name:'Yuwell',order_id:'o9',po:'P',account_notice:'New Yuwell Manufacturer Account Required',items:[{code:'Y1',name:'Y',qty:1,unit:30}],items_count:1,items_subtotal:30,estimated_total:30,freight_fee:0,freight_lines:[]},'2026-11-05T12:00:00Z');
+  ok(/^\[New account required\] New order/.test(e.subject),e.subject);
+  ok(/New Yuwell Manufacturer Account Required/.test(e.html)&&/New Yuwell Manufacturer Account Required/.test(e.text),'html + text');
+  ok(/not blocked/.test(e.html),'says the order was not blocked');
+  const plain=S._buildEmail({business:'B'},{manufacturer_name:'Acme',order_id:'o1',po:'P',items:[],items_count:0,items_subtotal:0,estimated_total:0,freight_fee:0,freight_lines:[]},'2026-11-05T12:00:00Z');
+  ok(/^New order/.test(plain.subject)&&!/Account Required/.test(plain.html+plain.text),'no notice without one');
+});
 console.log(`order routing: ${pass} passed, ${fail} failed`); process.exit(fail?1:0);
 })();

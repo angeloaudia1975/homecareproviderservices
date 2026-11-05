@@ -12,12 +12,23 @@ const M=[
  [SHOP,'footer sums merchandise','const total=HISTORY.reduce((s,o)=>s+orderTotal(o),0);','const total=HISTORY.reduce((s,o)=>s+(Number(o.cost)||0),0);'],
  [SHOP,'no freight note','const freightNote=o=>(o&&Number(o.freight)>0)?','const freightNote=o=>false?'],
  [SHOP,'total rounded','const cents=n=>"$"+(Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});','const cents=n=>"$"+Math.round(Number(n)||0).toLocaleString();'],
+ /* C3-06 */
+ [HIST,'orders read swallowed again','order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=1000`);','order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=1000`).catch(() => []);'],
+ [HIST,'sales read swallowed again','product_code,product_name,qty,amount&order=period.desc`);','product_code,product_name,qty,amount&order=period.desc`).catch(() => []);'],
+ [HIST,'no PO / tracking','po: o.po_number || "", tracking: o.tracking_number || "",','po: "", tracking: "",'],
+ [HIST,'notice never shown','AN.noticeFor(slug) && acct && AN.missingAccounts(acct, dealerId, [slug]).length)','false)'],
+ [HIST,'notice guessed when the rows are unreadable','AN.noticeFor(slug) && acct && AN.missingAccounts','AN.noticeFor(slug) && (!acct || AN.missingAccounts'],
+ [HIST,'failure answer without ok:false','return json(500, { ok: false, error:','return json(500, { error:'],
+ [SHOP,'tracking not shown','(o.tracking?`<div class="m">Tracking','(false?`<div class="m">Tracking'],
+ [SHOP,'Request tracking shown on a tracked order','!=="delivered"&&!o.tracking;','!=="delivered";'],
+ [SHOP,'notice not shown to the dealer','(o.account_notice?`<div class="m"','(false?`<div class="m"'],
 ];
 let surv=0;
 for(const [file,n,f,to] of M){
   const src=fs.readFileSync(file,'utf8'); const c=src.split(f).length-1;
   if(c!==1){ console.log(`BAD ANCHOR(${c}) ${n}`); surv++; continue; }
-  const tmp=path.join(fs.mkdtempSync(path.join(os.tmpdir(),'oh-')),path.basename(file)); fs.writeFileSync(tmp,src.replace(f,to));
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'oh-')), tmp=path.join(dir,path.basename(file)); fs.writeFileSync(tmp,src.replace(f,to));
+  if(file===HIST) fs.copyFileSync(path.join(path.dirname(HIST),'_account_notice.js'),path.join(dir,'_account_notice.js'));   // its helper, beside it
   const env=Object.assign({},process.env, file===HIST?{HIST_FILE:tmp}:{SHOP_FILE:tmp});
   let k=false; try{ execFileSync('node',[path.join(__dirname,'orderhistory.test.js')],{stdio:'pipe',env}); }catch(e){ k=true; }
   console.log((k?'killed  ':'SURVIVED')+' '+n); if(!k) surv++;

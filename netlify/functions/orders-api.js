@@ -20,6 +20,7 @@ const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","c
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 const P = require("./_platform.js");
 const PRICING = require("./_pricing.js");
+const AN = require("./_account_notice.js");
 
 async function sb(method,path,body,extra){
   const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,
@@ -122,7 +123,8 @@ function freightLineText(s){
 function orderConfirmation(to,d,summaries){
   const blocks=summaries.map(s=>{
     const rows=(s.items||[]).map(it=>`<tr><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px">${esc(it.name||it.code||"Item")}${it.code?` <span style="color:#9aa4ae">(${esc(it.code)})</span>`:""}${it.unit_label?` <span style="color:#10263f;font-weight:700">&middot; ${esc(it.unit_label)}</span>`:""}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:center">${num(it.qty)}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:right">${money(it.unit_price)}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:right">${money(it.line_total)}</td></tr>`).join("");
-    return `<div style="margin:0 0 16px"><div style="font-weight:700;color:#2B4071;font-size:14px;margin:0 0 6px">${esc(s.line)}${s.po?` &middot; PO ${esc(s.po)}`:""}</div><table style="border-collapse:collapse;width:100%"><thead><tr><th style="text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#8a96a3;padding:0 10px 4px">Item</th><th style="font-size:10px;color:#8a96a3;padding:0 10px 4px">Qty</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Unit</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Total</th></tr></thead><tbody>${rows}</tbody></table><div style="text-align:right;font-size:13px;font-weight:700;color:#1b2733;margin:6px 10px 0">Subtotal: ${money(s.subtotal)}</div>${freightLineHtml(s)}</div>`;
+    const notice=s.account_notice?`<div style="margin:0 0 8px;padding:8px 10px;background:#fff7e6;border:1px solid #f1d9a6;border-radius:6px;font-size:13px;color:#8a5a00"><b>${esc(s.account_notice)}</b> — HCPS will help you open this manufacturer account (dealer application). Your order is recorded and is not held for it.</div>`:"";
+    return `<div style="margin:0 0 16px"><div style="font-weight:700;color:#2B4071;font-size:14px;margin:0 0 6px">${esc(s.line)}${s.po?` &middot; PO ${esc(s.po)}`:""}</div>${notice}<table style="border-collapse:collapse;width:100%"><thead><tr><th style="text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#8a96a3;padding:0 10px 4px">Item</th><th style="font-size:10px;color:#8a96a3;padding:0 10px 4px">Qty</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Unit</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Total</th></tr></thead><tbody>${rows}</tbody></table><div style="text-align:right;font-size:13px;font-weight:700;color:#1b2733;margin:6px 10px 0">Subtotal: ${money(s.subtotal)}</div>${freightLineHtml(s)}</div>`;
   }).join("");
   const html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px">
     <h2 style="color:#2B4071;margin:0 0 4px">Order received by HCPS${d.business?", "+esc(d.business):""}</h2>
@@ -132,7 +134,7 @@ function orderConfirmation(to,d,summaries){
     <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:16px 0 0">Pricing shown is your contract pricing; the manufacturer's invoice is the final billing document. Questions about this order? Reply to this email or reach your HCPS rep.</p>
     <p style="font-size:12px;color:#9aa4ae;margin:14px 0 0">HomeCare Provider Services &middot; Your partner in mobility &amp; home medical equipment.</p></div>`;
   const text=`Order received${d.business?", "+d.business:""}\n\nThanks for ordering through the HomeCare Provider Services portal. This is an order-received acknowledgment, not a manufacturer confirmation. HCPS reviews your order, places it with the manufacturer, and sends you the order confirmation.\n\n`
-    +summaries.map(s=>`${s.line}${s.po?" (PO "+s.po+")":""}\n`+(s.items||[]).map(it=>`  ${num(it.qty)} x ${it.name||it.code||"Item"}${it.unit_label?" ("+it.unit_label+")":""} @ ${money(it.unit_price)} = ${money(it.line_total)}`).join("\n")+`\n  Subtotal: ${money(s.subtotal)}`+freightLineText(s)).join("\n\n")
+    +summaries.map(s=>`${s.line}${s.po?" (PO "+s.po+")":""}\n`+(s.account_notice?`  ${s.account_notice} — HCPS will help you open this manufacturer account. Your order is recorded and is not held for it.\n`:"")+(s.items||[]).map(it=>`  ${num(it.qty)} x ${it.name||it.code||"Item"}${it.unit_label?" ("+it.unit_label+")":""} @ ${money(it.unit_price)} = ${money(it.line_total)}`).join("\n")+`\n  Subtotal: ${money(s.subtotal)}`+freightLineText(s)).join("\n\n")
     +`\n\nView your order history: ${PORTAL_URL}`;
   return {to,subject:"HCPS received your order",html,text};
 }
@@ -174,6 +176,26 @@ async function dealerFromToken(event){
   const du=rows&&rows[0];
   if(!du||du.status!=="approved"||!du.dealer_id) return null;
   return {dealer_id:du.dealer_id,email:du.email};
+}
+
+/* A checkout submission key: 16–64 letters, digits or dashes; anything else is ignored. */
+function cleanKey(k){ const s=String(k==null?"":k).trim(); return /^[A-Za-z0-9-]{16,64}$/.test(s)?s:""; }
+/* The manufacturer orders this dealer already recorded under the key, in the shape create answers with. Strict. */
+async function recordedUnderKey(dealerId,key){
+  const rows=await sb("GET",`orders?dealer_id=eq.${encodeURIComponent(dealerId)}&submission_key=eq.${encodeURIComponent(key)}&select=id,manufacturer,subtotal,freight_fee,estimated_total,order_items(code,name,qty,unit_price,line_total)`);
+  return (rows||[]).map(o=>({order_id:o.id,manufacturer_slug:o.manufacturer,subtotal:num(o.subtotal),
+    freight_fee:o.freight_fee==null?null:num(o.freight_fee),estimated_total:o.estimated_total==null?null:num(o.estimated_total),duplicate:true,
+    items:(o.order_items||[]).map(i=>({code:i.code,name:i.name,qty:i.qty,unit:num(i.unit_price),line_total:num(i.line_total)}))}));
+}
+/* The dealer resubmitted an order that was already recorded: staff see it on the order (Order Review), so a
+   missing HCPS email after a timeout is caught. Best-effort; never fails the answer. */
+async function noteResubmission(list, who){
+  for(const r of list){ try{
+    const cur=await sb("GET",`orders?id=eq.${encodeURIComponent(r.order_id)}&dealer_id=eq.${encodeURIComponent(who.dealer_id)}&select=admin_notes`);
+    const prev=(cur&&cur[0]&&cur[0].admin_notes)||"";
+    const note=`Dealer resubmitted this same order ${new Date().toISOString().slice(0,16).replace("T"," ")} UTC — not recorded twice. Check the HCPS order email arrived.`;
+    if(prev.indexOf("Dealer resubmitted this same order")<0) await sb("PATCH",`orders?id=eq.${encodeURIComponent(r.order_id)}&dealer_id=eq.${encodeURIComponent(who.dealer_id)}`,{admin_notes:(prev?prev+"\n":"")+note},{Prefer:"return=minimal"});
+  }catch(e){} }
 }
 
 exports.handler = async (event)=>{
@@ -242,6 +264,21 @@ exports.handler = async (event)=>{
         return json(409,{ok:false,status:"golden_routes_to_golden",error:"Golden orders are placed with Golden, not recorded by HCPS."});
       }
       const denied=await entitlementGate(orders, who.dealer_id); if(denied) return denied;
+      /* ONE CHECKOUT = ONE ORDER (C3-06, 2026-11-05). The storefront sends a submission key that stays the same while
+         the dealer retries the same cart (a timeout after the order was recorded, a second tab). A manufacturer order
+         already recorded under that key is never recorded again: it is reported back as already recorded, and no second
+         dealer confirmation is sent. Works once orders.submission_key exists (supabase/orders_submission_key.sql);
+         before that the key is ignored and behaviour is unchanged. */
+      const key=cleanKey(b.submission_key);
+      let keyCol=false;
+      if(key){ try{ await sb("GET","orders?select=submission_key&limit=1"); keyCol=true; }catch(e){ keyCol=false; } }
+      const already=keyCol?await recordedUnderKey(who.dealer_id,key):[];
+      const alreadySlugs=new Set(already.map(r=>r.manufacturer_slug));
+      if(already.length && orders.every(o=>alreadySlugs.has(o.manufacturer_slug||o.manufacturer))){
+        await noteResubmission(already, who);
+        return json(200,{ok:true,status:"recorded",duplicate:true,saved:0,failed:[],orders:[],already_recorded:already});
+      }
+      if(already.length) orders=orders.filter(o=>!alreadySlugs.has(o.manufacturer_slug||o.manufacturer));
       /* Re-price before anything is written. A total the dealer has not seen is never saved. */
       let priced;
       try{ priced=await serverPrice(orders, who.dealer_id); }
@@ -278,11 +315,19 @@ exports.handler = async (event)=>{
           subtotal:PRICING.isGolden(slug)?num(o.items_subtotal!=null?o.items_subtotal:o.estimated_total):num(o.subtotal),
           env,
         };
+        if(keyCol) row.submission_key=key;
         /* The server's freight and total are stored with the order (2026-10-09); Golden prices its own. */
         if(!PRICING.isGolden(slug) && o.freight_fee!=null){ row.freight_fee=num(o.freight_fee); row.estimated_total=num(o.estimated_total); }
         let ins;
         try{ ins=await sb("POST","orders",row,{Prefer:"return=representation"}); }
-        catch(e){ console.error("order insert failed",slug,e&&e.message); failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue; }
+        catch(e){
+          /* Two requests with one key at the same moment: the unique index lets one through; the other is reported as
+             the order the first one recorded. */
+          if(keyCol && /23505|duplicate key/i.test(String(e&&e.message))){
+            const dup=(await recordedUnderKey(who.dealer_id,key)).filter(r=>r.manufacturer_slug===slug);
+            if(dup.length){ already.push(...dup); continue; }
+          }
+          console.error("order insert failed",slug,e&&e.message); failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue; }
         const oid=ins&&ins[0]&&ins[0].id; if(!oid){ failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue; }
         const items=(o.items||[]).map(it=>({
           order_id:oid, code:it.code||null, name:it.name||null,
@@ -303,6 +348,15 @@ exports.handler = async (event)=>{
           items:items.map((x,i)=>{ const lb=unitLabel((o.items||[])[i]); return lb?Object.assign({},x,{unit_label:lb}):x; }), subtotal:row.subtotal, order_id:oid});
         if(cleanSlug) slugs.add(cleanSlug);
         saved++;
+      }
+      /* New manufacturer account notice (C3-06): never blocks — tells the dealer and HCPS. */
+      try{
+        const rows=await AN.readRows(sb,[who.dealer_id]);
+        const missing=new Set(AN.missingAccounts(rows,who.dealer_id,summaries.map(su=>su.slug).filter(Boolean)));
+        for(const su of summaries) if(su.slug && missing.has(su.slug)) su.account_notice=AN.noticeFor(su.slug,mfrName[su.slug]);
+      }catch(e){
+        console.error("account notice read failed",e&&e.message);
+        for(const su of summaries) if(su.slug && AN.noticeFor(su.slug)) su.account_notice=AN.noticeFor(su.slug,mfrName[su.slug])+" (account status could not be checked — verify)";
       }
       if(saved>0){
         // Dealer-facing order confirmation — TRANSACTIONAL: always sends, never counts
@@ -339,9 +393,12 @@ exports.handler = async (event)=>{
       }
       const recorded=summaries.map(su=>({order_id:su.order_id,manufacturer_slug:su.request_slug,subtotal:su.subtotal,
         freight_fee:su.freight_fee, estimated_total:su.estimated_total, freight_lines:su.freight_lines,
+        ...(su.account_notice?{account_notice:su.account_notice}:{}),
         items:su.items.map(it=>({code:it.code,name:it.name,qty:it.qty,unit:it.unit_price,line_total:it.line_total}))}));
-      if(!saved) return json(503,{ok:false,status:"record_failed",saved:0,failed,orders:[]});
-      return json(200,{ok:!failed.length,status:failed.length?"partial":"recorded",saved,failed,orders:recorded});
+      if(already.length) await noteResubmission(already, who);
+      if(!saved && !already.length) return json(503,{ok:false,status:"record_failed",saved:0,failed,orders:[]});
+      return json(200,{ok:!failed.length,status:failed.length?"partial":"recorded",saved,failed,orders:recorded,
+        ...(already.length?{already_recorded:already}:{})});
     }
 
     /* The HCPS notification for a recorded order could not be sent. The order stands; it is
@@ -350,16 +407,19 @@ exports.handler = async (event)=>{
       const ids=(Array.isArray(b.order_ids)?b.order_ids:[]).map(String).filter(x=>/^[A-Za-z0-9-]{1,64}$/.test(x));
       if(!ids.length) return json(400,{error:"no order_ids"});
       const note=`HCPS order email failed to send ${new Date().toISOString()} — order is recorded; notify the manufacturer manually.`;
-      await sb("PATCH",`orders?id=in.(${ids.join(",")})&dealer_id=eq.${encodeURIComponent(who.dealer_id)}`,{admin_notes:note},{Prefer:"return=minimal"});
+      /* Added to what staff already see on the order, never replacing it (C3-06). */
+      const cur=await sb("GET",`orders?id=in.(${ids.join(",")})&dealer_id=eq.${encodeURIComponent(who.dealer_id)}&select=id,admin_notes`);
+      for(const o of (cur||[])){ const prev=o.admin_notes||"";
+        await sb("PATCH",`orders?id=eq.${encodeURIComponent(o.id)}&dealer_id=eq.${encodeURIComponent(who.dealer_id)}`,{admin_notes:(prev?prev+"\n":"")+note},{Prefer:"return=minimal"}); }
       return json(200,{ok:true,flagged:ids.length});
     }
 
     if(b.action==="list"){
       const rows=await sb("GET",
-        `orders?dealer_id=eq.${who.dealer_id}&select=id,manufacturer,status,po_number,notes,subtotal,freight_fee,estimated_total,submitted_at,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=25`);
+        `orders?dealer_id=eq.${who.dealer_id}&select=id,manufacturer,status,po_number,notes,tracking_number,subtotal,freight_fee,estimated_total,submitted_at,order_items(code,name,qty,unit_price,line_total)&order=submitted_at.desc&limit=25`);
       const orders=(rows||[]).map(o=>({
         id:o.id, manufacturer:o.manufacturer||"", status:o.status||"submitted",
-        po:o.po_number||"", notes:o.notes||"", subtotal:num(o.subtotal),
+        po:o.po_number||"", notes:o.notes||"", tracking:o.tracking_number||"", subtotal:num(o.subtotal),
         freight_fee:o.freight_fee==null?null:num(o.freight_fee), estimated_total:o.estimated_total==null?null:num(o.estimated_total),
         submitted_at:o.submitted_at,
         items:(o.order_items||[]).map(i=>({code:i.code,name:i.name,qty:i.qty,unit:num(i.unit_price),line:num(i.line_total)})),

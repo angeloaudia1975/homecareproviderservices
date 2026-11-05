@@ -15,7 +15,7 @@ const slice=(a,b)=>{ const i=html.indexOf(a), j=html.indexOf(b,i); if(i<0||j<0) 
 const lineOf=a=>{ const i=html.indexOf('\n'+a); if(i<0) throw new Error('anchor '+a); return html.slice(i+1,html.indexOf('\n',i+1)); };
 const CODE=[lineOf('const money = '),lineOf('const esc = '),
   ...['function familyQty','function tierQty','function contractPrice','function lineRatePrice','function withUpgrade','function upgradeAddPurchase','function unitPrice','const cartKey=','function groupCart','function linesSubtotal','function packOf'].map(a=>grabDecl(html,a)),
-  slice('/* ---------- SERVER PRICING','/* ---------- submit (one order'), slice('async function submitOrder(){','/* ---- Golden orders (blueprint'), slice('function hydrateCart(saved){','/* ---- persistent cart')].join('\n');
+  slice('/* ---------- SERVER PRICING','/* ---------- submit (one order'), slice('/* ONE CHECKOUT = ONE ORDER','async function submitOrder(){'), slice('async function submitOrder(){','/* ---- Golden orders (blueprint'), slice('function hydrateCart(saved){','/* ---- persistent cart')].join('\n');
 
 let fail=0, pass=0;
 async function t(name,fn){ try{ await fn(); pass++; console.log('ok   '+name); }catch(e){ fail++; console.log('FAIL '+name+'\n     '+(e&&e.stack||e).toString().split('\n').slice(0,3).join('\n     ')); } }
@@ -30,18 +30,21 @@ const FILE={[LINE]:[
   {manufacturer:LINE,code:'B1',name:'Boot S',group:'Boot',base_price:50,tiers:TIERS},
   {manufacturer:LINE,code:'B2',name:'Boot M',group:'Boot',base_price:50,tiers:TIERS},
   {manufacturer:LINE,code:'C1',name:'Contract item',group:'',base_price:20}],
-  'other-line':[{manufacturer:'other-line',code:'Z1',name:'Other item',group:'',base_price:10}]};
+  'other-line':[{manufacturer:'other-line',code:'Z1',name:'Other item',group:'',base_price:10}],
+  'yuwell':[{manufacturer:'yuwell',code:'Y1',name:'Yuwell item',group:'',base_price:30}]};
 
 function env(opts){
   opts=opts||{};
-  const W=M.createWorld({failRead:(t)=>(opts.failMeta||(opts.state&&opts.state.failMeta))&&t==='manufacturer_meta'?500:0, failWrite:(m,t,b)=>m==='POST'&&t==='order_items'&&(opts.failItems||(opts.failItemsFor&&[].concat(b)[0].code===opts.failItemsFor))?500:0, tables:{
+  const W=M.createWorld({unique:{orders:[['dealer_id','manufacturer','submission_key']]},
+    failRead:(t,qs)=>(opts.noKeyCol&&t==='orders'&&/submission_key/.test(String(qs||'')))?400:(opts.failAcct&&t==='dealer_manufacturers'&&/manufacturer=in\.\(yuwell/.test(decodeURIComponent(String(qs||''))))?500:((opts.failMeta||(opts.state&&opts.state.failMeta))&&t==='manufacturer_meta'?500:0), failWrite:(m,t,b)=>m==='POST'&&t==='order_items'&&(opts.failItems||(opts.failItemsFor&&[].concat(b)[0].code===opts.failItemsFor)||(opts.state&&opts.state.failItemsFor&&[].concat(b)[0].code===opts.state.failItemsFor))?500:0, tables:{
     app_settings:[{key:'platform_state',value:{mode:'development'}}],
-    manufacturers:[{slug:LINE,name:'Ovation Medical'},{slug:'golden-technologies',name:'Golden'},{slug:'other-line',name:'Other'}], manufacturer_meta:[{slug:LINE},{slug:'other-line'}],
-    dealers:[{id:'d1',parent_id:null,is_test:true}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}], dealer_manufacturers:require('./p0-entitle.js')('d1'),
+    manufacturers:[{slug:LINE,name:'Ovation Medical'},{slug:'golden-technologies',name:'Golden'},{slug:'other-line',name:'Other'},{slug:'yuwell',name:'Yuwell'}], manufacturer_meta:[{slug:LINE},{slug:'other-line'},{slug:'yuwell'}],
+    dealers:[{id:'d1',parent_id:null,is_test:true}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}],
+    dealer_manufacturers:require('./p0-entitle.js')('d1').filter(r=>r.manufacturer!=='yuwell').concat([{dealer_id:'d1',manufacturer:'yuwell',active:true,account_ref:opts.yuwellAccount||null}]),
     dealer_contract_prices:[{dealer_id:'d1',manufacturer:LINE,code:'C1',price:17,active:true}],
     product_overrides:[], custom_products:[], product_images:[], product_links:[], product_media:[], product_content:[], product_skus:[],
     orders:[], order_items:[], tracking_requests:[], email_sends:[], intent_events:[], email_attribution:[]}});
-  const emails=[], allMail=[], hits={price_check:0,create:0,submit:0};
+  const emails=[], allMail=[], bodies=[], hits={price_check:0,create:0,submit:0};
   const inner=W.fetch;
   let ordersApi, submitFn;
   const router=async(url,o)=>{
@@ -51,6 +54,8 @@ function env(opts){
       const r=await ordersApi.handler({httpMethod:'POST',headers:Object.assign({},o.headers),body:o.body});
       return {ok:r.statusCode<300,status:r.statusCode,json:async()=>JSON.parse(r.body)}; }
     if(u==='/submit'){ hits.submit++; const r=await submitFn.handler({httpMethod:'POST',headers:Object.assign({},o.headers),body:o.body});
+      bodies.push(JSON.parse(o.body));
+      if(opts.loseResponses>0){ opts.loseResponses--; throw new Error('network timeout after the server answered'); }
       return {ok:r.statusCode<300,status:r.statusCode,json:async()=>JSON.parse(r.body)}; }
     if(u.startsWith(M.BASE+'/auth/v1/user')) return String((o.headers||{}).Authorization||'')==='Bearer jwt'
       ?{ok:true,status:200,json:async()=>({id:'u1',email:'d@x.com'})}:{ok:false,status:401,json:async()=>({})};
@@ -58,7 +63,7 @@ function env(opts){
       const slug=decodeURIComponent(u.slice((OB+(content?'/data/content/':'/data/')).length).replace(/\.json.*$/,''));
       if(content||!(slug in FILE)) return {ok:false,status:404,json:async()=>null};
       return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(FILE[slug]))}; }
-    if(u.startsWith('https://api.resend.com')){ const m=JSON.parse(o.body); allMail.push(m); if(/^New order/.test(m.subject)) emails.push(m); return {ok:opts.emailFails?false:true,status:opts.emailFails?500:200,json:async()=>({id:'m'})}; }
+    if(u.startsWith('https://api.resend.com')){ const m=JSON.parse(o.body); allMail.push(m); if(/^(\[New account required\] )?New order/.test(m.subject)) emails.push(m); return {ok:opts.emailFails?false:true,status:opts.emailFails?500:200,json:async()=>({id:'m'})}; }
     return inner(url,o);
   };
   W.fetch=router;
@@ -82,7 +87,7 @@ function env(opts){
   const prod=(code,x)=>Object.assign(JSON.parse(JSON.stringify(FILE[LINE].find(p=>p.code===code))),x||{});
   const add=(code,qty,x)=>{ const p=prod(code,x); CART.set(LINE+'::'+code,{p,qty}); MFR[LINE]={po:'PO-7',notes:''}; return p; };
   const setPrice=(code,patch)=>{ W.db.product_overrides=W.db.product_overrides.filter(o=>o.code!==code); W.db.product_overrides.push({manufacturer:LINE,code,patch}); };
-  return {W,page,CART,MFR,AUTH,toasts,emails,allMail,hits,add,setPrice,btn,ordersApi:()=>ordersApi};
+  return {W,page,CART,MFR,AUTH,toasts,emails,allMail,bodies,hits,add,setPrice,btn,ordersApi:()=>ordersApi,submitFn:()=>submitFn,router};
 }
 const saved=items=>({items,mfr:{[LINE]:{po:'PO-7',notes:''}}});
 const settle=async()=>{ for(let i=0;i<20;i++) await tick(); };
@@ -116,6 +121,7 @@ await t('a Golden-only cart submits nothing at all',async()=>{
   E.CART.set('golden-technologies::PR1',{p:{manufacturer:'golden-technologies',code:'PR1',name:'Chair',base_price:900},qty:1}); E.MFR['golden-technologies']={po:'G-1',notes:''};
   await E.page.submitOrder();
   eq([E.W.db.orders.length,E.hits.submit,E.hits.create,E.CART.size],[0,0,0,1],'nothing sent, cart kept');
+  ok(E.toasts.some(m=>/can't be ordered in Partner 360 yet/.test(m)),'told to order Golden on its platform: '+E.toasts.join(' | '));
 });
 await t('if recording fails after the check, nothing is placed and the cart is kept',async()=>{
   const st={}; const E=env({state:st,beforeApi:(b)=>{ if(b.action==='create') st.failMeta=true; }}); E.add('A1',1);
@@ -227,6 +233,96 @@ await t('if the order cannot be persisted, no order email of any kind is sent an
   await E.page.submitOrder();
   eq([E.W.db.orders.length,E.W.db.order_items.length,E.allMail.length,E.CART.size],[0,0,0,1],'nothing persisted, nothing sent, cart kept');
   ok(E.toasts.some(m=>/nothing was submitted|nothing was placed/i.test(m)),'told: '+E.toasts.join(' | '));
+});
+
+/* ---- C3-06: one checkout = one order ---- */
+const confirmations=E=>E.allMail.filter(m=>!/^(\[New account required\] )?New order/.test(m.subject));
+await t('a retry of the same checkout after a lost answer is recorded ONCE — no second order, no second email',async()=>{
+  const E=env({loseResponses:1}); E.add('A1',2);
+  await E.page.submitOrder();                                   // recorded, but the browser never heard back
+  eq([E.W.db.orders.length,E.emails.length,E.CART.size],[1,1,1],'recorded once, emailed once, cart still shown');
+  await E.page.submitOrder();                                   // the dealer presses Place order again
+  eq(E.bodies.length,2,'two submissions'); ok(E.bodies[0].submission_key&&E.bodies[0].submission_key===E.bodies[1].submission_key,'same checkout key');
+  eq([E.W.db.orders.length,E.W.db.order_items.length,E.emails.length],[1,1,1],'still ONE order, one line, one HCPS email');
+  eq(confirmations(E).length,1,'one dealer confirmation');
+  eq(E.CART.size,0,'cart cleared — the order exists');
+  ok(E.toasts.some(m=>/already recorded/.test(m)&&/not placed twice/.test(m)),'dealer told: '+E.toasts.join(' | '));
+  ok(/Dealer resubmitted this same order/.test(E.W.db.orders[0].admin_notes||''),'staff told on the order');
+});
+await t('a NEW checkout after a recorded order is a new order (the key is dropped once recorded)',async()=>{
+  const E=env(); E.add('A1',1); await E.page.submitOrder();
+  E.add('A1',1); await E.page.submitOrder();                    // same item, same PO — a deliberate re-order
+  eq([E.W.db.orders.length,E.emails.length],[2,2],'two orders');
+  ok(E.bodies[0].submission_key!==E.bodies[1].submission_key,'a new key');
+});
+await t('a changed cart is a new checkout, even before anything was recorded',async()=>{
+  const E=env({loseResponses:1}); E.add('A1',1); await E.page.submitOrder();
+  E.CART.set(LINE+'::A1',{p:E.CART.get(LINE+'::A1').p,qty:3}); await E.page.submitOrder();
+  ok(E.bodies[0].submission_key!==E.bodies[1].submission_key,'a different cart gets a different key');
+  eq(E.W.db.orders.length,2,'both recorded');
+});
+await t('two simultaneous submissions of one checkout record one order (the unique index decides)',async()=>{
+  const E=env(); const S=E.submitFn();
+  const body=JSON.stringify({dealer:{business:'B',contact:'C',email:'d@x.com'},submission_key:'k-0123456789abcdef',orders:[{manufacturer_slug:LINE,manufacturer_name:'O',po:'1',items:[{code:'A1',qty:1,unit:50}]}]});
+  const rs=await Promise.all([1,2].map(()=>S.handler({httpMethod:'POST',headers:{authorization:'Bearer jwt'},body})));
+  eq(E.W.db.orders.length,1,'one order'); eq(E.emails.length,1,'one HCPS email');
+  ok(rs.every(r=>JSON.parse(r.body).recorded===true),'both answers say recorded: '+rs.map(r=>r.statusCode+' '+r.body.slice(0,300)).join(' || '));
+});
+await t('one manufacturer recorded earlier, another not: a retry never records the first one again',async()=>{
+  const E=env({failItemsFor:'Z1'}); E.add('A1',1);
+  E.CART.set('other-line::Z1',{p:{manufacturer:'other-line',code:'Z1',name:'Other item',group:'',base_price:10},qty:1}); E.MFR['other-line']={po:'PO-9',notes:''};
+  const S=E.submitFn();
+  const mk=()=>JSON.stringify({dealer:{business:'B',contact:'C',email:'d@x.com'},submission_key:'k-fedcba9876543210',orders:[
+    {manufacturer_slug:LINE,manufacturer_name:'O',po:'1',items:[{code:'A1',qty:1,unit:50}]},{manufacturer_slug:'other-line',manufacturer_name:'Other',po:'2',items:[{code:'Z1',qty:1,unit:10}]}]});
+  const r1=JSON.parse((await S.handler({httpMethod:'POST',headers:{authorization:'Bearer jwt'},body:mk()})).body);
+  eq(r1.not_recorded,['other-line'],'first try: Other not recorded');
+  const r2=JSON.parse((await S.handler({httpMethod:'POST',headers:{authorization:'Bearer jwt'},body:mk()})).body);   // Other still fails
+  ok(r2.recorded===true,'second try recorded: '+JSON.stringify(r2).slice(0,400)); eq(r2.not_recorded,['other-line'],'Other still reported not recorded (stays in the cart)');
+  eq((r2.already_recorded||[]).map(x=>x.manufacturer_slug),[LINE],'Ovation reported as already recorded');
+  eq(E.W.db.orders.filter(o=>o.manufacturer===LINE).length,1,'Ovation never recorded twice');
+  eq(E.emails.filter(m=>/— O ·/.test(m.subject)).length,1,'Ovation emailed once');
+});
+await t('the retry after a lost answer records the one that failed, and never the one already recorded',async()=>{
+  const st={failItemsFor:'Z1'}; const E=env({state:st,loseResponses:1}); E.add('A1',1);
+  E.CART.set('other-line::Z1',{p:{manufacturer:'other-line',code:'Z1',name:'Other item',group:'',base_price:10},qty:1}); E.MFR['other-line']={po:'PO-9',notes:''};
+  await E.page.submitOrder();                         // Ovation recorded, Other failed, the answer was lost
+  st.failItemsFor=null;                               // Other can be written now
+  await E.page.submitOrder();                         // same cart, same key
+  eq(E.W.db.orders.map(o=>o.manufacturer).sort(),[LINE,'other-line'].sort(),'each recorded exactly once');
+  eq(E.CART.size,0,'nothing left in the cart — both orders exist');
+});
+await t('a retry of an order already recorded is answered "already recorded", even if a price moved since',async()=>{
+  const E=env(); const S=E.submitFn();
+  const body=JSON.stringify({dealer:{business:'B',contact:'C',email:'d@x.com'},submission_key:'k-aaaabbbbccccdddd',orders:[{manufacturer_slug:LINE,manufacturer_name:'O',po:'1',items:[{code:'A1',qty:1,unit:50}]}]});
+  await S.handler({httpMethod:'POST',headers:{authorization:'Bearer jwt'},body});
+  E.setPrice('A1',{base_price:55});
+  const r=await S.handler({httpMethod:'POST',headers:{authorization:'Bearer jwt'},body});
+  eq(r.statusCode,200,'not a price review: '+r.body.slice(0,200)); eq(JSON.parse(r.body).status,'already_recorded','already recorded');
+  eq([E.W.db.orders.length,E.emails.length],[1,1],'one order, one email');
+});
+await t('before the SQL runs (no submission_key column) orders record exactly as before',async()=>{
+  const E=env({noKeyCol:true}); E.add('A1',1); await E.page.submitOrder();
+  eq([E.W.db.orders.length,E.emails.length,E.CART.size],[1,1,0],'recorded, emailed, cart cleared');
+  ok(!('submission_key' in E.W.db.orders[0]),'no key written');
+});
+/* ---- C3-06: new manufacturer account notice ---- */
+const addY=(E,qty)=>{ E.CART.set('yuwell::Y1',{p:JSON.parse(JSON.stringify(FILE.yuwell[0])),qty}); E.MFR.yuwell={po:'PO-Y',notes:''}; };
+await t('a Yuwell order without a Yuwell account number is NOT blocked, and says "New Yuwell Manufacturer Account Required" everywhere',async()=>{
+  const E=env(); addY(E,1); await E.page.submitOrder();
+  eq([E.W.db.orders.length,E.CART.size],[1,0],'recorded, cart cleared');
+  const hc=E.emails[0]; ok(hc&&/New Yuwell Manufacturer Account Required/.test(hc.html)&&/New Yuwell Manufacturer Account Required/.test(hc.text),'HCPS intake email');
+  ok(/^\[New account required\]/.test(hc.subject),'intake subject: '+(hc&&hc.subject));
+  ok(confirmations(E).some(m=>/New Yuwell Manufacturer Account Required/.test(m.html||'')),'dealer confirmation');
+});
+await t('a Yuwell order from a dealer WITH an account number carries no notice; other lines never do',async()=>{
+  const E=env({yuwellAccount:'YW-1'}); addY(E,1); E.add('A1',1); await E.page.submitOrder();
+  eq(E.W.db.orders.length,2,'both recorded');
+  ok(E.allMail.every(m=>!/Manufacturer Account Required/.test((m.html||'')+(m.text||'')+(m.subject||''))),'no notice anywhere');
+});
+await t('if the account rows cannot be read, the order still stands and HCPS is asked to verify',async()=>{
+  const E=env({failAcct:true}); addY(E,1); await E.page.submitOrder();
+  eq(E.W.db.orders.length,1,'recorded');
+  ok(/account status could not be checked — verify/.test(E.emails[0].html),'HCPS asked to verify');
 });
 console.log(`\nshop cart: ${pass} passed, ${fail} failed`); process.exitCode=fail?1:0;
 })();
