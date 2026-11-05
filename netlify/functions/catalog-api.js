@@ -108,16 +108,37 @@ const num=v=>{ if(v===""||v==null) return null; const n=Number(v); return isFini
 // normalize a quantity-break tier list to [{min_qty:int>=1, price:number}], sorted ascending
 /* A break may name a POOL (agreed 2026-10-09): its quantity is the combined cart quantity of every
    product whose breaks name the same pool ("strongback-models"). Kept through every tier write. */
+/* A real calendar instant only: month 01–12, a day that exists in that month, hour 00–23 (V8 would roll
+   "02-30" or "T24:00" forward while Safari refuses them — the browser and server must never disagree). */
+const UNTIL_RE=/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
+const validUntil=u=>{ if(!UNTIL_RE.test(u)) return false; const d=Date.parse(u.slice(0,10)+"T00:00:00Z");
+  return isFinite(d)&&new Date(d).toISOString().slice(0,10)===u.slice(0,10)&&isFinite(Date.parse(u)); };
 const cleanTiers=t=>{ if(!Array.isArray(t)) return null;
   const out=t.map(r=>{ const o={min_qty:Math.max(1,parseInt(r.min_qty??r.minQty??1,10)||1),price:num(r.price)};
-      const pl=String((r&&r.pool)==null?"":r.pool).trim().toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,40); if(pl) o.pool=pl; return o; })
+      const pl=String((r&&r.pool)==null?"":r.pool).trim().toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,40); if(pl) o.pool=pl;
+      /* A break may END (agreed 2026-11-04, Yuwell SP-3 special): `until` is kept only as a full ISO instant; any other
+         value is dropped from the break AND the break itself is dropped, so a malformed end can never make a promotion permanent. */
+      if(r&&r.until!=null&&r.until!==""&&String(r.until).trim().toLowerCase()!=="none"){ const u=String(r.until).trim(); if(!validUntil(u)) return {min_qty:o.min_qty,price:null}; o.until=u; }
+      return o; })
     .filter(r=>r.price!=null).sort((a,b)=>a.min_qty-b.min_qty);
   return out.length?out:null; };
 /* An edit that sends a ladder without pools (Product Catalog, Price Check, an import) never drops
    the pool a break already has on the record: the same break keeps it. */
 const keepPools=(next, cur)=>{ const n=cleanTiers(next); if(!n) return n;
-  const had={}; (cleanTiers(cur)||[]).forEach(r=>{ if(r.pool) had[r.min_qty]=r.pool; });
-  return n.map(r=>(r.pool||!had[r.min_qty])?r:Object.assign({},r,{pool:had[r.min_qty]})); };
+  /* `until:"none"` on a break of the new ladder is the explicit way to REMOVE an end (review 2026-11-04): without it a
+     new permanent price at the same quantity would silently inherit the old special's past end and never apply. */
+  const noEnd=new Set((Array.isArray(next)?next:[]).filter(r=>r&&String(r.until==null?"":r.until).trim().toLowerCase()==="none")
+    .map(r=>Math.max(1,parseInt(r.min_qty??r.minQty??1,10)||1)));
+  const had={}, ends={}; (cleanTiers(cur)||[]).forEach(r=>{ if(r.pool) had[r.min_qty]=r.pool; if(r.until&&!noEnd.has(r.min_qty)) ends[r.min_qty]=r.until; });
+  /* ...and never drops the END a break already has (2026-11-04): an edit that re-sends the SP-3 ladder without
+     `until` keeps the special's end date, so editing a price can never make a time-limited break permanent. */
+  return n.map(r=>{ let o=(r.pool||!had[r.min_qty])?r:Object.assign({},r,{pool:had[r.min_qty]}); if(!o.until&&ends[o.min_qty]) o=Object.assign({},o,{until:ends[o.min_qty]}); return o; }); };
+
+/* Does a raw ladder (as sent, before cleanTiers) name any break with until:"none"? Every caller that cleans a
+   ladder first must hand the RAW ladder to keepPools / the record when this is true, or the removal is lost. */
+const hasNoEnd=t=>Array.isArray(t)&&t.some(r=>r&&String(r.until==null?"":r.until).trim().toLowerCase()==="none");
+/* NOTE: a pooled break with an end date is not supported yet — the storefront's poolQty still counts expired pooled
+   breaks. No line has one; do not stage one until poolQty filters them (review 2026-11-04, finding F). */
 
 /* ─────────────────────── Duplicate detection & merge ───────────────────────
    The Product Catalog is the master record. Two mechanisms were quietly creating a
@@ -2020,7 +2041,7 @@ function parityCompare({base, custom, overrides, record, want, mfr, strictTiers}
     const k=normCode(c); if(!eff[k] || eff[k].hidden) eff[k]=row; });
   const money=v=>{ const n=num(v); return n==null?null:Math.round(n*100)/100; };
   const ladder=(t,bp)=>{ const r=(cleanTiers(t)||[]).filter(x=>!(x.min_qty===1 && bp!=null && Math.abs(x.price-bp)<0.005));
-    return r.length?r.map(x=>x.min_qty+":"+x.price+(x.pool?"@"+x.pool:"")).join(","):""; };
+    return r.length?r.map(x=>x.min_qty+":"+x.price+(x.pool?"@"+x.pool:"")+(x.until?"~"+x.until:"")).join(","):""; };
   const drift=[]; let compared=0;
   (record||[]).forEach(r=>{
     const k=normCode(r.code); if(want && !want.has(k)) return;
@@ -2400,7 +2421,9 @@ async function handleCatalog(event){
           const put=(k,v)=>{ if(v!=null&&v!==""){ patch[k]=v; carried.push(k); } };
           put("base_price",num(p.base_price)); put("msrp",num(p.msrp)); put("map",num(p.map));
           if(p.msrp_auto===true) put("msrp_auto",true);
-          const t=cleanTiers(p.tiers); if(t) put("tiers",t);
+          /* Keep a time-limited break's end (review 2026-11-04): merge with the ladder this product has now. */
+          { const cur=patch.tiers||(baseRec&&baseRec.tiers); let t=cleanTiers(p.tiers);
+            if(t&&(cleanTiers(cur)||[]).some(x=>x.until)) t=keepPools(p.tiers,cur); if(t) put("tiers",t); }
           put("price_note",p.price_note||null);
           ["name","category","image","description"].forEach(k=>{
             const v=k==="name"?String(p.name||"").trim():(p[k]||null);
@@ -2415,6 +2438,14 @@ async function handleCatalog(event){
             message:`"${codeIn}" is already a catalog product — it was updated in place instead of being added a second time.`});
         }
         const pv=k=>(projSP && k in projSP)?projSP[k]:undefined;
+        let cpTiers=cleanTiers(p.tiers);
+        if(pv("tiers")===undefined && cpTiers){
+          let cur;
+          try{ const ex=await sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(String(p.code).trim())}&select=tiers`);
+               cur=ex&&ex[0]&&ex[0].tiers; }
+          catch(e){ return json(503,{error:"the current price ladder could not be read — nothing saved",detail:String(e&&e.message||e)}); }
+          if((cleanTiers(cur)||[]).some(x=>x.until)) cpTiers=keepPools(p.tiers,cur);
+        }
         await sb("POST","custom_products?on_conflict=manufacturer,code",{
           manufacturer:mfr, code:String(p.code).trim(), name:String(p.name).trim(),
           category:p.category||null,
@@ -2423,7 +2454,7 @@ async function handleCatalog(event){
           map:pv("map")!==undefined?pv("map"):num(p.map),
           msrp_auto:pv("msrp_auto")!==undefined?pv("msrp_auto")===true:p.msrp_auto===true,
           image:p.image||null, description:p.description||null,
-          tiers:pv("tiers")!==undefined?pv("tiers"):cleanTiers(p.tiers), price_note:p.price_note||null,
+          tiers:pv("tiers")!==undefined?pv("tiers"):cpTiers, price_note:p.price_note||null,
           active:p.active===false?false:true, updated_at:new Date().toISOString()
         },{Prefer:"resolution=merge-duplicates,return=minimal"});
         return json(200,{ok:true});
@@ -2559,7 +2590,23 @@ async function handleCatalog(event){
         if("msrp" in p) patch.msrp=num(p.msrp);
         if("map" in p) patch.map=num(p.map);
         if("msrp_auto" in p) patch.msrp_auto=(p.msrp_auto===true);
-        if("tiers" in p) patch.tiers=cleanTiers(p.tiers);
+        if("tiers" in p){
+          let nt=cleanTiers(p.tiers);
+          /* A TIME-LIMITED break keeps its end through every edit (2026-11-04): when the product's current ladder (its
+             saved override, else the catalog record) has a break with `until`, the new ladder is merged with it by
+             keepPools, so re-sending the ladder without `until` can never make the special permanent. Strict: an
+             unreadable current ladder refuses the write. */
+          if(nt){
+            let cur=null;
+            try{
+              const ex=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}&select=patch`);
+              cur=ex&&ex[0]&&ex[0].patch&&ex[0].patch.tiers;
+              if(!cur){ const rows=await catalogFile(b.manufacturer); const r0=(rows||[]).find(x=>String(x&&x.code)===String(b.code)); cur=r0&&r0.tiers; }
+            }catch(e){ return json(503,{error:"the current price ladder could not be read — nothing saved",detail:String(e&&e.message||e)}); }
+            if((cleanTiers(cur)||[]).some(x=>x.until)) nt=keepPools(p.tiers,cur);   // RAW: keeps until:"none"
+          }
+          patch.tiers=nt;
+        }
         if("active" in p) patch.active=(p.active!==false);
         if("image" in p && p.image) patch.image=String(p.image);
         /* Price Check disposition. A manufacturer price list always carries codes HCPS
@@ -2610,6 +2657,7 @@ async function handleCatalog(event){
            resulting values are projected onto the override. If the record write fails,
            nothing is written to the layers. */
         const want={}; ["base_price","msrp","msrp_auto","map","tiers"].forEach(k=>{ if(k in patch) want[k]=patch[k]; });
+        if("tiers" in want && hasNoEnd(p.tiers)) want.tiers=p.tiers;   // the record must see the explicit end removal
         const wantStatus=("active" in patch)?statusFromEdit(patch.active, merged.disposition):undefined;
         if(wantStatus!==undefined){ want.status=wantStatus; if(merged.disposition_note) want.status_note=merged.disposition_note; }
         if(Object.keys(want).length){
@@ -2697,11 +2745,20 @@ async function handleCatalog(event){
         for(const r of rows){
           const code=String(r.code||"").trim(); if(!code) continue;
           let pf=priceFields(r);
+          /* A time-limited break keeps its end through an import (2026-11-04), exactly as in save_override. */
+          if(pf.tiers){
+            let cur=(((cust||[]).find(x=>String(x.code)===code))||((baseAll||[]).find(x=>String(x.code)===code))||{}).tiers;
+            try{ const ex0=await sb("GET",`product_overrides?manufacturer=eq.${enc(mfr)}&code=eq.${enc(code)}&select=patch`);
+                 if(ex0&&ex0[0]&&ex0[0].patch&&ex0[0].patch.tiers) cur=ex0[0].patch.tiers; }
+            catch(e){ failed++; continue; }
+            if((cleanTiers(cur)||[]).some(x=>x.until)) pf=Object.assign({},pf,{tiers:keepPools(r.tiers,cur)});   // RAW: keeps until:"none"
+          }
           /* Phase 2.2 — migrated line: the record first, then the projection. A row whose
              record write fails is skipped entirely, so the layers never get ahead of it. */
           let projected=null;
           if(migratedLine){
             const want={}; ["base_price","msrp","msrp_auto","map","tiers"].forEach(k=>{ if(k in pf) want[k]=pf[k]; });
+            if("tiers" in want && hasNoEnd(r.tiers)) want.tiers=r.tiers;   // the record must see the explicit end removal
             if(Object.keys(want).length){
               try{ const cc=await commitCommercial(mfr, code, want, b.reviewer||"price-import");
                    projected=cc.projection; if(cc.changed.length) recordWrites++; }

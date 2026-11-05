@@ -298,7 +298,7 @@ const breaksOnly = c => { const t = c.tier_prices || c.tiers; const q = Array.is
   const qs = q.map(Number).filter(n => isFinite(n)).sort((a, b) => a - b);
   return qs.length ? "breaks at " + qs.join(" / ") + " units" : "a discounted base price"; };
 const tierText = t => {
-  if (Array.isArray(t)) return t.length ? t.map(x => `${x.min_qty != null ? x.min_qty : x.minQty}+:${money(x.price)}${x.pool ? "(" + x.pool + ")" : ""}`).join(" ") : null;
+  if (Array.isArray(t)) return t.length ? t.map(x => `${x.min_qty != null ? x.min_qty : x.minQty}+:${money(x.price)}${x.pool ? "(" + x.pool + ")" : ""}${x.until ? " until " + x.until : ""}`).join(" ") : null;
   if (t && typeof t === "object") { const k = Object.keys(t).sort((a, b) => Number(a) - Number(b)); return k.length ? "legacy " + k.map(x => `${x}:${money(t[x])}`).join(" ") : null; }
   return null;
 };

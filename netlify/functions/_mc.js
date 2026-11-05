@@ -44,7 +44,7 @@ function planStage({ rows, existingByNorm, clear, clearApproved, normCode, num, 
   const clearSet = new Set(Array.isArray(clear) ? clear.map(String) : []);
   const bad = [], plan = [], seen = new Map();
   const money = v => (v == null ? null : Math.round(Number(v) * 100) / 100);
-  const ladder = t => JSON.stringify((cleanTiers(t) || []).map(x => [x.min_qty, x.price, x.pool || null]));
+  const ladder = t => JSON.stringify((cleanTiers(t) || []).map(x => x.until ? [x.min_qty, x.price, x.pool || null, x.until] : [x.min_qty, x.price, x.pool || null]));
   const same = (f, a, b) => {
     if(f === "tiers") return ladder(a) === ladder(b);
     if(["base_price","map","msrp","dealer_unit_cost"].includes(f)) return money(a) === money(b);
@@ -116,8 +116,8 @@ const decode = s => s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;
 const text = html => decode(String(html || "").replace(/<\/div>/g, " </div>").replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
 const m2 = v => (v == null || v === "" ? null : Math.round(Number(v) * 100) / 100);
 const basisOf = b => (b === "each" || b === "order_unit") ? b : null;
-const ladderKey = (t, bp) => (Array.isArray(t) ? t : []).map(x => ({ q: Math.round(Number(x.minQty != null ? x.minQty : x.min_qty)), p: m2(x.price), pool: x.pool || null }))
-  .filter(x => !(x.q === 1 && bp != null && x.p === m2(bp))).sort((a, b) => a.q - b.q).map(x => x.q + ":" + x.p + (x.pool ? "@" + x.pool : "")).join(",");
+const ladderKey = (t, bp) => (Array.isArray(t) ? t : []).map(x => ({ q: Math.round(Number(x.minQty != null ? x.minQty : x.min_qty)), p: m2(x.price), pool: x.pool || null, u: x.until || null }))
+  .filter(x => !(x.q === 1 && bp != null && x.p === m2(bp))).sort((a, b) => a.q - b.q).map(x => x.q + ":" + x.p + (x.pool ? "@" + x.pool : "") + (x.u ? "~" + x.u : "")).join(",");
 function check(id, label, ok, detail, severity){ return { id, label, pass: !!ok, severity: severity || "blocking", detail: detail == null ? null : detail }; }
 
 /* Expected freight words on the dealer confirmation (orders-api freightWords) and HCPS email (freightShort). */
