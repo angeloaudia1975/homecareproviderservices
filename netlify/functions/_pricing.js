@@ -35,8 +35,10 @@ function feedRows(rows) {
     if (n(r.map) != null) o.map = n(r.map);
     if (Array.isArray(r.tiers) && r.tiers.length) {
       o.tiers = r.tiers
-        .map(t => (t.pool ? { min_qty: Number(t.min_qty), price: Number(t.price), pool: String(t.pool) }
-                          : { min_qty: Number(t.min_qty), price: Number(t.price) }))   // a break's pool travels with it (2026-10-09)
+        .map(t => { const b = t.pool ? { min_qty: Number(t.min_qty), price: Number(t.price), pool: String(t.pool) }
+                                     : { min_qty: Number(t.min_qty), price: Number(t.price) };   // a break's pool travels with it (2026-10-09)
+          if (t.until != null && t.until !== '') b.until = String(t.until);   // and so does its end (2026-11-04); the shop ignores it once past, or if unreadable
+          return b; })
         .filter(t => isFinite(t.min_qty) && isFinite(t.price))
         .sort((a, b) => a.min_qty - b.min_qty);
       if (!o.tiers.length) delete o.tiers;

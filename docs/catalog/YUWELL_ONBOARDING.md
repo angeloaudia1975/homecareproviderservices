@@ -41,13 +41,13 @@ There are no aliases, and Yuwell is never mapped onto the retired Ohio Medical i
 
 | # | Requirement | Existing mechanism | Ready now? |
 |---|---|---|---|
-| 1 | Registration, slug `yuwell` | `manufacturers` + `manufacturer_meta` rows (`supabase/yuwell_manufacturer_register.sql`, draft) | SQL drafted — owner runs it |
+| 1 | Registration, slug `yuwell` | `manufacturers` + `manufacturer_meta` rows (`supabase/yuwell_manufacturer_register.sql`, draft; meta `active = true` — the line switch is now enforced, so false would hide Yuwell everywhere; no dealer can order it until a `dealer_manufacturers` grant exists) | SQL drafted — owner runs it |
 | 2 | Admin and dealer entitlements | `dealer_manufacturers` rows; `_access.js` rule (all dealers / states / per account) | **Owner decision:** Yuwell's territory and eligibility. Nothing is granted until then |
 | 3 | Option 2 catalog structure | public catalog file (no prices) + private `catalog_file_commercial` record, keyed by row fingerprint (P0) | Needs the price list |
 | 4 | Families and variant pickers | content-overrides `_families` rules (`scripts/_catalog_families.js`) | Needs the product list |
 | 5 | Photos, specs, descriptions | `scripts/catalog-enrich.js` (official site / catalog), `_content_review.js` (official hosts), `content-overrides` | Needs the official domain and catalog |
 | 6 | Dealer pricing and MSRP | `scripts/catalog-import.js` adapter → review package → Manufacturer Center `mc_import_source_rows` → `stage_record_source` (two gates); `dealer_contract_prices` for any contract | Needs the price list |
-| 7 | Freight and order rules | `manufacturer_meta.freight_terms` (record) or the `manufacturers.json` freight block; `min_order_qty` / `requires` order rules | Needs the written freight terms |
+| 7 | Freight and order rules | `manufacturers.json` freight block (`qty_threshold`: an order with an SP-3 ships free; otherwise actual shipping); every line is 1 unit | Built (#35) |
 | 8 | Checkout and order delivery | `orders-api` (server prices with `_pricing.js`, freight with the shop's `computeFreight`) → HCPS intake email → Order Review → HCPS places the order with Yuwell | Needs Yuwell's order desk address and PO process |
 | 9 | Customer MSRP Quote Builder | automatic: the builder uses the storefront's own merge for every entitled, listed line (`quotable` defaults to true) | Automatic once listed |
 | 10 | Review sandbox (PR #26) | a Yuwell catalog PR labelled `owner-review` is merged into the sandbox automatically; production is never touched | When the first catalog PR exists |
@@ -113,3 +113,14 @@ There are no aliases, and Yuwell is never mapped onto the retired Ohio Medical i
 - `redirects.json`: `/manufacturers/ohio-medical/*` → `/manufacturers/yuwell/` (301), in admin #84.
 - The Resource Library's Ohio Medical documents are retired through the admin Resource tool
   (`documents.json` is admin-managed).
+
+## Eligibility for real-dealer activation (C3-05)
+
+Yuwell goes to every authorized HCPS ordering dealer, every territory, no geographic rule. `supabase/yuwell_activation.sql`
+PART 1 (read-only) lists who is in and out; PART 2 (commented, owner runs it) grants and proves inside the same
+transaction that no eligible dealer is missing and no ineligible dealer has Yuwell, else it rolls back. Eligible =
+active, not TEST, account class blank or `dealer`, status not prospect / closed / inactive / dormant (trimmed, any
+case), with at least one active ordering line that is not Golden, a retired line, BongoRx's old `bongo` slug or Yuwell
+itself (slugs compared trimmed and lower-case). A branch is judged on its OWN rows — it does not inherit its head
+office's lines. Golden-only dealers are left out pending the owner's decision. The TEST dealer is granted separately
+(`yuwell_test_dealer_access.sql`) and first.

@@ -8,8 +8,10 @@
 -- What this does:
 --   · manufacturers row (slug, name, active)  — Sales Report Import, Commission Report Import and the
 --     monthly_sales foreign key need it (see dalton_manufacturer_add.sql).
---   · manufacturer_meta row with active = false — Manufacturer Center / catalog tooling can register sources
---     and staging for the line, while nothing in the storefront treats it as live.
+--   · manufacturer_meta row with active = TRUE. Since C3-05 the storefront and the order server honour
+--     active = false (the line switch), so false here would hide Yuwell from everyone, the TEST preview included
+--     (review 2026-11-04). Yuwell stays unorderable for real dealers without this switch: no dealer has a
+--     dealer_manufacturers row for it and its private price record is a separate step.
 --
 -- What it does NOT do (each is its own later, approved step):
 --   · no dealer_manufacturers rows (no dealer is entitled to Yuwell),
@@ -26,11 +28,11 @@ values ('yuwell', 'Yuwell', true)
 on conflict (slug) do update set name = excluded.name;
 
 insert into manufacturer_meta (slug, active, enriched_only, record_authoritative)
-values ('yuwell', false, false, false)
+values ('yuwell', true, false, false)
 on conflict (slug) do nothing;
 
 -- ---- Verify: one manufacturers row, one manufacturer_meta row (active false), zero entitlements ----
 select
   (select count(*) from manufacturers      where slug = 'yuwell')                       as manufacturers_rows,
-  (select active from manufacturer_meta     where slug = 'yuwell')                       as meta_active,
+  (select active from manufacturer_meta     where slug = 'yuwell')                       as meta_active_should_be_true,
   (select count(*) from dealer_manufacturers where manufacturer = 'yuwell')              as entitlement_rows;

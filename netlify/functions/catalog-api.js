@@ -110,14 +110,20 @@ const num=v=>{ if(v===""||v==null) return null; const n=Number(v); return isFini
    product whose breaks name the same pool ("strongback-models"). Kept through every tier write. */
 const cleanTiers=t=>{ if(!Array.isArray(t)) return null;
   const out=t.map(r=>{ const o={min_qty:Math.max(1,parseInt(r.min_qty??r.minQty??1,10)||1),price:num(r.price)};
-      const pl=String((r&&r.pool)==null?"":r.pool).trim().toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,40); if(pl) o.pool=pl; return o; })
+      const pl=String((r&&r.pool)==null?"":r.pool).trim().toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,40); if(pl) o.pool=pl;
+      /* A break may END (agreed 2026-11-04, Yuwell SP-3 special): `until` is kept only as a full ISO instant; any other
+         value is dropped from the break AND the break itself is dropped, so a malformed end can never make a promotion permanent. */
+      if(r&&r.until!=null&&r.until!==""){ const u=String(r.until).trim(); if(!/^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:\d\d)$/.test(u)||!isFinite(Date.parse(u))) return {min_qty:o.min_qty,price:null}; o.until=u; }
+      return o; })
     .filter(r=>r.price!=null).sort((a,b)=>a.min_qty-b.min_qty);
   return out.length?out:null; };
 /* An edit that sends a ladder without pools (Product Catalog, Price Check, an import) never drops
    the pool a break already has on the record: the same break keeps it. */
 const keepPools=(next, cur)=>{ const n=cleanTiers(next); if(!n) return n;
-  const had={}; (cleanTiers(cur)||[]).forEach(r=>{ if(r.pool) had[r.min_qty]=r.pool; });
-  return n.map(r=>(r.pool||!had[r.min_qty])?r:Object.assign({},r,{pool:had[r.min_qty]})); };
+  const had={}, ends={}; (cleanTiers(cur)||[]).forEach(r=>{ if(r.pool) had[r.min_qty]=r.pool; if(r.until) ends[r.min_qty]=r.until; });
+  /* ...and never drops the END a break already has (2026-11-04): an edit that re-sends the SP-3 ladder without
+     `until` keeps the special's end date, so editing a price can never make a time-limited break permanent. */
+  return n.map(r=>{ let o=(r.pool||!had[r.min_qty])?r:Object.assign({},r,{pool:had[r.min_qty]}); if(!o.until&&ends[o.min_qty]) o=Object.assign({},o,{until:ends[o.min_qty]}); return o; }); };
 
 /* ─────────────────────── Duplicate detection & merge ───────────────────────
    The Product Catalog is the master record. Two mechanisms were quietly creating a
@@ -2559,7 +2565,23 @@ async function handleCatalog(event){
         if("msrp" in p) patch.msrp=num(p.msrp);
         if("map" in p) patch.map=num(p.map);
         if("msrp_auto" in p) patch.msrp_auto=(p.msrp_auto===true);
-        if("tiers" in p) patch.tiers=cleanTiers(p.tiers);
+        if("tiers" in p){
+          let nt=cleanTiers(p.tiers);
+          /* A TIME-LIMITED break keeps its end through every edit (2026-11-04): when the product's current ladder (its
+             saved override, else the catalog record) has a break with `until`, the new ladder is merged with it by
+             keepPools, so re-sending the ladder without `until` can never make the special permanent. Strict: an
+             unreadable current ladder refuses the write. */
+          if(nt){
+            let cur=null;
+            try{
+              const ex=await sb("GET",`product_overrides?manufacturer=eq.${encodeURIComponent(b.manufacturer)}&code=eq.${encodeURIComponent(b.code)}&select=patch`);
+              cur=ex&&ex[0]&&ex[0].patch&&ex[0].patch.tiers;
+              if(!cur){ const rows=await catalogFile(b.manufacturer); const r0=(rows||[]).find(x=>String(x&&x.code)===String(b.code)); cur=r0&&r0.tiers; }
+            }catch(e){ return json(503,{error:"the current price ladder could not be read — nothing saved",detail:String(e&&e.message||e)}); }
+            if((cleanTiers(cur)||[]).some(x=>x.until)) nt=keepPools(nt,cur);
+          }
+          patch.tiers=nt;
+        }
         if("active" in p) patch.active=(p.active!==false);
         if("image" in p && p.image) patch.image=String(p.image);
         /* Price Check disposition. A manufacturer price list always carries codes HCPS
@@ -2697,6 +2719,14 @@ async function handleCatalog(event){
         for(const r of rows){
           const code=String(r.code||"").trim(); if(!code) continue;
           let pf=priceFields(r);
+          /* A time-limited break keeps its end through an import (2026-11-04), exactly as in save_override. */
+          if(pf.tiers){
+            let cur=(((cust||[]).find(x=>String(x.code)===code))||((baseAll||[]).find(x=>String(x.code)===code))||{}).tiers;
+            try{ const ex0=await sb("GET",`product_overrides?manufacturer=eq.${enc(mfr)}&code=eq.${enc(code)}&select=patch`);
+                 if(ex0&&ex0[0]&&ex0[0].patch&&ex0[0].patch.tiers) cur=ex0[0].patch.tiers; }
+            catch(e){ failed++; continue; }
+            if((cleanTiers(cur)||[]).some(x=>x.until)) pf=Object.assign({},pf,{tiers:keepPools(pf.tiers,cur)});
+          }
           /* Phase 2.2 — migrated line: the record first, then the projection. A row whose
              record write fails is skipped entirely, so the layers never get ahead of it. */
           let projected=null;
