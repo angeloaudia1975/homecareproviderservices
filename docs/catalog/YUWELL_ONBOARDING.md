@@ -114,22 +114,18 @@ There are no aliases, and Yuwell is never mapped onto the retired Ohio Medical i
 - The Resource Library's Ohio Medical documents are retired through the admin Resource tool
   (`documents.json` is admin-managed).
 
-## Eligibility for real-dealer activation (C3-05)
+## Who sees Yuwell (owner, 2026-11-04 22:30 CT)
 
-Yuwell goes to every authorized HCPS ordering dealer, every territory, no geographic rule. `supabase/yuwell_activation.sql`
-PART 1 (read-only) lists who is in and out; PART 2 (commented, owner runs it) grants and proves inside the same
-transaction that no eligible dealer is missing and no ineligible dealer has Yuwell, else it rolls back. Eligible =
-active, not TEST, account class blank or `dealer`, status not prospect / closed / inactive / dormant (trimmed, any
-case), with at least one active ordering line that is not Golden, a retired line, BongoRx's old `bongo` slug or Yuwell
-itself (slugs compared trimmed and lower-case). A branch is judged on its OWN rows — it does not inherit its head
-office's lines. Golden-only dealers are left out pending the owner's decision. The TEST dealer is granted separately
-(`yuwell_test_dealer_access.sql`) and first.
+Yuwell is a NEW manufacturer: **every dealer may review and shop it, no account needed**, exactly like the other new
+lines. It shows under "Available to you — open a new account" until HCPS records the dealer's Yuwell account number
+after their dealer application. Ohio Medical is a different, retired line.
 
-Access comes ONLY from that grant: Yuwell is not a territory default in `_access.js` (review 2026-11-04), so a dealer
-with no ordering line, a Golden-only dealer or a prospect never sees it by default. A grant whose slug is stored with
-capitals or spaces gives no access today and is reported apart ("grant slug needs cleanup"); PART 2 refuses to run
-while any odd-spelled Yuwell row exists. Owner decision still open: dealers whose only lines are retired (Ohio Medical)
-— they are excluded today although Yuwell replaces Ohio Medical.
+- Dealers with no access grid (none, or Golden only) see it from the territory defaults (`_access.js` ALL_DEALERS).
+- Dealers with a grid get one active `dealer_manufacturers` row (no account number) from
+  `supabase/yuwell_activation.sql`: every active, non-TEST dealer with account class blank or `dealer`, former Ohio
+  Medical-only dealers included. PART 1 (read-only) reports the groups; PART 2 grants and proves in the same
+  transaction that no eligible dealer is missed and no other dealer has a row, else it rolls back. It refuses while an
+  odd-spelled Yuwell row exists. The TEST dealer is handled separately (`yuwell_test_dealer_access.sql`, run).
 
 **Promotion end dates.** A break's `until` must be a real calendar instant with a time zone. Every tier writer keeps an
 existing end; to REMOVE an end, send the break with `until: "none"`. Staging, verification, parity and the import

@@ -11,10 +11,10 @@
 // Golden is NOT orderable here (separate Golden platform), so it never appears in
 // your_accounts/available — it's surfaced only via `golden`.
 
-const ALL_DEALERS = ["access4u", "airavant-bongorx", "corsicana"];   // every dealer
-/* Yuwell is deliberately NOT a territory default (review 2026-11-04): its access comes only from the audited
-   dealer_manufacturers grant in supabase/yuwell_activation.sql, so a dealer with no ordering line, a Golden-only
-   dealer or a prospect never sees it by default. The grant covers every authorized ordering dealer (C3-05). */
+const ALL_DEALERS = ["access4u", "airavant-bongorx", "corsicana", "yuwell"];   // every dealer
+/* Yuwell (owner 2026-11-04 22:30 CT): a NEW manufacturer every dealer may review and shop without an account —
+   shown under "Available to you — open a new account" until HCPS records the dealer's Yuwell account number
+   after their dealer application. Dealers with an access grid get it from supabase/yuwell_activation.sql. */
 const STATE_RULES  = { bemis: ["IN","KY","OH"], pedifix: ["KY","TN","GA"],
                        dalton: ["KY","TN"] };
 const CLIMBING   = "climbing-steps";        // all dealers EXCEPT Mobility City
