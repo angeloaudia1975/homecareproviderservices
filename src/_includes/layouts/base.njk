@@ -53,14 +53,14 @@
 
 <header class="mainnav">
   <div class="container nav-inner">
-    <a class="brand" href="/"><img src="/assets/hcps-logo.png" alt="{{ site.name }}"></a>
-    <a class="nav-order-btn" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">&#128722; HCPS Partner 360 Online Portal</a>
+    <a class="brand" href="/"><picture><source srcset="/assets/brand/hcps-logo-original.webp" type="image/webp"><img src="/assets/brand/hcps-logo-original.png" alt="{{ site.name }}" width="451" height="180"></picture></a>
+    {%- set dpBtnClass = "nav-order-btn" %}{% include "dp-button.njk" %}
     <button class="nav-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="primary-nav">
       <span class="nav-toggle-box"><span class="nav-toggle-bar"></span></span>
       <span class="nav-toggle-label">Menu</span>
     </button>
     <nav class="links" id="primary-nav" aria-label="Primary navigation">
-      <a class="order-mobile" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">&#128722; HCPS Partner 360 Online Portal</a>
+      {%- set dpBtnClass = "order-mobile dp-btn-m" %}{% include "dp-button.njk" %}
       {%- if nav and nav.primary and nav.primary.length -%}
       {%- for item in nav.primary -%}
       {%- if item.dropdown == "manufacturers" -%}
@@ -147,7 +147,7 @@
       <a href="/dealer-hub/">Dealer Hub</a>
       <a href="/resources/">Resource Library</a>
       <a href="/consulting/">Consulting</a>
-      <a href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">HCPS Partner 360 Online Portal</a>
+      <a href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">360 Dealer Portal</a>
     </nav>
     <nav>
       <h3>Company</h3>

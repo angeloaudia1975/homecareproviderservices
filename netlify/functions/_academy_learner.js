@@ -97,13 +97,13 @@ PUBLIC.verify_code = async (event, b) => {
 };
 PUBLIC.handoff_redeem = async (event, b) => {
   needSecret();
-  if (!(await A.switchOn('academy_handoff'))) return A.respond(event, 403, { error: 'flag_off', message: 'Academy entry from Partner 360 is not available yet.' });
+  if (!(await A.switchOn('academy_handoff'))) return A.respond(event, 403, { error: 'flag_off', message: 'Academy entry from the 360 Dealer Portal is not available yet.' });
   const code = String(b.code == null ? '' : b.code);
-  if (!/^[A-Za-z0-9_-]{43}$/.test(code)) return A.respond(event, 400, { error: 'expired', message: 'This Training link has expired. Open Training again from Partner 360.' });
+  if (!/^[A-Za-z0-9_-]{43}$/.test(code)) return A.respond(event, 400, { error: 'expired', message: 'This Training link has expired. Open Training again from the 360 Dealer Portal.' });
   const r = await A.accessOp('access_op_handoff_redeem', { p_code_hash: A.SESSION.keyedHash('handoff', code), p_ip_hash: ipHash(event) });
   if (!r || !r.ok) {
-    if (r && r.reason === 'not_allowed') return A.respond(event, 403, { error: 'no_access', message: 'Your Partner 360 login does not have HCPS Academy access. Ask HCPS.' });
-    return A.respond(event, 400, { error: 'expired', message: 'This Training link has expired or was already used. Open Training again from Partner 360.' });
+    if (r && r.reason === 'not_allowed') return A.respond(event, 403, { error: 'no_access', message: 'Your 360 Dealer Portal login does not have HCPS Academy access. Ask HCPS.' });
+    return A.respond(event, 400, { error: 'expired', message: 'This Training link has expired or was already used. Open Training again from the 360 Dealer Portal.' });
   }
   return signedIn(event, r.learner_id, r.session_id, { ok: true });
 };

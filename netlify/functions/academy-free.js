@@ -14,7 +14,7 @@ const L = require('./_academy_learner.js');
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REASONS = {
-  partner360:  [409, 'This email belongs to an HCPS Partner 360 account. Open Training from Partner 360 — your free courses are there.'],
+  partner360:  [409, 'This email belongs to an HCPS 360 Dealer Portal account. Open Training from the 360 Dealer Portal — your free courses are there.'],
   staff:       [403, 'HCPS staff do not enroll as learners.'],
   not_allowed: [403, 'This email cannot use the HCPS Academy. Please contact HCPS.'],
   not_free:    [404, 'This course is not open for free enrollment.'],

@@ -154,7 +154,7 @@
     "points": [
       {
         "title": "Enroll employees",
-        "description": "Invite staff by email — no passwords to manage. Partner 360 users can open Training straight from the portal."
+        "description": "Invite staff by email — no passwords to manage. 360 Dealer Portal users can open Training straight from the portal."
       },
       {
         "title": "Assign training",
@@ -200,7 +200,7 @@
     "steps": [
       {
         "title": "Access the Academy",
-        "description": "Sign in with a one-time email code, or open Training from HCPS Partner 360."
+        "description": "Sign in with a one-time email code, or open Training from the 360 Dealer Portal."
       },
       {
         "title": "Enroll employees",
@@ -229,7 +229,7 @@
         "title": "HCPS network dealers",
         "price": "Free",
         "price_note": "during launch",
-        "description": "Dealers in the HCPS network enroll their staff in available Academy courses at no charge. Partner 360 users open Training from Partner 360.",
+        "description": "Dealers in the HCPS network enroll their staff in available Academy courses at no charge. 360 Dealer Portal users open Training from the 360 Dealer Portal.",
         "cta_label": "Access the Academy",
         "cta_url": "/academy/",
         "highlight": false

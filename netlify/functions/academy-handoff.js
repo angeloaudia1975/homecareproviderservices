@@ -28,14 +28,14 @@ exports.handler = A.handler(async event => {
     if (on && await A.pilotMode()) return A.respond(event, 200, { enabled: await testLogin(event) }, OPTS);
     return A.respond(event, 200, { enabled: on }, OPTS);
   }
-  if (!on) return A.respond(event, 403, { error: 'flag_off', message: 'Academy entry from Partner 360 is not available yet.' }, OPTS);
+  if (!on) return A.respond(event, 403, { error: 'flag_off', message: 'Academy entry from the 360 Dealer Portal is not available yet.' }, OPTS);
   if (String(b.action) !== 'mint') return A.respond(event, 404, { error: 'unknown_action', message: 'Unknown action.' }, OPTS);
   if (isGet) return A.respond(event, 405, { error: 'method', message: 'That needs a POST.' }, OPTS);
   const origin = String((event.headers || {}).origin || (event.headers || {}).Origin || '').toLowerCase();
   if (!A.PARTNER360_ORIGINS.includes(origin)) return A.respond(event, 403, { error: 'forbidden', message: 'Not allowed.' }, OPTS);
   if (!A.SESSION.configured()) return A.respond(event, 503, { error: 'session_unavailable', message: 'Academy sign-in is not available just now.' }, OPTS);
   const u = await A.bearerUser(event);
-  if (!u || !u.id) return A.respond(event, 401, { error: 'unauthorized', message: 'Please sign in to Partner 360 first.' }, OPTS);
+  if (!u || !u.id) return A.respond(event, 401, { error: 'unauthorized', message: 'Please sign in to the 360 Dealer Portal first.' }, OPTS);
   // PILOT GATE: during the pilot only a login of a TEST dealership gets a Training link
   if (await A.pilotMode() && !(await testLogin(event, u)))
     return A.respond(event, 403, { error: 'pilot_only', message: 'HCPS Academy training is not open for your dealership yet.' }, OPTS);

@@ -40,7 +40,7 @@
       show(el('p', { cls: 'ac-muted', text: 'Opening your training…' }));
       api({ action: 'handoff_redeem', code: m[1] }).then(function (r) {
         if (r.status === 200) return loadMe();
-        signIn(text(r, 'This Training link has expired. Open Training again from Partner 360.'), true);
+        signIn(text(r, 'This Training link has expired. Open Training again from the 360 Dealer Portal.'), true);
       });
       return;
     }
@@ -96,7 +96,7 @@
       });
     });
     show(el('div', { cls: 'ac-card ac-signin ac-stack' }, [el('h1', { text: 'Sign in to the HCPS Academy' }),
-      el('p', { cls: 'ac-muted', text: 'We will email you a 6-digit code. There is no password. Partner 360 users can also open Training from Partner 360.' }), form]));
+      el('p', { cls: 'ac-muted', text: 'We will email you a 6-digit code. There is no password. 360 Dealer Portal users can also open Training from the 360 Dealer Portal.' }), form]));
     email.focus();
   }
   function enterCode(addr, note) {

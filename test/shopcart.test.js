@@ -127,7 +127,7 @@ await t('a Golden-only cart submits nothing at all',async()=>{
   E.CART.set('golden-technologies::PR1',{p:{manufacturer:'golden-technologies',code:'PR1',name:'Chair',base_price:900},qty:1}); E.MFR['golden-technologies']={po:'G-1',notes:''};
   await E.page.submitOrder();
   eq([E.W.db.orders.length,E.hits.submit,E.hits.create,E.CART.size],[0,0,0,1],'nothing sent, cart kept');
-  ok(E.toasts.some(m=>/can't be ordered in Partner 360 yet/.test(m)),'told to order Golden on its platform: '+E.toasts.join(' | '));
+  ok(E.toasts.some(m=>/can't be ordered in (Partner 360|the 360 Dealer Portal) yet/.test(m)),'told to order Golden on its platform: '+E.toasts.join(' | '));
 });
 await t('if recording fails after the check, nothing is placed and the cart is kept',async()=>{
   const st={}; const E=env({state:st,beforeApi:(b)=>{ if(b.action==='create') st.failMeta=true; }}); E.add('A1',1);
