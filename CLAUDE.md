@@ -2021,6 +2021,32 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     application submission without production approval. Keep the shareable dealer storefront model and HCPS
     dealer/market demand intelligence (incl. interest in products a dealer does not buy). Golden integration stays
     separately authorized; PR #26 stays permanently unmerged.
+  · **Stage 3 LIVE 2026-11-05 (admin #90 + #91, ordering #44): Account Center.** Partner 360 Account tab: company,
+    contacts, addresses (business / billing / ship-to; the default ship-to is pre-selected at checkout), logo upload
+    (JPEG/PNG by file signature, 1 MB, one file per dealer, public `dealer-logos` bucket), "Your manufacturer accounts"
+    (green = HCPS verified AND the number on file still equals `verified_ref`; amber = on file / submitted / requested;
+    red = none) for every location the login may see (`_account_center.js visibleLocations`, D2). Dealer edits are
+    REQUESTS (dealer_change_requests; approve_change is pending-only and repeatable — ship-to keys and new-contact ids are
+    fixed when queued). Verification (Dealer Manager → Account changes: claims, accounts on file, location access) never
+    sets `active` (ordering); a different number on file is never replaced without confirmation (RULE 13); an ordering-
+    grid save keeps verifications of unchanged numbers. Production `dealers` had no logo_url / website column: optional
+    columns are read one at a time (never hide the account). The old generic credit form is closed (410; D5).
+    SQL `supabase/c7_s3_account_center.sql` — NOT run yet (Angelo).
+  · **Stage 4 core LIVE 2026-11-05 (admin #92, ordering #45).** `dealer-retail-api` (company default + per-location;
+    a branch prices only its own location; a head office narrowed to own/list can't change the default; compare-and-set
+    writes; history; never wholesale / MAP / tiers). Brochure price choice: none / verified MSRP / saved retail /
+    one-time (+ Save as my retail price). RULE: the printed MSRP is looked up by brochure.js on HCPS's own records
+    (product_skus row → override patch → custom product), never taken from the request; a 2×-derived or upgraded MSRP is
+    never "verified"; Golden keeps Golden's own retail (known gap: the page supplies it). Brochure email limits 10/hour,
+    40/day per dealer, 5 per recipient/day, checked and recorded atomically by `dealer_document_send_reserve` (advisory
+    lock); recipient stored as domain + SHA-256 of the normalised address. SQL `supabase/c7_s4_retail_and_send_limits.sql`
+    — NOT run yet (Angelo); before it the code answers "opens shortly" / sends untracked as before.
+  · **Documenso free feasibility (research 2026-11-05):** 5 documents/month, $0, API on free (v2: upload, fields by page %,
+    signing link, webhooks, signed PDF + audit + certificate downloads); at the limit the API refuses (400, never charges);
+    fillable fields flattened (HCPS fills + flattens the actual PDF itself); encrypted PDFs refused; signer checks = email
+    link / account only (stronger = Enterprise); completed documents can't be deleted from Documenso via API; webhook =
+    shared secret (constant-time compare + re-fetch). OpenSign free = manual fallback. Integration test only after Angelo
+    approves; no account is created before that.
   · LESSON (2026-11-05 15:36–15:39 CT): a CLAUDE.md-only commit made with `git commit -a` swept unreviewed Stage 3 code
     (without its new helper file) onto main; dealer-tools-api answered 502 for about 3 minutes until reverted (4436dd4).
     RULE: commit CLAUDE.md (or any direct-to-main change) by naming the file — `git commit <path>` — never `-a`, and keep
