@@ -1259,7 +1259,7 @@
     "website": "",
     "logo": "/assets/logos/yuwell.jpg",
     "featured": false,
-    "ordering_url": "",
+    "ordering_url": "https://hcpsonlineordering.netlify.app/",
     "brand": {
       "accent": "#d7002f",
       "dark": "#0b1f33"
