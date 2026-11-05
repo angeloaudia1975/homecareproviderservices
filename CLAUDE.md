@@ -1987,6 +1987,13 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   never a link). "All manufacturers" in the breadcrumb, Manufacturer filter, product page and empty-line messages.
   Storefront line logos come from the website's logo files (`/assets/logos/<slug>.jpg`). Tests: ordering
   test/shop-landing.browser.js (+ test/_shop-harness.js, needs ../homecareproviderservices/_site built).
+  **Stage 2 LIVE 2026-11-05 (ordering #43 140adab): universal quick search** in the header (also on phones): every line
+  the dealer can order, loaded in parallel, trade synonyms (GS_SYN), part numbers first, one row per family, photo +
+  manufacturer + part number + the dealer's OWN price (unitPrice, as the catalog card; "from" for mixed families; none
+  when pricing is unavailable, discontinued, or Golden not entitled), View all / Enter → full list on the Shop page.
+  RULE: the search index belongs to one dealer — keyed on dealer id, preview, entitled lines and Golden's answer, rows
+  re-checked against the current lines when shown; sign-out clears DASH.lineCache / featured / the index; a failed or
+  unpriced line is never cached. Tests: ordering test/quick-search.browser.js.
   Rules: staged reviewed PRs, independent review per stage; preserve ordering/configurators/carts/PO/history,
   frozen lines, Yuwell promo + freight, Ohio Medical retired, Golden workstream untouched; RLS + dealer isolation; test
   desktop/tablet/mobile and REAL interactions; no real orders, real credit applications, live test emails or social posts
