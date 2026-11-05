@@ -1980,9 +1980,13 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   · **Request access (RULE, owner closeout 2026-11-05).** A line a dealer may BROWSE (territory rules) without an active
     dealer_manufacturers row of its own is browse-only: dealer-auth lists it in `access.request_access`, the storefront
     shows why it can't be ordered and a "Request access" button, and checkout refuses it before anything is priced.
-    dealer-tools-api `access_request` stores the ask (`dealer_access_requests`, RULE 19 locked) and emails HCPS staff
-    (Angelo + the dealer's rep) — it NEVER grants access, opens an account or changes a price; staff approve in the
-    Ordering Access grid. One request per dealer + line per 24 h. (The 6 no-grid dealers are the current cases.)
+    dealer-tools-api `access_request` stores the ask (`dealer_access_requests`, RULE 19 locked incl. its sequence) and
+    emails HCPS staff (Angelo + the dealer's rep) — it NEVER grants access, opens an account or changes a price; staff
+    approve in the Ordering Access grid. One OPEN request per dealer + line (partial unique index); no stored record =
+    no email (the table is required, so the button can't send unlimited mail). Only a dealer with no ordering grid has
+    browse-only lines. A browse-only catalog shows "Request access to order …", never "pricing could not be loaded".
+    The Dealer Business Hub (dashboard.html) carries the same RETIRED_SKUS list and skips switched-off products.
+    (The 6 no-grid dealers are the current cases.)
   · **Retired part numbers are a code list, not an override row (RULE, owner 2026-11-05).** `RETIRED_SKUS` in the
     storefront's catalog merge (ordering public/index.html, copied verbatim into `_shop_engine.js`): a listed code is
     never shown, priced or ordered whatever a file, import, override, added product or page says; history untouched.

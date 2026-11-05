@@ -17,16 +17,22 @@ create table if not exists public.dealer_access_requests (
   decided_by    text
 );
 create index if not exists dealer_access_requests_dealer_idx on public.dealer_access_requests (dealer_id, manufacturer, created_at desc);
+-- one OPEN request per dealer + line: a repeat (or two at the same moment) is "already with HCPS", never a second email
+create unique index if not exists dealer_access_requests_open_uk on public.dealer_access_requests (dealer_id, manufacturer) where status = 'new';
 
 alter table public.dealer_access_requests enable row level security;
 revoke all on public.dealer_access_requests from public, anon, authenticated;
+revoke all on sequence public.dealer_access_requests_id_seq from public, anon, authenticated;
 grant select, insert, update on public.dealer_access_requests to service_role;
 
--- Check: table, RLS on, no policies, no public rights, no rows yet.
+-- Check: table, RLS on, no policies, no public rights on the table or its sequence, the open-request index, no rows yet.
 select
   (select count(*) from information_schema.tables where table_schema='public' and table_name='dealer_access_requests') as table_added,
   (select relrowsecurity from pg_class where oid='public.dealer_access_requests'::regclass)                       as rls_on,
   (select count(*) from pg_policies where schemaname='public' and tablename='dealer_access_requests')               as policies,
   (select count(*) from information_schema.role_table_grants where table_schema='public' and table_name='dealer_access_requests'
      and grantee in ('anon','authenticated','PUBLIC'))                                                              as public_grants,
+  (select count(*) from information_schema.role_usage_grants where object_schema='public' and object_name='dealer_access_requests_id_seq'
+     and grantee in ('anon','authenticated','PUBLIC'))                                                              as public_seq_grants,
+  (select count(*) from pg_indexes where schemaname='public' and indexname='dealer_access_requests_open_uk')        as open_index,
   (select count(*) from public.dealer_access_requests)                                                              as rows_now;

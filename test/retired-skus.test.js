@@ -99,5 +99,17 @@ await t('the storefront and the order server share ONE list (engine copy carries
   ok(grab(html).length>100 && grab(html)===grab(eng),'same list in the shop and the server engine');
   for(const c of RETIRED) ok(grab(html).includes('"'+c+'"'),c+' listed');
 });
+await t('the Dealer Business Hub (dashboard.html: MSRP quotes, price-list export, favourites) uses the SAME list and drops them',async()=>{
+  const fs=require('fs'); const html=fs.readFileSync(path.join(__dirname,'..','..','homecareproviderservicesordering','public','index.html'),'utf8');
+  const dash=fs.readFileSync(path.join(__dirname,'..','..','homecareproviderservicesordering','public','dashboard.html'),'utf8');
+  const list=s=>{ const i=s.indexOf('const RETIRED_SKUS='); return s.slice(i,s.indexOf('});',i)+3); };
+  ok(list(dash).length>100 && list(dash)===list(html),'same list');
+  ok(/if\(!code\|\|hidden\.has\(code\)\|\|isRetiredSku\(m\.slug,code\)\) continue;/.test(dash),'price list skips retired and switched-off codes');
+  /* run the page's own filter */
+  const vm=require('vm'); const ctx={}; vm.createContext(ctx);
+  const fn=dash.slice(dash.indexOf('const RETIRED_SKUS='),dash.indexOf('async function loadPricing(){'));
+  vm.runInContext(fn.replace('const RETIRED_SKUS','var RETIRED_SKUS')+';this.f=isRetiredSku;',ctx);
+  ok(ctx.f('pedifix','8520')&&ctx.f('PediFix','p3012-12')&&!ctx.f('pedifix','P3095')&&!ctx.f('ovation-medical','8520'),'filter');
+});
 console.log(`\nretired skus: ${pass} passed, ${fail} failed`); process.exitCode=fail?1:0;
 })();

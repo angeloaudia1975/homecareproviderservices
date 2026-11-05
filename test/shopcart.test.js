@@ -373,7 +373,7 @@ await t('a carried line orders exactly as before (request_access empty)',async()
   await E.page.submitOrder(); eq(E.W.db.orders.length,1,'recorded');
 });
 await t('Request access: one request to HCPS staff, the button confirms, nothing is granted',async()=>{
-  const E=env(); E.AUTH.access={request_access:['yuwell']}; E.W.db.dealer_manufacturers=E.W.db.dealer_manufacturers.filter(r=>r.manufacturer!=='yuwell');
+  const E=env(); E.AUTH.access={request_access:['yuwell']}; E.W.db.dealer_manufacturers=[]; E.W.db.dealer_access_requests=[];   // a dealer with no ordering grid
   const btn={disabled:false,textContent:'Request access'};
   await E.page.requestAccess('yuwell',btn);
   eq([E.hits.tools,btn.disabled,btn.textContent],[1,true,'Access requested ✓']);
