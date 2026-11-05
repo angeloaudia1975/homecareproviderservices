@@ -710,25 +710,6 @@
       "sortPriority": 60
     },
     {
-      "id": "complete-medical-planogram-displays-ms84nqz5",
-      "title": "Complete Medical Planogram Displays",
-      "type": "sales-tool",
-      "manufacturer": "complete-medical-supplies",
-      "format": "pdf",
-      "file": "/assets/docs/complete-medical-new-planogram-displays-with-special-pricing-ms84mjhm.pdf",
-      "url": "",
-      "description": "Review a great assortment of turn key displays from Complete Medical",
-      "access": "public",
-      "dealers": [],
-      "featured": false,
-      "category": "patient-care",
-      "models": [],
-      "year": "",
-      "popular": false,
-      "keywords": "complete complete medical / blue jay displays medical patient care planogram sales tool",
-      "sortPriority": 50
-    },
-    {
       "id": "obusforme-catalog-ms84py7x",
       "title": "Obusforme Catalog",
       "type": "catalog",
