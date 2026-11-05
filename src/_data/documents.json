@@ -235,27 +235,6 @@
       "sortPriority": 50
     },
     {
-      "id": "complete-medical-catalog-2024",
-      "title": "Complete Medical / Blue Jay Catalog (2024)",
-      "type": "catalog",
-      "manufacturer": "complete-medical-supplies",
-      "format": "pdf",
-      "file": "/assets/docs/complete-medical-catalog-2024.pdf",
-      "url": "",
-      "description": "The full Blue Jay wholesale line — aids to daily living, bath safety, mobility aids, hip kits, blood pressure, hot & cold therapy, ObusForme backrests, orthopedic braces, compression hosiery, plus retail planograms and merchandising displays.",
-      "access": "public",
-      "dealers": [],
-      "featured": true,
-      "category": "patient-care",
-      "models": [
-        "Blue Jay"
-      ],
-      "year": "2024",
-      "popular": false,
-      "keywords": "2024 blue blue jay catalog complete complete medical / blue jay jay medical patient care",
-      "sortPriority": 80
-    },
-    {
       "id": "ovation-coded-product-catalog-2026",
       "title": "Ovation Medical Coded Product Catalog (2026)",
       "type": "catalog",
