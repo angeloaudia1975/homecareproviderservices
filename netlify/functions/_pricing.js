@@ -11,6 +11,7 @@
    Every read is strict: a layer that cannot be read stops the pricing. An order is never priced
    from a partial catalog. */
 const LD = require("./_line_discounts.js");
+const RETIRED = require("./_retired_lines.js");
 const ENGINE = require("./_shop_engine.js");
 const CC = require("./_catalog_commercial.js");
 
@@ -236,7 +237,9 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
      all (internal test fixtures) keep the old price-everything behaviour. */
   if (manufacturersFile && slugs.length && !Object.keys(freightCfg).length)
     throw new Error("manufacturer list unavailable (manufacturers.json missing, empty or not a list)");
-  const listed = s => !freightCfg || Object.prototype.hasOwnProperty.call(freightCfg, s);
+  /* A RETIRED line (netlify/functions/_retired_lines.js — Complete Medical; Ohio Medical / GCE under both
+     identifiers) is never priced, by any caller, even if a manufacturers.json entry or catalog layers reappear. */
+  const listed = s => !RETIRED.isRetiredLine(s) && (!freightCfg || Object.prototype.hasOwnProperty.call(freightCfg, s));
   for (const slug of slugs) bySlug[slug] = listed(slug)
     ? await lineProducts({ slug, sb, catalogFile, contentFile, contract, rates, cart, freightCfg, engineSource }) : null;
   /* The family quantity is the shop's: every cart line, priced from its CURRENT product. */

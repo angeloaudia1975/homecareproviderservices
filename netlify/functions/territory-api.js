@@ -49,7 +49,9 @@ async function whoami(event){
 // Lines we NO LONGER represent — excluded from the Territory picker AND from business-
 // development targeting. Add a slug here to retire a line company-wide (rep-facing tools).
 const pgq=v=>encodeURIComponent('"'+String(v).replace(/\\/g,"\\\\").replace(/"/g,'\\"')+'"');   // a quoted PostgREST in.(…) value
-const NOT_REPRESENTED=new Set(["complete-medical-supplies"]);
+const _RL=require("./_retired_lines.js");
+/* trimmed, case-insensitive — the same test the catalog and order servers use */
+const NOT_REPRESENTED={has:(slug)=>_RL.isRetiredLine(slug)};
 const STATES=["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
 
 function pretty(slug){ return String(slug||"").split("-").map(w=>w?w[0].toUpperCase()+w.slice(1):w).join(" "); }

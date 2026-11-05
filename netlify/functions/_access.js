@@ -12,12 +12,14 @@
 // your_accounts/available — it's surfaced only via `golden`.
 
 const ALL_DEALERS = ["access4u", "airavant-bongorx", "corsicana"];      // every dealer
-const STATE_RULES  = { bemis: ["IN","KY","OH"], pedifix: ["KY","TN","GA"], gce: ["IN","KY","TN","OH"],
+const STATE_RULES  = { bemis: ["IN","KY","OH"], pedifix: ["KY","TN","GA"],
                        dalton: ["KY","TN"] };
 const CLIMBING   = "climbing-steps";        // all dealers EXCEPT Mobility City
 const STRONGBACK = "strongback-mobility";   // Exclusive Territory (below)
 const OVATION    = "ovation-medical";       // per-account flag
-const NOT_REPRESENTED = new Set(["complete-medical-supplies"]);
+// Retired lines (_retired_lines.js): never orderable, never offered as "available", whatever the account rows say.
+const RETIRED = require("./_retired_lines.js");
+const NOT_REPRESENTED = new Set(Object.keys(RETIRED.RETIRED_LINES));
 // Golden is ordered on Golden's own platform, not inline here — so it is never an orderable
 // line in your_accounts/available even if it's ticked in the admin grid. It's surfaced via `golden`.
 const GOLDEN_SLUGS = new Set(["golden", "golden-technologies"]);
@@ -47,13 +49,18 @@ function inExclusiveTerritory(state, name, lat){
 // grid is completely empty do we fall back to the territory rules, so dealers set up before the grid
 // was used never silently go dark. (Golden is still surfaced separately via `golden`.)
 function computeAccess(gov, ownedSlugs, grantedSlugs){
-  const owned = new Set([...(ownedSlugs || [])].filter(s => s && !NOT_REPRESENTED.has(s)));
-  const granted = [...(grantedSlugs || [])].filter(s => s && !NOT_REPRESENTED.has(s) && !GOLDEN_SLUGS.has(s));
+  const owned = new Set([...(ownedSlugs || [])].filter(s => s && !RETIRED.isRetiredLine(s)));
+  /* Grid vs territory is decided on the RAW grants (Golden aside), BEFORE retired lines are removed: a dealer
+     whose only grant is a retired line (e.g. "ohio-medical") still has a grid, so they get exactly nothing —
+     never the territory rules' full line-up (review 2026-11-04, finding 1). */
+  const rawGrants = [...(grantedSlugs || [])].filter(s => s && !GOLDEN_SLUGS.has(String(s).trim().toLowerCase()));
+  const hasGrid = rawGrants.length > 0;
+  const granted = rawGrants.filter(s => !RETIRED.isRetiredLine(s));
   const st = String(gov.state || "").toUpperCase();
   const name = gov.business_name || "";
 
   let eligible;
-  if (granted.length) {
+  if (hasGrid) {
     // Explicit admin grants win — the dealer can order exactly what was ticked.
     eligible = new Set(granted);
   } else {
@@ -64,7 +71,7 @@ function computeAccess(gov, ownedSlugs, grantedSlugs){
     if (inExclusiveTerritory(st, name, gov.lat)) eligible.add(STRONGBACK);
     if (gov.ovation_access) eligible.add(OVATION);
   }
-  NOT_REPRESENTED.forEach(s => eligible.delete(s));
+  [...eligible].forEach(s => { if (RETIRED.isRetiredLine(s)) eligible.delete(s); });
   GOLDEN_SLUGS.forEach(s => eligible.delete(s));   // Golden is never an inline orderable line
 
   const your_accounts = [...eligible].filter(s => owned.has(s)).sort();

@@ -129,7 +129,7 @@ const ON = { flags: { golden_p360_history: true } };
       process.env.SUPABASE_SERVICE_KEY = "svc"; process.env.GOLDEN_V1_API = "true"; process.env.HCPS_P360_KEYS = JSON.stringify({ "hcps-p360-1": SECRET });
       const goldenSb = createMock({ tables: {
         integration_clients: [{ kid: "hcps-p360-1", client_id: "hcps-partner360", tenant_id: "hcps", scopes: ["golden:read", "golden:history"], active: true, secret_fingerprint: gS.fingerprint(SECRET) }],
-        dealer_integration_map: [{ id: "aaaaaaaa-0000-4000-8000-000000000001", tenant_id: "hcps", client_id: "hcps-partner360", hcps_dealer_id: D_HQ, golden_dealer_id: "dealer-a", status: "verified", price_visibility: "dealer", history_enabled: true }],
+        dealer_integration_map: [{ id: "aaaaaaaa-0000-4000-8000-000000000001", tenant_id: "hcps", client_id: "hcps-partner360", hcps_dealer_id: D_HQ, golden_dealer_id: "dealer-a", status: "verified", price_visibility: "dealer", golden_ordering_enabled: false, history_enabled: true }],
         dealer_integration_branch_map: [], dealers: [{ id: "dealer-a", active: true, customer_no: "100001" }],
         orders: [{ id: 501, dealer_id: "dealer-a", created_at: "2026-10-01T15:00:00Z", order_date: "2026-10-01T15:00:00Z", po_number: "PO-77", contact_name: "Pat Secret", email: "pat@x.example",
           ship_address: "1 Main St", ship_city: "Cincinnati", ship_state: "OH", ship_zip: "45202", items: [{ sku: "PR511-LAR", name: "Cloud Plus", qty: 2, unitPrice: 1300 }], subtotal: 2600, freight_total: 0, sh_total: 78, grand_total: 2678 }],
