@@ -1110,6 +1110,25 @@
       "access": "public",
       "dealers": [],
       "featured": false
+    },
+    {
+      "id": "yuwell-new-dealer-application-2026",
+      "title": "Yuwell New Dealer Application",
+      "type": "dealer-application",
+      "manufacturer": "yuwell",
+      "format": "pdf",
+      "file": "/assets/docs/yuwell-new-customer-credit-application-2026.pdf",
+      "url": "",
+      "description": "To open an account with Yuwell please fill out the New Customer Credit Application and send it back to HomeCare Provider Services with a copy of your State Resale Certificate.",
+      "access": "public",
+      "dealers": [],
+      "featured": false,
+      "category": "respiratory",
+      "models": [],
+      "year": "2026",
+      "popular": true,
+      "keywords": "application credit application dealer dealer application new customer yuwell spirit-3 oxygen respiratory",
+      "sortPriority": 100
     }
   ],
   "_note": "Admin-managed single source of record. Each item: manufacturer, category (product), type (standardized), models[], year, keywords, popular, featured, sortPriority. Types/categories/needs defined at top level. Do not hand-seed from documents.js.",
