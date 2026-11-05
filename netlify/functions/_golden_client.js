@@ -44,6 +44,8 @@ async function call({ method = "GET", path, query, body, delegation, env, idempo
     const now = Math.floor(Date.now()/1000);
     d = { sub_dealer: delegation.sub_dealer, sub_branch: delegation.sub_branch || null, actor: delegation.actor ? String(delegation.actor).slice(0,128) : null,
           role: delegation.role, aud: S2S.AUDIENCE, iat: now, exp: now + 90 };
+    // B7 (contract 1.8.0): the Golden account number HCPS records for this location — read on HCPS's server, never the browser's.
+    if(delegation.acct != null) d.acct = String(delegation.acct);
   }
   const headers = S2S.sign({ kid: c.kid, secret: c.secret, method, path, query: q, body: bodyStr, delegation: d });
   if(bodyStr) headers["content-type"] = "application/json";

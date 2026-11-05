@@ -39,6 +39,7 @@
 "use strict";
 const { flags } = require("./_flags.js");
 const GC = require("./_golden_client.js");
+const GA = require("./_golden_addresses.js");
 
 const SUPABASE_URL = process.env.SUPABASE_URL, SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 // Same CORS as orders-api: authorization is the dealer's bearer token (no cookies), never the Origin.
@@ -52,7 +53,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const ORDERING_PREVIEW_ORIGIN = /^https:\/\/(deploy-preview-\d+|(?!main--)[a-z0-9-]+)--hcpsonlineordering\.netlify\.app$/;   // never main-- (= production)
 const ACTIONS = { eligibility: "/v1/eligibility", catalog: "/v1/catalog", inventory: "/v1/inventory", family: "/v1/catalog/family", config: "/v1/config", quote: "/v1/quote", ship_to: "/v1/ship-to", validate_order: "/v1/orders", place_order: "/v1/orders", history: "/v1/history", order: "/v1/orders/" };
 const QUOTE_MAX_LINES = 30, QUOTE_MAX_QTY = 20;
-const SHIP_ID_RE = /^(primary|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+const SHIP_ID_RE = /^(primary|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|hcps-[0-9a-f]{24})$/;
 const IDEM_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CFG_SKU_RE = /^PR\d{3}-[A-Z]{3}$/, CFG_COLOR_RE = /^[A-Z0-9]{3}$/, CFG_FABRICS = ["std","xover","brisa"], CFG_TIERS = ["standard","irheat","hvib","nirvana"];
 const FAMILY_RE = /^[A-Z]{2}\d{3}[A-Z]?(?:-[A-Z0-9]{2,4})?$/;
@@ -190,9 +191,18 @@ function readQuoteBody(b){
   }
   const out = { lines, split_order: b.split_order === true };
   if(b.ship_to != null){
-    const id = b.ship_to && typeof b.ship_to === "object" && !Array.isArray(b.ship_to) ? String(b.ship_to.id || "") : "";
-    if(!SHIP_ID_RE.test(id)) return null;
-    out.ship_to = { id };   // only the id of one of Golden's own records — never an address
+    const st = b.ship_to && typeof b.ship_to === "object" && !Array.isArray(b.ship_to) ? b.ship_to : null;
+    if(st && st.ref != null){
+      // B7: a reference into HCPS's address book. The handler resolves it on the server from the account's own records
+      // (never an address from the browser). reviewed = the Golden id of the address the dealer reviewed (place only).
+      const ref = String(st.ref), reviewed = st.reviewed == null ? null : String(st.reviewed);
+      if(!GA.REF_RE.test(ref) || (reviewed !== null && !/^hcps-[0-9a-f]{24}$/.test(reviewed))) return null;
+      out.ship_to = { ref }; if(reviewed) out.ship_to_reviewed = reviewed;
+    } else {
+      const id = st ? String(st.id || "") : "";
+      if(!SHIP_ID_RE.test(id) || /^hcps-/.test(id)) return null;
+      out.ship_to = { id };   // only the id of one of Golden's own records — never an address
+    }
   }
   return out;
 }
@@ -232,6 +242,7 @@ function readValidateBody(b){
   if(po && !/^[A-Za-z0-9][A-Za-z0-9 \-_/#.]{0,29}$/.test(po)) return null;
   if(email && !/^[^\s@<>"']{1,64}@[A-Za-z0-9.-]{1,120}\.[A-Za-z]{2,24}$/.test(email)) return null;
   const out = { mode: "validate", quote_hash: b.quote_hash, lines, ship_to: q.ship_to, contact: { name, phone } };
+  if(q.ship_to_reviewed) out.ship_to_reviewed = q.ship_to_reviewed;
   if(email) out.contact.email = email;
   if(q.split_order) out.split_order = true;
   if(po) out.po_number = po;
@@ -239,7 +250,7 @@ function readValidateBody(b){
   if(notes) out.notes = notes;
   return out;
 }
-const cleanShip = x => (x && typeof x === "object" && SHIP_ID_RE.test(String(x.id))) ? { id: x.id, kind: oneOf(x.kind, ["primary","ship_location"]) || "ship_location",
+const cleanShip = x => (x && typeof x === "object" && SHIP_ID_RE.test(String(x.id))) ? { id: x.id, kind: oneOf(x.kind, ["primary","ship_location","hcps"]) || "ship_location",
   label: str(x.label, 80) || "Ship-to", address: str(x.address, 160) || "", city: str(x.city, 80) || "", state: str(x.state, 40) || "", zip: str(x.zip, 20) || "" } : null;
 const reqId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(v)) ? v : null;   // Golden's request id, only in its known shape
 const MAX_EMAIL_HTML = 400000;
@@ -418,6 +429,8 @@ exports.handler = async (event) => {
       // under its head office's Golden account (Golden has no branch records for most accounts). Both exactly true = on.
       who.allLinked = f.golden_p360_all_linked === true;
       who.branchAsAccount = f.golden_p360_branch_as_account === true;
+      who.accountGate = f.golden_p360_account_gate === true;
+      who.hcpsShipTo = who.accountGate && f.golden_p360_hcps_shipto === true;
     }
 
     let c; try{ c = await canonical(who.dealer_id); }catch(e){ return json(503, { ok:false, error:"dealer could not be read" }); }
@@ -425,9 +438,34 @@ exports.handler = async (event) => {
     if(!envName && c.sub_branch && who.branchAsAccount) c = { sub_dealer: c.sub_dealer, sub_branch: null };
     if(!envName && !who.allLinked && !who.pilot.includes(String(c.sub_dealer)) && !who.pilot.includes(String(who.dealer_id))) return json(200, { ok:true, enabled:false, reason:"not_in_pilot" });
 
+    // B7 (owner directive 2026-11-05): the Golden account number HCPS records is the pricing contract. With
+    // golden_p360_account_gate exactly true (production path), a location without one — its own or its head office's —
+    // gets no Golden shopping, pricing, checkout or history (fail closed), and every request carries the number in the
+    // signed delegation; sub_dealer = the HCPS dealer whose record holds it, so locations sharing a number share its
+    // account. HCPS address-book ship-tos (golden_p360_hcps_shipto) are resolved here, on the server, from that account.
+    let acct = null;
+    if(!envName && who.accountGate){
+      let a; try{ a = await GA.accountFor(sbGet, who.dealer_id); }catch(e){ return json(503, { ok:false, error:"account could not be read" }); }
+      if(!a.ok) return json(200, { ok:true, enabled:false, reason: a.reason });
+      acct = a.acct; c = { sub_dealer: a.owner, sub_branch: null };
+    }
+    if(quoteBody && quoteBody.ship_to && quoteBody.ship_to.ref){
+      if(envName || !who.hcpsShipTo || !acct) return json(400, { ok:false, error:"ship_to_not_available" });
+      let bk; try{ bk = await GA.book(sbGet, acct, { includeTest: await testDealership(who.dealer_id) }); }catch(e){ return json(503, { ok:false, error:"addresses could not be read" }); }
+      const e = bk.entries.find(x => x.ref === quoteBody.ship_to.ref);
+      // Placing: the body must be byte-for-byte the reviewed one. If the address is gone or changed since the review we
+      // cannot rebuild it — and an earlier try under this key MAY have placed — so never "not placed": check My Orders.
+      if(ordering && (!e || !e.usable || quoteBody.ship_to_reviewed !== GA.shipId(e)))
+        return json(200, { ok:true, enabled:true, available:true, placed:null, reason:"unconfirmed", detail:"ship_to_changed", retry:false });
+      if(!e) return json(200, { ok:true, enabled:true, available:false, reason:"ship_to_not_found" });
+      if(!e.usable) return json(200, { ok:true, enabled:true, available:false, reason:"ship_to_incomplete", field: e.problem });
+      quoteBody.ship_to = GA.goldenShipTo(e);
+    }
+    if(quoteBody) delete quoteBody.ship_to_reviewed;
+
     const role = who.preview ? "staff_preview" : (c.sub_branch ? "branch_user" : "dealer");
     const r = await GC.call({ method: (action === "quote" || action === "validate_order" || ordering) ? "POST" : "GET", path: histRef ? ACTIONS.order + encodeURIComponent(histRef) : ACTIONS[action], env: envName || undefined, query: quoteBody ? undefined : (family ? { family } : (cfgQuery || histQuery || undefined)), body: quoteBody || undefined, idempotencyKey: idemKey || undefined,
-      delegation: { sub_dealer: c.sub_dealer, sub_branch: c.sub_branch, actor: who.actor, role } });
+      delegation: Object.assign({ sub_dealer: c.sub_dealer, sub_branch: c.sub_branch, actor: who.actor, role }, acct ? { acct } : {}) });
     const extra = envName ? { preview:true } : {};
     if(r.configured === false) return json(200, Object.assign({ ok:true, enabled:false, reason:"golden_not_configured" }, extra));
     if(!r.ok && action === "config" && r.status === 400 && r.error === "bad_request") return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"not_offered" }, extra));
