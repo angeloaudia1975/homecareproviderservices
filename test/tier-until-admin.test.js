@@ -6,7 +6,7 @@ const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..', 'netlify', 'functions');
 const SRC = fs.readFileSync(path.join(ROOT, 'catalog-api.js'), 'utf8');
 const num = v => { if (v === '' || v == null) return null; const n = Number(v); return isFinite(n) ? n : null; };
-const F = new Function('num', SRC.slice(SRC.indexOf('const UNTIL_RE='), SRC.indexOf('/* ─────────────────────── Duplicate detection')) + ';return {cleanTiers,keepPools};')(num);
+const F = new Function('num', SRC.slice(SRC.indexOf('const UNTIL_RE='), SRC.indexOf('/* ─────────────────────── Duplicate detection')) + ';return {cleanTiers,keepPools,hasNoEnd};')(num);
 let pass = 0, fail = 0; const t = (n, f) => { try { f(); pass++; console.log('ok   ' + n); } catch (e) { fail++; console.log('FAIL ' + n + '\n     ' + e.message); } };
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error((m || '') + ' got ' + JSON.stringify(a) + ' expected ' + JSON.stringify(b)); };
 const E = '2027-01-01T06:00:00Z';
@@ -23,9 +23,9 @@ t('keepPools keeps the existing end (and pool) when an edit re-sends the ladder 
 });
 t('save_override and the price-list import both merge with the current ladder when it has an end (strict read)', () => {
   const so = SRC.slice(SRC.indexOf('if(b.action==="save_override"){'), SRC.indexOf('if("active" in p) patch.active=(p.active!==false);'));
-  if (!/if\(\(cleanTiers\(cur\)\|\|\[\]\)\.some\(x=>x\.until\)\) nt=keepPools\(nt,cur\);/.test(so)) throw new Error('save_override does not keep the end');
+  if (!/if\(\(cleanTiers\(cur\)\|\|\[\]\)\.some\(x=>x\.until\)\) nt=keepPools\(p\.tiers,cur\);/.test(so)) throw new Error('save_override does not keep the end');
   if (!/return json\(503,\{error:"the current price ladder could not be read — nothing saved"/.test(so)) throw new Error('save_override is not strict');
-  if (!/if\(\(cleanTiers\(cur\)\|\|\[\]\)\.some\(x=>x\.until\)\) pf=Object\.assign\(\{\},pf,\{tiers:keepPools\(pf\.tiers,cur\)\}\);/.test(SRC)) throw new Error('import does not keep the end');
+  if (!/if\(\(cleanTiers\(cur\)\|\|\[\]\)\.some\(x=>x\.until\)\) pf=Object\.assign\(\{\},pf,\{tiers:keepPools\(r\.tiers,cur\)\}\);/.test(SRC)) throw new Error('import does not keep the end');
 });
 t('the record feed carries the end exactly like catalog-feed (both repos)', () => {
   const P = require(path.join(ROOT, '_pricing.js'));
@@ -60,5 +60,17 @@ t('every comparison of ladders sees the end: MC staging, mc_verify, parity, impo
   if (!/\(x\.pool\?"@"\+x\.pool:""\)\+\(x\.until\?"~"\+x\.until:""\)\)\.join\(","\):""; \};/.test(SRC)) throw new Error('parityCompare');
   const CI = fs.readFileSync(path.join(ROOT, '_catalog_import.js'), 'utf8');
   if (!/x\.until \? " until " \+ x\.until : ""/.test(CI)) throw new Error('import review');
+});
+t('until:"none" reaches keepPools AND the record in save_override and the price-list import (raw ladder)', () => {
+  const so = SRC.slice(SRC.indexOf('if(b.action==="save_override"){'), SRC.indexOf('const wantStatus=', SRC.indexOf('if(b.action==="save_override"){')));
+  if (!/some\(x=>x\.until\)\) nt=keepPools\(p\.tiers,cur\);/.test(so)) throw new Error('save_override cleans before keepPools');
+  if (!/if\("tiers" in want && hasNoEnd\(p\.tiers\)\) want\.tiers=p\.tiers;/.test(so)) throw new Error('save_override record');
+  if (!/pf=Object\.assign\(\{\},pf,\{tiers:keepPools\(r\.tiers,cur\)\}\)/.test(SRC)) throw new Error('import cleans before keepPools');
+  if (!/if\("tiers" in want && hasNoEnd\(r\.tiers\)\) want\.tiers=r\.tiers;/.test(SRC)) throw new Error('import record');
+  // and the behaviour those lines rely on: the raw ladder clears the end; the cleaned one would not
+  const cur = [{ min_qty: 4, price: 90, until: E }], raw = [{ min_qty: 4, price: 85, until: 'none' }];
+  eq(F.keepPools(raw, cur), [{ min_qty: 4, price: 85 }]);
+  eq(F.keepPools(F.cleanTiers(raw), cur), [{ min_qty: 4, price: 85, until: E }], 'why the raw ladder is needed');
+  eq([F.hasNoEnd(raw), F.hasNoEnd(F.cleanTiers(raw)), F.hasNoEnd(null)], [true, false, false]);
 });
 console.log(`\ntier until (admin): ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

@@ -134,6 +134,12 @@ const keepPools=(next, cur)=>{ const n=cleanTiers(next); if(!n) return n;
      `until` keeps the special's end date, so editing a price can never make a time-limited break permanent. */
   return n.map(r=>{ let o=(r.pool||!had[r.min_qty])?r:Object.assign({},r,{pool:had[r.min_qty]}); if(!o.until&&ends[o.min_qty]) o=Object.assign({},o,{until:ends[o.min_qty]}); return o; }); };
 
+/* Does a raw ladder (as sent, before cleanTiers) name any break with until:"none"? Every caller that cleans a
+   ladder first must hand the RAW ladder to keepPools / the record when this is true, or the removal is lost. */
+const hasNoEnd=t=>Array.isArray(t)&&t.some(r=>r&&String(r.until==null?"":r.until).trim().toLowerCase()==="none");
+/* NOTE: a pooled break with an end date is not supported yet — the storefront's poolQty still counts expired pooled
+   breaks. No line has one; do not stage one until poolQty filters them (review 2026-11-04, finding F). */
+
 /* ─────────────────────── Duplicate detection & merge ───────────────────────
    The Product Catalog is the master record. Two mechanisms were quietly creating a
    second copy of a product instead of improving the first:
@@ -2597,7 +2603,7 @@ async function handleCatalog(event){
               cur=ex&&ex[0]&&ex[0].patch&&ex[0].patch.tiers;
               if(!cur){ const rows=await catalogFile(b.manufacturer); const r0=(rows||[]).find(x=>String(x&&x.code)===String(b.code)); cur=r0&&r0.tiers; }
             }catch(e){ return json(503,{error:"the current price ladder could not be read — nothing saved",detail:String(e&&e.message||e)}); }
-            if((cleanTiers(cur)||[]).some(x=>x.until)) nt=keepPools(nt,cur);
+            if((cleanTiers(cur)||[]).some(x=>x.until)) nt=keepPools(p.tiers,cur);   // RAW: keeps until:"none"
           }
           patch.tiers=nt;
         }
@@ -2651,6 +2657,7 @@ async function handleCatalog(event){
            resulting values are projected onto the override. If the record write fails,
            nothing is written to the layers. */
         const want={}; ["base_price","msrp","msrp_auto","map","tiers"].forEach(k=>{ if(k in patch) want[k]=patch[k]; });
+        if("tiers" in want && hasNoEnd(p.tiers)) want.tiers=p.tiers;   // the record must see the explicit end removal
         const wantStatus=("active" in patch)?statusFromEdit(patch.active, merged.disposition):undefined;
         if(wantStatus!==undefined){ want.status=wantStatus; if(merged.disposition_note) want.status_note=merged.disposition_note; }
         if(Object.keys(want).length){
@@ -2744,13 +2751,14 @@ async function handleCatalog(event){
             try{ const ex0=await sb("GET",`product_overrides?manufacturer=eq.${enc(mfr)}&code=eq.${enc(code)}&select=patch`);
                  if(ex0&&ex0[0]&&ex0[0].patch&&ex0[0].patch.tiers) cur=ex0[0].patch.tiers; }
             catch(e){ failed++; continue; }
-            if((cleanTiers(cur)||[]).some(x=>x.until)) pf=Object.assign({},pf,{tiers:keepPools(pf.tiers,cur)});
+            if((cleanTiers(cur)||[]).some(x=>x.until)) pf=Object.assign({},pf,{tiers:keepPools(r.tiers,cur)});   // RAW: keeps until:"none"
           }
           /* Phase 2.2 — migrated line: the record first, then the projection. A row whose
              record write fails is skipped entirely, so the layers never get ahead of it. */
           let projected=null;
           if(migratedLine){
             const want={}; ["base_price","msrp","msrp_auto","map","tiers"].forEach(k=>{ if(k in pf) want[k]=pf[k]; });
+            if("tiers" in want && hasNoEnd(r.tiers)) want.tiers=r.tiers;   // the record must see the explicit end removal
             if(Object.keys(want).length){
               try{ const cc=await commitCommercial(mfr, code, want, b.reviewer||"price-import");
                    projected=cc.projection; if(cc.changed.length) recordWrites++; }
