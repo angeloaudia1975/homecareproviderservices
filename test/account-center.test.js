@@ -30,10 +30,10 @@ function world(o) {
         { id: BR2, parent_id: HQ, business_name: 'Acme Branch Two', address: '3 Far Rd', city: 'Troy', state: 'OH', zip: '45373' },
         { id: OTHER, parent_id: null, business_name: 'Someone Else', address: '9 Elm', city: 'Lima', state: 'OH', zip: '45801' }],
       dealer_users: [{ uid: UHQ, status: 'approved', dealer_id: HQ, email: 'hq@acme.test' }, { uid: UBR, status: 'approved', dealer_id: BR, email: 'br@acme.test' }],
-      dealer_manufacturers: o.dm || [{ dealer_id: HQ, manufacturer: 'yuwell', account_ref: 'Y-100', active: true, verified_at: '2026-11-01T00:00:00Z' },
-        { dealer_id: HQ, manufacturer: 'access4u', account_ref: 'A-9', active: true, verified_at: null },
-        { dealer_id: BR, manufacturer: 'access4u', account_ref: 'A-10', active: true, verified_at: null },
-        { dealer_id: OTHER, manufacturer: 'yuwell', account_ref: 'SECRET-1', active: true, verified_at: '2026-01-01T00:00:00Z' }],
+      dealer_manufacturers: o.dm || [{ dealer_id: HQ, manufacturer: 'yuwell', account_ref: 'Y-100', active: true, verified_at: '2026-11-01T00:00:00Z', verified_ref: 'Y-100' },
+        { dealer_id: HQ, manufacturer: 'access4u', account_ref: 'A-9', active: true, verified_at: null, verified_ref: null },
+        { dealer_id: BR, manufacturer: 'access4u', account_ref: 'A-10', active: true, verified_at: null, verified_ref: null },
+        { dealer_id: OTHER, manufacturer: 'yuwell', account_ref: 'SECRET-1', active: true, verified_at: '2026-01-01T00:00:00Z', verified_ref: 'SECRET-1' }],
       dealer_contacts: [{ id: 'c0000000-0000-0000-0000-000000000001', dealer_id: HQ, name: 'Bob', title: 'Buyer', email: 'bob@acme.test', phone: '555-000-1111' },
         { id: 'c0000000-0000-0000-0000-000000000009', dealer_id: OTHER, name: 'Other Person', email: 'o@else.test' }],
       dealer_addresses: [{ dealer_id: HQ, addr_key: 'bill', label: 'Billing', address: '1 Main St', city: 'Dayton', state: 'OH', zip: '45402', pri: 1 },
@@ -71,7 +71,9 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
     eq(AC.visibleLocations(OTHER, fam, null), [], 'unknown self → nothing');
   });
   await t('status: verified / pending (on file, submitted, access asked, ordering only) / none; Golden from its status', async () => {
-    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y1', verified_at: 'x', active: true } }).status, 'verified');
+    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y1', verified_at: 'x', verified_ref: 'y1', active: true } }).status, 'verified');
+    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y2', verified_at: 'x', verified_ref: 'Y1', active: true } }).status, 'pending', 'number changed since verified');
+    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y2', active: true }, verifiedClaim: { account_ref: 'Y1' } }).status, 'pending', 'a stale verified claim never beats a different number');
     eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y1', active: true } }).status, 'pending');
     eq(AC.accountStatus({ slug: 'y', dm: null, claim: { account_ref: 'Z' } }).label, 'Submitted — HCPS is verifying');
     eq(AC.accountStatus({ slug: 'y', dm: null, verifiedClaim: { account_ref: 'Z' } }).status, 'verified');
@@ -80,7 +82,7 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
     eq(AC.accountStatus({ slug: 'y' }).status, 'none');
     eq(AC.accountStatus({ slug: 'golden-technologies', goldenStatus: 'Account' }).status, 'verified');
     eq(AC.accountStatus({ slug: 'golden-technologies', goldenStatus: 'Prospect' }).status, 'none');
-    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y1', verified_at: 'x', active: false } }).ordering, false, 'verified ≠ ordering');
+    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y1', verified_at: 'x', verified_ref: 'Y1', active: false } }).ordering, false, 'verified ≠ ordering');
   });
   await t('validation: bad email / state / ZIP / website / too many / nothing — refused; good input passes trimmed', async () => {
     ok(AC.validateChanges({ company: { email: 'nope' } }).error, 'email');
@@ -91,7 +93,10 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
     ok(AC.validateChanges({}).error, 'nothing');
     ok(AC.validateChanges({ contacts: [{ name: '' }] }).error, 'contact name');
     const v = AC.validateChanges({ company: { phone: ' 555-222-3333 ' }, contacts: [{ name: ' Cy\u0007 ', email: 'CY@ACME.TEST' }] });
+    ok(/^[0-9a-f-]{36}$/.test(v.changes.contacts[0].new_id), 'new contact gets its id when queued'); delete v.changes.contacts[0].new_id;
     eq(v.changes, { company: { phone: '555-222-3333' }, contacts: [{ name: 'Cy', title: '', email: 'cy@acme.test', phone: '' }] });
+    ok(/^ship-[0-9a-f]{8}$/.test(AC.validateChanges({ ship_to: [{ address: '1 A', city: 'B', state: 'OH', zip: '45402' }] }).changes.ship_to[0].key), 'ship-to key fixed when queued');
+    ok(AC.validateChanges({ ship_to: [{ key: 'bill', address: '1 A', city: 'B', state: 'OH', zip: '45402' }] }).error, 'billing key refused');
   });
   await t('logo sniff: real JPEG / PNG pass; GIF, SVG text, renamed text and > 1 MB refused', async () => {
     eq(AC.sniffLogo(JPEG).ext, 'jpg'); eq(AC.sniffLogo(PNG).ext, 'png');
@@ -129,7 +134,7 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
   await t('before the Stage 3 SQL: the page still loads (no verified column, no claims / scope tables)', async () => {
     const W = world({ missingTables: ['dealer_account_claims', 'dealer_user_scope'], columns: {
       dealer_manufacturers: ['dealer_id', 'manufacturer', 'account_ref', 'active'],
-      dealers: ['id', 'business_name', 'hcps_account', 'contact_name', 'email', 'phone', 'website', 'address', 'city', 'state', 'zip', 'parent_id', 'logo_url', 'golden_status', 'rep_email'] } });
+      dealers: ['id', 'business_name', 'hcps_account', 'contact_name', 'email', 'phone', 'website', 'address', 'city', 'state', 'zip', 'parent_id', 'logo_url', 'golden_status', 'rep_email', 'active'] } });
     const r = await as(tools(W), 'hq', { action: 'account_center' });
     eq([r.status, r.body.ok], [200, true], JSON.stringify(r.body).slice(0, 200));
     eq(r.body.locations[0].accounts.find(a => a.slug === 'yuwell').status, 'pending', 'unverified until the column exists');
@@ -154,6 +159,7 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
     eq((await as(C, 'hq', { action: 'default_ship_set', key: 'ship-wh' })).body.default_ship_key, 'ship-wh');
     eq(W.db.dealers.find(d => d.id === HQ).default_ship_key, 'ship-wh');
     eq((await as(C, 'hq', { action: 'default_ship_set', key: 'nope' })).status, 400);
+    eq((await as(C, 'hq', { action: 'default_ship_set', key: 'bill' })).status, 400, 'billing is never the ship-to');
     eq((await as(C, 'br', { action: 'default_ship_set', key: 'ship-wh' })).status, 400, 'another dealer\'s address');
   });
   await t('logo: a real JPEG is stored privately-named (sha, no overwrite) and saved; a fake image never reaches storage', async () => {
@@ -199,15 +205,19 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
   await t('approve: company, business address, ship-to and contacts applied; removal NOT applied', async () => {
     const W = world({ changes: [{ id: 7, dealer_id: HQ, status: 'pending', changes: {
       company: { phone: '555-999-0000', website: 'https://acme.test' }, business: { address: '5 New St', city: 'Dayton', state: 'OH', zip: '45403' },
-      ship_to: [{ label: 'Store 2', address: '7 Oak Ave', city: 'Kettering', state: 'OH', zip: '45429' }, { key: 'ship-wh', label: 'Warehouse', address: '51 Dock Rd', city: 'Dayton', state: 'OH', zip: '45404' }],
-      contacts: [{ name: 'Cy', email: 'cy@acme.test', title: '', phone: '' }, { id: 'c0000000-0000-0000-0000-000000000001', name: 'Bob B', title: 'Owner', email: 'bob@acme.test', phone: '' },
+      ship_to: [{ key: 'ship-a1b2c3d4', label: 'Store 2', address: '7 Oak Ave', city: 'Kettering', state: 'OH', zip: '45429' }, { key: 'ship-wh', label: 'Warehouse', address: '51 Dock Rd', city: 'Dayton', state: 'OH', zip: '45404' }],
+      contacts: [{ name: 'Cy', email: 'cy@acme.test', title: '', phone: '', new_id: 'c0000000-0000-0000-0000-0000000000cc' }, { name: 'Dee', title: '', email: '', phone: '', new_id: 'c0000000-0000-0000-0000-0000000000dd' }, { id: 'c0000000-0000-0000-0000-000000000001', name: 'Bob B', title: 'Owner', email: 'bob@acme.test', phone: '' },
         { id: 'c0000000-0000-0000-0000-000000000009', name: 'Hijack', email: 'h@x.test' }, { id: 'c0000000-0000-0000-0000-000000000001', remove: true }] } }] });
     const r = await post(adm(W), { action: 'approve_change', id: 7 });
     eq([r.status, r.body.ok], [200, true], JSON.stringify(r.body));
     const d = W.db.dealers.find(x => x.id === HQ); eq([d.phone, d.website, d.address], ['555-999-0000', 'https://acme.test', '5 New St']);
     const a = W.db.dealer_addresses.filter(x => x.dealer_id === HQ);
-    ok(a.some(x => x.label === 'Store 2' && /^ship-[0-9a-f]{8}$/.test(x.addr_key)), 'new ship-to'); eq(a.find(x => x.addr_key === 'ship-wh').address, '51 Dock Rd');
-    eq(W.db.dealer_contacts.filter(x => x.dealer_id === HQ).map(x => x.name).sort(), ['Bob B', 'Cy'], 'added + updated, not removed');
+    ok(a.some(x => x.label === 'Store 2' && x.addr_key === 'ship-a1b2c3d4'), 'new ship-to'); eq(a.find(x => x.addr_key === 'ship-wh').address, '51 Dock Rd');
+    eq(W.db.dealer_contacts.filter(x => x.dealer_id === HQ).map(x => x.name).sort(), ['Bob B', 'Cy', 'Dee'], 'added + updated, not removed');
+    /* approving again (double click / after a partial failure): refused once decided; a re-run of a pending one never duplicates */
+    eq((await post(adm(W), { action: 'approve_change', id: 7 })).status, 409, 'already decided');
+    W.db.dealer_change_requests[0].status = 'pending'; await post(adm(W), { action: 'approve_change', id: 7 });
+    eq(W.db.dealer_addresses.filter(x => x.dealer_id === HQ).length, a.length, 'no duplicate address'); eq(W.db.dealer_contacts.filter(x => x.dealer_id === HQ).length, 3, 'no duplicate contact');
     eq(W.db.dealer_contacts.find(x => x.id === 'c0000000-0000-0000-0000-000000000009').name, 'Other Person', 'another dealer\'s contact never touched');
     eq(W.db.dealer_change_requests[0].status, 'approved');
   });
@@ -216,7 +226,7 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
       claims: [{ id: 1, dealer_id: HQ, manufacturer: 'yuwell', account_ref: 'Y-200', status: 'pending' }, { id: 2, dealer_id: HQ, manufacturer: 'access4u', account_ref: 'A-1', status: 'pending' }] });
     const C = adm(W);
     eq((await post(C, { action: 'claim_verify', id: 1 })).body.updated_ordering_row, true);
-    const row = W.db.dealer_manufacturers.find(x => x.manufacturer === 'yuwell'); eq([row.account_ref, row.active, !!row.verified_at], ['Y-200', false, true]);
+    const row = W.db.dealer_manufacturers.find(x => x.manufacturer === 'yuwell'); eq([row.account_ref, row.active, !!row.verified_at, row.verified_ref], ['Y-200', false, true, 'Y-200']);
     eq((await post(C, { action: 'claim_verify', id: 2 })).body.updated_ordering_row, false);
     eq(W.db.dealer_manufacturers.length, 1, 'nothing created'); eq(W.db.dealer_account_claims.map(x => x.status), ['verified', 'verified']);
     eq((await post(C, { action: 'claim_verify', id: 1 })).status, 409, 'already decided');
@@ -237,6 +247,14 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
     eq((await post(C, { action: 'set_user_scope', uid: UHQ, scope: 'own' })).body.scope, 'own'); eq(W.db.dealer_user_scope[0].scope, 'own');
     eq((await post(C, { action: 'set_user_scope', uid: UHQ, scope: 'everything' })).status, 400);
     eq((await post(C, { action: 'set_user_scope', uid: UHQ, scope: 'default' })).body.scope, 'default'); eq(W.db.dealer_user_scope.length, 0);
+  });
+  await t('an ordering-grid save keeps verifications (unchanged numbers only) and never drops them silently', async () => {
+    const W = world(); const C = adm(W);
+    const r = await post(C, { action: 'access', dealer_id: HQ, manufacturers: ['yuwell', 'access4u'] });
+    eq(r.status, 200, JSON.stringify(r.body));
+    const y = W.db.dealer_manufacturers.find(x => x.dealer_id === HQ && x.manufacturer === 'yuwell');
+    eq([y.account_ref, y.verified_ref, !!y.verified_at], ['Y-100', 'Y-100', true]);
+    eq(W.db.dealer_manufacturers.find(x => x.dealer_id === HQ && x.manufacturer === 'access4u').verified_at, null);
   });
   await t('dealer side cannot reach the HCPS actions (no staff token)', async () => {
     const W = world(); const r = await as(adm(W), 'hq', { action: 'claim_verify', id: 1 });

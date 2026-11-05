@@ -16,13 +16,15 @@
 -- RULE 19: new tables RLS on, no policies, no rights for anon / authenticated / public.
 -- Rollback: drop table if exists public.dealer_account_claims, public.dealer_user_scope;
 --   alter table public.dealer_manufacturers drop column if exists verified_at, drop column if exists verified_by,
---     drop column if exists verify_note;
+--     drop column if exists verify_note, drop column if exists verified_ref;
 --   alter table public.dealers drop column if exists default_ship_key;
 --   (bucket: empty it in the Storage screen, then delete it there)
 -- ============================================================================
 alter table public.dealer_manufacturers add column if not exists verified_at timestamptz;
 alter table public.dealer_manufacturers add column if not exists verified_by text;
 alter table public.dealer_manufacturers add column if not exists verify_note text;
+-- the number HCPS verified: "Verified" shows only while the number on file is still that number (review M2)
+alter table public.dealer_manufacturers add column if not exists verified_ref text;
 
 create table if not exists public.dealer_account_claims (
   id              bigint generated always as identity primary key,
@@ -65,7 +67,7 @@ on conflict (id) do nothing;
 -- Check (one row): every piece present, RLS on, no policies, no public rights, nothing written.
 select
   (select count(*) from information_schema.columns where table_schema='public' and table_name='dealer_manufacturers'
-     and column_name in ('verified_at','verified_by','verify_note'))                                                as dm_columns_3,
+     and column_name in ('verified_at','verified_by','verify_note','verified_ref'))                                 as dm_columns_4,
   (select count(*) from information_schema.columns where table_schema='public' and table_name='dealers'
      and column_name='default_ship_key')                                                                            as dealers_column_1,
   (select relrowsecurity from pg_class where oid='public.dealer_account_claims'::regclass)

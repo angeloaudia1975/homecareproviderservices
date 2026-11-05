@@ -132,7 +132,8 @@ exports.handler = async (event) => {
         const d = await sbOpt(`dealers?id=eq.${encodeURIComponent(did)}&select=${dsel},default_ship_key`, `dealers?id=eq.${encodeURIComponent(did)}&select=${dsel}`);
         self = d && d[0]; if (!self) return json(404, { ok: false, error: "Account not found." });
         const root = self.parent_id || self.id;
-        family = await sb("GET", `dealers?or=(id.eq.${encodeURIComponent(root)},parent_id.eq.${encodeURIComponent(root)})&select=id,business_name,address,city,state,zip,parent_id,golden_status&limit=200`);
+        family = await sb("GET", `dealers?or=(id.eq.${encodeURIComponent(root)},parent_id.eq.${encodeURIComponent(root)})&select=id,business_name,address,city,state,zip,parent_id,golden_status,active&limit=200`);
+        family = (family || []).filter((x) => x.active !== false || String(x.id) === String(did));   // closed locations are not listed (the login's own always is)
         scopeRow = await sbOpt(`dealer_user_scope?uid=eq.${encodeURIComponent(who.uid)}&select=scope,locations`, null);
         scopeRow = (scopeRow && scopeRow[0]) || null;
       } catch (e) { console.error("account center read failed", e && e.message); return json(503, { ok: false, error: "Your account details could not be loaded just now — please try again." }); }
@@ -142,7 +143,7 @@ exports.handler = async (event) => {
         [contacts, addrs, dms, claims, access, lines, metas, pending] = await Promise.all([
           sb("GET", `dealer_contacts?dealer_id=eq.${encodeURIComponent(did)}&select=id,name,title,email,phone&order=name.asc&limit=50`),
           sb("GET", `dealer_addresses?dealer_id=eq.${encodeURIComponent(did)}&select=addr_key,label,address,city,state,zip,pri`),
-          sbOpt(`dealer_manufacturers?dealer_id=in.(${inIds})&select=dealer_id,manufacturer,account_ref,active,verified_at`, `dealer_manufacturers?dealer_id=in.(${inIds})&select=dealer_id,manufacturer,account_ref,active`),
+          sbOpt(`dealer_manufacturers?dealer_id=in.(${inIds})&select=dealer_id,manufacturer,account_ref,active,verified_at,verified_ref`, `dealer_manufacturers?dealer_id=in.(${inIds})&select=dealer_id,manufacturer,account_ref,active`),
           sbOpt(`dealer_account_claims?dealer_id=in.(${inIds})&status=in.(pending,verified)&select=dealer_id,manufacturer,account_ref,status,created_at&order=created_at.asc`, null),
           sb("GET", `dealer_access_requests?dealer_id=in.(${inIds})&status=eq.new&select=dealer_id,manufacturer`),
           sb("GET", `manufacturers?select=slug,name&order=name.asc`),
@@ -206,15 +207,21 @@ exports.handler = async (event) => {
       let up;
       try {
         up = await fetch(`${SUPABASE_URL}/storage/v1/object/dealer-logos/${path}`, { method: "POST",
-          headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, "content-type": kind.type, "x-upsert": "false", "cache-control": "31536000" }, body: buf });
+          headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, "content-type": kind.type, "x-upsert": "false", "cache-control": "max-age=31536000" }, body: buf });
       } catch (e) { return json(503, { ok: false, error: "The logo could not be uploaded just now — please try again." }); }
       if (!up.ok) {
         const t = await up.text().catch(() => "");
         if (!(up.status === 409 || /already exists|Duplicate/i.test(t))) { console.error("logo upload failed", up.status, t.slice(0, 200)); return json(503, { ok: false, error: "The logo could not be uploaded just now — please try again." }); }
       }
       const url = SUPA_PUBLIC() + path;
+      let prev = null; try { const d = await sb("GET", `dealers?id=eq.${encodeURIComponent(did)}&select=logo_url`); prev = d && d[0] && d[0].logo_url; } catch (e) {}
       try { await sb("PATCH", `dealers?id=eq.${encodeURIComponent(did)}`, { logo_url: url }, { Prefer: "return=minimal" }); }
       catch (e) { return json(503, { ok: false, error: "The logo was uploaded but could not be saved — please try again." }); }
+      /* Keep one logo per dealer: the previous upload (only ever a file in this dealer's own folder) is removed. */
+      const own = SUPA_PUBLIC() + did + "/";
+      if (prev && prev !== url && prev.startsWith(own) && /^[0-9a-f]{32}\.(jpg|png)$/.test(prev.slice(own.length))) {
+        try { await fetch(`${SUPABASE_URL}/storage/v1/object/dealer-logos/${did}/${prev.slice(own.length)}`, { method: "DELETE", headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}` } }); } catch (e) {}
+      }
       return json(200, { ok: true, logo_url: url });
     }
     if (b.action === "account_claim") {

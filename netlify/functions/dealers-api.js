@@ -588,10 +588,17 @@ exports.handler = async (event)=>{
         // never wipes the dealer's account #s. Merge in any aliased slugs' refs too.
         const existing=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref`,"dealer_id,manufacturer").catch(()=>[]);
         const refBy={}; for(const r of (existing||[])){ if(r.account_ref) refBy[r.manufacturer]=r.account_ref; }
+        /* C3-07 Stage 3: HCPS verifications survive an ordering-grid save (only while the number is unchanged). Before the
+           Stage 3 SQL the columns don't exist and nothing is carried. */
+        let verBy=null; try{ const vr=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,verified_at,verified_by,verified_ref`);
+          verBy={}; for(const r of (vr||[])) if(r.verified_at) verBy[r.manufacturer]=r; }catch(e){ verBy=null; }
         // b.refCarry: {canonicalSlug: account_ref} the UI passes when it merged duplicate rows
         if(b.refCarry&&typeof b.refCarry==="object"){ for(const k in b.refCarry){ if(b.refCarry[k]&&!refBy[k]) refBy[k]=b.refCarry[k]; } }
         await sbSend("DELETE",`dealer_manufacturers?dealer_id=eq.${b.dealer_id}`,null,{Prefer:"return=minimal"});
-        if(b.manufacturers.length) await sbSend("POST","dealer_manufacturers",b.manufacturers.map(m=>({dealer_id:b.dealer_id,manufacturer:m,active:true,account_ref:refBy[m]||null})),{Prefer:"return=minimal"});
+        if(b.manufacturers.length) await sbSend("POST","dealer_manufacturers",b.manufacturers.map(m=>{ const row={dealer_id:b.dealer_id,manufacturer:m,active:true,account_ref:refBy[m]||null};
+          if(verBy){ const v=verBy[m]; const keep=v&&String(v.verified_ref||"").toUpperCase()===String(row.account_ref||"").toUpperCase()&&row.account_ref;
+            row.verified_at=keep?(v.verified_at||null):null; row.verified_by=keep?(v.verified_by||null):null; row.verified_ref=keep?(v.verified_ref||null):null; }
+          return row; }),{Prefer:"return=minimal"});
         // #2 Manufacturer Activated: fire for lines that weren't in the grid before this save.
         const hadBefore=new Set((existing||[]).map(r=>r.manufacturer));
         const newlyGranted=b.manufacturers.filter(m=>!hadBefore.has(m));
@@ -893,9 +900,10 @@ exports.handler = async (event)=>{
       // (and store shipping/billing as labeled addresses), then mark the request done.
       if(act==="approve_change"){
         if(!b.id) return json(400,{error:"id required"});
-        const rows=await sbGet(`dealer_change_requests?id=eq.${encodeURIComponent(b.id)}&select=id,dealer_id,changes`).catch(()=>[]);
+        const rows=await sbGet(`dealer_change_requests?id=eq.${encodeURIComponent(b.id)}&select=id,dealer_id,changes,status`).catch(()=>[]);
         const cr=rows&&rows[0];
         if(!cr) return json(400,{error:"change request not found"});
+        if(cr.status&&cr.status!=="pending") return json(409,{error:"already decided"});
         const c=cr.changes||{}; const did=cr.dealer_id;
         if(did){
           const patch={updated_at:new Date().toISOString()};
@@ -907,7 +915,7 @@ exports.handler = async (event)=>{
           // store shipping / billing as labeled addresses on file too
           const upAddr=(a,label,key)=>a?sbSend("POST","dealer_addresses?on_conflict=dealer_id,addr_key",
             {dealer_id:did,addr_key:key,address:a.address||null,city:a.city||null,state:a.state||null,zip:a.zip||null,label,pri:label==="Shipping"?2:1},
-            {Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{}):null;
+            {Prefer:"resolution=merge-duplicates,return=minimal"}):null;   // fails loudly: the request stays pending
           await upAddr(c.shipping,"Shipping","ship");
           await upAddr(c.billing,"Billing","bill");
           /* C3-07 Stage 3 Account Center requests (validated by _account_center.js when the dealer sent them). Each write
@@ -918,7 +926,8 @@ exports.handler = async (event)=>{
           if(c.business){ cp.address=c.business.address; cp.city=c.business.city; cp.state=c.business.state; cp.zip=c.business.zip; }
           if(Object.keys(cp).length){ cp.updated_at=new Date().toISOString(); await sbSend("PATCH","dealers?id=eq."+encodeURIComponent(did),cp,{Prefer:"return=minimal"}); }
           for(const a of (Array.isArray(c.ship_to)?c.ship_to:[])){
-            const k=(a.key&&/^[a-z0-9_-]{1,40}$/i.test(a.key)&&a.key!=="main")?a.key:("ship-"+require("crypto").randomBytes(4).toString("hex"));
+            /* the key was fixed when the dealer sent the request, so approving again updates the same address */
+            const k=(a.key&&/^ship-[a-z0-9_-]{1,34}$/i.test(a.key))?a.key:null; if(!k) continue;
             await sbSend("POST","dealer_addresses?on_conflict=dealer_id,addr_key",{dealer_id:did,addr_key:k,address:a.address,city:a.city,state:a.state,zip:a.zip,label:a.label||"Ship-to",pri:2},{Prefer:"resolution=merge-duplicates,return=minimal"});
           }
           for(const x of (Array.isArray(c.contacts)?c.contacts:[])){
@@ -927,12 +936,15 @@ exports.handler = async (event)=>{
             if(x.id){ const own=await sbGet(`dealer_contacts?id=eq.${encodeURIComponent(x.id)}&dealer_id=eq.${encodeURIComponent(did)}&select=id`);
               if(own&&own[0]) await sbSend("PATCH",`dealer_contacts?id=eq.${encodeURIComponent(x.id)}&dealer_id=eq.${encodeURIComponent(did)}`,row,{Prefer:"return=minimal"});
               continue; }
+            const nid=(x.new_id&&/^[0-9a-f-]{36}$/i.test(x.new_id))?x.new_id:null;
+            if(nid){ const ex=await sbGet(`dealer_contacts?id=eq.${encodeURIComponent(nid)}&dealer_id=eq.${encodeURIComponent(did)}&select=id`);
+              if(ex&&ex[0]){ await sbSend("PATCH",`dealer_contacts?id=eq.${encodeURIComponent(nid)}&dealer_id=eq.${encodeURIComponent(did)}`,row,{Prefer:"return=minimal"}); continue; } }
             if(row.email){ const ex=await sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(did)}&email=eq.${encodeURIComponent(row.email)}&select=id`);
               if(ex&&ex[0]){ await sbSend("PATCH",`dealer_contacts?id=eq.${encodeURIComponent(ex[0].id)}`,row,{Prefer:"return=minimal"}); continue; } }
-            await sbSend("POST","dealer_contacts",Object.assign({dealer_id:did},row),{Prefer:"return=minimal"});
+            await sbSend("POST","dealer_contacts",Object.assign({dealer_id:did},nid?{id:nid}:{},row),{Prefer:"return=minimal"});
           }
         }
-        await sbSend("PATCH","dealer_change_requests?id=eq."+encodeURIComponent(b.id),{status:"approved",decided_at:new Date().toISOString(),decided_by:b.by||"admin"},{Prefer:"return=minimal"});
+        await sbSend("PATCH","dealer_change_requests?id=eq."+encodeURIComponent(b.id)+"&status=eq.pending",{status:"approved",decided_at:new Date().toISOString(),decided_by:b.by||"admin"},{Prefer:"return=minimal"});
         return json(200,{ok:true,dealer_id:did||null});
       }
       /* ---- C3-07 Stage 3: manufacturer account verification (HCPS staff only; NEVER turns ordering on) ---- */
@@ -954,7 +966,7 @@ exports.handler = async (event)=>{
           return json(409,{error:"account_conflict",on_file:onFile,submitted:cl.account_ref});
         if(row){
           await sbSend("PATCH",`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(cl.dealer_id)}&manufacturer=eq.${encodeURIComponent(cl.manufacturer)}`,
-            {account_ref:cl.account_ref,verified_at:at,verified_by:by},{Prefer:"return=minimal"});
+            {account_ref:cl.account_ref,verified_at:at,verified_by:by,verified_ref:cl.account_ref},{Prefer:"return=minimal"});
         }
         /* No ordering row → nothing is created in dealer_manufacturers (that table also drives ordering); the verified claim
            itself is the record, and the Account Center shows it green. Ordering stays a separate HCPS decision. */
@@ -963,7 +975,10 @@ exports.handler = async (event)=>{
       }
       if(act==="dm_accounts"){
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});
-        const rows=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref,active,verified_at,verified_by&order=manufacturer.asc`);
+        let rows; try{ rows=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref,active,verified_at,verified_by,verified_ref&order=manufacturer.asc`); }
+        catch(e){ if(!/42703|does not exist/.test(String(e&&e.message))) throw e;
+          rows=((await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref,active&order=manufacturer.asc`))||[]).map(r=>Object.assign(r,{verified_at:null})); }
+        (rows||[]).forEach(r=>{ if(r.verified_at&&String(r.verified_ref||"").trim().toUpperCase()!==String(r.account_ref||"").trim().toUpperCase()) r.verified_at=null; });   // the number changed since it was verified
         return json(200,{ok:true,rows:rows||[]});
       }
       if(act==="dm_verify"||act==="dm_unverify"){
@@ -972,7 +987,7 @@ exports.handler = async (event)=>{
         const cur=await sbGet(q+"&select=account_ref"); const row=cur&&cur[0];
         if(!row) return json(404,{error:"no account row"});
         if(act==="dm_verify"&&!String(row.account_ref||"").trim()) return json(400,{error:"No account number on file to verify."});
-        await sbSend("PATCH",q,act==="dm_verify"?{verified_at:new Date().toISOString(),verified_by:(me&&me.email)||"admin"}:{verified_at:null,verified_by:null},{Prefer:"return=minimal"});
+        await sbSend("PATCH",q,act==="dm_verify"?{verified_at:new Date().toISOString(),verified_by:(me&&me.email)||"admin",verified_ref:row.account_ref}:{verified_at:null,verified_by:null,verified_ref:null},{Prefer:"return=minimal"});
         return json(200,{ok:true});
       }
       /* ---- C3-07 Stage 3 / D2: which locations a Partner 360 login sees (President only). A branch login is always its own

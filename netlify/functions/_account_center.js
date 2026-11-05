@@ -46,8 +46,11 @@ function accountStatus({ slug, dm, claim, verifiedClaim, accessOpen, goldenStatu
     return { status: "none", label: "No Golden account", account_ref: null };
   }
   const ref = dm && dm.account_ref ? String(dm.account_ref) : "";
-  if (dm && dm.verified_at && ref) return { status: "verified", label: "Verified by HCPS", account_ref: ref, ordering: dm.active !== false };
-  if (verifiedClaim && !claim) return { status: "verified", label: "Verified by HCPS", account_ref: String(verifiedClaim.account_ref || ""), ordering: !!(dm && dm.active !== false) };
+  const same = (a, b) => String(a || "").trim().toUpperCase() === String(b || "").trim().toUpperCase();
+  /* Green only while the number on file is the number HCPS verified (a changed number is no longer verified). */
+  if (dm && dm.verified_at && ref && same(dm.verified_ref, ref)) return { status: "verified", label: "Verified by HCPS", account_ref: ref, ordering: dm.active !== false };
+  /* A verified claim counts only when no different number is on file. */
+  if (verifiedClaim && !claim && (!ref || same(verifiedClaim.account_ref, ref))) return { status: "verified", label: "Verified by HCPS", account_ref: String(verifiedClaim.account_ref || ""), ordering: !!(dm && dm.active !== false) };
   if (claim) return { status: "pending", label: "Submitted — HCPS is verifying", account_ref: String(claim.account_ref || ""), ordering: !!(dm && dm.active !== false) };
   if (dm && ref) return { status: "pending", label: "On file — HCPS verification pending", account_ref: ref, ordering: dm.active !== false };
   if (dm && dm.active !== false) return { status: "pending", label: "Ordering set up — account number not on file", account_ref: null, ordering: true };
@@ -70,6 +73,7 @@ function contact(c) {
   if (c.id != null && c.id !== "") { o.id = S(c.id, 40); if (!/^[0-9a-f-]{8,40}$/i.test(o.id)) return { error: "Unknown contact." }; }
   if (c.remove === true) { if (!o.id) return { error: "Unknown contact." }; return { value: { id: o.id, remove: true, name: o.name } }; }
   if (!o.name) return { error: "Each contact needs a name." };
+  if (!o.id) o.new_id = require("crypto").randomUUID();                                   // fixed when queued (approve is repeatable)
   if (o.email && !EMAIL_RE.test(o.email)) return { error: "Enter a valid email for " + o.name + "." };
   if (o.phone && !/^[0-9+().\-\s x]{7,30}$/i.test(o.phone)) return { error: "Enter a valid phone for " + o.name + "." };
   return { value: o };
@@ -96,7 +100,8 @@ function validateChanges(input) {
     const list = [];
     for (const a of c.ship_to) {
       const r = addr(a); if (r.error) return { error: "Ship-to address: " + r.error };
-      if (a && a.key != null && a.key !== "") { const k = S(a.key, 40); if (!/^[a-z0-9_-]{1,40}$/i.test(k)) return { error: "Unknown address." }; r.value.key = k; }
+      if (a && a.key != null && a.key !== "") { const k = S(a.key, 40); if (!/^ship-[a-z0-9_-]{1,34}$/i.test(k)) return { error: "Unknown address." }; r.value.key = k; }
+      else r.value.key = "ship-" + require("crypto").randomBytes(4).toString("hex");   // fixed when queued: approving twice never duplicates
       list.push(r.value);
     }
     if (list.length) out.ship_to = list;
@@ -131,6 +136,7 @@ function sniffLogo(buf) {
 // keys: the address keys the dealer has on file ('main' = the business address on the dealer record).
 function validDefaultShip(key, keys) {
   const k = S(key, 40);
+  if (/^bill/i.test(k)) return null;                                                       // a billing address is never the ship-to
   return (k && (keys || []).includes(k)) ? k : null;
 }
 
