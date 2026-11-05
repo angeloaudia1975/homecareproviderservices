@@ -188,7 +188,7 @@ async function ownsDealer(me, dealer_id){
 // verification, owner, branch family or account structure, not even on a dealer in their own
 // book. Their dealer work — visits, notes, contacts, tasks, deals, email — runs through Dealer 360.
 const NON_MGMT_READS=new Set(["portal_access","preview_link"]);
-const PRESIDENT_ONLY=new Set(["merge","split","import_contacts","backfill_master","attribution_breakdown","reattribute","clear_order_refs","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","rep_bulk","list_contract_prices","set_contract_price","clear_contract_price","list_line_discounts","set_line_discount","clear_line_discount","prefill_access","prefill_access_all","create_dealer"]);
+const PRESIDENT_ONLY=new Set(["set_user_scope","merge","split","import_contacts","backfill_master","attribution_breakdown","reattribute","clear_order_refs","confirm","nomerge","diag","approve_change","reject_change","approve_login","revoke_login","delete_login","set_login_email","rep","rep_bulk","list_contract_prices","set_contract_price","clear_contract_price","list_line_discounts","set_line_discount","clear_line_discount","prefill_access","prefill_access_all","create_dealer"]);
 
 async function buildState(){
   const [dealers,aliases,dm,mfrs,dir,reps,nomerge,logins] = await Promise.all([
@@ -299,6 +299,8 @@ async function buildState(){
   }).sort((x,y)=>y.sales-x.sales);
   // dealer-submitted account change requests awaiting HCPS approval
   const changeReqs = await sbGet("dealer_change_requests?status=eq.pending&select=id,dealer_id,uid,email,changes,created_at&order=created_at.desc").catch(()=>[]);
+  // C3-07 Stage 3: manufacturer account numbers dealers submitted, waiting for HCPS to verify (table added by c7_s3 SQL)
+  const accountClaims = await sbGet("dealer_account_claims?status=eq.pending&select=id,dealer_id,manufacturer,account_ref,note,submitted_email,created_at&order=created_at.asc").catch(()=>[]);
   // login activity + persistent (open) carts
   const [sessions,carts] = await Promise.all([
     sbGet("dealer_sessions?select=dealer_id,email,login_at,last_seen_at&order=last_seen_at.desc&limit=800").catch(()=>[]),
@@ -338,6 +340,10 @@ async function buildState(){
     changeRequests:(changeReqs||[]).map(r=>{const d=dealers.find(x=>x.id===r.dealer_id);
       return {id:r.id,dealer_id:r.dealer_id||"",dealer_name:d?d.business_name:(r.email||""),
         email:r.email||"",created_at:r.created_at,changes:r.changes||{}};}),
+    accountClaims:(accountClaims||[]).map(c=>{const d=dealers.find(x=>x.id===c.dealer_id);
+      const cur=(dm||[]).find(x=>x.dealer_id===c.dealer_id&&x.manufacturer===c.manufacturer);
+      return {id:c.id,dealer_id:c.dealer_id,dealer_name:d?d.business_name:"",manufacturer:c.manufacturer,account_ref:c.account_ref,
+        note:c.note||"",email:c.submitted_email||"",created_at:c.created_at,on_file:cur?(cur.account_ref||""):""};}),
     recentSessions, openCarts, email_verified_supported:evSupported,
   };
 }
@@ -370,7 +376,7 @@ exports.handler = async (event)=>{
       }
       if(!isAdminRole){
         // Non-management roles don't manage the admin queues/tools — hide them.
-        state.logins=[]; state.changeRequests=[]; state.recentSessions=[]; state.openCarts=[]; state.nomerge=[];
+        state.logins=[]; state.changeRequests=[]; state.accountClaims=[]; state.recentSessions=[]; state.openCarts=[]; state.nomerge=[];
       }
       return json(200,state);
     }
@@ -582,10 +588,17 @@ exports.handler = async (event)=>{
         // never wipes the dealer's account #s. Merge in any aliased slugs' refs too.
         const existing=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref`,"dealer_id,manufacturer").catch(()=>[]);
         const refBy={}; for(const r of (existing||[])){ if(r.account_ref) refBy[r.manufacturer]=r.account_ref; }
+        /* C3-07 Stage 3: HCPS verifications survive an ordering-grid save (only while the number is unchanged). Before the
+           Stage 3 SQL the columns don't exist and nothing is carried. */
+        let verBy=null; try{ const vr=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,verified_at,verified_by,verified_ref`);
+          verBy={}; for(const r of (vr||[])) if(r.verified_at) verBy[r.manufacturer]=r; }catch(e){ verBy=null; }
         // b.refCarry: {canonicalSlug: account_ref} the UI passes when it merged duplicate rows
         if(b.refCarry&&typeof b.refCarry==="object"){ for(const k in b.refCarry){ if(b.refCarry[k]&&!refBy[k]) refBy[k]=b.refCarry[k]; } }
         await sbSend("DELETE",`dealer_manufacturers?dealer_id=eq.${b.dealer_id}`,null,{Prefer:"return=minimal"});
-        if(b.manufacturers.length) await sbSend("POST","dealer_manufacturers",b.manufacturers.map(m=>({dealer_id:b.dealer_id,manufacturer:m,active:true,account_ref:refBy[m]||null})),{Prefer:"return=minimal"});
+        if(b.manufacturers.length) await sbSend("POST","dealer_manufacturers",b.manufacturers.map(m=>{ const row={dealer_id:b.dealer_id,manufacturer:m,active:true,account_ref:refBy[m]||null};
+          if(verBy){ const v=verBy[m]; const keep=v&&String(v.verified_ref||"").toUpperCase()===String(row.account_ref||"").toUpperCase()&&row.account_ref;
+            row.verified_at=keep?(v.verified_at||null):null; row.verified_by=keep?(v.verified_by||null):null; row.verified_ref=keep?(v.verified_ref||null):null; }
+          return row; }),{Prefer:"return=minimal"});
         // #2 Manufacturer Activated: fire for lines that weren't in the grid before this save.
         const hadBefore=new Set((existing||[]).map(r=>r.manufacturer));
         const newlyGranted=b.manufacturers.filter(m=>!hadBefore.has(m));
@@ -887,9 +900,10 @@ exports.handler = async (event)=>{
       // (and store shipping/billing as labeled addresses), then mark the request done.
       if(act==="approve_change"){
         if(!b.id) return json(400,{error:"id required"});
-        const rows=await sbGet(`dealer_change_requests?id=eq.${encodeURIComponent(b.id)}&select=id,dealer_id,changes`).catch(()=>[]);
+        const rows=await sbGet(`dealer_change_requests?id=eq.${encodeURIComponent(b.id)}&select=id,dealer_id,changes,status`).catch(()=>[]);
         const cr=rows&&rows[0];
         if(!cr) return json(400,{error:"change request not found"});
+        if(cr.status&&cr.status!=="pending") return json(409,{error:"already decided"});
         const c=cr.changes||{}; const did=cr.dealer_id;
         if(did){
           const patch={updated_at:new Date().toISOString()};
@@ -901,12 +915,92 @@ exports.handler = async (event)=>{
           // store shipping / billing as labeled addresses on file too
           const upAddr=(a,label,key)=>a?sbSend("POST","dealer_addresses?on_conflict=dealer_id,addr_key",
             {dealer_id:did,addr_key:key,address:a.address||null,city:a.city||null,state:a.state||null,zip:a.zip||null,label,pri:label==="Shipping"?2:1},
-            {Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{}):null;
+            {Prefer:"resolution=merge-duplicates,return=minimal"}):null;   // fails loudly: the request stays pending
           await upAddr(c.shipping,"Shipping","ship");
           await upAddr(c.billing,"Billing","bill");
+          /* C3-07 Stage 3 Account Center requests (validated by _account_center.js when the dealer sent them). Each write
+             fails loudly: the request stays pending unless everything was applied. Contacts are added or updated, never
+             deleted here (a removal is listed for staff to do in Dealer 360). */
+          const co=c.company||{}; const cp={};
+          ["contact_name","phone","email","website"].forEach(k=>{ if(co[k]!=null) cp[k]=co[k]||null; });
+          if(c.business){ cp.address=c.business.address; cp.city=c.business.city; cp.state=c.business.state; cp.zip=c.business.zip; }
+          if(Object.keys(cp).length){ cp.updated_at=new Date().toISOString(); await sbSend("PATCH","dealers?id=eq."+encodeURIComponent(did),cp,{Prefer:"return=minimal"}); }
+          for(const a of (Array.isArray(c.ship_to)?c.ship_to:[])){
+            /* the key was fixed when the dealer sent the request, so approving again updates the same address */
+            const k=(a.key&&/^ship-[a-z0-9_-]{1,34}$/i.test(a.key))?a.key:null; if(!k) continue;
+            await sbSend("POST","dealer_addresses?on_conflict=dealer_id,addr_key",{dealer_id:did,addr_key:k,address:a.address,city:a.city,state:a.state,zip:a.zip,label:a.label||"Ship-to",pri:2},{Prefer:"resolution=merge-duplicates,return=minimal"});
+          }
+          for(const x of (Array.isArray(c.contacts)?c.contacts:[])){
+            if(x.remove) continue;
+            const row={name:x.name||null,title:x.title||null,email:x.email||null,phone:x.phone||null};
+            if(x.id){ const own=await sbGet(`dealer_contacts?id=eq.${encodeURIComponent(x.id)}&dealer_id=eq.${encodeURIComponent(did)}&select=id`);
+              if(own&&own[0]) await sbSend("PATCH",`dealer_contacts?id=eq.${encodeURIComponent(x.id)}&dealer_id=eq.${encodeURIComponent(did)}`,row,{Prefer:"return=minimal"});
+              continue; }
+            const nid=(x.new_id&&/^[0-9a-f-]{36}$/i.test(x.new_id))?x.new_id:null;
+            if(nid){ const ex=await sbGet(`dealer_contacts?id=eq.${encodeURIComponent(nid)}&dealer_id=eq.${encodeURIComponent(did)}&select=id`);
+              if(ex&&ex[0]){ await sbSend("PATCH",`dealer_contacts?id=eq.${encodeURIComponent(nid)}&dealer_id=eq.${encodeURIComponent(did)}`,row,{Prefer:"return=minimal"}); continue; } }
+            if(row.email){ const ex=await sbGet(`dealer_contacts?dealer_id=eq.${encodeURIComponent(did)}&email=eq.${encodeURIComponent(row.email)}&select=id`);
+              if(ex&&ex[0]){ await sbSend("PATCH",`dealer_contacts?id=eq.${encodeURIComponent(ex[0].id)}`,row,{Prefer:"return=minimal"}); continue; } }
+            await sbSend("POST","dealer_contacts",Object.assign({dealer_id:did},nid?{id:nid}:{},row),{Prefer:"return=minimal"});
+          }
         }
-        await sbSend("PATCH","dealer_change_requests?id=eq."+encodeURIComponent(b.id),{status:"approved",decided_at:new Date().toISOString(),decided_by:b.by||"admin"},{Prefer:"return=minimal"});
+        await sbSend("PATCH","dealer_change_requests?id=eq."+encodeURIComponent(b.id)+"&status=eq.pending",{status:"approved",decided_at:new Date().toISOString(),decided_by:b.by||"admin"},{Prefer:"return=minimal"});
         return json(200,{ok:true,dealer_id:did||null});
+      }
+      /* ---- C3-07 Stage 3: manufacturer account verification (HCPS staff only; NEVER turns ordering on) ---- */
+      if(act==="claim_verify"||act==="claim_reject"){
+        const id=parseInt(b.id,10); if(!(id>0)) return json(400,{error:"id required"});
+        const rows=await sbGet(`dealer_account_claims?id=eq.${id}&select=id,dealer_id,manufacturer,account_ref,status`);
+        const cl=rows&&rows[0]; if(!cl) return json(404,{error:"claim not found"});
+        if(cl.status!=="pending") return json(409,{error:"already decided"});
+        const by=(me&&me.email)||"admin", at=new Date().toISOString();
+        if(act==="claim_reject"){
+          await sbSend("PATCH",`dealer_account_claims?id=eq.${id}&status=eq.pending`,{status:"rejected",decided_at:at,decided_by:by,decision_note:String(b.note||"").slice(0,300)||null},{Prefer:"return=minimal"});
+          return json(200,{ok:true});
+        }
+        const cur=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(cl.dealer_id)}&manufacturer=eq.${encodeURIComponent(cl.manufacturer)}&select=account_ref,active`);
+        const row=cur&&cur[0];
+        const onFile=row&&String(row.account_ref||"").trim();
+        /* RULE 13: a different number already on file is never overwritten silently. */
+        if(onFile && onFile.toUpperCase()!==String(cl.account_ref).toUpperCase() && b.confirm_replace!==true)
+          return json(409,{error:"account_conflict",on_file:onFile,submitted:cl.account_ref});
+        if(row){
+          await sbSend("PATCH",`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(cl.dealer_id)}&manufacturer=eq.${encodeURIComponent(cl.manufacturer)}`,
+            {account_ref:cl.account_ref,verified_at:at,verified_by:by,verified_ref:cl.account_ref},{Prefer:"return=minimal"});
+        }
+        /* No ordering row → nothing is created in dealer_manufacturers (that table also drives ordering); the verified claim
+           itself is the record, and the Account Center shows it green. Ordering stays a separate HCPS decision. */
+        await sbSend("PATCH",`dealer_account_claims?id=eq.${id}&status=eq.pending`,{status:"verified",decided_at:at,decided_by:by},{Prefer:"return=minimal"});
+        return json(200,{ok:true,updated_ordering_row:!!row});
+      }
+      if(act==="dm_accounts"){
+        if(!b.dealer_id) return json(400,{error:"dealer_id required"});
+        let rows; try{ rows=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref,active,verified_at,verified_by,verified_ref&order=manufacturer.asc`); }
+        catch(e){ if(!/42703|does not exist/.test(String(e&&e.message))) throw e;
+          rows=((await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref,active&order=manufacturer.asc`))||[]).map(r=>Object.assign(r,{verified_at:null})); }
+        (rows||[]).forEach(r=>{ if(r.verified_at&&String(r.verified_ref||"").trim().toUpperCase()!==String(r.account_ref||"").trim().toUpperCase()) r.verified_at=null; });   // the number changed since it was verified
+        return json(200,{ok:true,rows:rows||[]});
+      }
+      if(act==="dm_verify"||act==="dm_unverify"){
+        if(!b.dealer_id||!b.manufacturer) return json(400,{error:"dealer_id and manufacturer required"});
+        const q=`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&manufacturer=eq.${encodeURIComponent(b.manufacturer)}`;
+        const cur=await sbGet(q+"&select=account_ref"); const row=cur&&cur[0];
+        if(!row) return json(404,{error:"no account row"});
+        if(act==="dm_verify"&&!String(row.account_ref||"").trim()) return json(400,{error:"No account number on file to verify."});
+        await sbSend("PATCH",q,act==="dm_verify"?{verified_at:new Date().toISOString(),verified_by:(me&&me.email)||"admin",verified_ref:row.account_ref}:{verified_at:null,verified_by:null,verified_ref:null},{Prefer:"return=minimal"});
+        return json(200,{ok:true});
+      }
+      /* ---- C3-07 Stage 3 / D2: which locations a Partner 360 login sees (President only). A branch login is always its own
+         location whatever is saved here (enforced again where it is read, _account_center.visibleLocations). ---- */
+      if(act==="set_user_scope"){
+        const uid=String(b.uid||""); if(!/^[0-9a-f-]{36}$/i.test(uid)) return json(400,{error:"uid required"});
+        const scope=String(b.scope||"");
+        if(scope==="default"){ await sbSend("DELETE",`dealer_user_scope?uid=eq.${uid}`,null,{Prefer:"return=minimal"}); return json(200,{ok:true,scope:"default"}); }
+        if(!["own","company","list"].includes(scope)) return json(400,{error:"scope must be own, company, list or default"});
+        const locs=scope==="list"?(Array.isArray(b.locations)?b.locations.map(String).filter(x=>/^[0-9a-f-]{36}$/i.test(x)).slice(0,200):[]):null;
+        if(scope==="list"&&!locs.length) return json(400,{error:"choose at least one location"});
+        await sbSend("POST","dealer_user_scope?on_conflict=uid",{uid,scope,locations:locs,set_by:(me&&me.email)||"admin",set_at:new Date().toISOString()},{Prefer:"resolution=merge-duplicates,return=minimal"});
+        return json(200,{ok:true,scope});
       }
       if(act==="reject_change"){
         if(!b.id) return json(400,{error:"id required"});
