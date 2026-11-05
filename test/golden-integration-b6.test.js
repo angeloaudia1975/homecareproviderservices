@@ -109,6 +109,39 @@ const PREVIEW_H = { "x-hcps-golden-env": "preview", origin: PREVIEW_ORIGIN };
     }
   });
 
+  await t("go-live: golden_p360_all_linked opens every dealer (empty pilot list); Golden's link still decides", async () => {
+    env(); let w = world({ flags: { golden_p360_checkout: true, golden_p360_ordering: true, golden_p360_pilot_dealers: [], golden_p360_all_linked: true } });
+    let r = J(await load("golden-proxy.js").handler(post(ORDER())));
+    eq([r.placed, r.order_ref], [true, "P1661"]); eq(w.golden.length, 1);
+    // only exactly true opens it
+    for (const v of ["true", 1, null]) {
+      env(); w = world({ flags: { golden_p360_checkout: true, golden_p360_ordering: true, golden_p360_pilot_dealers: [], golden_p360_all_linked: v } });
+      r = J(await load("golden-proxy.js").handler(post(ORDER())));
+      eq([r.enabled, r.reason], [false, "not_in_pilot"], String(v)); eq(w.golden.length, 0);
+    }
+  });
+
+  await t("go-live: golden_p360_branch_as_account — a branch orders under its head office's account (role dealer, no sub_branch)", async () => {
+    env(); let w = world({ dealerId: D_BR, flags: { golden_p360_checkout: true, golden_p360_ordering: true, golden_p360_branch_as_account: true } });
+    let r = J(await load("golden-proxy.js").handler(post(ORDER())));
+    eq(r.placed, true);
+    let g = w.golden[0], d = JSON.parse(Buffer.from(g.init.headers["X-HCPS-Delegation"] || g.init.headers["x-hcps-delegation"], "base64url").toString());
+    eq([d.role, d.sub_dealer, d.sub_branch], ["dealer", D_HQ, null]);
+    // switch off: the branch is delegated as a branch (Golden decides — today branch_not_permitted without a branch map)
+    env(); w = world({ dealerId: D_BR, flags: { golden_p360_checkout: true, golden_p360_ordering: true, golden_p360_branch_as_account: "true" } });
+    await load("golden-proxy.js").handler(post(ORDER()));
+    g = w.golden[0]; d = JSON.parse(Buffer.from(g.init.headers["X-HCPS-Delegation"] || g.init.headers["x-hcps-delegation"], "base64url").toString());
+    eq([d.role, d.sub_dealer, d.sub_branch], ["branch_user", D_HQ, D_BR]);
+  });
+
+  await t("go-live: neither switch touches the preview environment (a TEST branch stays a branch there)", async () => {
+    env(); const w = world({ dealerId: D_BR, flags: { golden_p360_preview_orders: true, golden_p360_branch_as_account: true, golden_p360_all_linked: true },
+      dealers: { [D_BR]: { id: D_BR, parent_id: D_HQ, is_test: true }, [D_HQ]: { id: D_HQ, parent_id: null, is_test: true } } });
+    await load("golden-proxy.js").handler(post(ORDER(), PREVIEW_H));
+    const g = w.golden[0], d = JSON.parse(Buffer.from(g.init.headers["X-HCPS-Delegation"] || g.init.headers["x-hcps-delegation"], "base64url").toString());
+    eq([d.role, d.sub_branch], ["branch_user", D_BR]);
+  });
+
   await t("preview environment: only a real dealer sign-in of a TEST dealership, behind golden_p360_preview_orders; signed with the TEST key", async () => {
     // switch off
     env(); let w = world({ isTest: true });
