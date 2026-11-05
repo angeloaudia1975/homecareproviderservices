@@ -6,7 +6,7 @@ const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..', 'netlify', 'functions');
 const SRC = fs.readFileSync(path.join(ROOT, 'catalog-api.js'), 'utf8');
 const num = v => { if (v === '' || v == null) return null; const n = Number(v); return isFinite(n) ? n : null; };
-const F = new Function('num', SRC.slice(SRC.indexOf('const cleanTiers='), SRC.indexOf('/* ─────────────────────── Duplicate detection')) + ';return {cleanTiers,keepPools};')(num);
+const F = new Function('num', SRC.slice(SRC.indexOf('const UNTIL_RE='), SRC.indexOf('/* ─────────────────────── Duplicate detection')) + ';return {cleanTiers,keepPools};')(num);
 let pass = 0, fail = 0; const t = (n, f) => { try { f(); pass++; console.log('ok   ' + n); } catch (e) { fail++; console.log('FAIL ' + n + '\n     ' + e.message); } };
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error((m || '') + ' got ' + JSON.stringify(a) + ' expected ' + JSON.stringify(b)); };
 const E = '2027-01-01T06:00:00Z';
@@ -35,5 +35,30 @@ t('the record feed carries the end exactly like catalog-feed (both repos)', () =
   const ORD = process.env.ORDER_REPO || path.join(__dirname, '..', '..', 'homecareproviderservicesordering');
   const f = path.join(ORD, 'netlify', 'functions', 'catalog-feed.js');
   if (fs.existsSync(f)) eq(require(f).feedRows(JSON.parse(JSON.stringify(rows)))[0].tiers, got, 'catalog-feed');
+});
+t('impossible calendar instants end the break (V8 would roll them forward; Safari refuses them)', () => {
+  for (const bad of ['2027-02-30T00:00:00Z', '2027-01-01T24:00Z', '2027-04-31T06:00:00Z', '2027-01-01T06:60:00Z', '2027-01-01T06:00:00+24:00'])
+    eq(F.cleanTiers([{ min_qty: 4, price: 90, until: bad }, { min_qty: 2, price: 95 }]), [{ min_qty: 2, price: 95 }], bad);
+  eq(F.cleanTiers([{ min_qty: 4, price: 90, until: '2028-02-29T06:00:00Z' }])[0].until, '2028-02-29T06:00:00Z', 'leap day is real');
+});
+t('until:"none" removes an end explicitly; a new price at the same quantity otherwise keeps it', () => {
+  eq(F.keepPools([{ min_qty: 4, price: 88, until: 'none' }], [{ min_qty: 4, price: 90, until: E }]), [{ min_qty: 4, price: 88 }]);
+  eq(F.keepPools([{ min_qty: 4, price: 88, until: 'NONE' }, { min_qty: 2, price: 9 }], [{ min_qty: 4, price: 90, until: E }, { min_qty: 2, price: 9, pool: 'x' }]),
+     [{ min_qty: 2, price: 9, pool: 'x' }, { min_qty: 4, price: 88 }], 'pool still kept');
+  eq(F.cleanTiers([{ min_qty: 4, price: 88, until: 'none' }]), [{ min_qty: 4, price: 88 }], 'none is not a malformed end');
+});
+t('save_product keeps an end on the override layer AND on custom_products (strict read)', () => {
+  const sp = SRC.slice(SRC.indexOf('if(!inCustom && baseRec){'), SRC.indexOf('return json(200,{ok:true});', SRC.indexOf('if(!inCustom && baseRec){')));
+  if (!/const cur=patch\.tiers\|\|\(baseRec&&baseRec\.tiers\); let t=cleanTiers\(p\.tiers\);\s*if\(t&&\(cleanTiers\(cur\)\|\|\[\]\)\.some\(x=>x\.until\)\) t=keepPools\(p\.tiers,cur\);/.test(sp)) throw new Error('override branch');
+  if (!/custom_products\?manufacturer=eq\.\$\{encodeURIComponent\(mfr\)\}&code=eq\.\$\{encodeURIComponent\(String\(p\.code\)\.trim\(\)\)\}&select=tiers/.test(sp)) throw new Error('custom row not read');
+  if (!/tiers:pv\("tiers"\)!==undefined\?pv\("tiers"\):cpTiers/.test(sp)) throw new Error('custom write');
+});
+t('every comparison of ladders sees the end: MC staging, mc_verify, parity, import review', () => {
+  const MC = fs.readFileSync(path.join(ROOT, '_mc.js'), 'utf8');
+  if (!/x\.until \? \[x\.min_qty, x\.price, x\.pool \|\| null, x\.until\]/.test(MC)) throw new Error('planStage');
+  if (!/\+ \(x\.u \? "~" \+ x\.u : ""\)/.test(MC)) throw new Error('ladderKey');
+  if (!/\(x\.pool\?"@"\+x\.pool:""\)\+\(x\.until\?"~"\+x\.until:""\)\)\.join\(","\):""; \};/.test(SRC)) throw new Error('parityCompare');
+  const CI = fs.readFileSync(path.join(ROOT, '_catalog_import.js'), 'utf8');
+  if (!/x\.until \? " until " \+ x\.until : ""/.test(CI)) throw new Error('import review');
 });
 console.log(`\ntier until (admin): ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

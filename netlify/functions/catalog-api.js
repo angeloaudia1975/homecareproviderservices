@@ -108,19 +108,28 @@ const num=v=>{ if(v===""||v==null) return null; const n=Number(v); return isFini
 // normalize a quantity-break tier list to [{min_qty:int>=1, price:number}], sorted ascending
 /* A break may name a POOL (agreed 2026-10-09): its quantity is the combined cart quantity of every
    product whose breaks name the same pool ("strongback-models"). Kept through every tier write. */
+/* A real calendar instant only: month 01–12, a day that exists in that month, hour 00–23 (V8 would roll
+   "02-30" or "T24:00" forward while Safari refuses them — the browser and server must never disagree). */
+const UNTIL_RE=/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
+const validUntil=u=>{ if(!UNTIL_RE.test(u)) return false; const d=Date.parse(u.slice(0,10)+"T00:00:00Z");
+  return isFinite(d)&&new Date(d).toISOString().slice(0,10)===u.slice(0,10)&&isFinite(Date.parse(u)); };
 const cleanTiers=t=>{ if(!Array.isArray(t)) return null;
   const out=t.map(r=>{ const o={min_qty:Math.max(1,parseInt(r.min_qty??r.minQty??1,10)||1),price:num(r.price)};
       const pl=String((r&&r.pool)==null?"":r.pool).trim().toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,40); if(pl) o.pool=pl;
       /* A break may END (agreed 2026-11-04, Yuwell SP-3 special): `until` is kept only as a full ISO instant; any other
          value is dropped from the break AND the break itself is dropped, so a malformed end can never make a promotion permanent. */
-      if(r&&r.until!=null&&r.until!==""){ const u=String(r.until).trim(); if(!/^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:\d\d)$/.test(u)||!isFinite(Date.parse(u))) return {min_qty:o.min_qty,price:null}; o.until=u; }
+      if(r&&r.until!=null&&r.until!==""&&String(r.until).trim().toLowerCase()!=="none"){ const u=String(r.until).trim(); if(!validUntil(u)) return {min_qty:o.min_qty,price:null}; o.until=u; }
       return o; })
     .filter(r=>r.price!=null).sort((a,b)=>a.min_qty-b.min_qty);
   return out.length?out:null; };
 /* An edit that sends a ladder without pools (Product Catalog, Price Check, an import) never drops
    the pool a break already has on the record: the same break keeps it. */
 const keepPools=(next, cur)=>{ const n=cleanTiers(next); if(!n) return n;
-  const had={}, ends={}; (cleanTiers(cur)||[]).forEach(r=>{ if(r.pool) had[r.min_qty]=r.pool; if(r.until) ends[r.min_qty]=r.until; });
+  /* `until:"none"` on a break of the new ladder is the explicit way to REMOVE an end (review 2026-11-04): without it a
+     new permanent price at the same quantity would silently inherit the old special's past end and never apply. */
+  const noEnd=new Set((Array.isArray(next)?next:[]).filter(r=>r&&String(r.until==null?"":r.until).trim().toLowerCase()==="none")
+    .map(r=>Math.max(1,parseInt(r.min_qty??r.minQty??1,10)||1)));
+  const had={}, ends={}; (cleanTiers(cur)||[]).forEach(r=>{ if(r.pool) had[r.min_qty]=r.pool; if(r.until&&!noEnd.has(r.min_qty)) ends[r.min_qty]=r.until; });
   /* ...and never drops the END a break already has (2026-11-04): an edit that re-sends the SP-3 ladder without
      `until` keeps the special's end date, so editing a price can never make a time-limited break permanent. */
   return n.map(r=>{ let o=(r.pool||!had[r.min_qty])?r:Object.assign({},r,{pool:had[r.min_qty]}); if(!o.until&&ends[o.min_qty]) o=Object.assign({},o,{until:ends[o.min_qty]}); return o; }); };
@@ -2026,7 +2035,7 @@ function parityCompare({base, custom, overrides, record, want, mfr, strictTiers}
     const k=normCode(c); if(!eff[k] || eff[k].hidden) eff[k]=row; });
   const money=v=>{ const n=num(v); return n==null?null:Math.round(n*100)/100; };
   const ladder=(t,bp)=>{ const r=(cleanTiers(t)||[]).filter(x=>!(x.min_qty===1 && bp!=null && Math.abs(x.price-bp)<0.005));
-    return r.length?r.map(x=>x.min_qty+":"+x.price+(x.pool?"@"+x.pool:"")).join(","):""; };
+    return r.length?r.map(x=>x.min_qty+":"+x.price+(x.pool?"@"+x.pool:"")+(x.until?"~"+x.until:"")).join(","):""; };
   const drift=[]; let compared=0;
   (record||[]).forEach(r=>{
     const k=normCode(r.code); if(want && !want.has(k)) return;
@@ -2406,7 +2415,9 @@ async function handleCatalog(event){
           const put=(k,v)=>{ if(v!=null&&v!==""){ patch[k]=v; carried.push(k); } };
           put("base_price",num(p.base_price)); put("msrp",num(p.msrp)); put("map",num(p.map));
           if(p.msrp_auto===true) put("msrp_auto",true);
-          const t=cleanTiers(p.tiers); if(t) put("tiers",t);
+          /* Keep a time-limited break's end (review 2026-11-04): merge with the ladder this product has now. */
+          { const cur=patch.tiers||(baseRec&&baseRec.tiers); let t=cleanTiers(p.tiers);
+            if(t&&(cleanTiers(cur)||[]).some(x=>x.until)) t=keepPools(p.tiers,cur); if(t) put("tiers",t); }
           put("price_note",p.price_note||null);
           ["name","category","image","description"].forEach(k=>{
             const v=k==="name"?String(p.name||"").trim():(p[k]||null);
@@ -2421,6 +2432,14 @@ async function handleCatalog(event){
             message:`"${codeIn}" is already a catalog product — it was updated in place instead of being added a second time.`});
         }
         const pv=k=>(projSP && k in projSP)?projSP[k]:undefined;
+        let cpTiers=cleanTiers(p.tiers);
+        if(pv("tiers")===undefined && cpTiers){
+          let cur;
+          try{ const ex=await sb("GET",`custom_products?manufacturer=eq.${encodeURIComponent(mfr)}&code=eq.${encodeURIComponent(String(p.code).trim())}&select=tiers`);
+               cur=ex&&ex[0]&&ex[0].tiers; }
+          catch(e){ return json(503,{error:"the current price ladder could not be read — nothing saved",detail:String(e&&e.message||e)}); }
+          if((cleanTiers(cur)||[]).some(x=>x.until)) cpTiers=keepPools(p.tiers,cur);
+        }
         await sb("POST","custom_products?on_conflict=manufacturer,code",{
           manufacturer:mfr, code:String(p.code).trim(), name:String(p.name).trim(),
           category:p.category||null,
@@ -2429,7 +2448,7 @@ async function handleCatalog(event){
           map:pv("map")!==undefined?pv("map"):num(p.map),
           msrp_auto:pv("msrp_auto")!==undefined?pv("msrp_auto")===true:p.msrp_auto===true,
           image:p.image||null, description:p.description||null,
-          tiers:pv("tiers")!==undefined?pv("tiers"):cleanTiers(p.tiers), price_note:p.price_note||null,
+          tiers:pv("tiers")!==undefined?pv("tiers"):cpTiers, price_note:p.price_note||null,
           active:p.active===false?false:true, updated_at:new Date().toISOString()
         },{Prefer:"resolution=merge-duplicates,return=minimal"});
         return json(200,{ok:true});

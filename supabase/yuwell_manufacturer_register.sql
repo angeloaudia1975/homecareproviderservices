@@ -11,7 +11,7 @@
 --   · manufacturer_meta row with active = TRUE. Since C3-05 the storefront and the order server honour
 --     active = false (the line switch), so false here would hide Yuwell from everyone, the TEST preview included
 --     (review 2026-11-04). Yuwell stays unorderable for real dealers without this switch: no dealer has a
---     dealer_manufacturers row for it and its private price record is a separate step.
+--     dealer_manufacturers row for it (and Yuwell is not a territory default in _access.js) and its private price record is a separate step.
 --
 -- What it does NOT do (each is its own later, approved step):
 --   · no dealer_manufacturers rows (no dealer is entitled to Yuwell),

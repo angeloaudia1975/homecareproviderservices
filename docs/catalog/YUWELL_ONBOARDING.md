@@ -124,3 +124,13 @@ case), with at least one active ordering line that is not Golden, a retired line
 itself (slugs compared trimmed and lower-case). A branch is judged on its OWN rows — it does not inherit its head
 office's lines. Golden-only dealers are left out pending the owner's decision. The TEST dealer is granted separately
 (`yuwell_test_dealer_access.sql`) and first.
+
+Access comes ONLY from that grant: Yuwell is not a territory default in `_access.js` (review 2026-11-04), so a dealer
+with no ordering line, a Golden-only dealer or a prospect never sees it by default. A grant whose slug is stored with
+capitals or spaces gives no access today and is reported apart ("grant slug needs cleanup"); PART 2 refuses to run
+while any odd-spelled Yuwell row exists. Owner decision still open: dealers whose only lines are retired (Ohio Medical)
+— they are excluded today although Yuwell replaces Ohio Medical.
+
+**Promotion end dates.** A break's `until` must be a real calendar instant with a time zone. Every tier writer keeps an
+existing end; to REMOVE an end, send the break with `until: "none"`. Staging, verification, parity and the import
+review all compare the end, so a changed end is never "unchanged".
