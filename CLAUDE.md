@@ -2021,6 +2021,10 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     application submission without production approval. Keep the shareable dealer storefront model and HCPS
     dealer/market demand intelligence (incl. interest in products a dealer does not buy). Golden integration stays
     separately authorized; PR #26 stays permanently unmerged.
+  · LESSON (2026-11-05 15:36–15:39 CT): a CLAUDE.md-only commit made with `git commit -a` swept unreviewed Stage 3 code
+    (without its new helper file) onto main; dealer-tools-api answered 502 for about 3 minutes until reverted (4436dd4).
+    RULE: commit CLAUDE.md (or any direct-to-main change) by naming the file — `git commit <path>` — never `-a`, and keep
+    feature work on its own branch/worktree, never in the tree used for direct-to-main notes.
   · ONE master checklist holds C3-06 operational closeout + C3-07 status (plan doc). C3-06 ops items stay open: Plaza Drug
     Ovation PO 3991 is submitted without tracking — never simulate fulfillment or change its status without real
     manufacturer evidence. Do not reopen completed catalog enrichment or earlier approved decisions.
