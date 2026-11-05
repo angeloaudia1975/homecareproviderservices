@@ -1,0 +1,13 @@
+---
+permalink: /data/partners.json
+eleventyExcludeFromCollections: true
+---
+{#- C3-07 Stage 1: the manufacturer roster Partner 360's shop landing page reads, so the storefront and the
+    website always show the same partners. Built from activeManufacturers (manufacturers.json without the hidden
+    ones) — the same list every website logo row and card grid uses. Public marketing facts only: id, name,
+    category, a short description and the website's own partner-card artwork. Never prices or account data. -#}
+{%- set out = [] -%}
+{%- for m in activeManufacturers -%}
+{%- set out = (out.push({ id: m.id, name: m.name, category: m.category or "", description: m.description or "", image: "/assets/manufacturers/partners/" + m.id + ".jpg", logo: m.logo or "", page: "/manufacturers/" + m.id + "/" }), out) -%}
+{%- endfor -%}
+{{ { version: 1, partners: out } | dump | safe }}
