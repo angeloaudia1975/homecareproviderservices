@@ -4268,6 +4268,22 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
   configurable lift chairs (scooters, power chairs, beds, non-configurable models) are labelled **Browse only** —
   brochure + quote, never Add to cart — until Golden's `/v1/orders` accepts them (needs a mobility configurator, item
   mapping and a contract extension). The renderCart change is a p0parity exact-text exception.
+- **B6.2 Golden freight is Golden's server-side rule (Angelo, 2026-11-04 22:38 CT; Golden #286 → 5488ede, HCPS #86 →
+  833be09, ordering #37 → 2239ac6, all Published; contract 1.7.0).** One rule, Golden `functions/lib/golden-freight.js`,
+  used by `/v1` quote / validate / place AND Golden's own `save-order` / `branch-submit-order`: per shipment (same in-stock /
+  build groups as S&H) 2 units $70, 3 units $75, threshold (4, or the account's `free_freight_unit_min` where its special
+  terms apply to that ship-to) or more free, any other count below the threshold $135 (the portal's own fall-through);
+  oversized GA541 / GR595 / GC540 and 2+ beds = Call for Quote (never priced on /v1: 409 `freight_quote_required`); beds,
+  liftgate / inside / notify (per shipment) and white-glove (once) on the standalone checkout. The 3% S&H stays separate.
+  Freight is its own line in Golden's quote (`totals.freight_total`, `shipments[].freight`), the HCPS cart, review,
+  validation and confirmation; it is in grand_total and the quote hash, so a changed freight is refused (`prices_changed`).
+  Golden's checkout stores the SERVER freight and refuses a page that showed another (409 `freight_changed`, reload; 503
+  when the terms read fails). The HCPS proxy shows no Golden quote without freight (fail closed). Partner 360 sends
+  `split_order:true` (Golden's default: in-stock and built-to-order ship separately); Golden splits only when both groups
+  exist. Stored orders are never recalculated. **B6 test of 2026-11-04 placed NO order:** every validation answered
+  `ordering_enabled:false` (Golden's integration records), so the page never offered Place order; HCPS's proxy log shows
+  no place_order call. Tests: Golden golden-freight (+29/29 mutants, 5,000-cart portal parity), HCPS b4/b4b/b6 (+mutants),
+  ordering golden-b6 browser 49/49.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
