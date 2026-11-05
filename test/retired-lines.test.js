@@ -19,17 +19,32 @@ await t('one frozen list, Ohio Medical under both identifiers', () => {
 await t('dealer access: no state rule offers Ohio Medical, and account rows under either slug are dropped', () => {
   if (Object.keys(AC.STATE_RULES).some(R.isRetiredLine)) throw new Error('a state rule still offers a retired line');
   const src = fs.readFileSync(path.join(ROOT, 'netlify', 'functions', '_access.js'), 'utf8');
-  if (!/const NOT_REPRESENTED = new Set\(Object\.keys\(require\("\.\/_retired_lines\.js"\)\.RETIRED_LINES\)\)/.test(src)) throw new Error('_access does not read the shared list');
+  if (!/const RETIRED = require\("\.\/_retired_lines\.js"\);/.test(src)) throw new Error('_access does not read the shared list');
   for (const st of ['TN', 'KY', 'IN', 'OH', 'GA']) {
     const a = AC.computeAccess({ state: st, business_name: 'Synthetic Medical', golden_status: '', ovation_access: false, lat: 38 }, ['ohio-medical', 'gce', 'pedifix'], ['ohio-medical', 'gce']);
     const all = JSON.stringify(a);
     if (/ohio-medical|"gce"/.test(all)) throw new Error(st + ': ' + all);
   }
 });
-await t('the dealer grid and the territory picker read the same list', () => {
-  for (const [f, re] of [['dealers-api.js', /const RETIRED=new Set\(\[\.\.\.Object\.keys\(require\("\.\/_retired_lines\.js"\)\.RETIRED_LINES\)/],
-    ['territory-api.js', /const NOT_REPRESENTED=new Set\(Object\.keys\(require\("\.\/_retired_lines\.js"\)\.RETIRED_LINES\)\)/]]) {
-    if (!re.test(fs.readFileSync(path.join(ROOT, 'netlify', 'functions', f), 'utf8'))) throw new Error(f);
+await t('the dealer grid and the territory picker use the same trimmed, case-insensitive test', () => {
+  for (const [f, re] of [['dealers-api.js', /const RETIRED=\{has:\(slug\)=>_RL\.isRetiredLine\(slug\)\|\|/],
+    ['territory-api.js', /const NOT_REPRESENTED=\{has:\(slug\)=>_RL\.isRetiredLine\(slug\)\};/]]) {
+    const src = fs.readFileSync(path.join(ROOT, 'netlify', 'functions', f), 'utf8');
+    if (!re.test(src) || !/const _RL=require\("\.\/_retired_lines\.js"\);/.test(src)) throw new Error(f);
+  }
+});
+await t('a dealer whose ONLY grant is a retired line gets nothing — never the territory line-up (review finding 1)', () => {
+  for (const st of ['TN', 'KY', 'IN', 'OH', 'GA']) {
+    for (const g of [['ohio-medical'], ['gce'], [' OHIO-MEDICAL '], ['complete-medical-supplies'], ['ohio-medical', 'golden-technologies']]) {
+      const a = AC.computeAccess({ state: st, business_name: 'Synthetic Medical', golden_status: '', ovation_access: false, lat: 38 }, [], g);
+      if (a.your_accounts.length || a.available.length) throw new Error(st + ' ' + JSON.stringify(g) + ' -> ' + JSON.stringify(a));
+    }
+    // a retired grant beside a live one leaves exactly the live one
+    const b = AC.computeAccess({ state: st, business_name: 'Synthetic Medical', golden_status: '', ovation_access: false, lat: 38 }, ['pedifix'], ['ohio-medical', 'pedifix']);
+    if (JSON.stringify([...b.your_accounts, ...b.available]) !== '["pedifix"]') throw new Error(st + ' mixed: ' + JSON.stringify(b));
+    // no grid at all (Golden only, or nothing) still uses the territory rules
+    const c = AC.computeAccess({ state: st, business_name: 'Synthetic Medical', golden_status: '', ovation_access: false, lat: 38 }, [], ['golden-technologies']);
+    if (!c.available.includes('access4u')) throw new Error(st + ' territory fallback lost: ' + JSON.stringify(c));
   }
 });
 await t('the order server refuses a retired line even when manufacturers.json lists it and its layers hold rows', () => {

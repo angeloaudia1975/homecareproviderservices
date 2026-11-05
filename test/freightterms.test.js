@@ -113,7 +113,8 @@ async function loaded(metaRows, metaFails){
   const a=html.indexOf('\nasync function loadManufacturers(){'); ok(a>=0,'loadManufacturers not found');
   /* the retired-line list loadManufacturers filters with (ordering site, 2026-11-04), when the storefront has it */
   const retired=(html.match(/const RETIRED_LINE_SLUGS=\[[^\]]*\];/)||[''])[0];
-  const code=retired+'\n'+html.slice(a+1, html.indexOf('\n}\n',a)+3)+'\n'+EX.grabDecl(html,'function validFreightTerms')+'\n'+EX.grabDecl(html,'function freightTermsFor');
+  const isRet=(html.match(/function isRetiredSlug\(slug\)\{[^\n]*\}/)||[''])[0];
+  const code=retired+'\n'+isRet+'\n'+html.slice(a+1, html.indexOf('\n}\n',a)+3)+'\n'+EX.grabDecl(html,'function validFreightTerms')+'\n'+EX.grabDecl(html,'function freightTermsFor');
   const warns=[];
   const ctx={ state:{}, CONFIG:{SUPABASE_URL:'https://sb.test',SUPABASE_ANON:'anon'}, console:{warn:m=>warns.push(m),log(){},error(){}}, JSON, Object, Array,
     fetch:async u=>{ u=String(u); if(u==='./data/manufacturers.json') return {ok:true,json:async()=>clone(mfrs)};
