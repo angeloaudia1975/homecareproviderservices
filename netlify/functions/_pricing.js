@@ -128,7 +128,7 @@ const LAYER_SELECT = {
 async function lineProducts({ slug, sb, catalogFile, contentFile, contract, rates, cart, freightCfg, freightOverride, engineSource }) {
   const [publicFile, metaRows, commercialRec] = await Promise.all([
     catalogFile(slug),
-    sb("GET", `manufacturer_meta?slug=eq.${enc(slug)}&select=slug,enriched_only,category_map,record_authoritative,record_resync_error,freight_terms`),
+    sb("GET", `manufacturer_meta?slug=eq.${enc(slug)}&select=slug,enriched_only,category_map,record_authoritative,record_resync_error,freight_terms,active`),
     sb("GET", `catalog_file_commercial?manufacturer=eq.${enc(slug)}&select=${COMMERCIAL_SELECT}`),
   ]);
   const commercial = commercialFor(publicFile, commercialRec, slug);
@@ -208,7 +208,9 @@ async function lineProducts({ slug, sb, catalogFile, contentFile, contract, rate
   /* The shop forgives a failed read and carries on with what it has; an order may not. */
   if (failures.length) throw new Error("layer_unreadable: " + failures[0].slice(0, 300));
   const src = engine.CATALOG_SOURCE[slug] || {};
-  return { products, engine, source: src.source || "layers", freight: mfrEntry.freight || null, freightSource, freightInvalid, identity: commercial.identity };
+  /* inactive: THE LINE SWITCH (manufacturer_meta.active = false, review 2026-11-04). priceOrders never prices or
+     orders such a line — the storefront list hides it too; admin tools still see its products. */
+  return { products, engine, source: src.source || "layers", freight: mfrEntry.freight || null, freightSource, freightInvalid, identity: commercial.identity, inactive: meta.active === false };
 }
 
 /* Price every line of every order. orders: [{manufacturer_slug, items:[{code, qty, unit?}]}].
@@ -240,8 +242,10 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
   /* A RETIRED line (netlify/functions/_retired_lines.js — Complete Medical; Ohio Medical / GCE under both
      identifiers) is never priced, by any caller, even if a manufacturers.json entry or catalog layers reappear. */
   const listed = s => !RETIRED.isRetiredLine(s) && (!freightCfg || Object.prototype.hasOwnProperty.call(freightCfg, s));
-  for (const slug of slugs) bySlug[slug] = listed(slug)
-    ? await lineProducts({ slug, sb, catalogFile, contentFile, contract, rates, cart, freightCfg, engineSource }) : null;
+  for (const slug of slugs) {
+    const L = listed(slug) ? await lineProducts({ slug, sb, catalogFile, contentFile, contract, rates, cart, freightCfg, engineSource }) : null;
+    bySlug[slug] = (L && L.inactive) ? null : L;
+  }
   /* The family quantity is the shop's: every cart line, priced from its CURRENT product. */
   const lines = [];
   (orders || []).forEach((o, oi) => {
