@@ -67,6 +67,14 @@ await t('standard price: the server price is the list price, and an unchanged ca
   eq(r.status,200,'status'); eq(r.body.changed,false,'changed');
   eq(item(r,'A1').unit,50,'unit'); eq(item(r,'A1').line_total,100,'line'); eq(r.body.orders[0].subtotal,100,'subtotal');
 });
+await t('the line switch: a line whose manufacturer_meta says active=false is never priced (review 2026-11-04)',async()=>{
+  const W=world({tables:{manufacturer_meta:[{slug:LINE,active:false}]}}); const C=mod(W);
+  const r=await call(C,{action:'price_check',orders:[order([{code:'A1',qty:2,unit:50}])]});
+  const it=r.body&&r.body.orders?item(r,'A1'):null;
+  if(r.status===200 && it && it.available!==false && it.unit!=null) throw new Error('switched-off line priced: '+JSON.stringify(it));
+  const on=await call(mod(world({tables:{manufacturer_meta:[{slug:LINE,active:true}]}})),{action:'price_check',orders:[order([{code:'A1',qty:2,unit:50}])]});
+  eq(item(on,'A1').unit,50,'active=true prices as before');
+});
 await t('quantity tier: breaks apply on the family quantity, exactly as the shop computes it',async()=>{
   const W=world({}); const C=mod(W);
   const same=await call(C,{action:'price_check',orders:[order([{code:'B1',qty:2,unit:40},{code:'B2',qty:1,unit:40}])]});

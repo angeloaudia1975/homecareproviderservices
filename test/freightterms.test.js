@@ -134,6 +134,14 @@ await t('storefront load: valid record → record rule; missing/invalid record o
   L=await loaded(null,true);
   for(const s of FROZEN) eq(L.by(s).freight,fileOf(s),s+': unreadable table must leave the file rule');
 });
+await t('storefront load: the line switch — active=false unlists that line only; true / missing / unreadable change nothing',async()=>{
+  const sw=/freight_terms,active`/.test(html);
+  if(!sw){ console.log('     (storefront without the line switch — skipped)'); return; }
+  let L=await loaded([{slug:'bemis',active:false},{slug:'climbing-steps',active:true},{slug:'strongback-mobility'}]);
+  eq(L.by('bemis'),undefined,'switched-off line is not listed');
+  ok(L.by('climbing-steps')&&L.by('strongback-mobility')&&L.by('ovation-medical'),'other lines stay listed');
+  L=await loaded(null,true); for(const s of FROZEN) ok(L.by(s),s+' stays listed when the table cannot be read');
+});
 
 /* The server: orders-api prices with _pricing.lineProducts → the storefront's freightTermsFor + computeFreight. */
 function world(slug, terms, products){
