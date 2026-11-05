@@ -41,7 +41,17 @@ async function dealerFromToken(event) {
   if (!du || du.status !== "approved" || !du.dealer_id) return null;
   return { dealer_id: du.dealer_id, email: du.email || "", uid: u.id };
 }
-const MISSING = (e) => /42P01|42703|PGRST20[45]|does not exist|Could not find/i.test(String(e && e.message));
+/* "not installed yet" = the Stage 4 table itself (or Stage 3's scope table) is missing — nothing broader */
+const MISSING = (e) => { const m = String(e && e.message); return /PGRST205|42P01/.test(m) && /dealer_retail_price|dealer_user_scope/.test(m); };
+// Every row, past PostgREST's 1000-row cap (strict: a failed page throws).
+async function getAll(path) {
+  const out = [];
+  for (let off = 0; off < 100000; off += 1000) {
+    const page = await sb("GET", `${path}${path.includes("?") ? "&" : "?"}order=id.asc&limit=1000&offset=${off}`);
+    out.push(...(page || [])); if (!page || page.length < 1000) break;
+  }
+  return out;
+}
 
 // Normalise one requested row. Returns {row} or {error}.
 function cleanRow(x) {
@@ -73,6 +83,7 @@ exports.handler = async (event) => {
 
   // The locations this login may price (D2).
   let visible, self;
+  let scopeRestricted = false;   // a head office HCPS narrowed to "own" or a list may not change the whole company's default
   try {
     const d = await sb("GET", `dealers?id=eq.${enc(did)}&select=id,parent_id,business_name`); self = d && d[0];
     if (!self) return json(404, { ok: false, error: "Account not found." });
@@ -81,6 +92,7 @@ exports.handler = async (event) => {
     let scopeRow = null;
     try { const s = await sb("GET", `dealer_user_scope?uid=eq.${enc(who.uid)}&select=scope,locations`); scopeRow = (s && s[0]) || null; } catch (e) { if (!MISSING(e)) throw e; }
     visible = AC.visibleLocations(did, family, scopeRow);
+    scopeRestricted = !!(scopeRow && scopeRow.scope !== "company");
   } catch (e) { console.error("retail scope read failed", e && e.message); return json(503, { ok: false, error: "Your prices could not be loaded just now — please try again." }); }
   const headOffice = !self.parent_id;
   const visibleIds = new Set(visible.map((v) => String(v.id)));
@@ -88,16 +100,16 @@ exports.handler = async (event) => {
   // company default and the branch override sit together (one dealer_id per company).
   const owner = String(self.parent_id || self.id);
   // A branch login may only price its own location; a head office the company default (null) and its visible locations.
-  const mayWrite = (loc) => loc == null ? headOffice : (visibleIds.has(String(loc)) && (headOffice || String(loc) === String(did)));
+  const mayWrite = (loc) => loc == null ? (headOffice && !scopeRestricted) : (visibleIds.has(String(loc)) && (headOffice || String(loc) === String(did)));
   const mayRead = (loc) => loc == null || visibleIds.has(String(loc));
 
   if (b.action === "retail_list") {
     let rows;
-    try { rows = await sb("GET", `dealer_retail_prices?dealer_id=eq.${enc(owner)}&select=manufacturer,code,location_id,price,updated_at&order=manufacturer.asc,code.asc&limit=20000`); }
+    try { rows = await getAll(`dealer_retail_prices?dealer_id=eq.${enc(owner)}&select=id,manufacturer,code,location_id,price,updated_at`); }
     catch (e) { if (MISSING(e)) return json(503, { ok: false, error: "Saved retail prices open shortly." }); return json(503, { ok: false, error: "Your prices could not be loaded just now — please try again." }); }
     return json(200, { ok: true, head_office: headOffice, self_id: did,
       locations: visible.map((v) => ({ id: v.id, name: v.business_name || "", is_self: String(v.id) === String(did) })),
-      prices: (rows || []).filter((r) => mayRead(r.location_id)).map((r) => ({ manufacturer: r.manufacturer, code: r.code, location_id: r.location_id, price: Number(r.price), updated_at: r.updated_at })) });
+      prices: (rows || []).filter((r) => mayRead(r.location_id)).sort((a, b) => (a.manufacturer + a.code).localeCompare(b.manufacturer + b.code)).map((r) => ({ manufacturer: r.manufacturer, code: r.code, location_id: r.location_id, price: Number(r.price), updated_at: r.updated_at })) });
   }
 
   if (b.action === "retail_set") {
@@ -116,7 +128,7 @@ exports.handler = async (event) => {
     let current;
     try {
       const mfrs = [...new Set(rows.map((r) => r.manufacturer))];
-      current = await sb("GET", `dealer_retail_prices?dealer_id=eq.${enc(owner)}&manufacturer=in.(${mfrs.map(enc).join(",")})&select=id,manufacturer,code,location_id,price&limit=20000`);
+      current = await getAll(`dealer_retail_prices?dealer_id=eq.${enc(owner)}&manufacturer=in.(${mfrs.map(enc).join(",")})&select=id,manufacturer,code,location_id,price`);
     } catch (e) { if (MISSING(e)) return json(503, { ok: false, error: "Saved retail prices open shortly." }); return json(503, { ok: false, error: "Could not save just now — please try again." }); }
     const curBy = new Map((current || []).map((r) => [[r.manufacturer, r.code, r.location_id || ""].join("|"), r]));
     let saved = 0, removed = 0, unchanged = 0; const hist = [], by = who.email || "dealer", at = new Date().toISOString();
@@ -125,21 +137,24 @@ exports.handler = async (event) => {
         const cur = curBy.get([r.manufacturer, r.code, r.location_id || ""].join("|"));
         if (r.price == null) {
           if (!cur) { unchanged++; continue; }
-          await sb("DELETE", `dealer_retail_prices?id=eq.${cur.id}&dealer_id=eq.${enc(owner)}`, null, { Prefer: "return=minimal" });
+          const del = await sb("DELETE", `dealer_retail_prices?id=eq.${cur.id}&dealer_id=eq.${enc(owner)}&price=eq.${cur.price}`, null, { Prefer: "return=representation" });
+          if (!(del && del.length)) throw new Error("changed by someone else");   // another save got there first
           hist.push({ dealer_id: owner, location_id: r.location_id, manufacturer: r.manufacturer, code: r.code, old_price: Number(cur.price), new_price: null, changed_by: by, changed_at: at }); removed++; continue;
         }
         if (cur && Number(cur.price) === r.price) { unchanged++; continue; }
-        if (cur) await sb("PATCH", `dealer_retail_prices?id=eq.${cur.id}&dealer_id=eq.${enc(owner)}`, { price: r.price, updated_by: by, updated_at: at }, { Prefer: "return=minimal" });
+        if (cur) { const up = await sb("PATCH", `dealer_retail_prices?id=eq.${cur.id}&dealer_id=eq.${enc(owner)}&price=eq.${cur.price}`, { price: r.price, updated_by: by, updated_at: at }, { Prefer: "return=representation" });
+          if (!(up && up.length)) throw new Error("changed by someone else"); }   // the old price in history is the one actually replaced
         else await sb("POST", "dealer_retail_prices", { dealer_id: owner, location_id: r.location_id, manufacturer: r.manufacturer, code: r.code, price: r.price, updated_by: by, updated_at: at }, { Prefer: "return=minimal" });
         hist.push({ dealer_id: owner, location_id: r.location_id, manufacturer: r.manufacturer, code: r.code, old_price: cur ? Number(cur.price) : null, new_price: r.price, changed_by: by, changed_at: at }); saved++;
       }
     } catch (e) {
       console.error("retail save failed part-way", e && e.message);
-      if (hist.length) { try { await sb("POST", "dealer_retail_price_history", hist, { Prefer: "return=minimal" }); } catch (x) {} }
-      return json(503, { ok: false, error: `Saved ${saved + removed} of ${rows.length} — the rest could not be saved just now. Please try again.`, saved, removed });
+      let hOk = true; if (hist.length) { try { await sb("POST", "dealer_retail_price_history", hist, { Prefer: "return=minimal" }); } catch (x) { hOk = false; console.error("retail history not recorded", x && x.message); } }
+      return json(503, { ok: false, error: `Saved ${saved + removed} of ${rows.length} — the rest could not be saved just now. Please try again.`, saved, removed, history_recorded: hOk });
     }
-    if (hist.length) { try { await sb("POST", "dealer_retail_price_history", hist, { Prefer: "return=minimal" }); } catch (e) { console.error("retail history not recorded", e && e.message); } }
-    return json(200, { ok: true, saved, removed, unchanged });
+    let hOk = true;
+    if (hist.length) { try { await sb("POST", "dealer_retail_price_history", hist, { Prefer: "return=minimal" }); } catch (e) { hOk = false; console.error("retail history not recorded", e && e.message); } }
+    return json(200, { ok: true, saved, removed, unchanged, history_recorded: hOk });
   }
 
   if (b.action === "retail_history") {
@@ -148,7 +163,8 @@ exports.handler = async (event) => {
     let h;
     try { h = await sb("GET", `dealer_retail_price_history?dealer_id=eq.${enc(owner)}&manufacturer=eq.${enc(c.row.manufacturer)}&code=eq.${enc(c.row.code)}&select=location_id,old_price,new_price,changed_by,changed_at&order=changed_at.desc&limit=50`); }
     catch (e) { return json(503, { ok: false, error: "History could not be loaded just now." }); }
-    return json(200, { ok: true, history: (h || []).filter((r) => mayRead(r.location_id)) });
+    /* who changed it is shown to a head office only — a branch sees when and what, not staff emails */
+    return json(200, { ok: true, history: (h || []).filter((r) => mayRead(r.location_id)).map((r) => headOffice ? r : Object.assign({}, r, { changed_by: null })) });
   }
   return json(400, { ok: false, error: "unknown action" });
 };

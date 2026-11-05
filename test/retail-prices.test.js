@@ -82,6 +82,32 @@ const writesTo = (W, tb) => W.calls.filter(c => c.method !== 'GET' && String(c.u
     const r = await as(api(W), 'hq', { action: 'retail_set', rows: [{ manufacturer: 'yuwell', code: 'A', price: 1 }, { manufacturer: 'yuwell', code: 'B', price: 2 }] });
     eq([r.status, r.body.ok, r.body.saved], [503, false, 1]); ok(/Saved 1 of 2/.test(r.body.error), r.body.error);
   });
+  await t('more than 1000 saved prices: the list is complete and a save finds the existing row (no partial read)', async () => {
+    const many = []; for (let i = 0; i < 1203; i++) many.push({ id: i + 1, dealer_id: HQ, location_id: null, manufacturer: 'yuwell', code: 'C' + i, price: 5 });
+    const W = world({ prices: many }); const C = api(W);
+    eq((await as(C, 'hq', { action: 'retail_list' })).body.prices.length, 1203);
+    const r = await as(C, 'hq', { action: 'retail_set', rows: [{ manufacturer: 'yuwell', code: 'C1202', price: 6 }] });
+    eq([r.status, r.body.saved], [200, 1], JSON.stringify(r.body)); eq(W.db.dealer_retail_prices.length, 1203, 'updated, not added');
+  });
+  await t('a head office HCPS narrowed to "own" cannot change the company default; its own location still can', async () => {
+    const W = world(); W.db.dealer_user_scope.push({ uid: 'u-hq', scope: 'own', locations: null }); const C = api(W);
+    eq((await as(C, 'hq', { action: 'retail_set', rows: [{ manufacturer: 'yuwell', code: 'A', price: 3 }] })).status, 403);
+    eq((await as(C, 'hq', { action: 'retail_set', rows: [{ manufacturer: 'yuwell', code: 'A', price: 3, location_id: HQ }] })).body.saved, 1);
+  });
+  await t('history: a branch does not see who changed a price; a failed history write is reported', async () => {
+    const W = world(); const C = api(W);
+    await as(C, 'hq', { action: 'retail_set', rows: [{ manufacturer: 'yuwell', code: 'A', price: 3 }] });
+    eq((await as(C, 'br', { action: 'retail_history', manufacturer: 'yuwell', code: 'A' })).body.history[0].changed_by, null);
+    eq((await as(C, 'hq', { action: 'retail_history', manufacturer: 'yuwell', code: 'A' })).body.history[0].changed_by, 'hq@acme.test');
+    const W2 = world({ failWrite: (m, tb) => tb === 'dealer_retail_price_history' ? 500 : 0 });
+    eq((await as(api(W2), 'hq', { action: 'retail_set', rows: [{ manufacturer: 'yuwell', code: 'A', price: 3 }] })).body.history_recorded, false);
+  });
+  await t('a price changed by someone else between read and write is not overwritten blindly', async () => {
+    const W = world({ prices: [{ id: 1, dealer_id: HQ, location_id: null, manufacturer: 'yuwell', code: 'A', price: 10, updated_by: 'x' }] });
+    const inner = W.fetch; W.fetch = async (u, o) => { if (o && o.method === 'PATCH' && /dealer_retail_prices/.test(String(u))) W.db.dealer_retail_prices[0].price = 12; return inner(u, o); };
+    const r = await as(api(W), 'hq', { action: 'retail_set', rows: [{ manufacturer: 'yuwell', code: 'A', price: 11 }] });
+    eq([r.status, r.body.saved], [503, 0], JSON.stringify(r.body)); eq(W.db.dealer_retail_prices[0].price, 12);
+  });
   console.log(`\nretail prices: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

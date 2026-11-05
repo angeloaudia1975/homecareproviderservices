@@ -11,7 +11,8 @@
 --     limits (per dealer per hour / day, per recipient per day). Stores the recipient's DOMAIN and a SHA-256 of the
 --     address, never the address itself.
 -- RULE 19: RLS on, no policies, no rights for anon / authenticated / public; service_role only.
--- Rollback: drop table if exists public.dealer_retail_price_history, public.dealer_retail_prices, public.dealer_document_sends;
+-- Rollback: drop function if exists public.dealer_document_send_reserve(uuid,text,text,text,int,int,int);
+--   drop table if exists public.dealer_retail_price_history, public.dealer_retail_prices, public.dealer_document_sends;
 -- ============================================================================
 create table if not exists public.dealer_retail_prices (
   id            bigint generated always as identity primary key,
@@ -60,6 +61,32 @@ grant select, insert, update, delete on public.dealer_retail_prices to service_r
 grant select, insert on public.dealer_retail_price_history to service_role;
 grant select, insert, update on public.dealer_document_sends to service_role;
 
+-- 4. dealer_document_send_reserve — ONE atomic step that checks the limits and records the send (review finding:
+--    count-then-insert from the server let simultaneous sends all pass). A per-dealer advisory lock serialises a dealer's
+--    sends; the limits are counted under it and the row is written only when allowed. Callable by service_role only.
+create or replace function public.dealer_document_send_reserve(p_dealer uuid, p_kind text, p_domain text, p_hash text,
+  p_hour int default 10, p_day int default 40, p_recipient int default 5)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $fn$
+declare n_hour int; n_day int; n_to int; new_id bigint;
+begin
+  if p_dealer is null or p_hash is null or p_kind not in ('brochure','quote') then return jsonb_build_object('ok',false,'reason','bad_request'); end if;
+  perform pg_advisory_xact_lock(hashtextextended('dealer_document_sends:' || p_dealer::text, 0));
+  select count(*) filter (where created_at >= now() - interval '1 hour'),
+         count(*),
+         count(*) filter (where to_hash = p_hash)
+    into n_hour, n_day, n_to
+    from public.dealer_document_sends
+   where dealer_id = p_dealer and status = 'sent' and created_at >= now() - interval '24 hours';
+  if n_hour >= p_hour then return jsonb_build_object('ok',false,'reason','hour','limit',p_hour); end if;
+  if n_day >= p_day then return jsonb_build_object('ok',false,'reason','day','limit',p_day); end if;
+  if n_to >= p_recipient then return jsonb_build_object('ok',false,'reason','recipient','limit',p_recipient); end if;
+  insert into public.dealer_document_sends (dealer_id, kind, to_domain, to_hash, status)
+  values (p_dealer, p_kind, left(coalesce(p_domain,''), 120), p_hash, 'sent') returning id into new_id;
+  return jsonb_build_object('ok',true,'id',new_id);
+end $fn$;
+revoke all on function public.dealer_document_send_reserve(uuid,text,text,text,int,int,int) from public, anon, authenticated;
+grant execute on function public.dealer_document_send_reserve(uuid,text,text,text,int,int,int) to service_role;
+
 -- Check (one row): three tables, RLS on, no policies, no public rights, nothing written.
 select
   (select count(*) from information_schema.tables where table_schema='public'
@@ -74,4 +101,6 @@ select
   (has_sequence_privilege('anon','public.dealer_retail_prices_id_seq','usage')
      or has_sequence_privilege('anon','public.dealer_document_sends_id_seq','usage')
      or has_sequence_privilege('authenticated','public.dealer_retail_price_history_id_seq','usage'))                  as public_seq_access_false,
+  (has_function_privilege('anon','public.dealer_document_send_reserve(uuid,text,text,text,int,int,int)','execute')
+     or has_function_privilege('authenticated','public.dealer_document_send_reserve(uuid,text,text,text,int,int,int)','execute')) as public_rpc_false,
   (select count(*) from public.dealer_retail_prices) + (select count(*) from public.dealer_document_sends)           as rows_0;
