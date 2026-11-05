@@ -238,7 +238,13 @@ exports.handler = async (event) => {
         <p style="font-size:12.5px;color:#6b7280;margin-top:14px">Sent from Partner 360. Recorded in dealer_access_requests. Reply to reach the dealer.</p></div>`;
       const text = `Ordering access request (nothing has been granted)\n\nManufacturer: ${nm}\nDealer: ${dn}${self.hcps_account ? " (" + self.hcps_account + ")" : ""}\nLocation: ${where || "—"}\nRequested by: ${who.email || "—"}\nContact / phone: ${self.contact_name || "—"} · ${self.phone || "—"}\n\nTo approve: open the manufacturer account if needed, then turn the line on in the dealer's Ordering Access grid (Dealer 360).`;
       const sent = await sendMail({ to: to.join(","), subject, html, text, reply_to: who.email });
-      return json(200, { ok: true, saved: true, notified: !!(sent && sent.ok) });
+      if (!(sent && sent.ok)) {
+        /* Nobody at HCPS was told: close the stored ask (so it never blocks a new one) and say so — never "sent". */
+        try { await sb("PATCH", `dealer_access_requests?dealer_id=eq.${encodeURIComponent(did)}&manufacturer=eq.${encodeURIComponent(slug)}&status=eq.new`,
+          { status: "closed", staff_note: "notification email failed — dealer asked to try again or call", decided_at: new Date().toISOString(), decided_by: "system" }, { Prefer: "return=minimal" }); } catch (e) {}
+        return json(503, { ok: false, error: "Your request could not be sent right now — please try again or call HCPS at 937-626-5141." });
+      }
+      return json(200, { ok: true, saved: true, notified: true });
     }
 
     // ---- tracking request (ask the manufacturer to send shipment tracking to the dealer/HCPS) ----

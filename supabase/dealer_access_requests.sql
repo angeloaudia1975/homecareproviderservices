@@ -32,7 +32,7 @@ select
   (select count(*) from pg_policies where schemaname='public' and tablename='dealer_access_requests')               as policies,
   (select count(*) from information_schema.role_table_grants where table_schema='public' and table_name='dealer_access_requests'
      and grantee in ('anon','authenticated','PUBLIC'))                                                              as public_grants,
-  (select count(*) from information_schema.role_usage_grants where object_schema='public' and object_name='dealer_access_requests_id_seq'
-     and grantee in ('anon','authenticated','PUBLIC'))                                                              as public_seq_grants,
+  (has_sequence_privilege('anon','public.dealer_access_requests_id_seq','usage,select,update')
+     or has_sequence_privilege('authenticated','public.dealer_access_requests_id_seq','usage,select,update'))      as public_seq_access,
   (select count(*) from pg_indexes where schemaname='public' and indexname='dealer_access_requests_open_uk')        as open_index,
   (select count(*) from public.dealer_access_requests)                                                              as rows_now;

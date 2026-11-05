@@ -87,6 +87,11 @@ await t('without the record (table missing / write refused) nothing is emailed â
   const W2=world({failWrite:(m,t)=>m==='POST'&&t==='dealer_access_requests'?500:0}); const r2=await call(tools(W2),{action:'access_request',manufacturer:'yuwell'});
   eq([r2.status,W2.mail.length],[503,0],'a refused write sends nothing');
 });
+await t('if the email to HCPS fails the dealer is told to retry / call, and the ask is closed so it never blocks a new one',async()=>{
+  const W=world({mailFails:true}); const r=await call(tools(W),{action:'access_request',manufacturer:'yuwell'});
+  eq([r.status,r.body.ok],[503,false]); ok(/call HCPS/.test(r.body.error),'call HCPS');
+  eq(W.db.dealer_access_requests.map(x=>x.status),['closed'],'closed, not left open');
+});
 await t('two requests at the same moment: one row, one email (the open-request index decides)',async()=>{
   const W=world(); const C=tools(W);
   const rs=await Promise.all([1,2].map(()=>call(C,{action:'access_request',manufacturer:'yuwell'})));
