@@ -1994,6 +1994,30 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   RULE: the search index belongs to one dealer — keyed on dealer id, preview, entitled lines and Golden's answer, rows
   re-checked against the current lines when shown; sign-out clears DASH.lineCache / featured / the index; a failed or
   unpriced line is never cached. Tests: ordering test/quick-search.browser.js.
+  **Owner decisions D1–D5 (Angelo, 2026-11-05 15:20 CT — RULES):**
+  · D1 e-signature: DocuSign is the preferred provider for planning and FREE developer (demo) testing only. No paid /
+    production subscription until the integration and cost are reviewed with Angelo. Sign on the manufacturer's ORIGINAL
+    application PDF; keep the completed signed document and DocuSign's audit certificate.
+  · D2 permissions: head-office users see their company's authorized locations; branch users see ONLY their own location;
+    HCPS alone grants and changes permissions.
+  · D3 public (storefront) pricing: verified manufacturer MSRP by default. A dealer's saved retail price shows publicly
+    only when the manufacturer's MAP / advertising policy permits it. A CONFIRMED no-MAP policy is different from missing
+    or unverified MAP information; where pricing permission is unverified, show "Call for Price". Wholesale dealer cost is
+    never public.
+  · D4 storefront tracking: anonymous daily product/category interest counts only — no tracking cookies, no individual
+    visitor profiles. Inquiry contact information kept 24 months, with a privacy notice and deletion controls.
+  · D5 credit / account applications: stored privately, President-only access, encryption and audit controls; retention
+    7 years from the application decision (subject to legal and manufacturer requirements); application contents NEVER
+    in emails or logs.
+  · Priorities: Stage 3 (Account Center) → Stage 4 core in parallel where safe (brochure/quote email rate limits, saved
+    dealer retail prices, better quotes/brochures). Keep all three customer pricing choices: verified MSRP, saved dealer
+    retail, one-time quote price. Stages 5–8 follow the dependency plan; no paid signing service and no live manufacturer
+    application submission without production approval. Keep the shareable dealer storefront model and HCPS
+    dealer/market demand intelligence (incl. interest in products a dealer does not buy). Golden integration stays
+    separately authorized; PR #26 stays permanently unmerged.
+  · ONE master checklist holds C3-06 operational closeout + C3-07 status (plan doc). C3-06 ops items stay open: Plaza Drug
+    Ovation PO 3991 is submitted without tracking — never simulate fulfillment or change its status without real
+    manufacturer evidence. Do not reopen completed catalog enrichment or earlier approved decisions.
   Rules: staged reviewed PRs, independent review per stage; preserve ordering/configurators/carts/PO/history,
   frozen lines, Yuwell promo + freight, Ohio Medical retired, Golden workstream untouched; RLS + dealer isolation; test
   desktop/tablet/mobile and REAL interactions; no real orders, real credit applications, live test emails or social posts
