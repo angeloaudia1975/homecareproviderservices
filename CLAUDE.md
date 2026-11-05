@@ -4295,6 +4295,19 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
   `ordering_enabled:false` (Golden's integration records), so the page never offered Place order; HCPS's proxy log shows
   no place_order call. Tests: Golden golden-freight (+29/29 mutants, 5,000-cart portal parity), HCPS b4/b4b/b6 (+mutants),
   ordering golden-b6 browser 49/49.
+- **B6.3 guided Golden checkout (RULE, Angelo 2026-11-05 10:32 CT; ordering PR #38, draft).** The dealer never runs
+  "Get price" or "Validate" by hand: in the HCPS cart, **Checkout Golden order** opens one panel with a 3-step progress
+  (Review cart · Shipping & total · Place order), a plain instruction under the active step, a dismissible first-time tip
+  (`hcps_gck_tip_v1`) and a "Need help?" explanation. Golden's price (merchandise, freight, 3% S&H) loads automatically
+  once a ship-to is chosen; validation runs automatically once the contact is complete and again after any change
+  (typing pause / leaving a field) — the SAME golden-proxy quote / validate_order calls, no backend change. **Placement is
+  NEVER automatic:** one sticky "Place order with Golden · $total" button, one click, same Idempotency-Key and body as the
+  last validation. An error stops the automation until "Try again" (no retry loop); a price change shows a notice with
+  Golden's new totals and re-verifies with a new key, so placing needs a fresh click. Fields stay editable while Golden
+  answers (an answer for changed details is dropped; focus and caret kept). Test-fixture lesson: a fake terms row must
+  carry every column Golden's `loadTerms` selects (`waive_liftgate`, `free_freight_unit_min`) or the mock rejects the read.
+  **P1662** (Cloud Classic PR510-SME, $1,157.79, placed 2026-11-05 through preview #37) is the first real B6 order — a TEST
+  order to be cancelled in place (status + note, never deleted); P1661 is a separate portal order, untouched.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
