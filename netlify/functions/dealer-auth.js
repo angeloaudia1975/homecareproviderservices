@@ -94,6 +94,11 @@ async function loadDealerPayload(dealer_id, fallbackEmail){
         // Granted lines (everything ticked in the admin grid) — authoritative over territory.
         (dm||[]).map(x=>x.manufacturer));
       if(access) access.golden_url = self.golden_url || "";   // this dealer's specific Golden portal path
+      /* Browse-only lines (C3-06 closeout): eligible to browse by territory but with no active dealer_manufacturers row
+         of the dealer's own — the order server (orders-api linesNotCarried) will not price or record them. The storefront
+         shows "Request access" for these; nothing is granted here. */
+      if(access){ const carried=new Set((dm||[]).map(x=>String(x.manufacturer)));
+        access.request_access=[...new Set([...(access.your_accounts||[]),...(access.available||[])])].filter(s=>!carried.has(String(s))).sort(); }
     }catch(e){}
     // Per-product contract prices (company-level): the governing/master account's prices apply to
     // all its branches; a branch's own rows override. Keyed "slug::code" for the portal's unitPrice().
