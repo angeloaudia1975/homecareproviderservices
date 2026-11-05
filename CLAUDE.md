@@ -1900,6 +1900,27 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
       prescription / pulse-dose notice.
     - **No prices or shipping offers on the public website.**
     - **Registration:** the public file identity 6f20b076… is registered in `scripts/p0-lines.js` as a new line.
+  · **C3-05 (owner, 2026-11-04 21:35 CT):**
+    - **Eligibility:** Yuwell goes to ALL authorized HCPS ordering dealers, in every territory, with no geographic
+      or dealer restriction. "Authorized ordering dealer" means active, non-TEST, account class blank or dealer,
+      with at least one active non-Golden, non-retired ordering line. `supabase/yuwell_activation.sql` (admin #83)
+      reports read-only first, then grants, and proves no eligible dealer is missed and no ineligible dealer is
+      included, or rolls back.
+    - **Preview:** only the designated TEST dealer, TEST — Golden Sandbox `3f7d87a2-7fbc-47e1-a34a-aaaacf4c4c7b`.
+      This step is separate from real activation.
+    - **Promotions end on the server:** a quantity break may carry `until`, an ISO instant at which it ends.
+      `liveTiers` in the storefront engine, which the order server also runs, ignores the break from that instant.
+      An unreadable `until` ends the break.
+      - SP-3: `until` = 2027-01-01T06:00:00Z (midnight Central).
+      - The end-of-special SQL is a backup only, never run automatically.
+      - A scheduled task on 2027-01-01 08:00 CT reminds Angelo; it changes nothing.
+    - **Security:**
+      - The legacy ordering catalog-api fails closed when ANALYTICS_TOKEN is unset. Production already has it
+        set: an anonymous GET answered 401 on 2026-11-04.
+      - `manufacturer_meta.active=false` now unlists the line in the storefront, and the order server refuses it
+        (#34 / #82). Every production record was active=true (public read, 2026-11-04).
+    - **Release order:** #82 → #34 → #84 + #35 + #83 (code) → SQL. #83 carries the server engine copy that
+      matches #35, so ship them together.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
