@@ -1310,7 +1310,7 @@
           "3-year compressor warranty, 2-year sieve-bed warranty"
         ],
         "checks": [],
-        "image": "/assets/products/yuwell/spirit-3-lifestyle.jpg",
+        "image": "/assets/products/yuwell/spirit-3-hero.jpg",
         "image_side": "right"
       },
       {
@@ -1367,6 +1367,20 @@
             "K242736"
           ]
         ]
+      },
+      {
+        "type": "split",
+        "headline": "Blood pressure monitoring at home",
+        "copy": "Upper-arm and wrist monitors with large displays, reading memory and simple one-button use — from an everyday upper-arm model to a Bluetooth wrist unit.",
+        "checklist": [
+          "Large LCD with 99 reading memories",
+          "Irregular heartbeat indication",
+          "Average of three readings",
+          "Upper-arm (22–45 cm cuff) and wrist options"
+        ],
+        "checks": [],
+        "image": "/assets/products/yuwell/bp-hero.jpg",
+        "image_side": "left"
       },
       {
         "type": "products",
@@ -1434,6 +1448,20 @@
             ]
           }
         ]
+      },
+      {
+        "type": "split",
+        "headline": "Fingertip pulse oximetry",
+        "copy": "Compact fingertip oximeters for SpO₂ and pulse-rate spot checks at home, in the clinic and at retail.",
+        "checklist": [
+          "Measures SpO₂ and pulse rate",
+          "Compact and portable, lanyard included",
+          "One-button operation",
+          "LED and OLED display options"
+        ],
+        "checks": [],
+        "image": "/assets/products/yuwell/oximeter-hero.jpg",
+        "image_side": "right"
       },
       {
         "type": "products",
