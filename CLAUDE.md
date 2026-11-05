@@ -1996,6 +1996,12 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     reopened for minor missing photos, unconfirmed features or source discrepancies — they are recorded in
     `docs/catalog/C3-06_CATALOG_CLOSEOUT.md` for the next manufacturer source update. Next: C3-07 (Dealer Experience &
     Growth Platform) — not started until this closeout is verified. Golden integration stays a separate workstream.
+  · **C3-06 COMPLETED (2026-11-05 ~13:25 CT).** Admin #87 (743edd5) + #88 (784ae07) and ordering #39 (af36674) + #40
+    (0019e4a) Published. SQL run by Angelo: orders_submission_key.sql (12:27 CT), dealer_access_requests.sql (13:15 CT;
+    table, RLS, no public table/sequence rights, open-request index). Live (Angelo's session, read-only): PediFix 488
+    products with 0 of the 15 retired codes, the live order server refuses all 15, other PediFix priced; Dealer Business
+    Hub price list has 0 retired codes; every active line loads and prices (frozen lines from the record). Plaza Drug
+    fulfillment is ordinary operations, not a development milestone. Next: C3-07 (not started).
     - **Release order:** #82 → #34 → #84 + #35 + #83 (code) → SQL. #83 carries the server engine copy that
       matches #35, so ship them together.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
