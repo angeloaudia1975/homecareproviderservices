@@ -1937,7 +1937,10 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
       - `manufacturer_meta.active=false` now unlists the line in the storefront, and the order server refuses it
         (#34 / #82). Every production record was active=true (public read, 2026-11-04).
     - **Registration SQL RUN by Angelo 2026-11-04 22:29 CT:** manufacturers 1 row, manufacturer_meta active=true,
-      0 entitlements. **TEST dealer grant RUN 22:30 CT:** only TEST — Golden Sandbox has Yuwell.
+      0 entitlements. **TEST dealer grant RUN 22:30 CT:** only TEST — Golden Sandbox has Yuwell. **Price record RUN 22:36 CT:** catalog_file_commercial yuwell
+      6f20b076… / 7026fa39… / 9 rows. **Real-dealer grant RUN 22:37 CT:** 441 dealers with a grid + TEST = 442 active rows,
+      0 account numbers (6 no-grid dealers see it from the territory defaults; 1 inactive left out). Dealers see Yuwell
+      only once #82 → #34 → #84 + #35 + #83 are live.
     - **Release order:** #82 → #34 → #84 + #35 + #83 (code) → SQL. #83 carries the server engine copy that
       matches #35, so ship them together.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
