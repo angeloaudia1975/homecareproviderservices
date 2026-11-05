@@ -143,7 +143,7 @@ function render(){
     <div class="kpi"><div class="l">Review queue</div><div class="v warn">${rev}</div></div>
     <div class="kpi"><div class="l">Suggested dupes</div><div class="v orange">${dup}</div></div></div>`;
   const plog=(DATA.logins||[]).filter(l=>l.status==="pending").length;
-  const pchg=(DATA.changeRequests||[]).length+(DATA.accountClaims||[]).length;
+  const pchg=(DATA.changeRequests||[]).length;
   const roleLbl=ME&&ME.role?(ME.role==='president'?'President':ME.role==='rep'?'Sales Rep':'Customer Relations'):"";
   const tabs=`<div class="tabs" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
     <button class="tab ${TAB==='all'?'on':''}" onclick="setTab('all')">${isPres()||isRelations()?'All dealers':'My dealers'}</button>
@@ -765,14 +765,8 @@ async function rejectChange(id){ if(!confirm("Reject this change request? The de
 function renderChanges(){
   const app=$("#app"); const C=DATA.changeRequests||[];
   const rows=C.length? C.map(r=>{const c=r.changes||{};
-    const co=c.company||{};
     const bits=[chgLine("Contact",c.contact_name),chgLine("Phone",c.phone),chgLine("Email",c.email),
-      chgLine("Shipping",addrStr(c.shipping)),chgLine("Billing",addrStr(c.billing)),
-      chgLine("Main contact",co.contact_name),chgLine("Company phone",co.phone),chgLine("Company email",co.email),chgLine("Website",co.website),
-      chgLine("Business address",addrStr(c.business)),
-      ...(c.ship_to||[]).map(a=>chgLine((a.key?"Update ship-to ":"New ship-to ")+(a.label?"("+a.label+")":""),addrStr(a))),
-      ...(c.contacts||[]).map(x=>x.remove?chgLine("Remove contact (do it in Dealer 360)",x.name||x.id):chgLine(x.id?"Update contact":"New contact",[x.name,x.title,x.email,x.phone].filter(Boolean).join(" · ")))
-    ].filter(Boolean).join("");
+      chgLine("Shipping",addrStr(c.shipping)),chgLine("Billing",addrStr(c.billing))].filter(Boolean).join("");
     return `<tr>
       <td class="lbl">${esc(r.dealer_name||r.email||"—")}${r.email?`<div class="hint" style="margin-top:2px">${esc(r.email)}</div>`:""}</td>
       <td>${bits||'<span class="dim">no fields</span>'}</td>
@@ -783,51 +777,8 @@ function renderChanges(){
   app.innerHTML=`<div class="card">
     <h2>Account changes <span class="hint" style="text-transform:none">— dealers who edited their own contact, shipping, or billing details in the portal. Approve to apply the change to the dealer record (shipping/billing are also stored as addresses on file).</span></h2>
     <table><thead><tr><th>Dealer</th><th>Requested changes</th><th>Submitted</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-  </div>${renderAccountVerification()}`;
+  </div>`;
 }
-/* ---------- C3-07 Stage 3: manufacturer account verification + location access (HCPS staff) ----------
-   Verifying confirms the account NUMBER only. It never turns ordering on — that stays in the dealer's Ordering Access grid. */
-function renderAccountVerification(){
-  const A=DATA.accountClaims||[];
-  const rows=A.length?A.map(c=>`<tr>
-      <td class="lbl">${esc(c.dealer_name||"—")}${c.email?`<div class="hint" style="margin-top:2px">${esc(c.email)}</div>`:""}</td>
-      <td>${esc(c.manufacturer)}</td><td><b>${esc(c.account_ref)}</b>${c.on_file&&c.on_file.toUpperCase()!==String(c.account_ref).toUpperCase()?`<div class="hint" style="color:#b45309">On file: ${esc(c.on_file)}</div>`:""}${c.note?`<div class="hint">${esc(c.note)}</div>`:""}</td>
-      <td>${fmtDate(c.created_at)}</td>
-      <td style="white-space:nowrap"><button class="go orange sm" onclick="verifyClaim(${Number(c.id)})">Verify</button> <button class="go sm" onclick="rejectClaim(${Number(c.id)})">Reject</button></td></tr>`).join("")
-    :`<tr><td colspan="5" class="empty">No manufacturer account numbers waiting.</td></tr>`;
-  const dopts=(DATA.dealers||[]).slice().sort((a,b)=>String(a.business_name||"").localeCompare(String(b.business_name||""))).map(d=>`<option value="${esc(d.id)}">${esc(d.business_name||d.id)}${d.city?" — "+esc(d.city):""}</option>`).join("");
-  const lopts=(DATA.logins||[]).filter(u=>u.status==="approved"&&u.dealer_id).map(u=>`<option value="${esc(u.uid)}">${esc(u.email)} — ${esc(u.dealer_name||"")}</option>`).join("");
-  return `<div class="card"><h2>Manufacturer accounts to verify <span class="hint" style="text-transform:none">— numbers dealers entered in the Partner 360 Account Center. Verify = the number is right. Ordering is NOT turned on by this.</span></h2>
-    <table><thead><tr><th>Dealer</th><th>Line</th><th>Account #</th><th>Submitted</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-  <div class="card"><h2>Verify accounts on file <span class="hint" style="text-transform:none">— mark a dealer's existing account numbers as verified (green in their Account Center)</span></h2>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select id="dmDealer" style="min-width:280px;max-width:100%"><option value="">Choose a dealer…</option>${dopts}</select><button class="go sm" onclick="loadDmAccounts()">Show accounts</button></div>
-    <div id="dmList" style="margin-top:10px"></div></div>
-  <div class="card"><h2>Location access for a login <span class="hint" style="text-transform:none">— who sees which locations in the Account Center (D2). Default: a head-office login sees its company; a branch login only its own (a branch is never widened).</span></h2>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select id="scUid" style="min-width:280px;max-width:100%"><option value="">Choose a login…</option>${lopts}</select>
-      <select id="scScope"><option value="default">Default rule</option><option value="own">Own location only</option><option value="company">Whole company</option></select>
-      <button class="go sm" onclick="saveScope()">Save</button><span id="scSt" class="st"></span></div></div>`;
-}
-async function verifyClaim(id,replace){
-  try{ await post({action:"claim_verify",id,confirm_replace:replace===true},"Saving…"); }
-  catch(e){ const m=String(e&&e.message||"");
-    if(/account_conflict/.test(m)){ showDlg(`<h3>A different number is on file</h3><div>This dealer already has another account number on file for this line. Replace it with the number the dealer entered?</div><div style="margin-top:14px;text-align:right"><button class="go sm" onclick="closeDlg()">Cancel</button> <button class="go orange sm" onclick="closeDlg();verifyClaim(${Number(id)},true)">Replace &amp; verify</button></div>`); }
-    return; }
-  await load(); TAB="changes"; render();
-}
-async function rejectClaim(id){ if(!confirm("Reject this account number? The dealer's Account Center will show no account for this line."))return;
-  try{ await post({action:"claim_reject",id},"Saving…"); }catch(e){ return; } await load(); TAB="changes"; render(); }
-async function loadDmAccounts(){
-  const did=($("#dmDealer")||{}).value, box=$("#dmList"); if(!did||!box) return;
-  box.innerHTML='<div class="dim">Loading…</div>';
-  let j; try{ j=await post({action:"dm_accounts",dealer_id:did}); }catch(e){ box.innerHTML=""; return; }
-  const R=j.rows||[];
-  box.innerHTML=R.length?`<table><thead><tr><th>Line</th><th>Account #</th><th>Ordering</th><th>Verified</th><th></th></tr></thead><tbody>${R.map(r=>`<tr><td>${esc(r.manufacturer)}</td><td>${esc(r.account_ref||"—")}</td><td>${r.active===false?"Off":"On"}</td><td>${r.verified_at?esc(fmtDate(r.verified_at))+(r.verified_by?" · "+esc(r.verified_by):""):"—"}</td>
-      <td>${r.verified_at?`<button class="go sm" data-m="${esc(r.manufacturer)}" onclick="dmVerify(this.dataset.m,false)">Undo</button>`:(r.account_ref?`<button class="go orange sm" data-m="${esc(r.manufacturer)}" onclick="dmVerify(this.dataset.m,true)">Verify</button>`:'<span class="dim">no number</span>')}</td></tr>`).join("")}</tbody></table>`
-    :'<div class="dim">No manufacturer accounts on file for this dealer.</div>';
-}
-async function dmVerify(m,on){ const did=($("#dmDealer")||{}).value; try{ await post({action:on?"dm_verify":"dm_unverify",dealer_id:did,manufacturer:m},"Saving…"); }catch(e){ return; } loadDmAccounts(); }
-async function saveScope(){ const uid=($("#scUid")||{}).value, scope=($("#scScope")||{}).value; if(!uid) return;
-  try{ await post({action:"set_user_scope",uid,scope},"Saving…","#scSt"); $("#scSt").textContent="Saved"; }catch(e){} }
 /* ---------- Activity & carts (dealer logins + open/unordered carts) ---------- */
 function fmtWhen(s){ if(!s)return "—"; try{const d=new Date(s),now=Date.now(),diff=(now-d)/1000;
   if(diff<60)return "just now"; if(diff<3600)return Math.round(diff/60)+"m ago"; if(diff<86400)return Math.round(diff/3600)+"h ago";
