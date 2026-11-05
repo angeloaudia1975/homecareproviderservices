@@ -1842,9 +1842,44 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     (`docs/catalog/YUWELL_ONBOARDING.md`); the registration SQL is a draft and NOT run. Yuwell stays unorderable until
     its price list, freight terms, catalog, testing and owner approval are complete. Never invent product data,
     costs, MSRP or freight.
-  · **Website:** another conversation owns the Yuwell website imagery and marketing page. Do not edit those pages or
-    images concurrently. The website `src/_data/manufacturers.json` is SHARED: the Yuwell entry and the Ohio Medical
-    hide (`hidden:true`, plus a 301 to /manufacturers/) land in one coordinated change.
+  · **Website (SUPERSEDED by C3-04 below):** the Yuwell website integration is now owned by this workstream; the
+    marketing conversation supplies assets only.
+- **C3-04 — Yuwell replacement, coordinated development (owner, 2026-11-04 20:35 CT).** ChatGPT coordinates and
+  reviews; Claude builds across the website, Connect 360 and Partner 360. Reuse the existing PRs and workflows.
+  · **Ownership:** Claude owns the Yuwell website integration in this repo. The marketing conversation supplies assets
+    only and never edits the repo.
+  · **Images (owner):**
+    - the square SPIRIT-3 artwork = manufacturer-page hero (`/assets/manufacturers/heroes/yuwell.jpg`, 1254²);
+    - the red wordmark = `logos/yuwell.jpg` (705×255), also copied to the ordering site;
+    - the circle badge = `logos/yuwell-badge.jpg` (640²), the `resourceLogo` that replaces Ohio Medical's small logos.
+    - Product and hero photos for the page are still to come.
+  · **Sources:**
+    - Content comes only from the owner's HCPS Dealer Product Guide 2026, the Yuwell price list (models and stock
+      only), and FDA 510(k) K242736 for the SPIRIT-3.
+    - A spec the sources disagree on is withheld, not chosen. SPIRIT-3 weight and size: the guide says 4.9 lb and
+      8.72×4.22×8.87 in; the FDA summary says 2.4 kg with battery and 22×8×22 cm.
+  · **Prices:** the Yuwell price list ("Yuwell U.S. Price", 9 models) is never written to git.
+    - Whether that column is HCPS's cost or the dealer price is an open owner question.
+    - The list has no MSRP, MAP, case pack, effective date or freight, so none is entered.
+    - Quotes show "MSRP not provided".
+  · **Ohio Medical URL:** `/manufacturers/ohio-medical/*` → `/manufacturers/yuwell/` (301).
+  · **Hero CTA rule:** a manufacturer page with an empty `ordering_url` shows "Ask HCPS About <line>", never the
+    ordering-portal button. It is used while a line is not orderable.
+  · **Retired-line review (independent, 2026-11-04) — fixed on #82 / #34:**
+    - `_access` decides grid vs territory on the RAW grants, so a dealer whose only grant is a retired line gets
+      nothing, never the territory line-up. Before the fix it was HIGH: Ohio-Medical-only dealers would have seen 7
+      lines.
+    - The storefront `isRetiredSlug` trims and lower-cases, like `isRetiredLine`, everywhere.
+    - curated related rows, `loadPricing` and the legacy ordering catalog-api (410) refuse retired lines.
+    - Retired-line orders show the line's name and "Line retired" instead of Reorder.
+  · **Drafts:**
+    - website — admin #84;
+    - ordering catalog — `c4/yuwell-catalog` (stacked on #34): public file and pages, no prices,
+      `elseActual` freight "confirmed by HCPS".
+  · **Merge order when approved:** admin #82 → ordering #34 → admin #84 + ordering Yuwell → Yuwell SQL (#83, run by
+    Angelo).
+  · **Yuwell stays unorderable:** no `dealer_manufacturers` rows and no commercial record.
+  · Note: `manufacturer_meta.active=false` is NOT read by the storefront today, so it is not a gate.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
   storage with product-content `rehost` (same picture, gallery order and primary kept) — a third-party URL can
   vanish and break a dealer page.
