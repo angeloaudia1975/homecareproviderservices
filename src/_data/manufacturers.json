@@ -1315,8 +1315,8 @@
       },
       {
         "type": "table",
-        "title": "SPIRIT-3 technical at a glance.",
-        "intro": "From Yuwell's SPIRIT-3 brochure and FDA 510(k) summary K242736. Battery time and weight vary by conditions and version.",
+        "title": "SP-3 technical at a glance.",
+        "intro": "From Yuwell's SP-3 brochure and FDA 510(k) summary K242736. Battery time and weight vary by conditions and version.",
         "columns": [
           "Specification",
           "SPIRIT-3"
