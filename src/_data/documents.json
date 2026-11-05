@@ -710,27 +710,6 @@
       "sortPriority": 60
     },
     {
-      "id": "obusforme-catalog-ms84py7x",
-      "title": "Obusforme Catalog",
-      "type": "catalog",
-      "manufacturer": "complete-medical-supplies",
-      "format": "pdf",
-      "file": "/assets/docs/obusforme-catalog-ms84otms.pdf",
-      "url": "",
-      "description": "Obusforme product descriptions and specification Catalog from Complete Medical",
-      "access": "public",
-      "dealers": [],
-      "featured": false,
-      "category": "orthopedics",
-      "models": [
-        "ObusForme"
-      ],
-      "year": "",
-      "popular": false,
-      "keywords": "catalog complete medical / blue jay obusforme orthopedics",
-      "sortPriority": 50
-    },
-    {
       "id": "climbing-steps-new-dealer-application-ms84ywlx",
       "title": "Climbing Steps New Dealer Application",
       "type": "dealer-application",
