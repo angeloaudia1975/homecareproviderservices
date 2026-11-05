@@ -15,6 +15,7 @@ const LINE='ovation-medical';
 const TIERS=[{minQty:1,price:50},{minQty:3,price:40}];
 const FILE=()=>({[LINE]:[
   {manufacturer:LINE,code:'A1',name:'Standard item',group:'',base_price:50},
+  {manufacturer:LINE,code:'S3',name:'Special until midnight Central',group:'',base_price:100,tiers:[{min_qty:4,price:90,until:'2027-01-01T06:00:00Z'}]},
   {manufacturer:LINE,code:'B1',name:'Boot S',group:'Boot',base_price:50,tiers:TIERS},
   {manufacturer:LINE,code:'B2',name:'Boot M',group:'Boot',base_price:50,tiers:TIERS},
   {manufacturer:LINE,code:'C1',name:'Contract item',group:'',base_price:20},
@@ -74,6 +75,19 @@ await t('the line switch: a line whose manufacturer_meta says active=false is ne
   if(r.status===200 && it && it.available!==false && it.unit!=null) throw new Error('switched-off line priced: '+JSON.stringify(it));
   const on=await call(mod(world({tables:{manufacturer_meta:[{slug:LINE,active:true}]}})),{action:'price_check',orders:[order([{code:'A1',qty:2,unit:50}])]});
   eq(item(on,'A1').unit,50,'active=true prices as before');
+});
+await t('time-limited break: the server charges the special through 2026-12-31 Central and the regular price from midnight, Jan 1 2027',async()=>{
+  const realNow=Date.now; const at=iso=>{ Date.now=()=>Date.parse(iso); };
+  try{
+    const C=mod(world({}));
+    const q=async(qty,unit)=>item(await call(C,{action:'price_check',orders:[order([{code:'S3',qty,unit}])]}),'S3');
+    at('2026-12-31T23:59:59-06:00'); eq((await q(3,100)).unit,100,'3 units before'); eq((await q(4,90)).unit,90,'4 units before'); eq((await q(10,90)).unit,90,'10 units before');
+    at('2027-01-01T00:00:00-06:00'); const four=await q(4,90); eq(four.unit,100,'4 units at midnight'); eq(four.changed,true,'a cart saved at the special price is reported changed');
+    eq((await q(1,100)).unit,100,'1 unit after'); at('2027-06-01T12:00:00Z'); eq((await q(25,100)).unit,100,'25 units months later');
+    at('2027-01-01T00:00:00-06:00');
+    const cr=await call(C,{action:'create',orders:[order([{code:'S3',qty:4,unit:90}])]});
+    ok(cr.status===409 || (cr.body&&cr.body.status==='prices_changed'),'create at the old special price after midnight is refused: '+cr.status+' '+JSON.stringify(cr.body).slice(0,120));
+  } finally { Date.now=realNow; }
 });
 await t('quantity tier: breaks apply on the family quantity, exactly as the shop computes it',async()=>{
   const W=world({}); const C=mod(W);
