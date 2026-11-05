@@ -1893,9 +1893,8 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
       in it). Otherwise actual shipping. This is `qty_threshold` on SP-3, freeAtQty 1.
     - **Units:** no case quantities; each line is 1 unit (Each).
   · **Yuwell territory and sources (owner, 2026-11-04 21:10 CT).**
-    - **Territory:** all HCPS territories (southern IN, southwest OH, KY, TN, northern GA). Superseded
-      by C3-05 + review (2026-11-04): Yuwell is NOT a territory default (`_access` ALL_DEALERS unchanged); access
-      comes only from the audited grant `yuwell_activation.sql` (admin #83, not run).
+    - **Territory:** all HCPS territories (southern IN, southwest OH, KY, TN, northern GA). Restored
+      22:30 CT: ALL_DEALERS includes yuwell; grid dealers get the audited grant `yuwell_activation.sql` (admin #83).
     - **Content:** product content comes only from the owner-supplied Yuwell brochures and official product
       images.
     - The SPIRIT-3 brochure settles size and weight: 22×8×22 cm, 2.2–2.4 kg.
@@ -1904,7 +1903,13 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     - **No prices or shipping offers on the public website.**
     - **Registration:** the public file identity 6f20b076… is registered in `scripts/p0-lines.js` as a new line.
   · **C3-05 (owner, 2026-11-04 21:35 CT):**
-    - **Eligibility:** Yuwell goes to ALL authorized HCPS ordering dealers, in every territory, with no geographic
+    - **SUPERSEDED (owner, 2026-11-04 22:30 CT): Yuwell is a NEW manufacturer that EVERY dealer may review and shop,
+      no account needed** — like the other new lines: "Available to you — open a new account" until HCPS records the
+      dealer's Yuwell account number after their dealer application. Ohio Medical is a different line. Dealers with
+      no grid / Golden only see it via `_access` ALL_DEALERS; every active, non-TEST dealer (class blank/dealer) with
+      a grid gets a row from `yuwell_activation.sql` (former Ohio Medical-only dealers included). The narrower rule
+      below is history.
+    - **Eligibility (C3-05, superseded):** Yuwell goes to ALL authorized HCPS ordering dealers, in every territory, with no geographic
       or dealer restriction. "Authorized ordering dealer" means active, non-TEST, account class blank or dealer,
       status not prospect / closed / inactive / dormant, with at least one active ordering line that is not
       Golden, a retired line, the old `bongo` slug or Yuwell (slugs and status trimmed, any case). A branch is
@@ -1932,7 +1937,7 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
       - `manufacturer_meta.active=false` now unlists the line in the storefront, and the order server refuses it
         (#34 / #82). Every production record was active=true (public read, 2026-11-04).
     - **Registration SQL RUN by Angelo 2026-11-04 22:29 CT:** manufacturers 1 row, manufacturer_meta active=true,
-      0 entitlements.
+      0 entitlements. **TEST dealer grant RUN 22:30 CT:** only TEST — Golden Sandbox has Yuwell.
     - **Release order:** #82 → #34 → #84 + #35 + #83 (code) → SQL. #83 carries the server engine copy that
       matches #35, so ship them together.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
