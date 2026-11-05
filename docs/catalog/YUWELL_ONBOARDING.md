@@ -1,8 +1,26 @@
 # Yuwell onboarding (owner, 2026-11-04 — replaces Ohio Medical / GCE as the 12th manufacturing partner)
 
-Status: **structure prepared; no product data, prices, freight terms or images exist yet.** Yuwell stays
-unavailable to dealers until commercial data, testing and the owner's approval are complete. Nothing on this
-branch writes production data, and the SQL file here is a draft, not run.
+Status (updated 2026-11-04, C3-04):
+- **Received from the owner:**
+  - the Yuwell 2026 price list: a 1-page image PDF with 9 models, a "Yuwell U.S. Price" and stock status;
+    no MSRP, MAP, case pack, effective date or freight;
+  - the HCPS Dealer Product Guide 2026: 6 pages, HCPS-prepared;
+  - the Yuwell wordmark, the circle badge and the SPIRIT-3 hero artwork.
+- **Built (all drafts):**
+  - website page — admin #84;
+  - ordering catalog with **no prices** — ordering `c4/yuwell-catalog`.
+- **Still missing:**
+  - product photos;
+  - the meaning of the "U.S. Price" column (HCPS cost or dealer price?);
+  - MSRP / MAP;
+  - case packs;
+  - freight and ordering terms;
+  - Yuwell's US website / spec sheets;
+  - the original price-list spreadsheet with its email;
+  - territory.
+
+Yuwell stays unavailable to dealers until commercial data, testing and the owner's approval are complete.
+Nothing on this branch writes production data, and the SQL file here is a draft, not run.
 
 The website imagery, logos and marketing page are owned by a separate conversation and are not touched here
 (see "Website coordination").
@@ -87,9 +105,11 @@ There are no aliases, and Yuwell is never mapped onto the retired Ohio Medical i
 
 - `src/_data/manufacturers.json` (website) is **shared**. The Yuwell entry (id `yuwell`) and the Ohio Medical hide
   (`"hidden": true` on `ohio-medical`) should land in **one** coordinated change, made by whoever owns that file.
-- Logos are deployed at `src/assets/logos/yuwell.jpg` and `yuwell-badge.jpg`, following the existing
-  naming. The ordering site needs its own `public/assets/logos/yuwell.jpg` (the storefront loads logos from its own
-  origin) — copied, not hot-linked.
-- `redirects.json`: `/manufacturers/ohio-medical/*` → `/manufacturers/` (301) when Ohio Medical is hidden.
+- Logos: `src/assets/logos/yuwell.jpg` and `yuwell-badge.jpg` are added in admin #84, not yet deployed (an earlier
+  version of this note wrongly said they were). The ordering site gets its own copy, `public/assets/logos/yuwell.jpg`,
+  on `c4/yuwell-catalog`.
+- **Ownership (owner, 2026-11-04 C3-04):** this workstream owns the website integration. The marketing conversation
+  supplies assets only.
+- `redirects.json`: `/manufacturers/ohio-medical/*` → `/manufacturers/yuwell/` (301), in admin #84.
 - The Resource Library's Ohio Medical documents are retired through the admin Resource tool
   (`documents.json` is admin-managed).
