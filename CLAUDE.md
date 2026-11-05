@@ -4333,8 +4333,12 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
   Golden's new totals and re-verifies with a new key, so placing needs a fresh click. Fields stay editable while Golden
   answers (an answer for changed details is dropped; focus and caret kept). Test-fixture lesson: a fake terms row must
   carry every column Golden's `loadTerms` selects (`waive_liftgate`, `free_freight_unit_min`) or the mock rejects the read.
-  **P1662** (Cloud Classic PR510-SME, $1,157.79, placed 2026-11-05 through preview #37) is the first real B6 order — a TEST
-  order to be cancelled in place (status + note, never deleted); P1661 is a separate portal order, untouched.
+  **P1662** (Cloud Classic PR510-SME, $1,157.79, placed 2026-11-05 through preview #37) is the first real B6 order — TEST
+  mode, order email to the test mailbox only, no dealer confirmation; CANCELLED in place by Angelo 2026-11-05 11:31 CT (status
+  `cancelled` + dated note, nothing deleted). Golden admin has no Cancel control (only Delete, which erases history — never
+  used for this). P1661 (Nov 3, Golden portal checkout) is untouched, still pending. **PR #38 MERGED** (499dc2d, two independent
+  reviews — first NO-GO on a price-change re-check loop, fixed; re-review GO), Published; production Golden ordering still OFF.
+  Angelo's Partner 360 login restored to HomeCare Provider Services (798c6389…) 2026-11-05 11:49 CT.
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
