@@ -1892,8 +1892,9 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
       in it). Otherwise actual shipping. This is `qty_threshold` on SP-3, freeAtQty 1.
     - **Units:** no case quantities; each line is 1 unit (Each).
   · **Yuwell territory and sources (owner, 2026-11-04 21:10 CT).**
-    - **Territory:** all HCPS territories (southern IN, southwest OH, KY, TN, northern GA). `_access`
-      ALL_DEALERS gains yuwell, and the grant SQL is in admin #83, not run.
+    - **Territory:** all HCPS territories (southern IN, southwest OH, KY, TN, northern GA). Superseded
+      by C3-05 + review (2026-11-04): Yuwell is NOT a territory default (`_access` ALL_DEALERS unchanged); access
+      comes only from the audited grant `yuwell_activation.sql` (admin #83, not run).
     - **Content:** product content comes only from the owner-supplied Yuwell brochures and official product
       images.
     - The SPIRIT-3 brochure settles size and weight: 22×8×22 cm, 2.2–2.4 kg.
@@ -1917,6 +1918,10 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
       break. **Every tier writer keeps `until`** (catalog-feed + `_pricing.feedRows`, catalog-api cleanTiers /
       keepPools, Product Catalog price edits and price-list imports merge with the current ladder; an unreadable
       ladder is 503) — a save must never silently turn a time-limited break into a permanent one.
+      To REMOVE an end, send the break with `until: "none"` (every writer hands the RAW ladder to keepPools and the
+      record). A real calendar instant only — no Feb 30 / 24:00 (V8 rolls them forward, Safari refuses). Staging,
+      mc_verify, parity and the import review all compare the end. Pooled breaks with an end are unsupported until
+      the storefront's poolQty filters expired breaks.
       - SP-3: `until` = 2027-01-01T06:00:00Z (midnight Central).
       - The end-of-special SQL is a backup only, never run automatically.
       - A scheduled task on 2027-01-01 08:00 CT reminds Angelo; it changes nothing.
