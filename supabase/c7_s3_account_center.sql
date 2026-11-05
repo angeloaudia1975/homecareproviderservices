@@ -17,7 +17,7 @@
 -- Rollback: drop table if exists public.dealer_account_claims, public.dealer_user_scope;
 --   alter table public.dealer_manufacturers drop column if exists verified_at, drop column if exists verified_by,
 --     drop column if exists verify_note, drop column if exists verified_ref;
---   alter table public.dealers drop column if exists default_ship_key;
+--   alter table public.dealers drop column if exists default_ship_key;   (logo_url / website: keep — other code reads them)
 --   (bucket: empty it in the Storage screen, then delete it there)
 -- ============================================================================
 alter table public.dealer_manufacturers add column if not exists verified_at timestamptz;
@@ -59,6 +59,9 @@ revoke all on public.dealer_user_scope from public, anon, authenticated;
 grant select, insert, update, delete on public.dealer_user_scope to service_role;
 
 alter table public.dealers add column if not exists default_ship_key text check (default_ship_key is null or char_length(default_ship_key) <= 40);
+-- the dealer's logo and website (the Account Center and quotes read them; production had neither column — live check 2026-11-05)
+alter table public.dealers add column if not exists logo_url text;
+alter table public.dealers add column if not exists website text;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('dealer-logos', 'dealer-logos', true, 1048576, array['image/jpeg','image/png'])
@@ -69,7 +72,7 @@ select
   (select count(*) from information_schema.columns where table_schema='public' and table_name='dealer_manufacturers'
      and column_name in ('verified_at','verified_by','verify_note','verified_ref'))                                 as dm_columns_4,
   (select count(*) from information_schema.columns where table_schema='public' and table_name='dealers'
-     and column_name='default_ship_key')                                                                            as dealers_column_1,
+     and column_name in ('default_ship_key','logo_url','website'))                                                 as dealers_columns_3,
   (select relrowsecurity from pg_class where oid='public.dealer_account_claims'::regclass)
     and (select relrowsecurity from pg_class where oid='public.dealer_user_scope'::regclass)                       as rls_on_both,
   (select count(*) from pg_policies where schemaname='public' and tablename in ('dealer_account_claims','dealer_user_scope')) as policies_0,
