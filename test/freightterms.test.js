@@ -111,7 +111,10 @@ await t('special cases, exactly: Climbing Steps free on every order; Strongback 
 /* The storefront's loading step, verbatim: what the cart actually reads. */
 async function loaded(metaRows, metaFails){
   const a=html.indexOf('\nasync function loadManufacturers(){'); ok(a>=0,'loadManufacturers not found');
-  const code=html.slice(a+1, html.indexOf('\n}\n',a)+3)+'\n'+EX.grabDecl(html,'function validFreightTerms')+'\n'+EX.grabDecl(html,'function freightTermsFor');
+  /* the retired-line list loadManufacturers filters with (ordering site, 2026-11-04), when the storefront has it */
+  const retired=(html.match(/const RETIRED_LINE_SLUGS=\[[^\]]*\];/)||[''])[0];
+  const isRet=(html.match(/function isRetiredSlug\(slug\)\{[^\n]*\}/)||[''])[0];
+  const code=retired+'\n'+isRet+'\n'+html.slice(a+1, html.indexOf('\n}\n',a)+3)+'\n'+EX.grabDecl(html,'function validFreightTerms')+'\n'+EX.grabDecl(html,'function freightTermsFor');
   const warns=[];
   const ctx={ state:{}, CONFIG:{SUPABASE_URL:'https://sb.test',SUPABASE_ANON:'anon'}, console:{warn:m=>warns.push(m),log(){},error(){}}, JSON, Object, Array,
     fetch:async u=>{ u=String(u); if(u==='./data/manufacturers.json') return {ok:true,json:async()=>clone(mfrs)};
@@ -130,6 +133,14 @@ await t('storefront load: valid record → record rule; missing/invalid record o
   eq(L.by('ovation-medical').freight,fileOf('ovation-medical'),'no meta row → file');
   L=await loaded(null,true);
   for(const s of FROZEN) eq(L.by(s).freight,fileOf(s),s+': unreadable table must leave the file rule');
+});
+await t('storefront load: the line switch — active=false unlists that line only; true / missing / unreadable change nothing',async()=>{
+  const sw=/freight_terms,active`/.test(html);
+  if(!sw){ console.log('     (storefront without the line switch — skipped)'); return; }
+  let L=await loaded([{slug:'bemis',active:false},{slug:'climbing-steps',active:true},{slug:'strongback-mobility'}]);
+  eq(L.by('bemis'),undefined,'switched-off line is not listed');
+  ok(L.by('climbing-steps')&&L.by('strongback-mobility')&&L.by('ovation-medical'),'other lines stay listed');
+  L=await loaded(null,true); for(const s of FROZEN) ok(L.by(s),s+' stays listed when the table cannot be read');
 });
 
 /* The server: orders-api prices with _pricing.lineProducts → the storefront's freightTermsFor + computeFreight. */
