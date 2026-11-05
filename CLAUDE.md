@@ -4517,6 +4517,25 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
   · Process: draft PRs, independent review, automated tests; no artificial production orders, no unnecessary order emails,
     no historical order changes, no unsupported product families activated. After this: plan scooters / power chairs / beds
     without touching live lift-chair ordering.
+  · **B7 BUILT (2026-11-05, drafts; nothing merged, no SQL run, every switch OFF):** Golden #288 (contract 1.8.0:
+    delegation claim `acct` → link resolved by Golden customer_no behind `P360_ACCOUNT_LINKS`; `ship_to:{hcps:{...}}` behind
+    `P360_HCPS_SHIPTO`, id = digest of every field, in quote_hash; + optional `config/p360-link-230482-mobility-works.sql`),
+    HCPS #95 (`golden_p360_account_gate`, `golden_p360_hcps_shipto`; `_golden_addresses.js`, `golden-addresses-api.js`;
+    SQL `supabase/golden_b7_shipto.sql` = `golden_ship_addresses` per Golden ACCOUNT NUMBER + `golden_ship_defaults` per
+    user, RULE 19), ordering #50 (checkout address book). Saved Golden ship-to addresses live in their OWN table, not
+    dealer_addresses (keeps patient / drop-ship addresses out of the CRM map and analytics). A place whose address changed
+    since validation answers "unconfirmed — check My Orders", never "not placed". Release: Golden → HCPS → ordering → Angelo
+    runs the SQL → Golden env switches + redeploy → HCPS switches. Exceptions: 43 HCPS Golden numbers have no Golden
+    account record (fail closed, need Golden-side setup); 6 Golden accounts with no HCPS match; Wyatt's 360330 hold.
+  · **Found 2026-11-05: the live storefront still had `GOLDEN_ENABLED`, `GOLDEN_CHECKOUT_ENABLED` and
+    `GOLDEN_ORDERING_ENABLED` false**, so dealers saw no Golden line at all despite the server go-live. Turn-on = ordering
+    #48 (draft), merged only on Angelo's go-ahead. Lesson: a go-live check must open the real dealer page (cart + checkout),
+    not only eligibility / prices through staff view-as.
+- **No real account numbers or dealer identities in public test data (RULE, 2026-11-05).** Golden `customer_no` doubles as
+  the dealer's Golden portal login, and both HCPS repos are public: tests, fixtures, PR text and commits use made-up names
+  and clearly fake numbers (e.g. `T90100`), never a real dealer's name, account number or one copied from a working file.
+  Learned when B7 tests briefly paired a real dealer name with its real Golden number (branches replaced, PRs #94/#49
+  closed; old branches + PR refs need Angelo / GitHub Support to purge).
 
 ## Per-page checklist (run before calling a page done)
 - [ ] Depth-hero present; tilt works; **no `data-reveal` on the tilt image**.
