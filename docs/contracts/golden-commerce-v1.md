@@ -1,6 +1,6 @@
 # Golden Commerce API — contract v1 (golden-commerce-v1)
 
-**Contract version:** 1.6.1 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3; 1.4.0 the Stage 4a read-only quote, batch B4, and 4b ship-to + validate-only orders; 1.5.0 the Stage 5 order history, batch B5; 1.6.0 the Stage 4c order placement, batch B6; 1.6.1 adds retail upgrade prices to the configurator, batch B6.1) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
+**Contract version:** 1.7.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3; 1.4.0 the Stage 4a read-only quote, batch B4, and 4b ship-to + validate-only orders; 1.5.0 the Stage 5 order history, batch B5; 1.6.0 the Stage 4c order placement, batch B6; 1.6.1 adds retail upgrade prices to the configurator, batch B6.1; 1.7.0 adds Golden's freight to quotes, validations and placements, batch B6.2) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
 **Committed byte-identical in:** `golden-dealer-portal/docs/contracts/` and `homecareproviderservices/docs/contracts/`.
 `golden-commerce-v1.lock.json` pins the SHA-256 of this file, the schema, the signing vectors and the shared
 signing module. Each repo's tests fail on drift. Change all copies together and bump the lock.
@@ -186,10 +186,17 @@ Query: `sku` (a configurable lift-chair size, `PR\d{3}-[A-Z]{3}`), optional `fab
   special terms can only waive S&H for an address Golden holds for that dealer / branch. No ship-to = standard S&H.
 - Only a verified link whose Golden prices are visible may quote: otherwise 403 `prices_not_visible` (or the §4a link codes).
 - `quote_hash` (sha256 of engine + priced lines + totals + ship-to id) lets Stage 4b's order route refuse an order whose prices changed
-  since the dealer reviewed them. Freight and delivery add-ons are not in 4a (`freight.included:false`).
+  since the dealer reviewed them; it covers the freight as well (1.7.0).
+- **Freight (1.7.0) — Golden's own rule, `golden-freight.computeFreight`, the function `save-order` verifies and stores
+  orders with.** Per shipment (the same in-stock / build groups as S&H): Golden units summed over the shipment —
+  1 → $135, 2 → $70, 3 → $75, the free-freight threshold (4, or the account's own lower `free_freight_unit_min` when its
+  special terms apply to that ship-to) or more → $0. `totals.freight_total` is its own amount, `shipments[].freight` its
+  split, `totals.free_freight_units` the threshold applied, `grand_total = subtotal + freight_total + sh_total`, and
+  `freight:{ included:true, note }` names the rule in words. S&H stays a separate amount. A shipment Golden must quote by
+  hand (an oversized unit) is never priced: 409 `freight_quote_required`. Delivery add-ons are not offered through v1.
 - `sh_terms_checked:false` = the special-terms read failed and standard S&H was applied (as `save-order` does).
 - Errors: 400 `bad_request` (`message` names the field and line, e.g. `color@1`), 404 `not_found` (not a configurable
-  size), 503 `pricing_unavailable` (no dealer cost on a line — not retryable; or the pricing read failed — retryable),
+  size), 409 `freight_quote_required` (1.7.0), 503 `pricing_unavailable` (no dealer cost on a line — not retryable; or the pricing read failed — retryable),
   503 `inventory_unavailable` · `config_unavailable`.
 - **Read-only.** No order, reservation, email or stock change. Ordering is Stage 4b (`POST /v1/orders`, `Idempotency-Key`).
 
@@ -248,8 +255,8 @@ below); `test_mode:true` (and `recipient:"test_recipient"`) when placement would
   dealer and branch, at most 2 hours old — else 409 `not_validated` / `validation_expired` (start a new attempt: new key).
   A validation answer and a placement answer are separate records of the attempt and are never confused: a validate
   replay of the key is always the validation.
-- Golden **re-prices now** exactly as the validation did (dealer pricing, stock, S&H, the special-terms waiver of the
-  authorized ship-to). A change → 409 `prices_changed` with the new `quote`, nothing placed, and that answer is the key's
+- Golden **re-prices now** exactly as the validation did (dealer pricing, stock, S&H, freight (1.7.0), the special terms
+  of the authorized ship-to). The order row stores Golden's `freight_total`, `sh_total` and `grand_total` from that quote. A change → 409 `prices_changed` with the new `quote`, nothing placed, and that answer is the key's
   for good. A temporary failure (503) stores nothing — the same attempt may retry.
 - **Atomic:** the Golden `orders` row (status `pending`, the linked Golden dealer, Golden's prices) and the key's
   permanent answer are written in ONE database transaction. A retry, a lost response or a concurrent duplicate gets the

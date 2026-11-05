@@ -165,10 +165,14 @@ function cleanQuote(g){
     in_stock: l.in_stock === true, custom: l.custom === true, item_no: /^[A-Z0-9-]{3,40}$/.test(String(l.item_no)) ? l.item_no : l.sku, item_no_resolved: l.item_no_resolved === true }));
   if(lines.length !== q.lines.length) return null;   // a line we cannot show faithfully = no quote, never a partial one
   const t = q.totals;
-  for(const k of ["subtotal","sh_total","grand_total","sh_rate"]) if(num(t[k]) == null) return null;
-  const totals = { subtotal: t.subtotal, sh_total: t.sh_total, grand_total: t.grand_total, sh_rate: t.sh_rate, sh_waived: t.sh_waived === true, split: t.split === true,
-    shipments: (Array.isArray(t.shipments) ? t.shipments : []).filter(s => s && GROUPS.includes(s.group) && num(s.subtotal) != null && num(s.sh) != null).slice(0, 3).map(s => ({ group: s.group, subtotal: s.subtotal, sh: s.sh })) };
-  return { lines, totals, freight: { included: false, note: str(q.freight && q.freight.note, 300) }, quote_hash: q.quote_hash };
+  // Golden's freight (contract 1.7.0) is its own amount: a quote without it is never shown — a total the dealer could not
+  // break down, or one that silently left freight out, is no quote at all.
+  for(const k of ["subtotal","freight_total","sh_total","grand_total","sh_rate"]) if(num(t[k]) == null) return null;
+  if(!(t.freight_total >= 0) || !q.freight || q.freight.included !== true) return null;
+  const totals = { subtotal: t.subtotal, freight_total: t.freight_total, sh_total: t.sh_total, grand_total: t.grand_total, sh_rate: t.sh_rate, sh_waived: t.sh_waived === true, split: t.split === true,
+    free_freight_units: Number.isInteger(t.free_freight_units) && t.free_freight_units >= 1 ? t.free_freight_units : null,
+    shipments: (Array.isArray(t.shipments) ? t.shipments : []).filter(s => s && GROUPS.includes(s.group) && num(s.subtotal) != null && num(s.sh) != null && num(s.freight) != null).slice(0, 3).map(s => ({ group: s.group, subtotal: s.subtotal, sh: s.sh, freight: s.freight })) };
+  return { lines, totals, freight: { included: true, note: str(q.freight.note, 300) }, quote_hash: q.quote_hash };
 }
 function readQuoteBody(b){
   const ls = Array.isArray(b.lines) ? b.lines : null;
@@ -428,7 +432,7 @@ exports.handler = async (event) => {
         const q = cleanQuote(g0);
         return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"prices_changed", idempotent_replay: g0.idempotent_replay === true, quote: q, request_id: reqId(g0.request_id) }, extra));
       }
-      const map = { internal:"temporarily_unavailable", prices_not_visible:"prices_not_visible", idempotency_conflict:"idempotency_conflict", idempotency_in_progress:"idempotency_in_progress", pricing_unavailable:"pricing_unavailable", ordering_disabled:"ordering_disabled" };
+      const map = { freight_quote_required:"freight_quote_required", internal:"temporarily_unavailable", prices_not_visible:"prices_not_visible", idempotency_conflict:"idempotency_conflict", idempotency_in_progress:"idempotency_in_progress", pricing_unavailable:"pricing_unavailable", ordering_disabled:"ordering_disabled" };
       const msg = g0.error && typeof g0.error.message === "string" ? g0.error.message : "";
       if(r.status === 400 && code === "bad_request"){
         const field = /^(ship_to|po_required|po_number|attention|notes|contact\.(name|phone|email)|(reference_names|color|qty|sku|fabric|tier|footrest)@\d{1,2})$/.test(msg) ? msg : "order";
@@ -456,6 +460,7 @@ exports.handler = async (event) => {
       if(r.status >= 400 && r.status < 500 && definite[code]) return json(200, Object.assign(base, { reason: definite[code], new_attempt: definite[code] !== "ordering_unavailable" }, extra));
       if(r.status === 404 && code === "not_found") return json(200, Object.assign(base, { reason:"not_found", new_attempt:true }, extra));
       if(r.status === 409 && code === "pricing_unavailable") return json(200, Object.assign(base, { reason:"pricing_unavailable", new_attempt:true }, extra));
+      if(r.status === 409 && code === "freight_quote_required") return json(200, Object.assign(base, { reason:"freight_quote_required", new_attempt:false }, extra));
       // The key is held by another request content or another dealer: Golden refused to replay it here, but an order may
       // exist under it — never "not placed"; the dealer checks My Orders / HCPS.
       if(code === "idempotency_conflict" || code === "attempt_other_dealer") return json(200, Object.assign({ ok:true, enabled:true, available:true, placed:null, reason:"unconfirmed", retry:false }, extra));
@@ -479,7 +484,7 @@ exports.handler = async (event) => {
       // Golden decides: a dealer without visible Golden prices, a line Golden won't build, or no price → no quote.
       const msg0 = r.json && r.json.error && typeof r.json.error.message === "string" ? r.json.error.message : "";
       const reason = r.status === 403 && r.error === "prices_not_visible" ? "prices_not_visible" : r.status === 404 ? "not_found" : (r.status === 400 && msg0 === "ship_to") ? "ship_to_invalid" : r.status === 400 ? "not_offered"
-        : (r.status === 503 && r.error === "pricing_unavailable") ? "pricing_unavailable" : null;
+        : (r.status === 503 && r.error === "pricing_unavailable") ? "pricing_unavailable" : (r.status === 409 && r.error === "freight_quote_required") ? "freight_quote_required" : null;
       const msg = r.json && r.json.error && typeof r.json.error.message === "string" ? r.json.error.message : "";
       const line = /@(\d{1,2})$/.test(msg) ? Number(msg.match(/@(\d{1,2})$/)[1]) : null;
       if(reason) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason, line }, extra));

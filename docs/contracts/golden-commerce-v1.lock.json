@@ -1,11 +1,11 @@
 {
   "contract": "golden-commerce-v1",
-  "contract_version": "1.6.1",
+  "contract_version": "1.7.0",
   "blueprint_version": "1.3.0",
   "note": "SHA-256 of each shared file. hcps-s2s.js = Golden repo/functions/lib/hcps-s2s.js = HCPS netlify/functions/_golden_s2s.js.",
   "files": {
-    "golden-commerce-v1.md": "cf75a2b75a246788593a37c6e04612f7f6aa3ff0fa2fbb558d9e36530f174dbc",
-    "golden-commerce-v1.schema.json": "15f7d9266629794e3d53f8e27f815cc03417ac44fd8e290adb3106ab480ab71b",
+    "golden-commerce-v1.md": "78d2831acacb012677f7b964373df469531e635ffc7166f9097eb5007ddeb821",
+    "golden-commerce-v1.schema.json": "0b4c5a66b254a33158dcdc75c87063f49f8ecf3a73ef2897249577031df1fe2b",
     "golden-commerce-v1.signing-vectors.json": "667890ec60957203e432c1211b6aeb884bbfe8248a544bfd021fd57f657979e7",
     "hcps-s2s.js": "4452fc4b175531b4ba552bcca14fc8f5a0c55c0efaa960f7e0d5ee2bb3f6d418",
     "FEDERATED_ARCHITECTURE.md": "e5e81259d5815bcdfa0dec33e6edcaf1039ac24ecde41714846d213229760b97"

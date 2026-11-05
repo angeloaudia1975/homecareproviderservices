@@ -5,6 +5,7 @@ const fs=require('fs'), path=require('path'), {spawnSync}=require('child_process
 const FN=path.join(__dirname,'..','netlify','functions');
 const M=[
   [null,'control (no change)',null,null],
+  ['golden-proxy.js','Call for Quote placement refusal treated as unknown','      if(r.status === 409 && code === "freight_quote_required") return json(200, Object.assign(base, { reason:"freight_quote_required", new_attempt:false }, extra));\n',''],
   ['golden-proxy.js','staff view-as token may place','    if(ordering && who.preview) return json(403, { ok:false, error:"preview_not_allowed" });\n',''],
   ['golden-proxy.js','ordering switch ignored','if(ordering && f.golden_p360_ordering !== true) return','if(false) return'],
   ['golden-proxy.js','checkout switch not required to place','if((action === "validate_order" || ordering) && f.golden_p360_checkout !== true)','if(action === "validate_order" && f.golden_p360_checkout !== true)'],

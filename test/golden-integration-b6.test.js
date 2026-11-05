@@ -29,8 +29,8 @@ function env(extra) {
 const HASH = "a".repeat(64);
 const QUOTE = { lines: [{ line: 0, sku: "PR511-LAR", qty: 2, fabric: "std", color: "SUM", color_name: "Summit", tier: "nirvana", footrest: false, unit_price: 1300, line_total: 2600,
   details: "Std", upgrades: [], breakdown: "b", lead_note: null, in_stock: true, custom: false, item_no: "PR511-LAR-SKN-SUM", item_no_resolved: true }],
-  totals: { subtotal: 2600, sh_total: 78, grand_total: 2678, sh_rate: 0.03, sh_waived: false, split: false, shipments: [{ group: "all", subtotal: 2600, sh: 78 }] },
-  freight: { included: false, note: "n" }, quote_hash: HASH };
+  totals: { subtotal: 2600, freight_total: 70, sh_total: 78, grand_total: 2748, sh_rate: 0.03, sh_waived: false, split: false, free_freight_units: 4, shipments: [{ group: "all", subtotal: 2600, sh: 78, freight: 70 }] },
+  freight: { included: true, note: "n" }, quote_hash: HASH };
 const ORDERV = () => ({ internal_note: "LEAK", po_number: "PO-1", po_auto: false, ship_to: { id: LOC, kind: "ship_location", label: "Store", address: "1 Main St", city: "Cincinnati", state: "OH", zip: "45202", secret: "LEAK" },
   contact: { name: "Pat", phone: "937-555-0100", email: "pat@d.example" }, attention: "", notes: "", delivery_type: "business", split_order: false, lines: [{ sku: "PR511-LAR", reference_names: ["Mrs. Smith"], cost: "LEAK" }] });
 const PLACED = () => ({ contract_version: "1.6.0", request_id: "req_p", mode: "submit", placed: true, ordering_enabled: true, idempotent_replay: false, engine: "0123456789abcdef",
@@ -87,7 +87,7 @@ const PREVIEW_H = { "x-hcps-golden-env": "preview", origin: PREVIEW_ORIGIN };
     env(); world(PROD_ON);
     const r = J(await load("golden-proxy.js").handler(post(ORDER())));
     eq([r.order_ref, r.placed_at, r.test_mode, r.quote.totals.grand_total, r.order.ship_to.address, r.notifications, r.idempotent_replay],
-      ["P1661", "2026-11-04T16:00:00.000Z", true, 2678, "1 Main St", { order_desk: "sent", dealer_confirmation: "sent" }, false]);
+      ["P1661", "2026-11-04T16:00:00.000Z", true, 2748, "1 Main St", { order_desk: "sent", dealer_confirmation: "sent" }, false]);
     ok(!/LEAK|order_id/.test(JSON.stringify(r)), "nothing outside the contract crosses");
   });
 
@@ -167,6 +167,7 @@ const PREVIEW_H = { "x-hcps-golden-env": "preview", origin: PREVIEW_ORIGIN };
       [403, { error: { code: "scope" } }, { placed: null, reason: "outcome_unknown", retry: true }],
       [401, { error: { code: "bad_signature" } }, { placed: null, reason: "outcome_unknown", retry: true }],
       [409, { error: { code: "duplicate_po" } }, { placed: false, reason: "duplicate_po", new_attempt: true }],
+      [409, { error: { code: "freight_quote_required" } }, { placed: false, definite: true, reason: "freight_quote_required", new_attempt: false }],
       [403, { error: { code: "ordering_not_enabled" } }, { placed: false, definite: true, reason: "ordering_unavailable", new_attempt: false }],
       [403, { error: { code: "ordering_disabled" } }, { placed: false, definite: true, reason: "ordering_unavailable", new_attempt: false }],
       [403, { error: { code: "ordering_not_permitted" } }, { placed: false, reason: "ordering_unavailable", new_attempt: false }],
