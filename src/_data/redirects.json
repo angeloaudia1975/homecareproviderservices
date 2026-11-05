@@ -1,4 +1,6 @@
 [
   { "from": "/dealer-support/*", "to": "/dealer-hub/", "status": 301 },
-  { "from": "/dealer-support/",  "to": "/dealer-hub/", "status": 301 }
+  { "from": "/dealer-support/",  "to": "/dealer-hub/", "status": 301 },
+  { "from": "/manufacturers/ohio-medical/*", "to": "/manufacturers/yuwell/", "status": 301 },
+  { "from": "/manufacturers/ohio-medical/",  "to": "/manufacturers/yuwell/", "status": 301 }
 ]

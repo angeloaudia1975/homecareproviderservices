@@ -41,6 +41,7 @@ const PAGES = [
   ['home',              '/'],
   ['manufacturers',     '/manufacturers/'],
   ['manufacturer',      '/manufacturers/golden-technologies/'],
+  ['manufacturer-yuwell', '/manufacturers/yuwell/'],
   ['dealer-hub',        '/dealer-hub/'],
   ['dealer-services',   '/dealer-services/'],
   ['resources',         '/resources/'],

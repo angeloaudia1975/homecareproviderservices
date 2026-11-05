@@ -2,6 +2,11 @@
         {% if manu.id == "golden-technologies" %}
         <a class="btn primary" href="mailto:{{ site.contact.email }}?subject={{ manu.name | urlencode }}%20Dealer%20Pricing%20Request">Request Dealer Pricing</a>
         {% if manu.ordering_url %}<a class="btn outline on-light" href="{{ manu.ordering_url }}" target="_blank" rel="noopener">Place Dealer Order</a>{% endif %}
+        {% elif not manu.ordering_url %}
+        {# A line HCPS represents but dealers cannot order online yet (e.g. a new partner before launch):
+           never point the visitor at the ordering portal — one inquiry CTA instead. #}
+        <a class="btn primary" href="/contact/?reason=pricing&manufacturer={{ manu.id }}">Ask HCPS About {{ manu.name }}</a>
+        <a class="btn outline on-light" href="mailto:{{ site.contact.email }}?subject={{ manu.name | urlencode }}%20Dealer%20Pricing%20Request">Request Dealer Pricing</a>
         {% else %}
         <a class="btn primary" href="{{ site.links.online_ordering }}" target="_blank" rel="noopener">&#128722; Online Ordering Portal</a>
         <a class="btn outline on-light" href="mailto:{{ site.contact.email }}?subject={{ manu.name | urlencode }}%20Dealer%20Pricing%20Request">Request Dealer Pricing</a>

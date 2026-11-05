@@ -169,7 +169,7 @@ const ORDERING_URL=DealerHandout.ORDERING_URL;
 const HANDOUT_UPDATES=DealerHandout.UPDATES.slice();
 // Live handout config (loaded from app_settings; President can edit without a code push).
 let HANDOUT={ordering_url:ORDERING_URL, updates:HANDOUT_UPDATES.slice()};
-const MFRNAMES={access4u:"Access4U","airavant-bongorx":"AIRAVANT / BongoRx",corsicana:"Corsicana Healthcare","climbing-steps":"Climbing Steps",bemis:"BEMIS Assurance",pedifix:"PediFix",gce:"Ohio Medical / GCE","strongback-mobility":"Strongback Mobility","ovation-medical":"Ovation Medical"};
+const MFRNAMES={access4u:"Access4U","airavant-bongorx":"AIRAVANT / BongoRx",corsicana:"Corsicana Healthcare","climbing-steps":"Climbing Steps",bemis:"BEMIS Assurance",pedifix:"PediFix",gce:"Ohio Medical / GCE",yuwell:"Yuwell","strongback-mobility":"Strongback Mobility","ovation-medical":"Ovation Medical"};
 const mfrLabelSlug=s=>MFRNAMES[s]||String(s||"").split("-").map(w=>w?w[0].toUpperCase()+w.slice(1):w).join(" ");
 function isDue(p){ if(!p||!p.last_visit) return true; return (Date.now()-new Date(p.last_visit).getTime())>90*864e5; }
 async function markVisited(id,i){
