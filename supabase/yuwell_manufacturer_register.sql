@@ -31,7 +31,7 @@ insert into manufacturer_meta (slug, active, enriched_only, record_authoritative
 values ('yuwell', true, false, false)
 on conflict (slug) do nothing;
 
--- ---- Verify: one manufacturers row, one manufacturer_meta row (active false), zero entitlements ----
+-- ---- Verify: one manufacturers row, one manufacturer_meta row (active true), zero entitlements ----
 select
   (select count(*) from manufacturers      where slug = 'yuwell')                       as manufacturers_rows,
   (select active from manufacturer_meta     where slug = 'yuwell')                       as meta_active_should_be_true,
