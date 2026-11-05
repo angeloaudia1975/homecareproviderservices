@@ -1952,6 +1952,33 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   is in git and Eleventy never deletes old output, so a stale page file survives the build and Netlify serves it
   instead of applying a (non-forced) redirect — /manufacturers/ohio-medical/ kept showing the old page until
   `_site/manufacturers/ohio-medical/index.html` was removed (128c1ac).
+- **C3-07 — Dealer Experience, Account Management, Reporting & Growth Platform (owner directive 2026-11-05 13:39 CT;
+  ONE consolidated project, staged; plan + audit first).** Five adjustments: (1) Shop opens a manufacturer landing page
+  (12 partners, full website marketing images, 2 per row desktop, synced to the website roster, Golden only per its real
+  flags) + universal quick search (2–3 chars, all eligible lines, names/categories/descriptions/manufacturer/SKU/synonyms,
+  prices only where entitled); (2) Dealer Account Management Center (company, contacts, business/billing/ship-to
+  addresses, default ship-to, logo upload JPEG/PNG + URL) + "Your Manufacturer Accounts" (green verified / amber
+  pending / red none — VERIFIED by HCPS staff only, separate from ordering permission) + Digital Account Setup Center on
+  the manufacturer's ORIGINAL application (prefill, resale certs, questions, trade references, save/resume, review,
+  validated e-signature with audit trail, routed securely to the HCPS President who alone submits to the manufacturer;
+  never auto-sent; sensitive credit data never in ordinary email or logs; Golden = external Nuvo link + "I completed it");
+  (3) company/branch reports (corporate users see their locations, branch users only theirs; Unassigned, never guessed),
+  products by category, deterministic recommendations with reasons from aggregated network stats (never another dealer's
+  history or prices), dealer retail prices (company default + location overrides, bulk/CSV, history; never touching
+  wholesale/MAP/tiers/freight), potential retail value & gross margin (never called realized revenue), professional
+  dealer-branded reports (estimated vs verified kept apart); (4) brochures/quotes: MSRP / saved retail / one-time price
+  (a document price changes only that document; separate "Save as My Retail Price"), dealer footer branding, Add to Quote
+  preserving exact SKU/options, quote = summary page + product detail sections, print/PDF/authorized email with abuse and
+  price-disclosure protection, never dealer cost on customer documents; (5) My Dealer Storefront: public dealer-branded
+  catalog (select manufacturers/categories/products, exclude, preview, publish/unpublish), MSRP or saved retail subject to
+  MAP/public-display rules, NO cart/checkout (Call Dealer / Request Information), inquiries stored securely and routed to
+  the dealer, privacy-conscious demand tracking; expansion: HCPS demand analytics (views ≠ sales; no purchase ≠ no stock),
+  Dealer 360 / Command Center insights (low noise), social media asset generator (manual download only, never
+  auto-post). Rules: staged reviewed PRs, independent review per stage; preserve ordering/configurators/carts/PO/history,
+  frozen lines, Yuwell promo + freight, Ohio Medical retired, Golden workstream untouched; RLS + dealer isolation; test
+  desktop/tablet/mobile and REAL interactions; no real orders, real credit applications, live test emails or social posts
+  without transaction-specific authorization; minimize CI / Netlify builds / AI cost; surface business-rule, vendor
+  (e-signature), sensitive-data and activation decisions instead of assuming.
 - **C3-06 — first real dealer order + post-launch ordering rules (owner, 2026-11-05).**
   · **First real dealer order (milestone; replaces the PediFix pilot order, which is CANCELLED):** Plaza Drug, London KY,
     Ovation Medical, PO 3991, submitted 2026-11-04 16:45 UTC, 21 lines / 46 units, server-priced and recorded with its
