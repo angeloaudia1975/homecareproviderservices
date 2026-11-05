@@ -15,7 +15,7 @@ const slice=(a,b)=>{ const i=html.indexOf(a), j=html.indexOf(b,i); if(i<0||j<0) 
 const lineOf=a=>{ const i=html.indexOf('\n'+a); if(i<0) throw new Error('anchor '+a); return html.slice(i+1,html.indexOf('\n',i+1)); };
 const CODE=[lineOf('const money = '),lineOf('const esc = '),
   ...['function familyQty','function tierQty','function contractPrice','function lineRatePrice','function withUpgrade','function upgradeAddPurchase','function unitPrice','const cartKey=','function groupCart','function linesSubtotal','function packOf'].map(a=>grabDecl(html,a)),
-  slice('/* ---------- SERVER PRICING','/* ---------- submit (one order'), slice('/* ONE CHECKOUT = ONE ORDER','async function submitOrder(){'), slice('async function submitOrder(){','/* ---- Golden orders (blueprint'), slice('function hydrateCart(saved){','/* ---- persistent cart')].join('\n');
+  slice('/* ---------- SERVER PRICING','/* ---------- submit (one order'), slice('/* REQUEST ACCESS (owner, C3-06','function renderBanner(){'), slice('/* ONE CHECKOUT = ONE ORDER','async function submitOrder(){'), slice('async function submitOrder(){','/* ---- Golden orders (blueprint'), slice('function hydrateCart(saved){','/* ---- persistent cart')].join('\n');
 
 let fail=0, pass=0;
 async function t(name,fn){ try{ await fn(); pass++; console.log('ok   '+name); }catch(e){ fail++; console.log('FAIL '+name+'\n     '+(e&&e.stack||e).toString().split('\n').slice(0,3).join('\n     ')); } }
@@ -46,7 +46,7 @@ function env(opts){
     orders:[], order_items:[], tracking_requests:[], email_sends:[], intent_events:[], email_attribution:[]}});
   const emails=[], allMail=[], bodies=[], hits={price_check:0,create:0,submit:0};
   const inner=W.fetch;
-  let ordersApi, submitFn;
+  let ordersApi, submitFn, toolsFn;
   const router=async(url,o)=>{
     const u=String(url);
     if(u===API){ const b=JSON.parse(o.body); hits[b.action]=(hits[b.action]||0)+1;
@@ -56,6 +56,9 @@ function env(opts){
     if(opts.noKeyCol&&u.includes('/rest/v1/orders?')&&/submission_key/.test(u)) return {ok:false,status:400,text:async()=>'{"code":"42703","message":"column orders.submission_key does not exist"}',json:async()=>({code:'42703'})};
     if(opts.keyProbe5xx&&u.includes('/rest/v1/orders?select=submission_key')) return {ok:false,status:503,text:async()=>'{"message":"upstream timeout"}',json:async()=>({})};
     if(opts.failMfrs&&u.includes('/rest/v1/manufacturers?select=slug,name')&&opts.failMfrs()) return {ok:false,status:500,text:async()=>'{"code":"XX000"}',json:async()=>({})};
+    if(u==='https://homecareproviderservices.netlify.app/.netlify/functions/dealer-tools-api'){ hits.tools=(hits.tools||0)+1;
+      const r=await toolsFn.handler({httpMethod:'POST',headers:Object.assign({},o.headers),body:o.body});
+      return {ok:r.statusCode<300,status:r.statusCode,json:async()=>JSON.parse(r.body)}; }
     if(u==='/submit'){ hits.submit++; const r=await submitFn.handler({httpMethod:'POST',headers:Object.assign({},o.headers),body:o.body});
       bodies.push(JSON.parse(o.body));
       if(opts.loseResponses>0){ opts.loseResponses--; throw new Error('network timeout after the server answered'); }
@@ -70,7 +73,7 @@ function env(opts){
     return inner(url,o);
   };
   W.fetch=router;
-  ordersApi=M.load('orders-api.js',W,{ORDERING_BASE:OB},ADMIN);
+  ordersApi=M.load('orders-api.js',W,{ORDERING_BASE:OB},ADMIN); toolsFn=M.load('dealer-tools-api.js',W,{RESEND_API_KEY:'re'},ADMIN);
   delete require.cache[require.resolve(SUBMIT)]; process.env.ORDERS_API=API; process.env.RESEND_API_KEY='re';
   submitFn=require(SUBMIT);
   global.fetch=router;
@@ -84,7 +87,7 @@ function env(opts){
      function computeFreight(slug,lines){ return {rows:[],fee:0,itemsTotal:linesSubtotal(lines),actualNote:''}; }
      async function submitGoldenOrder(){ }
      ${CODE}
-     return {submitOrder, hydrateCart, applyServerPrices, priceNoteHtml, priceBannerHtml, serverPriceCheck, unitPrice, PRICE_NOTES};`);
+     return {submitOrder, requestAccess, accessNoticeHtml, needsAccess, hydrateCart, applyServerPrices, priceNoteHtml, priceBannerHtml, serverPriceCheck, unitPrice, PRICE_NOTES};`);
   const CART=new Map(), MFR={}, AUTH={status:'approved',session:{access_token:'jwt'},prices:Object.assign({},opts.prices||{})};
   const page=shop(router,$,m=>toasts.push(m),{querySelector:()=>null},{ORDERS_ENDPOINT:API,ORDER_ENDPOINT:'/submit'},AUTH,null,CART,MFR,{orders:[]},{},{},console);
   const prod=(code,x)=>Object.assign(JSON.parse(JSON.stringify(FILE[LINE].find(p=>p.code===code))),x||{});
@@ -357,6 +360,27 @@ await t('review #8: one request with the same manufacturer twice under one key i
   const E=env(); const S=E.submitFn(); const ord={manufacturer_slug:LINE,manufacturer_name:'O',po:'1',items:[{code:'A1',qty:1,unit:50}]};
   const r=await S.handler({httpMethod:'POST',headers:{authorization:'Bearer jwt'},body:JSON.stringify({dealer:{business:'B',contact:'C',email:'d@x.com'},submission_key:'k-9999888877776666',orders:[ord,ord]})});
   ok(r.statusCode>=400,'refused: '+r.statusCode); eq(E.W.db.orders.length,0,'nothing recorded');
+});
+/* ---- C3-06 closeout: Request access ---- */
+await t('a browse-only line cannot be checked out: nothing is priced, recorded or emailed, and the dealer is told to request access',async()=>{
+  const E=env(); E.add('A1',1); E.AUTH.access={your_accounts:[],available:[LINE],request_access:[LINE]};
+  await E.page.submitOrder();
+  eq([E.hits.price_check,E.hits.submit,E.W.db.orders.length,E.allMail.length,E.CART.size],[0,0,0,0,1],'nothing sent, cart kept');
+  ok(E.toasts.some(m=>/isn't set up yet/.test(m)&&/Request access/.test(m)),'told: '+E.toasts.join(' | '));
+});
+await t('a carried line orders exactly as before (request_access empty)',async()=>{
+  const E=env(); E.add('A1',1); E.AUTH.access={your_accounts:[],available:[LINE],request_access:[]};
+  await E.page.submitOrder(); eq(E.W.db.orders.length,1,'recorded');
+});
+await t('Request access: one request to HCPS staff, the button confirms, nothing is granted',async()=>{
+  const E=env(); E.AUTH.access={request_access:['yuwell']}; E.W.db.dealer_manufacturers=[]; E.W.db.dealer_access_requests=[];   // a dealer with no ordering grid
+  const btn={disabled:false,textContent:'Request access'};
+  await E.page.requestAccess('yuwell',btn);
+  eq([E.hits.tools,btn.disabled,btn.textContent],[1,true,'Access requested ✓']);
+  ok(E.allMail.some(m=>/Ordering access request/.test(m.subject)),'staff emailed');
+  eq(E.W.db.dealer_manufacturers.filter(r=>r.manufacturer==='yuwell').length,0,'no access granted');
+  ok(/Access requested ✓/.test(E.page.accessNoticeHtml('yuwell')),'the notice remembers it');
+  ok(/manufacturer account and HCPS ordering access must be established/.test(E.page.accessNoticeHtml('access4u')),'explains why');
 });
 await t('before the SQL runs (no submission_key column) orders record exactly as before',async()=>{
   const E=env({noKeyCol:true}); E.add('A1',1); await E.page.submitOrder();

@@ -15,6 +15,7 @@
 //   dealers.logo_url text   (added column; used for portal + quote branding)
 // ENV: SUPABASE_URL, SUPABASE_SERVICE_ROLE, RESEND_API_KEY (optional — pricing-request email).
 
+const RETIRED = require("./_retired_lines.js");
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const CORS = {
@@ -181,6 +182,69 @@ exports.handler = async (event) => {
       const text = `Literature request\n\nDealer: ${d.name || "—"}\nManufacturer: ${manufacturer}\nMaterials:\n${items.map((i) => `  ${i.qty} x ${i.material}`).join("\n")}\nShip to: ${row.ship_to || "—"}${row.note ? `\nNote: ${row.note}` : ""}`;
       try { await sendMail({ to: PRICING_TO, subject, html, text, reply_to: who.email }); } catch (e) {}
       return json(200, { ok: true, saved });
+    }
+
+    // ---- request ordering access to a line the dealer can browse but not order (C3-06 closeout) ----
+    /* Records the request and tells HCPS staff. It NEVER grants access, opens an account or changes a price:
+       staff review it and, if approved, turn the line on in the dealer's Ordering Access grid. A line the dealer
+       already carries, an unknown, switched-off or retired line, Golden (its own platform), or a dealer with an
+       ordering grid (it has no browse-only lines) is not requested. One open request per dealer + line. */
+    if (b.action === "access_request") {
+      const slug = String(b.manufacturer || "").trim().toLowerCase();
+      if (!/^[a-z0-9-]{2,60}$/.test(slug)) return json(400, { ok: false, error: "Unknown manufacturer." });
+      if (RETIRED.isRetiredLine(slug)) return json(400, { ok: false, error: "This line is not offered." });
+      if (slug === "golden" || slug === "golden-technologies") return json(400, { ok: false, error: "Golden Technologies is ordered on the Golden platform." });
+      let mfr, rows, self, meta, open;
+      try {
+        const m = await sb("GET", `manufacturers?slug=eq.${encodeURIComponent(slug)}&select=slug,name`);
+        mfr = m && m[0];
+        const mm = await sb("GET", `manufacturer_meta?slug=eq.${encodeURIComponent(slug)}&select=active`);
+        meta = mm && mm[0];
+        rows = await sb("GET", `dealer_manufacturers?dealer_id=eq.${encodeURIComponent(did)}&active=eq.true&select=manufacturer`);
+        const d = await sb("GET", `dealers?id=eq.${encodeURIComponent(did)}&select=business_name,hcps_account,contact_name,phone,city,state,rep_email`);
+        self = (d && d[0]) || {};
+        /* one open request per dealer + line (unique index dealer_access_requests_open_uk); the table is required —
+           without a readable record nothing is sent, so the button can never be used to send unlimited email */
+        open = await sb("GET", `dealer_access_requests?dealer_id=eq.${encodeURIComponent(did)}&manufacturer=eq.${encodeURIComponent(slug)}&status=eq.new&select=id&limit=1`);
+      } catch (e) { console.error("access request read failed", e && e.message); return json(503, { ok: false, error: "Your request could not be sent right now — please try again or call HCPS." }); }
+      if (!mfr || (meta && meta.active === false)) return json(400, { ok: false, error: "This line is not offered." });
+      const carried = (rows || []).map((r) => String(r.manufacturer));
+      if (carried.includes(slug)) return json(200, { ok: true, already_carried: true });
+      /* Only a dealer that browses by territory (no ordering grid of its own) has browse-only lines; a dealer with a
+         grid sees exactly the lines it carries, so it has nothing to request here. */
+      if (carried.some((s) => s !== "golden" && s !== "golden-technologies")) return json(400, { ok: false, error: "Ask your HCPS rep about adding this line." });
+      if ((open || []).length) return json(200, { ok: true, already: true });
+      try {
+        await sb("POST", "dealer_access_requests", { dealer_id: did, manufacturer: slug, requested_by: who.email || null, status: "new" }, { Prefer: "return=minimal" });
+      } catch (e) {
+        if (/23505|duplicate key/i.test(String(e && e.message))) return json(200, { ok: true, already: true });   // a simultaneous request won
+        console.error("access request not recorded", e && e.message);
+        return json(503, { ok: false, error: "Your request could not be sent right now — please try again or call HCPS." });
+      }
+      const nm = mfr.name || slug, dn = self.business_name || (who.dealer || {}).name || "Dealer";
+      const to = ["angelo@homecareproviderservices.us"].concat(self.rep_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(self.rep_email) && !/^angelo@/i.test(self.rep_email) ? [self.rep_email] : []);
+      const where = [self.city, self.state].filter(Boolean).join(", ");
+      const subject = `Ordering access request — ${dn} — ${nm}`;
+      const html = `<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px">
+        <h2 style="color:#2B4071;margin:0 0 8px">Ordering access request</h2>
+        <p style="font-size:13.5px;color:#374151">A dealer can see this line on Partner 360 but is not set up to order it. <b>Nothing has been granted.</b> To approve: open the manufacturer account if needed, then turn the line on in the dealer's Ordering Access grid (Dealer 360).</p>
+        <table style="border-collapse:collapse;font-size:14px">
+          <tr><td style="padding:3px 12px 3px 0;color:#6b7280">Manufacturer</td><td><b>${esc(nm)}</b></td></tr>
+          <tr><td style="padding:3px 12px 3px 0;color:#6b7280">Dealer</td><td><b>${esc(dn)}</b>${self.hcps_account ? " · " + esc(self.hcps_account) : ""}</td></tr>
+          <tr><td style="padding:3px 12px 3px 0;color:#6b7280">Location</td><td>${esc(where || "—")}</td></tr>
+          <tr><td style="padding:3px 12px 3px 0;color:#6b7280">Requested by</td><td>${esc(who.email || "—")}</td></tr>
+          <tr><td style="padding:3px 12px 3px 0;color:#6b7280">Contact / phone</td><td>${esc(self.contact_name || "—")} · ${esc(self.phone || "—")}</td></tr>
+        </table>
+        <p style="font-size:12.5px;color:#6b7280;margin-top:14px">Sent from Partner 360. Recorded in dealer_access_requests. Reply to reach the dealer.</p></div>`;
+      const text = `Ordering access request (nothing has been granted)\n\nManufacturer: ${nm}\nDealer: ${dn}${self.hcps_account ? " (" + self.hcps_account + ")" : ""}\nLocation: ${where || "—"}\nRequested by: ${who.email || "—"}\nContact / phone: ${self.contact_name || "—"} · ${self.phone || "—"}\n\nTo approve: open the manufacturer account if needed, then turn the line on in the dealer's Ordering Access grid (Dealer 360).`;
+      const sent = await sendMail({ to: to.join(","), subject, html, text, reply_to: who.email });
+      if (!(sent && sent.ok)) {
+        /* Nobody at HCPS was told: close the stored ask (so it never blocks a new one) and say so — never "sent". */
+        try { await sb("PATCH", `dealer_access_requests?dealer_id=eq.${encodeURIComponent(did)}&manufacturer=eq.${encodeURIComponent(slug)}&status=eq.new`,
+          { status: "closed", staff_note: "notification email failed — dealer asked to try again or call", decided_at: new Date().toISOString(), decided_by: "system" }, { Prefer: "return=minimal" }); } catch (e) {}
+        return json(503, { ok: false, error: "Your request could not be sent right now — please try again or call HCPS at 937-626-5141." });
+      }
+      return json(200, { ok: true, saved: true, notified: true });
     }
 
     // ---- tracking request (ask the manufacturer to send shipment tracking to the dealer/HCPS) ----

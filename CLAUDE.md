@@ -1977,9 +1977,25 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     failed history read as "no orders". notification_failed and resubmission notes APPEND to admin_notes.
   · My Orders shows the PO and the tracking number HCPS recorded; "Request tracking" asks HCPS (never the manufacturer)
     and is hidden once a tracking number exists.
-  · **No-grid dealers (6):** they see territory lines (Yuwell, Access4U, AirAvant, Corsicana) but the order server
-    needs an active dealer_manufacturers row, so they cannot price or order them — a known pre-existing gap; no
-    entitlement is changed without verification and Angelo's decision.
+  · **Request access (RULE, owner closeout 2026-11-05).** A line a dealer may BROWSE (territory rules) without an active
+    dealer_manufacturers row of its own is browse-only: dealer-auth lists it in `access.request_access`, the storefront
+    shows why it can't be ordered and a "Request access" button, and checkout refuses it before anything is priced.
+    dealer-tools-api `access_request` stores the ask (`dealer_access_requests`, RULE 19 locked incl. its sequence) and
+    emails HCPS staff (Angelo + the dealer's rep) — it NEVER grants access, opens an account or changes a price; staff
+    approve in the Ordering Access grid. One OPEN request per dealer + line (partial unique index); no stored record =
+    no email (the table is required, so the button can't send unlimited mail). Only a dealer with no ordering grid has
+    browse-only lines. A browse-only catalog shows "Request access to order …", never "pricing could not be loaded".
+    The Dealer Business Hub (dashboard.html) carries the same RETIRED_SKUS list and skips switched-off products.
+    (The 6 no-grid dealers are the current cases.)
+  · **Retired part numbers are a code list, not an override row (RULE, owner 2026-11-05).** `RETIRED_SKUS` in the
+    storefront's catalog merge (ordering public/index.html, copied verbatim into `_shop_engine.js`): a listed code is
+    never shown, priced or ordered whatever a file, import, override, added product or page says; history untouched.
+    PediFix: 8520, 8521, 8620, P3012, P3012-12, P3305, P3355-STR, 6210-L-S/-L-M/-L-L/-M-S/-M-M/-M-L/-M-XL, and the
+    duplicate P3095-115. Removing a code needs the owner's decision.
+  · **Manufacturer catalog project CLOSED (owner 2026-11-05).** Existing content accepted as complete; enrichment is not
+    reopened for minor missing photos, unconfirmed features or source discrepancies — they are recorded in
+    `docs/catalog/C3-06_CATALOG_CLOSEOUT.md` for the next manufacturer source update. Next: C3-07 (Dealer Experience &
+    Growth Platform) — not started until this closeout is verified. Golden integration stays a separate workstream.
     - **Release order:** #82 → #34 → #84 + #35 + #83 (code) → SQL. #83 carries the server engine copy that
       matches #35, so ship them together.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our

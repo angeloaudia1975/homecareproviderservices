@@ -49,6 +49,9 @@ const M=[
  ['api','no-account dealer not flagged', 'for(const su of summaries) if(su.slug && missing.has(su.slug)) su.account_notice=', 'for(const su of summaries) if(false) su.account_notice='],
  ['api','unreadable account rows not flagged', '+" (account status could not be checked — verify)";', ';'],
  ['api','key column required (breaks before the SQL)', 'if(!(/Supabase 400/.test(m) && /42703|PGRST204|does not exist/i.test(m))){', 'if(true){'],
+ ['shop','browse-only line checked out anyway', 'if(noAcc.length){ toast(', 'if(false){ toast('],
+ ['shop','browse-only test ignores the list', 'return !!(a&&Array.isArray(a.request_access)&&a.request_access.includes(slug));', 'return false;'],
+ ['shop','request button never confirms', 'if(j&&j.ok){ ACCESS_REQUESTED.add(slug);', 'if(false){ ACCESS_REQUESTED.add(slug);'],
 ];
 const API_DIR=path.join(__dirname,'..','netlify','functions');
 let surv=0;
