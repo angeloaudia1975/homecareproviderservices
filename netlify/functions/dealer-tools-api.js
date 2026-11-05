@@ -128,11 +128,18 @@ exports.handler = async (event) => {
     if (b.action === "account_center") {
       let self, family, contacts, addrs, dms, claims, access, lines, metas, pending, scopeRow;
       try {
-        const dsel = "id,business_name,hcps_account,contact_name,email,phone,website,address,city,state,zip,parent_id,logo_url,golden_status";
-        const d = await sbOpt(`dealers?id=eq.${encodeURIComponent(did)}&select=${dsel},default_ship_key`, `dealers?id=eq.${encodeURIComponent(did)}&select=${dsel}`);
+        const dsel = "id,business_name,hcps_account,contact_name,email,phone,address,city,state,zip,parent_id,golden_status";
+        const d = await sb("GET", `dealers?id=eq.${encodeURIComponent(did)}&select=${dsel}`);
         self = d && d[0]; if (!self) return json(404, { ok: false, error: "Account not found." });
+        /* Columns that a database may not have yet (website / logo_url / default_ship_key — added by the Stage 3 SQL):
+           each read on its own, so one missing column never hides the account (live check 2026-11-05: no logo_url). */
+        for (const col of ["website", "logo_url", "default_ship_key"]) {
+          const r = await sbOpt(`dealers?id=eq.${encodeURIComponent(did)}&select=${col}`, null);
+          self[col] = (r && r[0] && r[0][col]) || null;
+        }
         const root = self.parent_id || self.id;
-        family = await sb("GET", `dealers?or=(id.eq.${encodeURIComponent(root)},parent_id.eq.${encodeURIComponent(root)})&select=id,business_name,address,city,state,zip,parent_id,golden_status,active&limit=200`);
+        const fq = `dealers?or=(id.eq.${encodeURIComponent(root)},parent_id.eq.${encodeURIComponent(root)})&select=id,business_name,address,city,state,zip,parent_id,golden_status`;
+        family = await sbOpt(fq + ",active&limit=200", fq + "&limit=200");
         family = (family || []).filter((x) => x.active !== false || String(x.id) === String(did));   // closed locations are not listed (the login's own always is)
         scopeRow = await sbOpt(`dealer_user_scope?uid=eq.${encodeURIComponent(who.uid)}&select=scope,locations`, null);
         scopeRow = (scopeRow && scopeRow[0]) || null;

@@ -134,7 +134,7 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
   await t('before the Stage 3 SQL: the page still loads (no verified column, no claims / scope tables)', async () => {
     const W = world({ missingTables: ['dealer_account_claims', 'dealer_user_scope'], columns: {
       dealer_manufacturers: ['dealer_id', 'manufacturer', 'account_ref', 'active'],
-      dealers: ['id', 'business_name', 'hcps_account', 'contact_name', 'email', 'phone', 'website', 'address', 'city', 'state', 'zip', 'parent_id', 'logo_url', 'golden_status', 'rep_email', 'active'] } });
+      dealers: ['id', 'business_name', 'hcps_account', 'contact_name', 'email', 'phone', 'address', 'city', 'state', 'zip', 'parent_id', 'golden_status', 'rep_email'] } });   // as production: no website / logo_url / active
     const r = await as(tools(W), 'hq', { action: 'account_center' });
     eq([r.status, r.body.ok], [200, true], JSON.stringify(r.body).slice(0, 200));
     eq(r.body.locations[0].accounts.find(a => a.slug === 'yuwell').status, 'pending', 'unverified until the column exists');
