@@ -1301,53 +1301,66 @@
       {
         "type": "split",
         "headline": "SPIRIT-3 Portable Oxygen Concentrator",
-        "copy": "Portable oxygen support for active, on-the-go lifestyles. The SPIRIT-3 is a pulse-dose portable concentrator with four settings, a rechargeable battery plus AC and vehicle DC power, and a carry bag — an easy device to demonstrate and a natural lead product for a Yuwell assortment.",
+        "copy": "Oxygen support for an active, on-the-go lifestyle. The SPIRIT-3 is a compact pulse-dose portable concentrator with four adjustable settings, a modular rechargeable battery, AC and vehicle DC power, replaceable molecular sieve beds and a protective shoulder bag. Prescription oxygen device — pulse-dose settings are not equivalent to continuous-flow L/min.",
         "checklist": [
-          "Carry-ready design with shoulder bag",
+          "Carry-ready: compact unit with a protective shoulder bag",
           "Rechargeable battery plus AC and vehicle DC power",
-          "Simple controls with battery display",
-          "Low oxygen, no-breath, and low-battery alerts"
+          "Simple controls: display shows flow setting and battery level",
+          "Alerts for low oxygen, no breath/flow and faults",
+          "3-year compressor warranty, 2-year sieve-bed warranty"
         ],
         "checks": [],
-        "image": "",
+        "image": "/assets/products/yuwell/spirit-3-lifestyle.jpg",
         "image_side": "right"
       },
       {
         "type": "table",
         "title": "SPIRIT-3 technical at a glance.",
-        "intro": "From Yuwell's FDA 510(k) summary (K242736) and the HCPS Dealer Product Guide 2026. Confirm current specifications with the user manual before quoting a patient.",
+        "intro": "From Yuwell's SPIRIT-3 brochure and FDA 510(k) summary K242736. Battery time and weight vary by conditions and version.",
         "columns": [
           "Specification",
           "SPIRIT-3"
         ],
         "rows": [
           [
-            "Flow settings",
-            "Pulse, settings 1–4"
+            "Pulse-dose settings",
+            "4 (settings 1–4)"
           ],
           [
             "Battery runtime",
-            "Up to 5 hours"
+            "Setting 1: 5 hr · 2: 3 hr 20 min · 3: 2 hr 20 min · 4: 2 hr (approx.)"
+          ],
+          [
+            "Pulse oxygen output",
+            "210–750 mL/min total, by setting"
+          ],
+          [
+            "Oxygen concentration",
+            "≥90% after 30-minute warm-up"
           ],
           [
             "Sound level",
             "≤55 dB(A)"
           ],
           [
-            "Oxygen concentration",
-            "90% (−3% / +6%) at all settings"
-          ],
-          [
             "Max outlet pressure",
             "150 kPa"
           ],
           [
-            "Power",
-            "Rechargeable battery, AC supply and vehicle DC"
+            "Size",
+            "22 × 8 × 22 cm (8.7 × 3.1 × 8.7 in)"
+          ],
+          [
+            "Weight with battery",
+            "Approx. 2.2–2.4 kg (4.9–5.3 lb)"
+          ],
+          [
+            "Warranty",
+            "3 years compressor · 2 years sieve beds"
           ],
           [
             "In the box",
-            "Battery, AC supply, DC cable, cannulas, carry bag, manual"
+            "Concentrator, Li-ion battery, AC supply, DC cable, nasal cannula, 2 filter felts, carry bag, manual"
           ],
           [
             "FDA 510(k)",
@@ -1364,58 +1377,60 @@
           {
             "name": "YE660E Upper Arm Blood Pressure Monitor",
             "badge": "Upper arm",
-            "image": "",
+            "image": "/assets/products/yuwell/ye660e.jpg",
             "url": "",
             "description": "An everyday upper-arm monitor with voice broadcast and a large LCD.",
             "tags": [],
             "bullets": [
               "Voice broadcast",
-              "Large LCD",
-              "99 memories",
-              "Irregular heartbeat indication"
+              "Large LCD, 99 memories",
+              "Irregular heartbeat indication",
+              "Average of three readings",
+              "22–45 cm cuff, adapter included"
             ]
           },
           {
             "name": "YE620B Upper Arm Blood Pressure Monitor",
             "badge": "Upper arm",
-            "image": "",
+            "image": "/assets/products/yuwell/ye620b.jpg",
             "url": "",
             "description": "A backlit upper-arm monitor with a wide-range cuff and adapter included.",
             "tags": [],
             "bullets": [
               "Voice broadcast",
-              "Large backlit LCD",
-              "22–45 cm cuff",
-              "Adapter included"
+              "Large backlit LCD, 99 memories",
+              "Irregular heartbeat indication",
+              "Average of three readings",
+              "22–45 cm cuff, adapter included"
             ]
           },
           {
             "name": "YE680B Upper Arm Blood Pressure Monitor",
             "badge": "Upper arm",
-            "image": "",
+            "image": "/assets/products/yuwell/ye680b.jpg",
             "url": "",
             "description": "A two-user upper-arm monitor that averages three readings.",
             "tags": [],
             "bullets": [
               "Voice broadcast",
               "Large backlit LCD",
-              "2-user memory",
-              "Average of 3 readings",
-              "Bluetooth option available"
+              "99 × 2 memories (two users)",
+              "Average of three readings",
+              "Bluetooth (optional)"
             ]
           },
           {
             "name": "YE8800AR Wrist Blood Pressure Monitor",
             "badge": "Wrist · Bluetooth",
-            "image": "",
+            "image": "/assets/products/yuwell/ye8800ar.jpg",
             "url": "",
             "description": "A compact Bluetooth wrist monitor with a rechargeable lithium battery.",
             "tags": [],
             "bullets": [
               "Bluetooth",
-              "Compact wrist design",
-              "Lithium battery",
-              "USB Type-C"
+              "Voice broadcast, large LCD",
+              "74 memories, position indication",
+              "Lithium battery, USB Type-C"
             ]
           }
         ]
@@ -1429,48 +1444,48 @@
           {
             "name": "YT-1 Infrared Thermometer",
             "badge": "Touch-free",
-            "image": "",
+            "image": "/assets/products/yuwell/yt-1.jpg",
             "url": "",
             "description": "A touch-free infrared thermometer with a hard case.",
             "tags": [],
             "bullets": [
-              "Touch-free",
-              "Rapid measurement",
-              "Includes hard case",
-              "2 x AAA batteries"
+              "Touch-free, 1-second reading",
+              "°C / °F, mute and vibration",
+              "Includes hardshell carry case",
+              "2 × AAA batteries"
             ]
           },
           {
             "name": "YHT101 Infrared Ear Thermometer",
             "badge": "Ear",
-            "image": "",
+            "image": "/assets/products/yuwell/yht101.jpg",
             "url": "",
             "description": "An infrared ear thermometer with disposable covers and a hard case.",
             "tags": [],
             "bullets": [
-              "Rapid ear measurement",
-              "Disposable covers included",
-              "Includes hard case",
-              "2 x AAA batteries"
+              "Fast measurement, fever guidance",
+              "Backlit display, memory retrieval",
+              "Disposable covers and hardshell case",
+              "2 × AAA batteries"
             ]
           },
           {
             "name": "YX103 Finger Pulse Oximeter",
             "badge": "Better",
-            "image": "",
+            "image": "/assets/products/yuwell/yx103.jpg",
             "url": "",
             "description": "A finger pulse oximeter with a high-visibility red LED display.",
             "tags": [],
             "bullets": [
               "High-visibility red LED display",
-              "Fast reading",
+              "SpO₂ 70–100% (±2%), PR 25–250 bpm",
               "Includes lanyard"
             ]
           },
           {
             "name": "YX306 Finger Pulse Oximeter",
             "badge": "Best",
-            "image": "",
+            "image": "/assets/products/yuwell/yx306.jpg",
             "url": "",
             "description": "A finger pulse oximeter with an auto-rotating OLED display and pulse wave.",
             "tags": [],
@@ -1495,7 +1510,7 @@
           "Easy-to-demonstrate products that are simple for customers to understand",
           "HCPS support for onboarding, merchandising and sales development"
         ],
-        "image": "",
+        "image": "/assets/products/yuwell/home-monitoring-lifestyle.jpg",
         "image_side": "left"
       },
       {
