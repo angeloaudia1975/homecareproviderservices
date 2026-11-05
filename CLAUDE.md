@@ -1943,7 +1943,15 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
       only once #82 → #34 → #84 + #35 + #83 are live. **Release approved by Angelo 2026-11-05 07:35 CT; admin #82 (df64ce3), #83 (3f0d80f), #84
       (ba92f9f) MERGED 07:37 CT — Netlify SKIPPED the production deploys (team build credits used up), so the live admin
       site is still main@833be09. Ordering #34 / #35 are deliberately NOT merged until the admin deploy is Published
-      (the storefront must never list Yuwell before the server code is live). Credits restored by Angelo 07:58 CT; admin redeploy triggered by a notes commit.
+      (the storefront must never list Yuwell before the server code is live). Credits restored by Angelo 07:58 CT. **RELEASED 2026-11-05:** admin Published main@c3d2b23 (08:00 CT), then
+      ordering #34 (1f0da9f) + #35 (b499a44) merged, Published main@b499a44 (08:02 CT); redirect fix 128c1ac. Production
+      verified: Yuwell 9 products at the private prices/MSRP for the TEST dealer, SP-3 1–3 / 4+ priced by the live order
+      server, freight rule, Ohio Medical refused + hidden + 301, anonymous price reads 401, 4 frozen lines pass mc_verify
+      (save:false) against their Gold Standards, Ohio commission history intact.
+- **A removed or hidden website page must also be deleted from the tracked `_site/` (RULE, learned 2026-11-05).** `_site/`
+  is in git and Eleventy never deletes old output, so a stale page file survives the build and Netlify serves it
+  instead of applying a (non-forced) redirect — /manufacturers/ohio-medical/ kept showing the old page until
+  `_site/manufacturers/ohio-medical/index.html` was removed (128c1ac).
     - **Release order:** #82 → #34 → #84 + #35 + #83 (code) → SQL. #83 carries the server engine copy that
       matches #35, so ship them together.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
