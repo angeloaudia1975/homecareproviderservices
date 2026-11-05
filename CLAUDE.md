@@ -1995,9 +1995,15 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   re-checked against the current lines when shown; sign-out clears DASH.lineCache / featured / the index; a failed or
   unpriced line is never cached. Tests: ordering test/quick-search.browser.js.
   **Owner decisions D1–D5 (Angelo, 2026-11-05 15:20 CT — RULES):**
-  · D1 e-signature: DocuSign is the preferred provider for planning and FREE developer (demo) testing only. No paid /
-    production subscription until the integration and cost are reviewed with Angelo. Sign on the manufacturer's ORIGINAL
-    application PDF; keep the completed signed document and DocuSign's audit certificate.
+  · D1 e-signature — REVISED (Angelo, 2026-11-05 15:35 CT; replaces the DocuSign choice): NO paid e-signature subscription
+    (DocuSign / Dropbox Sign not approved). Primary = Documenso FREE cloud plan (about 5 documents a month, API included);
+    fallback = OpenSign's free manual signing workflow; self-hosted Documenso only if volume later justifies running it.
+    Rules: sign on each manufacturer's ACTUAL application PDF; dealers complete the application in Partner 360, then get
+    a secure signing link; retrieve the completed PDF and the available signature audit evidence; store finalized records
+    privately, President-only; keep manufacturer acceptance + identity-verification checks; financial details never in
+    plain-text email or logs; NEVER send an application to a manufacturer automatically; the free monthly limit is
+    handled gracefully (queue / fallback) and never charges HCPS or dealers. No subscription purchase, no paid API
+    feature, no custom signature engine without further authorization.
   · D2 permissions: head-office users see their company's authorized locations; branch users see ONLY their own location;
     HCPS alone grants and changes permissions.
   · D3 public (storefront) pricing: verified manufacturer MSRP by default. A dealer's saved retail price shows publicly

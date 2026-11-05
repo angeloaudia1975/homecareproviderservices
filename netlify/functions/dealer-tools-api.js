@@ -16,6 +16,8 @@
 // ENV: SUPABASE_URL, SUPABASE_SERVICE_ROLE, RESEND_API_KEY (optional — pricing-request email).
 
 const RETIRED = require("./_retired_lines.js");
+const AC = require("./_account_center.js");
+const crypto = require("crypto");
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const CORS = {
@@ -50,8 +52,17 @@ async function dealerFromToken(event) {
   if (!du || du.status !== "approved" || !du.dealer_id) return null;
   let dealer = null;
   try { const d = await sb("GET", `dealers?id=eq.${encodeURIComponent(du.dealer_id)}&select=business_name,hcps_account`); if (d && d[0]) dealer = { name: d[0].business_name || "", hcps_account: d[0].hcps_account || "" }; } catch (e) {}
-  return { dealer_id: du.dealer_id, email: du.email, dealer };
+  return { dealer_id: du.dealer_id, email: du.email, dealer, uid: u.id };
 }
+
+// A read that may name a column/table this stage's SQL adds: before the SQL runs, answer with the fallback read
+// (never an empty result that looks like data). Any other failure throws (strict).
+const MISSING = (e) => /42P01|42703|PGRST20[45]|does not exist|Could not find/i.test(String(e && e.message));
+async function sbOpt(path, fallbackPath) {
+  try { return await sb("GET", path); }
+  catch (e) { if (!MISSING(e)) throw e; return fallbackPath ? sb("GET", fallbackPath) : null; }
+}
+const SUPA_PUBLIC = () => `${SUPABASE_URL}/storage/v1/object/public/dealer-logos/`;
 
 // ---- pricing-request notification (best-effort, transactional) ----
 const MAIL_FROM = process.env.HCPS_MAIL_FROM || "HCPS Partner Portal <orders@homecareproviderservices.us>";
@@ -111,6 +122,127 @@ exports.handler = async (event) => {
       if (url && !/^https:\/\//i.test(url) && !/^data:image\//i.test(url)) return json(400, { error: "logo_url must be an https image URL or a data:image URL" });
       try { await sb("PATCH", `dealers?id=eq.${encodeURIComponent(did)}`, { logo_url: url || null }, { Prefer: "return=minimal" }); } catch (e) { return json(200, { ok: false, error: "save_failed (is the logo_url column present?)" }); }
       return json(200, { ok: true, logo_url: url || null });
+    }
+
+    // ---- C3-07 Stage 3: Dealer Account Management Center ----
+    if (b.action === "account_center") {
+      let self, family, contacts, addrs, dms, claims, access, lines, metas, pending, scopeRow;
+      try {
+        const dsel = "id,business_name,hcps_account,contact_name,email,phone,website,address,city,state,zip,parent_id,logo_url,golden_status";
+        const d = await sbOpt(`dealers?id=eq.${encodeURIComponent(did)}&select=${dsel},default_ship_key`, `dealers?id=eq.${encodeURIComponent(did)}&select=${dsel}`);
+        self = d && d[0]; if (!self) return json(404, { ok: false, error: "Account not found." });
+        const root = self.parent_id || self.id;
+        family = await sb("GET", `dealers?or=(id.eq.${encodeURIComponent(root)},parent_id.eq.${encodeURIComponent(root)})&select=id,business_name,address,city,state,zip,parent_id,golden_status&limit=200`);
+        scopeRow = await sbOpt(`dealer_user_scope?uid=eq.${encodeURIComponent(who.uid)}&select=scope,locations`, null);
+        scopeRow = (scopeRow && scopeRow[0]) || null;
+      } catch (e) { console.error("account center read failed", e && e.message); return json(503, { ok: false, error: "Your account details could not be loaded just now — please try again." }); }
+      const visible = AC.visibleLocations(did, family, scopeRow);
+      const ids = visible.map((x) => x.id); const inIds = ids.map(encodeURIComponent).join(",");
+      try {
+        [contacts, addrs, dms, claims, access, lines, metas, pending] = await Promise.all([
+          sb("GET", `dealer_contacts?dealer_id=eq.${encodeURIComponent(did)}&select=id,name,title,email,phone&order=name.asc&limit=50`),
+          sb("GET", `dealer_addresses?dealer_id=eq.${encodeURIComponent(did)}&select=addr_key,label,address,city,state,zip,pri`),
+          sbOpt(`dealer_manufacturers?dealer_id=in.(${inIds})&select=dealer_id,manufacturer,account_ref,active,verified_at`, `dealer_manufacturers?dealer_id=in.(${inIds})&select=dealer_id,manufacturer,account_ref,active`),
+          sbOpt(`dealer_account_claims?dealer_id=in.(${inIds})&status=in.(pending,verified)&select=dealer_id,manufacturer,account_ref,status,created_at&order=created_at.asc`, null),
+          sb("GET", `dealer_access_requests?dealer_id=in.(${inIds})&status=eq.new&select=dealer_id,manufacturer`),
+          sb("GET", `manufacturers?select=slug,name&order=name.asc`),
+          sb("GET", `manufacturer_meta?select=slug,active`),
+          sb("GET", `dealer_change_requests?dealer_id=eq.${encodeURIComponent(did)}&status=eq.pending&select=created_at,changes&order=created_at.desc&limit=10`),
+        ]);
+      } catch (e) { console.error("account center read failed", e && e.message); return json(503, { ok: false, error: "Your account details could not be loaded just now — please try again." }); }
+      const off = new Set((metas || []).filter((m) => m.active === false).map((m) => m.slug));
+      const L = (lines || []).filter((m) => m && m.slug && !RETIRED.isRetiredLine(m.slug) && !off.has(m.slug)).map((m) => ({ slug: m.slug, name: m.name || m.slug }));
+      if (!L.some((m) => m.slug === "golden-technologies" || m.slug === "golden")) L.unshift({ slug: "golden-technologies", name: "Golden Technologies" });
+      const key = (r) => String(r.dealer_id) + "|" + String(r.manufacturer);
+      const dmBy = new Map((dms || []).map((r) => [key(r), r])), acBy = new Set((access || []).map(key));
+      const clBy = new Map((claims || []).filter((r) => r.status === "pending").map((r) => [key(r), r]));
+      const vcBy = new Map((claims || []).filter((r) => r.status === "verified").map((r) => [key(r), r]));   // newest last wins
+      const locations = visible.map((loc) => ({
+        id: loc.id, name: loc.business_name || "", city: loc.city || "", state: loc.state || "", is_self: String(loc.id) === String(did),
+        accounts: L.map((m) => Object.assign({ slug: m.slug, name: m.name }, AC.accountStatus({ slug: m.slug, dm: dmBy.get(loc.id + "|" + m.slug) || null,
+          claim: clBy.get(loc.id + "|" + m.slug) || null, verifiedClaim: vcBy.get(loc.id + "|" + m.slug) || null, accessOpen: acBy.has(loc.id + "|" + m.slug), goldenStatus: loc.golden_status }))),
+      }));
+      const addresses = [{ key: "main", label: "Business address", address: self.address || "", city: self.city || "", state: self.state || "", zip: self.zip || "" }]
+        .concat((addrs || []).map((a) => ({ key: a.addr_key, label: a.label || "", address: a.address || "", city: a.city || "", state: a.state || "", zip: a.zip || "" })));
+      return json(200, { ok: true,
+        company: { business_name: self.business_name || "", hcps_account: self.hcps_account || "", contact_name: self.contact_name || "", email: self.email || "",
+          phone: self.phone || "", website: self.website || "", logo_url: self.logo_url || null, default_ship_key: self.default_ship_key || null, head_office: !self.parent_id },
+        contacts: (contacts || []).map((c) => ({ id: c.id, name: c.name || "", title: c.title || "", email: c.email || "", phone: c.phone || "" })),
+        addresses, locations, pending: (pending || []).map((p) => ({ created_at: p.created_at, changes: p.changes || {} })),
+        scope: visible.length > 1 ? "company" : "own" });
+    }
+    if (b.action === "account_change_request") {
+      const v = AC.validateChanges(b.changes);
+      if (v.error) return json(400, { ok: false, error: v.error });
+      let open;
+      try { open = await sb("GET", `dealer_change_requests?dealer_id=eq.${encodeURIComponent(did)}&status=eq.pending&select=id&limit=6`); }
+      catch (e) { return json(503, { ok: false, error: "Your changes could not be sent right now — please try again." }); }
+      if ((open || []).length >= 5) return json(429, { ok: false, error: "You have 5 changes waiting for HCPS — they'll be reviewed shortly before you can send more." });
+      try { await sb("POST", "dealer_change_requests", { dealer_id: did, uid: who.uid, email: who.email, changes: v.changes, status: "pending", created_at: new Date().toISOString() }, { Prefer: "return=minimal" }); }
+      catch (e) { console.error("change request not recorded", e && e.message); return json(503, { ok: false, error: "Your changes could not be sent right now — please try again." }); }
+      return json(200, { ok: true, message: "Sent to HCPS for approval — your account updates once approved." });
+    }
+    if (b.action === "default_ship_set") {
+      let addrs, self;
+      try {
+        addrs = await sb("GET", `dealer_addresses?dealer_id=eq.${encodeURIComponent(did)}&select=addr_key`);
+        self = await sb("GET", `dealers?id=eq.${encodeURIComponent(did)}&select=address`);
+      } catch (e) { return json(503, { ok: false, error: "Could not save just now — please try again." }); }
+      const keys = ((self && self[0] && self[0].address) ? ["main"] : []).concat((addrs || []).map((a) => a.addr_key).filter(Boolean));
+      const k = AC.validDefaultShip(b.key, keys);
+      if (!k) return json(400, { ok: false, error: "Choose one of your addresses on file." });
+      try { await sb("PATCH", `dealers?id=eq.${encodeURIComponent(did)}`, { default_ship_key: k }, { Prefer: "return=minimal" }); }
+      catch (e) { if (MISSING(e)) return json(503, { ok: false, error: "Default ship-to opens shortly." }); return json(503, { ok: false, error: "Could not save just now — please try again." }); }
+      return json(200, { ok: true, default_ship_key: k });
+    }
+    if (b.action === "logo_upload") {
+      const raw = String(b.data || "").replace(/^data:image\/(jpeg|png);base64,/i, "");
+      if (raw.length > Math.ceil(AC.MAX_LOGO * 4 / 3) + 8 || !/^[A-Za-z0-9+/=\s]+$/.test(raw)) return json(400, { ok: false, error: "The logo must be a JPEG or PNG of 1 MB or less." });
+      const buf = Buffer.from(raw, "base64");
+      const kind = AC.sniffLogo(buf);
+      if (kind.error) return json(400, { ok: false, error: kind.error });
+      const sha = crypto.createHash("sha256").update(buf).digest("hex").slice(0, 32);
+      const path = `${did}/${sha}.${kind.ext}`;
+      let up;
+      try {
+        up = await fetch(`${SUPABASE_URL}/storage/v1/object/dealer-logos/${path}`, { method: "POST",
+          headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, "content-type": kind.type, "x-upsert": "false", "cache-control": "31536000" }, body: buf });
+      } catch (e) { return json(503, { ok: false, error: "The logo could not be uploaded just now — please try again." }); }
+      if (!up.ok) {
+        const t = await up.text().catch(() => "");
+        if (!(up.status === 409 || /already exists|Duplicate/i.test(t))) { console.error("logo upload failed", up.status, t.slice(0, 200)); return json(503, { ok: false, error: "The logo could not be uploaded just now — please try again." }); }
+      }
+      const url = SUPA_PUBLIC() + path;
+      try { await sb("PATCH", `dealers?id=eq.${encodeURIComponent(did)}`, { logo_url: url }, { Prefer: "return=minimal" }); }
+      catch (e) { return json(503, { ok: false, error: "The logo was uploaded but could not be saved — please try again." }); }
+      return json(200, { ok: true, logo_url: url });
+    }
+    if (b.action === "account_claim") {
+      const slug = String(b.manufacturer || "").trim().toLowerCase();
+      if (!/^[a-z0-9-]{2,60}$/.test(slug) || RETIRED.isRetiredLine(slug) || slug === "golden" || slug === "golden-technologies") return json(400, { ok: false, error: "This line can't be added here." });
+      const ref = AC.validAccountRef(b.account_ref);
+      if (!ref) return json(400, { ok: false, error: "Enter the account number exactly as the manufacturer shows it (letters, numbers, - . / #)." });
+      const note = String(b.note || "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 300) || null;
+      let mfr, dm, open, self;
+      try {
+        const m = await sb("GET", `manufacturers?slug=eq.${encodeURIComponent(slug)}&select=slug,name`); mfr = m && m[0];
+        const r = await sb("GET", `dealer_manufacturers?dealer_id=eq.${encodeURIComponent(did)}&manufacturer=eq.${encodeURIComponent(slug)}&select=account_ref`); dm = r && r[0];
+        open = await sb("GET", `dealer_account_claims?dealer_id=eq.${encodeURIComponent(did)}&manufacturer=eq.${encodeURIComponent(slug)}&status=eq.pending&select=id&limit=1`);
+        const d = await sb("GET", `dealers?id=eq.${encodeURIComponent(did)}&select=business_name,hcps_account,rep_email`); self = (d && d[0]) || {};
+      } catch (e) { if (MISSING(e)) return json(503, { ok: false, error: "Adding account numbers opens shortly." }); return json(503, { ok: false, error: "Could not send just now — please try again." }); }
+      if (!mfr) return json(400, { ok: false, error: "This line can't be added here." });
+      if (dm && String(dm.account_ref || "").trim().toUpperCase() === ref.toUpperCase()) return json(200, { ok: true, already_on_file: true });
+      if ((open || []).length) return json(200, { ok: true, already: true });
+      try { await sb("POST", "dealer_account_claims", { dealer_id: did, manufacturer: slug, account_ref: ref, note, status: "pending", submitted_email: who.email || null }, { Prefer: "return=minimal" }); }
+      catch (e) { if (/23505|duplicate key/i.test(String(e && e.message))) return json(200, { ok: true, already: true }); return json(503, { ok: false, error: "Could not send just now — please try again." }); }
+      const dn = self.business_name || (who.dealer || {}).name || "Dealer";
+      const to = ["angelo@homecareproviderservices.us"].concat(self.rep_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(self.rep_email) && !/^angelo@/i.test(self.rep_email) ? [self.rep_email] : []);
+      await sendMail({ to: to.join(","), subject: `Manufacturer account to verify — ${dn} — ${mfr.name || slug}`,
+        html: `<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px"><h2 style="color:#2B4071;margin:0 0 8px">Manufacturer account to verify</h2>
+          <p style="font-size:13.5px">${esc(dn)}${self.hcps_account ? " · " + esc(self.hcps_account) : ""} says it has a <b>${esc(mfr.name || slug)}</b> account. Verify it in Connect 360 → Dealer Manager → Account changes. Verifying does not turn on ordering.</p></div>`,
+        text: `Manufacturer account to verify\n\n${dn} says it has a ${mfr.name || slug} account. Verify it in Connect 360 → Dealer Manager → Account changes. Verifying does not turn on ordering.`,
+        reply_to: who.email }).catch(() => {});
+      return json(200, { ok: true, saved: true });
     }
 
     // ---- volume-pricing request ----
@@ -296,46 +428,12 @@ exports.handler = async (event) => {
       catch (e) { return json(200, { ok: false, error: "save_failed (is the resale_certs table present?)" }); }
       return json(200, { ok: true });
     }
+    /* The old generic credit form (C3-07 Stage 3 + owner decision D5, 2026-11-05): it stored EIN and bank details as plain
+       text and EMAILED them — both forbidden by D5 (financial applications stored privately, President-only, encrypted,
+       audited; contents never in email or logs). It is closed. Manufacturer applications move to the Digital Account
+       Setup Center (Stage 5), which signs the manufacturer's own application. Applications already on file stay listed. */
     if (b.action === "credit_application") {
-      const manufacturer = String(b.manufacturer || "").trim();
-      if (!manufacturer) return json(400, { error: "manufacturer required" });
-      const row = {
-        dealer_id: did, manufacturer,
-        legal_name: String(b.legal_name || "").trim() || null,
-        ein: String(b.ein || "").trim() || null,
-        years_in_business: b.years_in_business != null ? String(b.years_in_business).slice(0, 12) : null,
-        bank_ref: String(b.bank_ref || "").trim() || null,
-        trade_refs: String(b.trade_refs || "").trim() || null,
-        requested_terms: String(b.requested_terms || "").trim() || null,
-        note: String(b.note || "").trim() || null,
-        status: "submitted",
-      };
-      let saved = true;
-      try { await sb("POST", "credit_applications", row, { Prefer: "return=minimal" }); } catch (e) { saved = false; }
-      // include whether a resale cert is already on file, so HCPS can forward it with the app
-      let resaleNote = "not on file";
-      try { const r = await sb("GET", `resale_certs?dealer_id=eq.${encodeURIComponent(did)}&select=reference,status&limit=1`); if (r && r[0] && r[0].status === "on_file") resaleNote = "on file" + (r[0].reference ? " (" + r[0].reference + ")" : ""); } catch (e) {}
-      const d = who.dealer || {};
-      const subject = `Credit application — ${d.name || "Dealer"} — ${manufacturer}`;
-      const F = (k, v) => `<tr><td style="padding:3px 12px 3px 0;color:#6b7280;vertical-align:top">${esc(k)}</td><td>${esc(v || "—")}</td></tr>`;
-      const html = `<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px">
-        <h2 style="color:#2B4071;margin:0 0 8px">Manufacturer credit application</h2>
-        <table style="border-collapse:collapse;font-size:14px">
-          ${F("Dealer", (d.name || "—") + (d.hcps_account ? " · " + d.hcps_account : ""))}
-          ${F("Manufacturer / line", manufacturer)}
-          ${F("Legal business name", row.legal_name)}
-          ${F("EIN / Tax ID", row.ein)}
-          ${F("Years in business", row.years_in_business)}
-          ${F("Bank reference", row.bank_ref)}
-          ${F("Trade references", row.trade_refs)}
-          ${F("Requested terms", row.requested_terms)}
-          ${F("Resale certificate", resaleNote)}
-          ${row.note ? F("Note", row.note) : ""}
-        </table>
-        <p style="font-size:12.5px;color:#6b7280;margin-top:14px">Submitted from the HCPS Dealer Business Hub. Reply to reach the dealer. HCPS forwards this to the manufacturer with the dealer's resale certificate. (No payment/card data is collected by HCPS.)</p></div>`;
-      const text = `Manufacturer credit application\n\nDealer: ${d.name || "—"}\nManufacturer: ${manufacturer}\nLegal name: ${row.legal_name || "—"}\nEIN: ${row.ein || "—"}\nYears in business: ${row.years_in_business || "—"}\nBank ref: ${row.bank_ref || "—"}\nTrade refs: ${row.trade_refs || "—"}\nRequested terms: ${row.requested_terms || "—"}\nResale cert: ${resaleNote}${row.note ? `\nNote: ${row.note}` : ""}`;
-      try { await sendMail({ to: PRICING_TO, subject, html, text, reply_to: who.email }); } catch (e) {}
-      return json(200, { ok: true, saved });
+      return json(410, { ok: false, error: "Manufacturer credit applications are moving to the new Account Setup Center. Until it opens, call HCPS at 937-626-5141 and we'll send you the manufacturer's application." });
     }
 
     return json(400, { error: "unknown action" });

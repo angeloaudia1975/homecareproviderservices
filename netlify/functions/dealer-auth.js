@@ -120,12 +120,14 @@ async function loadDealerPayload(dealer_id, fallbackEmail){
     // attach stored shipping / billing addresses (if any) so the "My account" editor can prefill
     if(dealer){
       try{
-        const addrs=await sb("GET",`dealer_addresses?dealer_id=eq.${dealer_id}&select=address,city,state,zip,label,pri`).catch(()=>[]);
+        const addrs=await sb("GET",`dealer_addresses?dealer_id=eq.${dealer_id}&select=addr_key,address,city,state,zip,label,pri`).catch(()=>[]);
+        /* C3-07 Stage 3: the ship-to the dealer chose as the checkout default (column added by c7_s3 SQL; absent = none). */
+        try{ const ds=await sb("GET",`dealers?id=eq.${dealer_id}&select=default_ship_key`); dealer.default_ship_key=(ds&&ds[0]&&ds[0].default_ship_key)||null; }catch(e){ dealer.default_ship_key=null; }
         const pick=re=>{const a=(addrs||[]).find(x=>re.test(String(x.label||"")));return a?{address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||""}:null;};
         dealer.shipping=pick(/ship/i)||{address:dealer.address,city:dealer.city,state:dealer.state,zip:dealer.zip};
         dealer.billing=pick(/bill/i)||null;
         dealer.addresses=(addrs||[]).sort((a,b)=>(b.pri||1)-(a.pri||1))
-          .map(a=>({address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||"",label:a.label||""}))
+          .map(a=>({key:a.addr_key||"",address:a.address||"",city:a.city||"",state:a.state||"",zip:a.zip||"",label:a.label||""}))
           .filter(a=>a.address||a.city);
       }catch(e){}
     }
