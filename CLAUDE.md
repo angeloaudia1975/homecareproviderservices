@@ -1964,7 +1964,8 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     one key — a repeat is answered "already recorded", noted on the order for staff, and never re-emailed. The check
     runs BEFORE re-pricing. An order row without its lines never counts as recorded; a withdrawn order frees its key
     first. Only "column does not exist" means the SQL has not run — any other key-check failure, or an unreadable
-    manufacturer list, records nothing (503). Needs `supabase/orders_submission_key.sql` (column + partial unique index; Angelo runs it);
+    manufacturer list, records nothing (503). **LIVE 2026-11-05:** admin #87 (743edd5) + ordering #39 (af36674) Published;
+    `orders_submission_key.sql` RUN by Angelo 12:27 CT (column 1, index 1, 0 keyed orders, orders RLS still on). Needs `supabase/orders_submission_key.sql` (column + partial unique index; Angelo runs it);
     before that the key is ignored and ordering is unchanged.
   · **New manufacturer account notice (RULE).** `_account_notice.js NOTICE_LINES` (today: yuwell). A dealer ordering
     such a line with no active dealer_manufacturers row carrying an account number is NEVER blocked; the order shows
