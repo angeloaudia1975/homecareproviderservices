@@ -1885,6 +1885,7 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     in git.
     - The list's "Yuwell U.S. Price" IS the dealer price.
     - MSRP = 2× the dealer price, stored as an explicit msrp in the private record. No MAP yet.
+      Labelled plainly as **MSRP** on cards and quotes (owner, 2026-11-04 22:29 CT) — not "HCPS suggested retail".
     - **SP-3 special:** a 4+ unit break with free shipping, valid through Dec 31, 2026. It is a private tier
       plus a price_note. The engine has no expiring tiers, so a new commercial version must remove it on
       Jan 1, 2027.
@@ -1930,6 +1931,8 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
         set: an anonymous GET answered 401 on 2026-11-04.
       - `manufacturer_meta.active=false` now unlists the line in the storefront, and the order server refuses it
         (#34 / #82). Every production record was active=true (public read, 2026-11-04).
+    - **Registration SQL RUN by Angelo 2026-11-04 22:29 CT:** manufacturers 1 row, manufacturer_meta active=true,
+      0 entitlements.
     - **Release order:** #82 → #34 → #84 + #35 + #83 (code) → SQL. #83 carries the server engine copy that
       matches #35, so ship them together.
 - **Photos are hosted by us (2026-10-10).** A product photo loading from a manufacturer's website is moved to our
