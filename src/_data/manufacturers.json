@@ -1255,7 +1255,7 @@
     "id": "yuwell",
     "name": "Yuwell",
     "category": "Portable oxygen & home monitoring",
-    "description": "Yuwell portable oxygen and home monitoring — the SPIRIT-3 portable oxygen concentrator, upper-arm and wrist blood pressure monitors, infrared thermometers and finger pulse oximeters, with selected models stocked in the U.S. Represented by HCPS in Southern Indiana, Southwest Ohio, Kentucky, Tennessee and Northern Georgia.",
+    "description": "Yuwell portable oxygen and home monitoring — the SP-3 portable oxygen concentrator, upper-arm and wrist blood pressure monitors, infrared thermometers and finger pulse oximeters, with selected models stocked in the U.S. Represented by HCPS in Southern Indiana, Southwest Ohio, Kentucky, Tennessee and Northern Georgia.",
     "website": "",
     "logo": "/assets/logos/yuwell.jpg",
     "featured": false,
@@ -1268,8 +1268,8 @@
       {
         "type": "hero",
         "eyebrow": "Portable oxygen & home monitoring — Yuwell",
-        "headline": "SPIRIT-3 portable oxygen, backed by the Yuwell monitoring line.",
-        "lead": "Yuwell gives dealers a focused assortment across four high-demand categories — the SPIRIT-3 portable oxygen concentrator, blood pressure monitors, thermometers and pulse oximeters — with selected models stocked in the U.S. for faster replenishment. A practical fit for HME/DME, pharmacy, cash retail and showroom add-on sales.",
+        "headline": "SP-3 portable oxygen, backed by the Yuwell monitoring line.",
+        "lead": "Yuwell gives dealers a focused assortment across four high-demand categories — the SP-3 portable oxygen concentrator, blood pressure monitors, thermometers and pulse oximeters — with selected models stocked in the U.S. for faster replenishment. A practical fit for HME/DME, pharmacy, cash retail and showroom add-on sales.",
         "card_title": "",
         "card_intro": "",
         "checklist": [],
@@ -1290,18 +1290,18 @@
           },
           {
             "value": "Up to 5 Hours",
-            "label": "SPIRIT-3 battery runtime"
+            "label": "SP-3 battery runtime"
           },
           {
             "value": "≤55 dB(A)",
-            "label": "SPIRIT-3 sound level"
+            "label": "SP-3 sound level"
           }
         ]
       },
       {
         "type": "split",
-        "headline": "SPIRIT-3 Portable Oxygen Concentrator",
-        "copy": "Oxygen support for an active, on-the-go lifestyle. The SPIRIT-3 is a compact pulse-dose portable concentrator with four adjustable settings, a modular rechargeable battery, AC and vehicle DC power, replaceable molecular sieve beds and a protective shoulder bag. Prescription oxygen device — pulse-dose settings are not equivalent to continuous-flow L/min.",
+        "headline": "SP-3 Portable Oxygen Concentrator",
+        "copy": "Oxygen support for an active, on-the-go lifestyle. The SP-3 is a compact pulse-dose portable concentrator with four adjustable settings, a modular rechargeable battery, AC and vehicle DC power, replaceable molecular sieve beds and a protective shoulder bag. Prescription oxygen device — pulse-dose settings are not equivalent to continuous-flow L/min.",
         "checklist": [
           "Carry-ready: compact unit with a protective shoulder bag",
           "Rechargeable battery plus AC and vehicle DC power",
@@ -1310,7 +1310,7 @@
           "3-year compressor warranty, 2-year sieve-bed warranty"
         ],
         "checks": [],
-        "image": "/assets/products/yuwell/spirit-3-hero.jpg",
+        "image": "/assets/products/yuwell/manufacturers-page-hero-card-1-mw411a7m.png",
         "image_side": "right"
       },
       {
