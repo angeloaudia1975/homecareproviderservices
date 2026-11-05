@@ -180,10 +180,17 @@ async function dealerFromToken(event){
 
 /* A checkout submission key: 16–64 letters, digits or dashes; anything else is ignored. */
 function cleanKey(k){ const s=String(k==null?"":k).trim(); return /^[A-Za-z0-9-]{16,64}$/.test(s)?s:""; }
-/* The manufacturer orders this dealer already recorded under the key, in the shape create answers with. Strict. */
-async function recordedUnderKey(dealerId,key){
-  const rows=await sb("GET",`orders?dealer_id=eq.${encodeURIComponent(dealerId)}&submission_key=eq.${encodeURIComponent(key)}&select=id,manufacturer,subtotal,freight_fee,estimated_total,order_items(code,name,qty,unit_price,line_total)`);
-  return (rows||[]).map(o=>({order_id:o.id,manufacturer_slug:o.manufacturer,subtotal:num(o.subtotal),
+/* The manufacturer orders this dealer already recorded under these keys, in the shape create answers with. Strict.
+   An order row without its lines is NOT recorded (it is being written, or its lines failed and the withdraw failed
+   too): it never makes a retry say "already recorded" — the unique index still stops a second row. */
+async function recordedUnderKey(dealerId,keys){
+  keys=[...new Set([].concat(keys).filter(Boolean))]; if(!keys.length) return [];
+  const rows=await sb("GET",`orders?dealer_id=eq.${encodeURIComponent(dealerId)}&submission_key=in.(${keys.map(encodeURIComponent).join(",")})&select=id,manufacturer,submission_key,subtotal,freight_fee,estimated_total`);
+  if(!(rows||[]).length) return [];
+  const lines=await sb("GET",`order_items?order_id=in.(${rows.map(o=>encodeURIComponent(o.id)).join(",")})&select=order_id,code,name,qty,unit_price,line_total`);
+  const byOrder={}; for(const l of (lines||[])) (byOrder[l.order_id]=byOrder[l.order_id]||[]).push(l);
+  for(const o of rows) o.order_items=byOrder[o.id]||[];
+  return (rows||[]).filter(o=>o.order_items.length).map(o=>({order_id:o.id,manufacturer_slug:o.manufacturer,submission_key:o.submission_key,subtotal:num(o.subtotal),
     freight_fee:o.freight_fee==null?null:num(o.freight_fee),estimated_total:o.estimated_total==null?null:num(o.estimated_total),duplicate:true,
     items:(o.order_items||[]).map(i=>({code:i.code,name:i.name,qty:i.qty,unit:num(i.unit_price),line_total:num(i.line_total)}))}));
 }
@@ -269,16 +276,31 @@ exports.handler = async (event)=>{
          already recorded under that key is never recorded again: it is reported back as already recorded, and no second
          dealer confirmation is sent. Works once orders.submission_key exists (supabase/orders_submission_key.sql);
          before that the key is ignored and behaviour is unchanged. */
-      const key=cleanKey(b.submission_key);
+      const slugOf=o=>o&&(o.manufacturer_slug||o.manufacturer);
+      /* Each manufacturer order carries its own key (a cart edited after a lost answer keeps the key of the orders it
+         did not change); a single top-level key is still accepted for one-manufacturer checkouts. */
+      const keyOf=o=>cleanKey(o&&o.submission_key)||cleanKey(b.submission_key);
+      /* Two orders for one manufacturer under one key would collide with each other: refused before anything is written. */
+      { const seen=new Set(); for(const o of orders){ if(!keyOf(o)) continue; const k=String(slugOf(o)||"")+"|"+keyOf(o); if(seen.has(k)) return json(400,{ok:false,status:"bad_request",error:"one order per manufacturer per checkout"}); seen.add(k); } }
       let keyCol=false;
-      if(key){ try{ await sb("GET","orders?select=submission_key&limit=1"); keyCol=true; }catch(e){ keyCol=false; } }
-      const already=keyCol?await recordedUnderKey(who.dealer_id,key):[];
-      const alreadySlugs=new Set(already.map(r=>r.manufacturer_slug));
-      if(already.length && orders.every(o=>alreadySlugs.has(o.manufacturer_slug||o.manufacturer))){
+      if(orders.some(keyOf)){
+        try{ await sb("GET","orders?select=submission_key&limit=1"); keyCol=true; }
+        catch(e){
+          /* Only "that column does not exist" means the SQL has not run. Any other failure stops here — recording
+             without the key would let a retry record the order twice. */
+          const m=String(e&&e.message);
+          if(!(/Supabase 400/.test(m) && /42703|PGRST204|does not exist/i.test(m))){ console.error("order key check failed",m); return json(503,{ok:false,status:"record_unavailable",error:"Orders could not be checked right now — nothing was recorded. Please try again."}); }
+        }
+      }
+      const already=keyCol?await recordedUnderKey(who.dealer_id,orders.map(keyOf)):[];
+      const isAlready=o=>keyOf(o)&&already.some(r=>r.submission_key===keyOf(o)&&r.manufacturer_slug===slugOf(o));
+      const alreadyHere=already.filter(r=>orders.some(o=>keyOf(o)===r.submission_key&&slugOf(o)===r.manufacturer_slug));
+      already.length=0; already.push(...alreadyHere);
+      if(already.length && orders.every(isAlready)){
         await noteResubmission(already, who);
         return json(200,{ok:true,status:"recorded",duplicate:true,saved:0,failed:[],orders:[],already_recorded:already});
       }
-      if(already.length) orders=orders.filter(o=>!alreadySlugs.has(o.manufacturer_slug||o.manufacturer));
+      if(already.length) orders=orders.filter(o=>!isAlready(o));
       /* Re-price before anything is written. A total the dealer has not seen is never saved. */
       let priced;
       try{ priced=await serverPrice(orders, who.dealer_id); }
@@ -293,7 +315,10 @@ exports.handler = async (event)=>{
       const env=P.envFor(st.mode,isTest);
       // validate manufacturer slugs against the real table; keep names for the confirmation email
       let known=new Set(), mfrName={};
-      try{ const ms=await sb("GET","manufacturers?select=slug,name"); for(const m of (ms||[])){ known.add(m.slug); mfrName[m.slug]=m.name||m.slug; } }catch(e){}
+      /* Strict (C3-06): without the list every order would be stored with no manufacturer, and a keyed retry could
+         never find it. Nothing has been written yet. */
+      try{ const ms=await sb("GET","manufacturers?select=slug,name"); for(const m of (ms||[])){ known.add(m.slug); mfrName[m.slug]=m.name||m.slug; } }
+      catch(e){ console.error("manufacturers read failed",e&&e.message); return json(503,{ok:false,status:"record_unavailable",error:"Orders could not be recorded right now — nothing was recorded. Please try again."}); }
       /* PERSIST FIRST, AND ONLY WHAT PERSISTED COUNTS. An order is recorded with all of its lines
          or not at all: if its lines cannot be written, the order row is removed again and the
          order is reported as failed. Nothing downstream (emails, tracking requests) ever sees an
@@ -315,7 +340,7 @@ exports.handler = async (event)=>{
           subtotal:PRICING.isGolden(slug)?num(o.items_subtotal!=null?o.items_subtotal:o.estimated_total):num(o.subtotal),
           env,
         };
-        if(keyCol) row.submission_key=key;
+        if(keyCol && keyOf(o)) row.submission_key=keyOf(o);
         /* The server's freight and total are stored with the order (2026-10-09); Golden prices its own. */
         if(!PRICING.isGolden(slug) && o.freight_fee!=null){ row.freight_fee=num(o.freight_fee); row.estimated_total=num(o.estimated_total); }
         let ins;
@@ -323,9 +348,13 @@ exports.handler = async (event)=>{
         catch(e){
           /* Two requests with one key at the same moment: the unique index lets one through; the other is reported as
              the order the first one recorded. */
-          if(keyCol && /23505|duplicate key/i.test(String(e&&e.message))){
-            const dup=(await recordedUnderKey(who.dealer_id,key)).filter(r=>r.manufacturer_slug===slug);
+          if(keyCol && keyOf(o) && /23505|duplicate key/i.test(String(e&&e.message))){
+            let dup=[];
+            try{ dup=(await recordedUnderKey(who.dealer_id,[keyOf(o)])).filter(r=>r.manufacturer_slug===cleanSlug); }
+            catch(e3){ console.error("duplicate lookup failed",e3&&e3.message); }
             if(dup.length){ already.push(...dup); continue; }
+            /* The other request's order is still being written (or failed): not recorded here, never twice. */
+            failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue;
           }
           console.error("order insert failed",slug,e&&e.message); failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue; }
         const oid=ins&&ins[0]&&ins[0].id; if(!oid){ failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue; }
@@ -338,6 +367,8 @@ exports.handler = async (event)=>{
           try{ await sb("POST","order_items",items,{Prefer:"return=minimal"}); }
           catch(e){
             console.error("order lines failed — order withdrawn",oid,e&&e.message);
+            /* Free the key first, so a row that cannot be withdrawn never answers a retry as "already recorded". */
+            if(keyCol && row.submission_key){ try{ await sb("PATCH",`orders?id=eq.${encodeURIComponent(oid)}`,{submission_key:null},{Prefer:"return=minimal"}); }catch(e1){ console.error("could not free the order key",oid,e1&&e1.message); } }
             try{ await sb("DELETE",`orders?id=eq.${encodeURIComponent(oid)}`,null,{Prefer:"return=minimal"}); }
             catch(e2){ console.error("could not withdraw order without lines",oid,e2&&e2.message); }
             failed.push({manufacturer_slug:slug,error:"order_not_recorded"}); continue;

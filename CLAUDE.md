@@ -1958,10 +1958,13 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     lines, freight 0 recorded, status submitted, no email-failure flag. Read-only audit only — never duplicate, resend,
     edit or re-price it. Its remaining lifecycle (placed → confirmed with confirmation # + actual freight → shipped with
     tracking → completed) is done by HCPS staff in Order Review.
-  · **One checkout = one order (RULE).** The storefront sends a `submission_key` per checkout (kept while the same cart
-    is retried, dropped once recorded); orders-api never records the same manufacturer order twice under one key — a
-    repeat is answered "already recorded", noted on the order for staff, and never re-emailed. The duplicate check runs
-    BEFORE re-pricing. Needs `supabase/orders_submission_key.sql` (column + partial unique index; Angelo runs it);
+  · **One checkout = one order (RULE).** The storefront gives each manufacturer order of a checkout a `submission_key`
+    (kept while THAT order is retried unchanged — items, PO, notes, ship-to — dropped once recorded; editing one
+    manufacturer's order never re-keys the others). orders-api never records the same manufacturer order twice under
+    one key — a repeat is answered "already recorded", noted on the order for staff, and never re-emailed. The check
+    runs BEFORE re-pricing. An order row without its lines never counts as recorded; a withdrawn order frees its key
+    first. Only "column does not exist" means the SQL has not run — any other key-check failure, or an unreadable
+    manufacturer list, records nothing (503). Needs `supabase/orders_submission_key.sql` (column + partial unique index; Angelo runs it);
     before that the key is ignored and ordering is unchanged.
   · **New manufacturer account notice (RULE).** `_account_notice.js NOTICE_LINES` (today: yuwell). A dealer ordering
     such a line with no active dealer_manufacturers row carrying an account number is NEVER blocked; the order shows

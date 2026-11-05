@@ -36,7 +36,7 @@ const FILE={[LINE]:[
 function env(opts){
   opts=opts||{};
   const W=M.createWorld({unique:{orders:[['dealer_id','manufacturer','submission_key']]},
-    failRead:(t,qs)=>(opts.noKeyCol&&t==='orders'&&/submission_key/.test(String(qs||'')))?400:(opts.failAcct&&t==='dealer_manufacturers'&&/manufacturer=in\.\(yuwell/.test(decodeURIComponent(String(qs||''))))?500:((opts.failMeta||(opts.state&&opts.state.failMeta))&&t==='manufacturer_meta'?500:0), failWrite:(m,t,b)=>m==='POST'&&t==='order_items'&&(opts.failItems||(opts.failItemsFor&&[].concat(b)[0].code===opts.failItemsFor)||(opts.state&&opts.state.failItemsFor&&[].concat(b)[0].code===opts.state.failItemsFor))?500:0, tables:{
+    failRead:(t,qs)=>(opts.failAcct&&t==='dealer_manufacturers'&&/manufacturer=in\.\(yuwell/.test(decodeURIComponent(String(qs||''))))?500:((opts.failMeta||(opts.state&&opts.state.failMeta))&&t==='manufacturer_meta'?500:0), failWrite:(m,t,b,qs)=>(opts.failDelete&&m==='DELETE'&&t==='orders')||(opts.failKeyFree&&m==='PATCH'&&t==='orders'&&b&&'submission_key' in b)?500:m==='POST'&&t==='order_items'&&(opts.failItems||(opts.failItemsFor&&[].concat(b)[0].code===opts.failItemsFor)||(opts.state&&opts.state.failItemsFor&&[].concat(b)[0].code===opts.state.failItemsFor))?500:0, tables:{
     app_settings:[{key:'platform_state',value:{mode:'development'}}],
     manufacturers:[{slug:LINE,name:'Ovation Medical'},{slug:'golden-technologies',name:'Golden'},{slug:'other-line',name:'Other'},{slug:'yuwell',name:'Yuwell'}], manufacturer_meta:[{slug:LINE},{slug:'other-line'},{slug:'yuwell'}],
     dealers:[{id:'d1',parent_id:null,is_test:true}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}],
@@ -53,6 +53,9 @@ function env(opts){
       if(opts.beforeApi) await opts.beforeApi(b,W);
       const r=await ordersApi.handler({httpMethod:'POST',headers:Object.assign({},o.headers),body:o.body});
       return {ok:r.statusCode<300,status:r.statusCode,json:async()=>JSON.parse(r.body)}; }
+    if(opts.noKeyCol&&u.includes('/rest/v1/orders?')&&/submission_key/.test(u)) return {ok:false,status:400,text:async()=>'{"code":"42703","message":"column orders.submission_key does not exist"}',json:async()=>({code:'42703'})};
+    if(opts.keyProbe5xx&&u.includes('/rest/v1/orders?select=submission_key')) return {ok:false,status:503,text:async()=>'{"message":"upstream timeout"}',json:async()=>({})};
+    if(opts.failMfrs&&u.includes('/rest/v1/manufacturers?select=slug,name')&&opts.failMfrs()) return {ok:false,status:500,text:async()=>'{"code":"XX000"}',json:async()=>({})};
     if(u==='/submit'){ hits.submit++; const r=await submitFn.handler({httpMethod:'POST',headers:Object.assign({},o.headers),body:o.body});
       bodies.push(JSON.parse(o.body));
       if(opts.loseResponses>0){ opts.loseResponses--; throw new Error('network timeout after the server answered'); }
@@ -236,13 +239,14 @@ await t('if the order cannot be persisted, no order email of any kind is sent an
 });
 
 /* ---- C3-06: one checkout = one order ---- */
+const keyIn=(b,i)=>b.orders[i||0].submission_key;
 const confirmations=E=>E.allMail.filter(m=>!/^(\[New account required\] )?New order/.test(m.subject));
 await t('a retry of the same checkout after a lost answer is recorded ONCE — no second order, no second email',async()=>{
   const E=env({loseResponses:1}); E.add('A1',2);
   await E.page.submitOrder();                                   // recorded, but the browser never heard back
   eq([E.W.db.orders.length,E.emails.length,E.CART.size],[1,1,1],'recorded once, emailed once, cart still shown');
   await E.page.submitOrder();                                   // the dealer presses Place order again
-  eq(E.bodies.length,2,'two submissions'); ok(E.bodies[0].submission_key&&E.bodies[0].submission_key===E.bodies[1].submission_key,'same checkout key');
+  eq(E.bodies.length,2,'two submissions'); ok(keyIn(E.bodies[0])&&keyIn(E.bodies[0])===keyIn(E.bodies[1]),'same checkout key');
   eq([E.W.db.orders.length,E.W.db.order_items.length,E.emails.length],[1,1,1],'still ONE order, one line, one HCPS email');
   eq(confirmations(E).length,1,'one dealer confirmation');
   eq(E.CART.size,0,'cart cleared — the order exists');
@@ -253,12 +257,12 @@ await t('a NEW checkout after a recorded order is a new order (the key is droppe
   const E=env(); E.add('A1',1); await E.page.submitOrder();
   E.add('A1',1); await E.page.submitOrder();                    // same item, same PO — a deliberate re-order
   eq([E.W.db.orders.length,E.emails.length],[2,2],'two orders');
-  ok(E.bodies[0].submission_key!==E.bodies[1].submission_key,'a new key');
+  ok(keyIn(E.bodies[0])!==keyIn(E.bodies[1]),'a new key');
 });
 await t('a changed cart is a new checkout, even before anything was recorded',async()=>{
   const E=env({loseResponses:1}); E.add('A1',1); await E.page.submitOrder();
   E.CART.set(LINE+'::A1',{p:E.CART.get(LINE+'::A1').p,qty:3}); await E.page.submitOrder();
-  ok(E.bodies[0].submission_key!==E.bodies[1].submission_key,'a different cart gets a different key');
+  ok(keyIn(E.bodies[0])!==keyIn(E.bodies[1]),'a different cart gets a different key');
   eq(E.W.db.orders.length,2,'both recorded');
 });
 await t('two simultaneous submissions of one checkout record one order (the unique index decides)',async()=>{
@@ -290,6 +294,7 @@ await t('the retry after a lost answer records the one that failed, and never th
   await E.page.submitOrder();                         // same cart, same key
   eq(E.W.db.orders.map(o=>o.manufacturer).sort(),[LINE,'other-line'].sort(),'each recorded exactly once');
   eq(E.CART.size,0,'nothing left in the cart — both orders exist');
+  const last=E.toasts[E.toasts.length-1]; ok(/Submitted/.test(last)&&!/already recorded/.test(last),'a new order is reported as submitted, not "already recorded": '+last);
 });
 await t('a retry of an order already recorded is answered "already recorded", even if a price moved since',async()=>{
   const E=env(); const S=E.submitFn();
@@ -299,6 +304,59 @@ await t('a retry of an order already recorded is answered "already recorded", ev
   const r=await S.handler({httpMethod:'POST',headers:{authorization:'Bearer jwt'},body});
   eq(r.statusCode,200,'not a price review: '+r.body.slice(0,200)); eq(JSON.parse(r.body).status,'already_recorded','already recorded');
   eq([E.W.db.orders.length,E.emails.length],[1,1],'one order, one email');
+});
+await t('one key for the whole request (older page): the manufacturer that failed is recorded on the retry',async()=>{
+  const st={failItemsFor:'Z1'}; const E=env({state:st}); const S=E.submitFn();
+  const mk=()=>JSON.stringify({dealer:{business:'B',contact:'C',email:'d@x.com'},submission_key:'k-1111222233334444',orders:[
+    {manufacturer_slug:LINE,manufacturer_name:'O',po:'1',items:[{code:'A1',qty:1,unit:50}]},{manufacturer_slug:'other-line',manufacturer_name:'Other',po:'2',items:[{code:'Z1',qty:1,unit:10}]}]});
+  await S.handler({httpMethod:'POST',headers:{authorization:'Bearer jwt'},body:mk()});
+  st.failItemsFor=null;
+  const r=JSON.parse((await S.handler({httpMethod:'POST',headers:{authorization:'Bearer jwt'},body:mk()})).body);
+  eq(E.W.db.orders.map(o=>o.manufacturer).sort(),[LINE,'other-line'].sort(),'each once'); eq(r.not_recorded,[],'nothing left out');
+});
+await t('review #1: lines fail AND the withdraw fails — the key is freed, so a retry records a complete order',async()=>{
+  const st={failItemsFor:'A1'}; const E=env({state:st,failDelete:true}); E.add('A1',1);
+  await E.page.submitOrder();
+  eq([E.W.db.orders.length,E.W.db.order_items.length,E.CART.size],[1,0,1],'an empty row is left, cart kept');
+  eq(E.W.db.orders[0].submission_key,null,'its key was freed');
+  st.failItemsFor=null; await E.page.submitOrder();
+  eq(E.W.db.order_items.length,1,'the retry recorded the order with its line'); eq(E.CART.size,0,'cart cleared');
+  ok(!E.toasts.some(m=>/already recorded/.test(m)),'never "already recorded"');
+});
+await t('review #1: an order row without its lines never answers a retry as "already recorded"',async()=>{
+  const st={failItemsFor:'A1'}; const E=env({state:st,failDelete:true,failKeyFree:true}); E.add('A1',1);
+  await E.page.submitOrder(); st.failItemsFor=null; await E.page.submitOrder();
+  eq(E.CART.size,1,'still in the cart — not claimed as recorded'); eq(E.W.db.orders.length,1,'never a second row');
+  ok(!E.toasts.some(m=>/already recorded/.test(m)),'dealer never told it was recorded: '+E.toasts.join(' | '));
+});
+await t('review #2: editing ANOTHER manufacturer after a lost answer never records the first one again',async()=>{
+  const st={failItemsFor:'Z1'}; const E=env({state:st,loseResponses:1}); E.add('A1',1);
+  E.CART.set('other-line::Z1',{p:{manufacturer:'other-line',code:'Z1',name:'Other item',group:'',base_price:10},qty:1}); E.MFR['other-line']={po:'PO-9',notes:''};
+  await E.page.submitOrder();                                  // Ovation recorded, Other failed, answer lost
+  st.failItemsFor=null; E.CART.get('other-line::Z1').qty=2;    // the dealer changes Other's quantity
+  await E.page.submitOrder();
+  eq(E.W.db.orders.filter(o=>o.manufacturer===LINE).length,1,'Ovation once');
+  eq(E.emails.filter(m=>/Ovation|ovation/.test(m.subject)).length,1,'Ovation emailed once');
+  eq(E.W.db.orders.filter(o=>o.manufacturer==='other-line').length,1,'Other recorded');
+  ok(keyIn(E.bodies[0],0)===keyIn(E.bodies[1],0)&&keyIn(E.bodies[0],1)!==keyIn(E.bodies[1],1),'unchanged order kept its key; the edited one got a new key');
+});
+await t('review #2: a notes change after a lost answer is a new order (notes are part of the order key)',async()=>{
+  const E=env({loseResponses:1}); E.add('A1',1); await E.page.submitOrder();
+  E.MFR[LINE].notes='please ship Tuesday'; await E.page.submitOrder();
+  ok(keyIn(E.bodies[0])!==keyIn(E.bodies[1]),'new key');
+});
+await t('review #3a: a failed key check (not "no column") records nothing — never an unprotected order',async()=>{
+  const E=env({keyProbe5xx:true}); E.add('A1',1); await E.page.submitOrder();
+  eq([E.W.db.orders.length,E.emails.length,E.CART.size],[0,0,1],'nothing recorded, cart kept');
+});
+await t('review #3b: an unreadable manufacturer list records nothing (never orders without a manufacturer)',async()=>{
+  let n=0; const E=env({failMfrs:()=>++n>=1}); E.add('A1',1); await E.page.submitOrder();
+  eq([E.W.db.orders.length,E.emails.length,E.CART.size],[0,0,1],'nothing recorded, cart kept');
+});
+await t('review #8: one request with the same manufacturer twice under one key is refused',async()=>{
+  const E=env(); const S=E.submitFn(); const ord={manufacturer_slug:LINE,manufacturer_name:'O',po:'1',items:[{code:'A1',qty:1,unit:50}]};
+  const r=await S.handler({httpMethod:'POST',headers:{authorization:'Bearer jwt'},body:JSON.stringify({dealer:{business:'B',contact:'C',email:'d@x.com'},submission_key:'k-9999888877776666',orders:[ord,ord]})});
+  ok(r.statusCode>=400,'refused: '+r.statusCode); eq(E.W.db.orders.length,0,'nothing recorded');
 });
 await t('before the SQL runs (no submission_key column) orders record exactly as before',async()=>{
   const E=env({noKeyCol:true}); E.add('A1',1); await E.page.submitOrder();

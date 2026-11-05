@@ -77,7 +77,7 @@ function render(){
         <td class="lbl"><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(o.dealer_id||"")}">${esc(o.dealer)}</a>
           <div class="hint" style="margin:0">${esc(o.manufacturer)}${o.po?" · PO "+esc(o.po):""}${o.rep?" · "+esc(o.rep):""}</div>
           ${o.account_notice?`<div class="acctnote">⚠ ${esc(o.account_notice)}</div>`:""}
-          ${/email failed|resubmitted/i.test(o.admin_notes||"")?`<div class="acctnote">⚠ ${esc(/email failed/i.test(o.admin_notes)?"HCPS order email failed — confirm by hand":"Dealer resubmitted this order — recorded once")}</div>`:""}</td>
+          ${/email failed|resubmitted/i.test(o.admin_notes||"")?`<div class="acctnote">⚠ ${esc(/email failed/i.test(o.admin_notes)?"HCPS order email failed — confirm by hand":"Dealer resubmitted this order — recorded once; confirm the HCPS order email arrived")}</div>`:""}</td>
         <td class="num">${o.item_count}</td>
         <td class="num">${money(o.subtotal)}${o.estimated_total!=null&&o.freight_fee>0?`<div class="hint" style="margin:0">+ ${money(o.freight_fee)} freight = ${money(o.estimated_total)}</div>`:""}</td>
         <td>${o.submitted_at?new Date(o.submitted_at).toLocaleDateString():""}</td>
