@@ -1974,7 +1974,12 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
   MAP/public-display rules, NO cart/checkout (Call Dealer / Request Information), inquiries stored securely and routed to
   the dealer, privacy-conscious demand tracking; expansion: HCPS demand analytics (views ≠ sales; no purchase ≠ no stock),
   Dealer 360 / Command Center insights (low noise), social media asset generator (manual download only, never
-  auto-post). Rules: staged reviewed PRs, independent review per stage; preserve ordering/configurators/carts/PO/history,
+  auto-post). Plan + audit: Claude Doc "C3-07 Partner 360 Growth Platform — Audit & Plan" (claude.ai/artifact/5HgEcUagbCRZR2HN3hPEMs):
+  stages 0–8, owner decisions D1 e-signature vendor · D2 company/branch user roles · D3 public price display · D4 storefront
+  tracking privacy/retention · D5 credit-application data retention. **Stage 0 LIVE 2026-11-05 (ordering #41, 32ff98f):
+  brochure email requires an approved dealer sign-in (was an open relay), reply-to = the dealer, subject CR/LF stripped.**
+  Never probe a live email endpoint with a request that could send mail — verify with an OPTIONS/CORS or 401-only check.
+  Rules: staged reviewed PRs, independent review per stage; preserve ordering/configurators/carts/PO/history,
   frozen lines, Yuwell promo + freight, Ohio Medical retired, Golden workstream untouched; RLS + dealer isolation; test
   desktop/tablet/mobile and REAL interactions; no real orders, real credit applications, live test emails or social posts
   without transaction-specific authorization; minimize CI / Netlify builds / AI cost; surface business-rule, vendor
