@@ -5,13 +5,25 @@
 //     {action:"sf_inquiries", location_id?}                  -> {ok, inquiries:[…]}   (newest 300 of the visible locations)
 //     {action:"sf_inquiry_set", id, status:"new"|"handled"}  -> {ok}
 //     {action:"sf_inquiry_delete", id}                        -> {ok}                  (D4 deletion control)
+//     {action:"sf_prices", location_id, settings?}            -> {ok, products:[{manufacturer,code,name,category,price,price_label,source,
+//                                                                 calculated,your_price,flags}], lines, flag_text}   (the price editor)
+//     {action:"sf_preview", location_id, settings?}           -> {ok, ...exactly the public answer}   (preview before publishing;
+//                                                                 settings = unsaved changes to try, never stored)
+// Prices (owner correction 2026-11-06): one rule with the public page (_storefront_catalog → _retail_price); the dealer's own
+// prices are saved in the EXISTING dealer_retail_prices store through dealer-retail-api (company default + branch override).
 // WHO: D2 — a head office manages its visible locations' storefronts; a branch login only its own (_account_center.visibleLocations).
 // Lines a storefront may show = the location's ACTIVE manufacturer accounts (dealer_manufacturers), never a retired or switched-off
-// line, never Golden (its storefront is Golden's own). HCPS's block (hcps_blocked) can't be changed here.
+// line; Golden Technologies when Golden has verified the dealer (_golden_storefront — owner correction 2026-11-06).
+// HCPS's block (hcps_blocked) can't be changed here.
 'use strict';
 const AC = require('./_account_center.js');
 const SF = require('./_storefront.js');
 const RETIRED = require('./_retired_lines.js');
+const SC = require('./_storefront_catalog.js');
+const RP = require('./_retail_price.js');
+const PR = require('./_pricing.js');
+const GS = require('./_golden_storefront.js');
+const { flags } = require('./_flags.js');
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const ORDERING_BASE = (process.env.ORDERING_BASE || 'https://hcpsonlineordering.netlify.app').replace(/\/+$/, '');
@@ -59,6 +71,12 @@ async function context(who) {
   const mayWrite = (loc) => !who.preview && mayRead(loc) && (headOffice || String(loc) === did);
   return { did, self, root, visible, headOffice, mayRead, mayWrite };
 }
+async function sbAll(base) { let from = 0, out = []; for (;;) { const rows = await sb('GET', `${base}&limit=1000&offset=${from}`); out = out.concat(rows || []); if (!rows || rows.length < 1000) return out; from += 1000; } }
+const FILES = PR.remoteFiles(ORDERING_BASE);
+const CATALOG_FILE = { 'ohio-medical': 'gce' };
+const catalogFile = (slug) => FILES.catalogFile(CATALOG_FILE[slug] || slug);
+let FLAGS = null;
+const getFlags = async () => { if (!FLAGS) FLAGS = await flags((p) => sb('GET', p)); return FLAGS; };
 async function authorizedLines(ids) {
   const inIds = ids.map(enc).join(',');
   const [dms, names, metas] = await Promise.all([
@@ -69,6 +87,9 @@ async function authorizedLines(ids) {
   const by = new Map(ids.map((i) => [String(i), []]));
   for (const r of dms || []) { const s = String(r.manufacturer || ''); if (!s || GOLDEN.has(s) || off.has(s) || RETIRED.isRetiredLine(s)) continue; const L = by.get(String(r.dealer_id)); if (L && !L.some((x) => x.slug === s)) L.push({ slug: s, name: nm.get(s) || s }); }
   for (const L of by.values()) L.sort((a, b) => a.name.localeCompare(b.name));
+  // Golden: shown when Golden would serve this location (switch, pilot / all linked, account); Golden's link is checked on the page
+  const f = await getFlags();
+  for (const id of ids) { let a = { ok: false }; try { a = await GS.access((p) => sb('GET', p), id, f); } catch (e) { a = { ok: false }; } if (a.ok) by.get(String(id)).unshift({ slug: 'golden-technologies', name: 'Golden Technologies' }); }
   return by;
 }
 const link = (slug) => `${ORDERING_BASE}/store/${slug}`;
@@ -93,6 +114,30 @@ exports.handler = async (event) => {
           return { id: v.id, name: v.business_name || '', city: v.city || '', state: v.state || '', can_edit: C.mayWrite(v.id), lines: lines.get(String(v.id)) || [],
             default_email: v.email || '', default_phone: v.phone || '', storefront: s, suggested_slug: SF.slugify(`${v.business_name || ''}${v.city && C.visible.length > 1 ? ' ' + v.city : ''}`) || null,
             link: s ? link(s.slug) : null, live: !!(s && s.enabled && !s.hcps_blocked) }; }) });
+    }
+    if (b.action === 'sf_prices' || b.action === 'sf_preview') {
+      const loc = String(b.location_id || '');
+      if (!UUID.test(loc) || !C.mayRead(loc)) return json(404, { ok: false, error: 'That location is not part of your account.' });
+      const cur = await sb('GET', `dealer_storefronts?dealer_id=eq.${enc(loc)}&select=${SEL}`); const row = (cur && cur[0]) || null;
+      const allowed = (await authorizedLines([loc])).get(loc) || [];
+      // unsaved changes may be tried here; they are checked exactly as a save would check them and never stored
+      const v = b.settings ? SF.validateSettings(b.settings, allowed.map((l) => l.slug)) : { patch: {} };
+      if (v.error) return json(400, { ok: false, error: v.error });
+      const sf = Object.assign({ dealer_id: loc, company_id: C.root, slug: (row && row.slug) || 'preview', lines: null, hidden_categories: [], price_mode: 'msrp', show_address: true }, row || {}, v.patch, { dealer_id: loc, company_id: C.root });
+      const built = await SC.build(sf, { sb, sbAll, catalogFile, contentFile: FILES.contentFile, flags: getFlags, supabaseUrl: SUPABASE_URL }, { editor: b.action === 'sf_prices' });
+      if (b.action === 'sf_preview') {
+        const d = await sb('GET', `dealers?id=eq.${enc(loc)}&select=business_name,address,city,state,zip`); const dl = (d && d[0]) || {};
+        return json(200, { ok: true, preview: true, dealer: { name: dl.business_name || '', headline: sf.headline || '', about: sf.about || '', hours: sf.hours || '', logo: null, phone: sf.phone || '', email: sf.email || '',
+          address: sf.show_address !== false ? { street: dl.address || '', city: dl.city || '', state: dl.state || '', zip: dl.zip || '' } : { city: dl.city || '', state: dl.state || '' } },
+          lines: built.lineList, products: built.products, price_note: 'Preview — this is what customers see. Prices may change — call the dealer for current pricing and availability.', privacy: '' });
+      }
+      const retail = await sbAll(`dealer_retail_prices?dealer_id=eq.${enc(C.root)}&select=id,manufacturer,code,location_id,price&order=id.asc`).catch(() => []);
+      const products = built.products.map((p) => ({ manufacturer: p.manufacturer, code: p.code, name: p.name, category: p.category, image: p.image, price: p.price, price_label: p.price_label, price_unit: p.price_unit,
+        source: p.editor.source, calculated: p.editor.calculated, msrp: p.editor.msrp, flags: p.editor.flags, your_price: RP.dealerPriceFor(retail, loc, p.manufacturer, p.code),
+        your_price_here: (retail.find((r) => r.manufacturer === p.manufacturer && String(r.code) === String(p.code) && String(r.location_id) === loc) || {}).price || null,
+        company_price: (retail.find((r) => r.manufacturer === p.manufacturer && String(r.code) === String(p.code) && r.location_id == null) || {}).price || null }));
+      const policies = {}; for (const l of built.lineList) policies[l.slug] = built.policies[l.slug] || 'unknown';
+      return json(200, { ok: true, lines: built.lineList, policies, products, flag_text: RP.FLAG_TEXT, head_office: C.headOffice, can_edit: C.mayWrite(loc) });
     }
     if (b.action === 'sf_save') {
       const loc = String(b.location_id || '');

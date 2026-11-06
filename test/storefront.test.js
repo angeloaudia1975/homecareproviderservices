@@ -18,8 +18,8 @@ async function t(n, f) { try { await f(); pass++; console.log('ok   ' + n); } ca
 const eq = (a, b, w) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error((w || '') + ' got ' + JSON.stringify(a) + ' expected ' + JSON.stringify(b)); };
 const ok = (c, w) => { if (!c) throw new Error(w); };
 const HQ = '11111111-1111-1111-1111-111111111111', BR = '22222222-2222-2222-2222-222222222222', OTHER = '44444444-4444-4444-4444-444444444444';
-const CAT = { bemis: [{ code: 'B1', name: 'Raised seat <script>', category: 'Bath Safety', description: 'Nice', image: '/assets/products/bemis/B1.jpg', price: 55.5, base_price: 55.5, cost: 40, tiers: [{ min: 2, price: 50 }], attributes: { Width: '18"' } },
-  { code: 'B2', name: 'Derived', category: 'Bath Safety', image: 'javascript:alert(1)' }, { code: 'B3', name: 'Discontinued', category: 'Bath Safety' }, { code: 'B4', name: 'Switched off', category: 'Bath Safety' },
+const CAT = { bemis: [{ code: 'B1', name: 'Raised seat <script>', category: 'Bath Safety', description: 'Nice', image: '/assets/products/bemis/B1.jpg', price: 55.5, base_price: 55.5, cost: 40, map: 89, tiers: [{ min: 2, price: 50 }], attributes: { Width: '18"' } },
+  { code: 'B2', name: 'Derived', category: 'Bath Safety', image: 'javascript:alert(1)', price: 10, base_price: 10 }, { code: 'B3', name: 'Discontinued', category: 'Bath Safety' }, { code: 'B4', name: 'Switched off', category: 'Bath Safety' },
   { code: 'B5', name: 'Hidden cat', category: 'Parts' }, { code: 'B6', name: 'Edit MSRP', category: 'Bath Safety' }],
   strongback: [{ code: 'S1', name: 'Chair', category: 'Wheelchairs' }], 'golden-technologies': [{ code: 'G1', name: 'Lift chair', category: 'Lift Chairs' }], 'ohio-medical': [{ code: 'O1', name: 'Old', category: 'Oxygen' }], gce: [{ code: 'O1', name: 'Old', category: 'Oxygen' }], dalton: [{ code: 'D1', name: 'Off line', category: 'X' }] };
 
@@ -39,8 +39,9 @@ function world(o) {
       { manufacturer: 'bemis', code: 'B3', msrp: 5, status: 'discontinued' }],
     product_overrides: [{ manufacturer: 'bemis', code: 'B4', patch: { active: false } }, { manufacturer: 'bemis', code: 'B6', patch: { msrp: 61.25, base_price: 30 } }],
     custom_products: [], dealer_contract_prices: [{ dealer_id: HQ, code: 'B1', price: 33.33 }],
-    dealer_storefronts: o.storefronts || [], storefront_inquiries: o.inquiries || [] } });
-  const inner = W.fetch; W.counts = []; W.mail = []; W.adds = [];
+    dealer_storefronts: o.storefronts || [], storefront_inquiries: o.inquiries || [], dealer_retail_prices: o.retail || [],
+    app_settings: [].concat(o.policies ? [{ key: 'advertising_policies', value: { lines: o.policies } }] : [], o.flags ? [{ key: 'phase2_flags', value: o.flags }] : []) } });
+  const inner = W.fetch; W.counts = []; W.mail = []; W.adds = []; W.golden = [];
   W.fetch = async (url, opts) => { const u = String(url); const h = (opts && opts.headers) || {};
     if (u.startsWith(M.BASE + '/auth/v1/user')) { const tok = String(h.Authorization || '').replace(/^Bearer\s+/i, ''); const map = { hq: { id: 'u-hq' }, br: { id: 'u-br' }, ot: { id: 'u-ot' } };
       return map[tok] ? { ok: true, status: 200, json: async () => map[tok] } : { ok: false, status: 401, json: async () => ({}) }; }
@@ -54,12 +55,16 @@ function world(o) {
       if (r.manufacturer) W.counts.push({ p_kind: 'inquiry', code: r.product_code });
       const send = !!sf.email && !o.noSend; return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, id, send, to: send ? sf.email : null }) }; }
     if (h.Prefer === 'count=exact') { const r = await inner(u, { method: 'GET', headers: { apikey: 'svc' } }); const rows = await r.json(); return { ok: true, status: 206, headers: { get: () => '0-0/' + rows.length }, text: async () => '[]' }; }
+    if (u.startsWith('https://golden.test/v1/catalog')) { W.golden.push({ url: u, headers: h }); const G = o.golden || { linked: false, products: [] };
+      return { ok: true, status: 200, json: async () => Object.assign({ prices_visible: true }, G) }; }
     if (u.includes('api.resend.com')) { const b = JSON.parse(opts.body); W.mail.push(b); if (o.mailFails) return { ok: false, status: 500, text: async () => 'no' }; return { ok: true, status: 200, text: async () => '{"id":"m1"}', json: async () => ({ id: 'm1' }) }; }
     return inner(url, opts); };
   return W;
 }
-const dealerApi = (W, env) => M.load('dealer-storefront-api.js', W, env, ROOT);
-const pubApi = (W, env) => M.load('storefront-public.js', W, Object.assign({ RESEND_API_KEY: 're_test', HCPS_MAIL_FROM: 'HCPS <orders@hcps.test>' }, env || {}), ROOT);
+const dealerApi = (W, env) => M.load('dealer-storefront-api.js', W, Object.assign({}, GOLDEN_ENV_D, env || {}), ROOT);
+const GOLDEN_ENV_D = { GOLDEN_P360_KEY_ID: 'kid-test', GOLDEN_P360_SECRET: 'x'.repeat(48), GOLDEN_API_BASE: 'https://golden.test' };
+const GOLDEN_ENV = { GOLDEN_P360_KEY_ID: 'kid-test', GOLDEN_P360_SECRET: 'x'.repeat(48), GOLDEN_API_BASE: 'https://golden.test' };
+const pubApi = (W, env) => M.load('storefront-public.js', W, Object.assign({ RESEND_API_KEY: 're_test', HCPS_MAIL_FROM: 'HCPS <orders@hcps.test>' }, GOLDEN_ENV, env || {}), ROOT);
 const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer ' + who } });
 const pubGet = async (C, s) => { const r = await C.handler({ httpMethod: 'GET', headers: {}, queryStringParameters: { s }, body: '' }); return { status: r.statusCode, body: JSON.parse(r.body), headers: r.headers }; };
 const pubPost = (C, b, ip) => M.call(C, b, { headers: ip ? { 'x-nf-client-connection-ip': ip } : {} });
@@ -129,6 +134,71 @@ const live = (x) => Object.assign({ id: 'sf-hq', dealer_id: HQ, company_id: HQ, 
     eq([SF.unitOf({ uom: '2/CS' }, { uom: 'Case', case_qty: 2, msrp_basis: 'each' }), SF.unitOf({ uom: 'Case', case_qty: 2, msrp_each: true }), SF.unitOf({ uom: 'Case', msrp_each: true }, { msrp_basis: 'order_unit', case_qty: 3 }), SF.unitOf({}, { uom: 'Each', case_qty: 1, msrp_basis: 'each' })],
       ['each', 'each', 'per Case (3 each)', null], 'Phase 4 basis: Bemis MSRP is per piece; the record\'s unit wins');
     eq([SF.publicProduct({ code: 'X', image: 'https://maker.example/x.jpg' }, 'bemis', { msrp: new Map() }, 'msrp').image, SF.publicProduct({ code: 'X', image: '/assets/p/x.jpg' }, 'bemis', { msrp: new Map() }, 'msrp').image], [null, '/assets/p/x.jpg'], 'third-party photo hosts never');
+  });
+  await t('PRICES (owner 2026-11-06): dealer retail → MSRP → 2× standard cost → Call for Price, under each line\'s advertising rules', async () => {
+    const retail = [{ id: 1, dealer_id: HQ, location_id: null, manufacturer: 'bemis', code: 'B6', price: 75 }, { id: 2, dealer_id: HQ, location_id: null, manufacturer: 'bemis', code: 'B5', price: 40 }];
+    const P = async (policies, x) => { const o = Object.assign({ storefronts: [live({ hidden_categories: [] })], policies, retail }, x || {}); return (await pubGet(pubApi(world(o)), o.storefronts[0].slug)).body.products.filter((p) => p.manufacturer === 'bemis').map((p) => [p.code, p.price, p.price_label]); };
+    eq(await P({}), [['B1', 99.99, 'MSRP'], ['B2', null, 'Call for Price'], ['B5', null, 'Call for Price'], ['B6', 61.25, 'MSRP']], 'rules unknown: MSRP only');
+    eq(await P({ bemis: { policy: 'open' } }), [['B1', 99.99, 'MSRP'], ['B2', 20, 'Price'], ['B5', 40, 'Price'], ['B6', 75, 'Price']], 'open: B2 = 2 × $10 standard cost (never the record\'s derived MSRP label), the dealer\'s own prices');
+    eq(await P({ bemis: { policy: 'map' } }), [['B1', 99.99, 'MSRP'], ['B2', null, 'Call for Price'], ['B5', null, 'Call for Price'], ['B6', 61.25, 'MSRP']], 'map with no MAP on file: held for review');
+    eq(await P({ bemis: { policy: 'open' } }, { storefronts: [live({ id: 'sf-br', dealer_id: BR, slug: 'acme-xenia', hidden_categories: [] })], retail: retail.concat([{ id: 3, dealer_id: HQ, location_id: BR, manufacturer: 'bemis', code: 'B6', price: 80 }]) }), [['B1', 99.99, 'MSRP'], ['B2', 20, 'Price'], ['B5', 40, 'Price'], ['B6', 80, 'Price']], 'a branch\'s own price beats the company default');
+    /* review fix: a pack's price is checked against MAP in the same unit (MAP $12 each × 4 = $48 a pack) */
+    const b5 = CAT.bemis.find((x) => x.code === 'B5'); const keep = Object.assign({}, b5); Object.assign(b5, { map: 12, case_qty: 4, uom: 'Case' });
+    try {
+      const pk = async (price, basis) => { const W = world({ storefronts: [live({ hidden_categories: [] })], policies: { bemis: { policy: 'map' } }, retail: [{ id: 2, dealer_id: HQ, location_id: null, manufacturer: 'bemis', code: 'B5', price }] });
+        W.db.product_skus.push({ manufacturer: 'bemis', code: 'B5', status: 'active', case_qty: 4, uom: 'Case', map_basis: basis, msrp: null });
+        return (await pubGet(pubApi(W), 'acme-medical')).body.products.filter((p) => p.code === 'B5').map((p) => [p.price, p.price_label])[0]; };
+      eq(await pk(40, 'each'), [null, 'Call for Price'], '$40 a case of 4 is below MAP $12 each');
+      eq(await pk(50, 'each'), [50, 'Price']);
+      eq(await pk(40, 'order_unit'), [40, 'Price'], 'MAP quoted per case');
+    } finally { for (const k of Object.keys(b5)) delete b5[k]; Object.assign(b5, keep); }
+    const r = await pubGet(pubApi(world({ storefronts: [live({ hidden_categories: [] })], policies: { bemis: { policy: 'open' } }, retail })), 'acme-medical');
+    ok(!/55\.5|"cost"|base_price|"map"|"source"|calculated|unit_basis|"_/.test(JSON.stringify(r.body)), 'no cost, MAP, source or internal key in the public answer');
+  });
+  await t('GOLDEN (owner 2026-11-06): shown for a dealer Golden has verified — Golden\'s MSRP / eMAP, Golden photos, browsing only; never when switched off, not linked or not in the pilot', async () => {
+    const G = { linked: true, products: [
+      { sku: 'PR-501-SMA', family: 'PR501', family_name: 'MaxiComfort', name: 'MaxiComfort Cloud <b>', category: 'Lift Chairs', subcategory: 'MaxiComfort', specs: ['Weight capacity: 375 lb', 'Infinite position'], size_label: 'Small', image: 'https://d3325uqufdmhie.cloudfront.net/pr501.jpg', msrp: 2499, emap: 1999, dealer_price: 1100, price_source: 'standard', sort: 1 },
+      { sku: 'GB121', family: 'GB121', name: 'Buzzaround EX', category: 'Scooters', subcategory: 'Travel', specs: [], image: 'https://evil.example/x.jpg', msrp: null, emap: 1200, dealer_price: 700, price_source: 'standard', sort: 2 },
+      { sku: 'GB999', family: 'GB999', name: 'Account priced', category: 'Scooters', specs: [], image: null, msrp: null, emap: 400, dealer_price: 500, price_source: 'account', sort: 3 },
+      { sku: 'XX', name: 'Not a category', category: 'Parts', specs: [] }] };
+    const flags = { golden_p360_catalog: true, golden_p360_all_linked: true };
+    const W = world({ storefronts: [live({ hidden_categories: [] })], golden: G, flags }); const r = await pubGet(pubApi(W), 'acme-medical');
+    const g = r.body.products.filter((p) => p.manufacturer === 'golden-technologies');
+    eq(g.map((p) => [p.code, p.price, p.price_label, p.image]), [['PR-501-SMA', 2499, 'MSRP', 'https://d3325uqufdmhie.cloudfront.net/pr501.jpg'], ['GB121', 1400, 'Price', null], ['GB999', null, 'Call for Price', null]], 'eMAP rules: 2× standard ($1,400) ≥ eMAP; an account price is never a cost; only Golden\'s own photo hosts');
+    eq([r.body.lines[0].slug, g[0].attributes['Weight capacity'], g[0].features, g[0].name], ['golden-technologies', '375 lb', ['Infinite position'], 'MaxiComfort Cloud <b>']);
+    ok(!/1100|"dealer_price"|price_source|"emap"|account/.test(JSON.stringify(r.body)), 'no Golden dealer price or eMAP in the public answer');
+    const d = JSON.parse(Buffer.from(String(W.golden[0].headers['x-hcps-delegation'] || ''), 'base64url').toString() || '{}');
+    eq([d.role, d.sub_dealer, d.actor], ['hcps_staff', HQ, 'storefront:acme-medical'], 'asked as HCPS\'s server for this dealer, never as the dealer');
+    ok(W.golden.length === 1 && /\/v1\/catalog$/.test(W.golden[0].url.split('?')[0]), 'one catalog read, nothing else (no quote, no order)');
+    eq((await pubGet(pubApi(world({ storefronts: [live()], golden: G, flags: {} })), 'acme-medical')).body.products.filter((p) => p.manufacturer === 'golden-technologies').length, 0, 'switched off');
+    eq((await pubGet(pubApi(world({ storefronts: [live()], golden: Object.assign({}, G, { linked: false }), flags })), 'acme-medical')).body.products.filter((p) => p.manufacturer === 'golden-technologies').length, 0, 'not linked');
+    eq((await pubGet(pubApi(world({ storefronts: [live()], golden: G, flags: { golden_p360_catalog: true, golden_p360_pilot_dealers: [OTHER] } })), 'acme-medical')).body.products.filter((p) => p.manufacturer === 'golden-technologies').length, 0, 'not in the pilot');
+    eq((await pubGet(pubApi(world({ storefronts: [live({ lines: ['bemis'] })], golden: G, flags })), 'acme-medical')).body.products.filter((p) => p.manufacturer === 'golden-technologies').length, 0, 'the dealer left Golden out');
+    eq((await pubGet(pubApi(world({ storefronts: [live({ hidden_categories: ['scooters'] })], golden: G, flags })), 'acme-medical')).body.products.filter((p) => p.manufacturer === 'golden-technologies').map((p) => p.code), ['PR-501-SMA'], 'a hidden category hides Golden products too');
+    const ins = await pubPost(pubApi(world({ storefronts: [live()], golden: G, flags })), { action: 'inquiry', s: 'acme-medical', name: 'Pat', email: 'p@x.co', consent: true, product: { manufacturer: 'golden-technologies', code: 'PR-501-SMA' } });
+    eq(ins.status, 200, 'a request about a Golden product is accepted (no checkout)');
+  });
+  await t('PRICE EDITOR: the dealer sees each product\'s public price, where it comes from, the 2× figure and why a price is held — never the cost; a preview matches the public answer and saves nothing', async () => {
+    const retail = [{ id: 1, dealer_id: HQ, location_id: null, manufacturer: 'bemis', code: 'B1', price: 79 }];
+    const W = world({ storefronts: [live({ hidden_categories: [] })], policies: { bemis: { policy: 'map' } }, retail }); const C = dealerApi(W);
+    const r = await as(C, 'hq', { action: 'sf_prices', location_id: HQ });
+    eq(r.status, 200); const b1 = r.body.products.find((p) => p.code === 'B1'), b2 = r.body.products.find((p) => p.code === 'B2');
+    eq([b1.price, b1.price_label, b1.source, b1.your_price, b1.flags], [99.99, 'MSRP', 'msrp', 79, [{ on: 'dealer', flag: 'below_map', map: 89 }]], 'below MAP → MSRP shows, the reason is given');
+    eq([b2.price, b2.source, b2.calculated, b2.flags[0].flag], [null, 'call', 20, 'no_map_on_file']);
+    ok(!/55\.5|"cost"|base_price/.test(JSON.stringify(r.body)), 'no cost in the editor'); ok(r.body.flag_text.below_map, 'texts');
+    const pv = await as(C, 'hq', { action: 'sf_preview', location_id: HQ, settings: { price_mode: 'call' } });
+    ok(pv.body.products.every((p) => p.price === null), 'unsaved "Call for Price" tried'); eq(W.db.dealer_storefronts[0].price_mode, 'msrp', 'nothing saved');
+    eq((await as(C, 'br', { action: 'sf_prices', location_id: HQ })).status, 404, 'a branch can\'t see its head office\'s prices');
+    eq((await as(C, 'preview:pv', { action: 'sf_prices', location_id: HQ })).status, 200, 'a preview may read');
+    const pub = await pubGet(pubApi(world({ storefronts: [live({ hidden_categories: [] })], policies: { bemis: { policy: 'map' } }, retail })), 'acme-medical');
+    const pv2 = await as(dealerApi(world({ storefronts: [live({ hidden_categories: [] })], policies: { bemis: { policy: 'map' } }, retail })), 'hq', { action: 'sf_preview', location_id: HQ });
+    eq(pv2.body.products.map((p) => [p.code, p.price, p.price_label]), pub.body.products.map((p) => [p.code, p.price, p.price_label]), 'the preview is exactly the public answer');
+  });
+  await t('Golden is offered as a storefront line only where Golden would serve the location', async () => {
+    const f = { golden_p360_catalog: true, golden_p360_all_linked: true };
+    eq((await as(dealerApi(world({ flags: f })), 'hq', { action: 'sf_get' })).body.locations[0].lines.map((l) => l.slug), ['golden-technologies', 'bemis', 'strongback']);
+    eq((await as(dealerApi(world({ flags: {} })), 'hq', { action: 'sf_get' })).body.locations[0].lines.map((l) => l.slug), ['bemis', 'strongback']);
+    eq((await as(dealerApi(world({ flags: { golden_p360_catalog: true, golden_p360_pilot_dealers: [OTHER] } })), 'hq', { action: 'sf_get' })).body.locations[0].lines.map((l) => l.slug), ['bemis', 'strongback']);
   });
   await t('D4 counts: only products this storefront shows, at most 40, nothing about the visitor', async () => {
     const W = world({ storefronts: [live()] }); const C = pubApi(W);

@@ -147,7 +147,8 @@ exports.handler = async (event) => {
     if (b.action === 'app_get') {
       const ans = answersOf(app);
       return json(200, { ok: true, application: pub(app, names, ans), sections: F.SECTIONS.map(([s, l]) => ({ title: s, fields: l.map(([k, label, r]) => ({ key: k, label, required: r === 'req' })) })),
-        entities: F.ENTITIES, notice: (form && form.notice) || '', can_edit: mayWrite(app.location_id) && OPEN.has(app.status), signing: S.DS.configured() });
+        entities: F.ENTITIES, notice: (form && form.notice) || '', can_edit: mayWrite(app.location_id) && OPEN.has(app.status), signing: S.DS.configured(),
+        guarantee: !!(form && form.guarantee) && mayWrite(app.location_id) && !['approved', 'declined', 'withdrawn'].includes(app.status) });
     }
     if (!mayWrite(app.location_id)) return json(403, { ok: false, error: "You can't change that location's applications." });
 
@@ -230,6 +231,31 @@ exports.handler = async (event) => {
       if (app.status !== 'signing') return json(200, { ok: true, application: pub(app, names) });
       const r = await S.finalize(app, by, app.envelope_id);
       return json(200, { ok: true, application: pub(r.application || (await S.getApp(app.id)), names), state: r.reason || (r.ok ? 'signed' : '') });
+    }
+    /* Stage 5 follow-ups: a hand-signed copy (printed with "Download to sign on paper"), and a manufacturer's
+       guarantee page (Dalton page 4) — blank to print, and the guarantor's hand-signed page uploaded with the application */
+    if (b.action === 'app_guarantee_page') {
+      if (!(form && form.guarantee)) return json(400, { ok: false, error: 'This application has no guarantee page.' });
+      const bytes = await PDF.guaranteePage(app.manufacturer); await S.event(app.id, by, 'guarantee_page_downloaded', {});
+      return json(200, { ok: true, pdf_base64: bytes.toString('base64'), file: `${app.manufacturer}-personal-guarantee.pdf` });
+    }
+    if (b.action === 'app_upload_paper') {
+      const kind = b.kind === 'guarantee' ? 'guarantee' : b.kind === 'signed' ? 'signed' : null; if (!kind) return json(400, { ok: false, error: 'Say what the file is.' });
+      if (Number(b.version) !== app.version) return json(409, { ok: false, error: 'This application was changed somewhere else — reopen it.' });
+      if (kind === 'signed' && !OPEN.has(app.status)) return json(409, { ok: false, error: app.status === 'signing' ? 'It is out for e-signature — withdraw that first, or finish signing.' : 'This application is already signed.' });
+      if (kind === 'guarantee' && (!(form && form.guarantee) || ['approved', 'declined', 'withdrawn'].includes(app.status))) return json(400, { ok: false, error: 'This application has no open guarantee page.' });
+      if (kind === 'signed' && missing(answersOf(app)).length) return json(400, { ok: false, error: 'Complete the questionnaire first — the signed copy must match it.' });
+      if (kind === 'guarantee') {   // review fix: at most 5 guarantee pages per application (each guarantor, plus a resend)
+        const prior = await S.sb('GET', `dealer_application_events?application_id=eq.${enc(app.id)}&action=eq.guarantee_uploaded&select=id&limit=6`);
+        if ((prior || []).length >= 5) return json(429, { ok: false, error: 'Five guarantee pages are already uploaded for this application — call HCPS if one needs replacing.' });
+      }
+      const pdf = S.paperPdf(b.pdf_base64); if (pdf.error) return json(400, { ok: false, error: pdf.error });
+      const path = await S.putNew(`${app.dealer_id}/${app.id}/${kind === 'signed' ? 'paper-signed' : 'guarantee'}-${pdf.sha256.slice(0, 16)}.pdf`, pdf.bytes);
+      if (kind === 'guarantee') { await S.event(app.id, by, 'guarantee_uploaded', { path, sha256: pdf.sha256, bytes: pdf.bytes.length }); return json(200, { ok: true, application: pub(app, names) }); }
+      const row = await S.update(app, { status: 'offline_signed', signed_path: path, signed_sha256: pdf.sha256, signed_at: new Date().toISOString(), submitted_at: new Date().toISOString(), certificate_path: null, audit_path: null, signing_token_enc: null }, by);
+      await S.event(app.id, by, 'paper_signed_uploaded', { sha256: pdf.sha256, bytes: pdf.bytes.length, from: app.status });
+      await S.notifyPresident(row, 'signed').catch(() => {});
+      return json(200, { ok: true, application: pub(row, names) });
     }
     if (b.action === 'app_withdraw') {
       if (!['draft', 'queued', 'signing', 'signing_failed'].includes(app.status)) return json(409, { ok: false, error: 'This application is already with HCPS — ask HCPS to withdraw it.' });

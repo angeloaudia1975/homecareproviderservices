@@ -51,7 +51,7 @@ function lineFacts({ records, overrides, custom, pages, enrichedOnly }) {
   const msrp = new Map(), hidden = new Set(), hiddenU = new Set(), rec = new Map();
   for (const r of records || []) { rec.set(String(r.code), r); if (r.status && r.status !== 'active') hidden.add(String(r.code)); }
   const unit = new Map();   // the master record's unit and MSRP basis, where it states them
-  for (const r of records || []) if (r.uom || r.case_qty || r.msrp_basis) unit.set(String(r.code), { uom: r.uom, case_qty: r.case_qty, msrp_basis: r.msrp_basis });
+  for (const r of records || []) if (r.uom || r.case_qty || r.msrp_basis || r.map_basis) unit.set(String(r.code), { uom: r.uom, case_qty: r.case_qty, msrp_basis: r.msrp_basis, map_basis: r.map_basis });
   for (const o of overrides || []) { const p = o.patch || {}; if (p.active === false || p.hidden === true || p.retired === true || p.discontinued === true) hidden.add(String(o.code)); }
   // pages are read the way the dealer shop reads them: only VISIBLE pages (published / active / discontinued, not switched
   // off) count — a hidden or draft page is ignored and its SKUs keep their catalog cards. From a visible page: discontinued →

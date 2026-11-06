@@ -8,6 +8,13 @@
 //     {action:"get", id}                          -> {ok, application (answers decrypted), events, files:{signed,certificate,audit}}
 //     {action:"set_status", id, version, status, notes?}   status ∈ under_review | sent_to_manufacturer | approved | declined
 //     {action:"retry_signing", id}                -> moves a queued / failed application back to draft for the dealer to sign
+//   Stage 5 follow-ups (owner 2026-11-06):
+//     {action:"upload_paper", id, version, kind:"signed"|"guarantee", pdf_base64, signed_on?}   a hand-signed PDF the
+//        President received (signed → status offline_signed, then the normal review path; guarantee → kept with it)
+//     {action:"usage"}                            -> Documenso Free: this month used / limit, waiting, last 6 months
+//     {action:"retention"}                        -> closed applications whose retention date has passed (due for deletion)
+//     {action:"purge", id, version, confirm:"DELETE"}  after the retention date only: deletes every stored file and the
+//        encrypted answers; the record that an application existed (manufacturer, dates, status) stays, with the event log
 // D5: retention 7 years from the decision (retention_until); every action is in dealer_application_events.
 const F = require('./_app_forms.js');
 const PDF = require('./_app_pdf.js');
@@ -17,7 +24,7 @@ const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const json = (c, o) => ({ statusCode: c, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }, body: JSON.stringify(o) });
 const enc = encodeURIComponent;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NEXT = { signed: ['under_review', 'sent_to_manufacturer', 'declined'],
+const NEXT = { signed: ['under_review', 'sent_to_manufacturer', 'declined'], offline_signed: ['under_review', 'sent_to_manufacturer', 'declined'],
   under_review: ['sent_to_manufacturer', 'declined'], sent_to_manufacturer: ['approved', 'declined'] };
 
 async function whoami(event) {
@@ -58,6 +65,15 @@ exports.handler = async (event) => {
       }
       return json(200, { ok: out.every((x) => x.ok), forms: out, signing: S.DS.configured(), encryption: S.CRYPTO.available(), webhook_secret: (process.env.DOCUMENSO_WEBHOOK_SECRET || '').length >= 16 });
     }
+    if (b.action === 'usage') {
+      const [used, months, waiting] = await Promise.all([S.envelopesThisMonth(), S.usageByMonth(6), S.sb('GET', 'dealer_applications?status=eq.queued&select=id&limit=200')]);
+      return json(200, { ok: true, used, limit: S.FREE_MONTHLY, waiting: (waiting || []).length, months, plan: 'Documenso Free — no paid plan' });
+    }
+    if (b.action === 'retention') {
+      const today = S.chicagoToday();
+      const rows = await S.sb('GET', `dealer_applications?status=in.(approved,declined,withdrawn)&retention_until=lte.${today}&select=id,manufacturer,status,business_name,decided_at,retention_until,version,answers_enc,signed_path&order=retention_until.asc&limit=300`);
+      return json(200, { ok: true, today, due: (rows || []).filter((r) => r.answers_enc || r.signed_path).map(({ answers_enc, signed_path, ...r }) => ({ ...r, name: (F.FORMS[r.manufacturer] || {}).name || r.manufacturer })) });
+    }
     if (!UUID.test(String(b.id || ''))) return json(404, { ok: false, error: 'Unknown application.' });
     const app = await S.getApp(b.id); if (!app) return json(404, { ok: false, error: 'Unknown application.' });
 
@@ -66,10 +82,13 @@ exports.handler = async (event) => {
       const ev = await S.sb('GET', `dealer_application_events?application_id=eq.${enc(app.id)}&select=at,actor,action,detail&order=at.asc&limit=200`);
       const files = {};
       for (const [k, p] of [['signed', app.signed_path], ['certificate', app.certificate_path], ['audit', app.audit_path]]) if (p) files[k] = await S.signedLink(p, 120);
+      const gu = (ev || []).filter((e) => e.action === 'guarantee_uploaded' && e.detail && e.detail.path).pop();   // the latest hand-signed guarantee page
+      if (gu && app.answers_enc) files.guarantee = await S.signedLink(gu.detail.path, 120);
       await S.event(app.id, by, 'viewed', {});
       const { answers_enc, signing_token_enc, ...rest } = app;
       return json(200, { ok: true, application: { ...rest, name: (F.FORMS[app.manufacturer] || {}).name || app.manufacturer }, answers,
-        sections: F.SECTIONS.map(([s, l]) => ({ title: s, fields: l.map(([k, label]) => ({ key: k, label })) })), events: ev || [], files, next: NEXT[app.status] || [] });
+        sections: F.SECTIONS.map(([s, l]) => ({ title: s, fields: l.map(([k, label]) => ({ key: k, label })) })), events: ev || [], files, next: NEXT[app.status] || [],
+        guarantee: !!(F.FORMS[app.manufacturer] || {}).guarantee });
     }
     if (b.action === 'preview') {   // the completed original as the dealer saw it (before signing)
       const r = await PDF.build(app.manufacturer, S.CRYPTO.open(app.answers_enc, 'app:' + app.id) || {}, { preview: true });
@@ -93,6 +112,41 @@ exports.handler = async (event) => {
       const d = new Date(); const row = await S.update(app, { status: 'withdrawn', signing_token_enc: null, decided_at: d.toISOString(), retention_until: `${d.getUTCFullYear() + 7}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`, review_notes: b.notes == null ? app.review_notes : String(b.notes).slice(0, 4000) }, by);
       await S.event(app.id, by, 'withdrawn_by_hcps', { from: app.status });
       return json(200, { ok: true, application: { id: row.id, status: row.status, version: row.version } });
+    }
+    if (b.action === 'upload_paper') {
+      const kind = b.kind === 'guarantee' ? 'guarantee' : b.kind === 'signed' ? 'signed' : null; if (!kind) return json(400, { ok: false, error: 'Say what the file is.' });
+      if (Number(b.version) !== app.version) return json(409, { ok: false, error: 'This application changed — reload it.' });
+      if (['approved', 'declined', 'withdrawn'].includes(app.status) || !app.answers_enc) return json(400, { ok: false, error: 'This application is closed.' });
+      if (kind === 'signed' && !['draft', 'queued', 'signing_failed'].includes(app.status)) return json(400, { ok: false, error: app.status === 'signing' ? 'It is out for e-signature — withdraw that first.' : 'This application is already signed.' });
+      if (kind === 'guarantee' && !(F.FORMS[app.manufacturer] || {}).guarantee) return json(400, { ok: false, error: 'This manufacturer has no guarantee page.' });
+      const pdf = S.paperPdf(b.pdf_base64); if (pdf.error) return json(400, { ok: false, error: pdf.error });
+      const path = await S.putNew(`${app.dealer_id}/${app.id}/${kind === 'signed' ? 'paper-signed' : 'guarantee'}-${pdf.sha256.slice(0, 16)}.pdf`, pdf.bytes);
+      if (kind === 'signed') {
+        const on = /^\d{4}-\d{2}-\d{2}$/.test(String(b.signed_on || '')) && String(b.signed_on) <= S.chicagoToday() ? String(b.signed_on) + 'T12:00:00Z' : new Date().toISOString();
+        const row = await S.update(app, { status: 'offline_signed', signed_path: path, signed_sha256: pdf.sha256, signed_at: on, certificate_path: null, audit_path: null, signing_token_enc: null }, by);
+        await S.event(app.id, by, 'paper_signed_uploaded', { sha256: pdf.sha256, bytes: pdf.bytes.length, from: app.status });
+        return json(200, { ok: true, application: { id: row.id, status: row.status, version: row.version } });
+      }
+      await S.event(app.id, by, 'guarantee_uploaded', { path, sha256: pdf.sha256, bytes: pdf.bytes.length });
+      return json(200, { ok: true, application: { id: app.id, status: app.status, version: app.version } });
+    }
+    if (b.action === 'purge') {
+      if (b.confirm !== 'DELETE') return json(400, { ok: false, error: 'Type DELETE to confirm.' });
+      if (Number(b.version) !== app.version) return json(409, { ok: false, error: 'This application changed — reload it.' });
+      if (!['approved', 'declined', 'withdrawn'].includes(app.status) || !app.retention_until || String(app.retention_until) > S.chicagoToday())
+        return json(400, { ok: false, error: `This application must be kept until ${app.retention_until || 'it is closed and its retention date passes'}.` });
+      /* review fix: the record is cleared FIRST (compare-and-set), then the files; signed_path stays as the marker until every
+         file is gone, so a failed or partial delete is recorded and the application stays on the list for a retry */
+      const files = await S.listFiles(app);
+      /* with no signed_path to mark it (e.g. only a guarantee page), the answers are the marker: files go first */
+      const answersLast = !app.signed_path && files.length > 0;
+      let row = answersLast ? app : await S.update(app, { answers_enc: null, signing_token_enc: null, signer_email: null, review_notes: null }, by);
+      await S.event(app.id, by, 'purge_started', { files: files.length });
+      try { if (files.length) await S.removeFiles(files); }
+      catch (e) { await S.event(app.id, by, 'purge_failed', { files: files.length }).catch(() => {}); return json(503, { ok: false, error: 'The stored documents could not all be deleted just now — the answers are cleared; try Delete again.' }); }
+      row = await S.update(row, Object.assign({ signed_path: null, certificate_path: null, audit_path: null }, answersLast ? { answers_enc: null, signing_token_enc: null, signer_email: null, review_notes: null } : {}), by);
+      await S.event(app.id, by, 'purged', { files: files.length, note: 'Documenso Free keeps its own copy of a completed document (no delete on the free plan).' });
+      return json(200, { ok: true, application: { id: row.id, status: row.status, version: row.version }, files_deleted: files.length });
     }
     if (b.action === 'retry_signing') {
       if (!['queued', 'signing_failed'].includes(app.status)) return json(400, { ok: false, error: 'Only a waiting or failed signature can be sent back to the dealer.' });

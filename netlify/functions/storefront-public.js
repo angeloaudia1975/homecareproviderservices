@@ -10,13 +10,17 @@
 //        (the rest wait in My Storefront). The hidden "hp" field must stay empty.
 // A visitor is known to the limits only as a keyed hash of the network address (x-nf-client-connection-ip — never
 // X-Forwarded-For, which a visitor can set), kept 2 days; the address itself is never stored.
-// NO CHECKOUT, NO PRICES BUT VERIFIED MSRP / "Call for Price" (D3), NO wholesale, account, contract or other-dealer data:
-// products pass _storefront.publicProduct's whitelist. Nothing about a visitor is stored. Strict: if the catalog or the
+// NO CHECKOUT. PRICES (owner correction 2026-11-06): the dealer's saved retail → MSRP → HCPS calculated retail (standard
+// cost × 2) → Call for Price, under each line's advertising rules (_retail_price / _storefront_catalog). NO wholesale cost,
+// margin, price source, account, contract or other-dealer data: products pass a whitelist. Golden Technologies is included
+// for dealers Golden has verified (_golden_storefront) — browsing and requests only. Nothing about a visitor is stored. Strict: if the catalog or the
 // commercial records can't be read the page says so (503) — never a list that might show discontinued products.
 'use strict';
 const crypto = require('crypto');
 const SF = require('./_storefront.js');
-const RETIRED = require('./_retired_lines.js');
+const SC = require('./_storefront_catalog.js');
+const PR = require('./_pricing.js');
+const { flags } = require('./_flags.js');
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const ORDERING_BASE = (process.env.ORDERING_BASE || 'https://hcpsonlineordering.netlify.app').replace(/\/+$/, '');
@@ -27,6 +31,7 @@ const enc = encodeURIComponent;
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{1,48}[a-z0-9])$/;
 const GOLDEN = new Set(['golden-technologies', 'golden']);
 const CATALOG_FILE = { 'ohio-medical': 'gce' };
+const FILES = PR.remoteFiles(ORDERING_BASE);
 const NOT_AVAILABLE = 'This storefront isn\'t available.';
 const PRIVACY = 'Your request is sent only to this dealer, who uses it to answer you. It is kept for up to 24 months and then deleted; ask the dealer to delete it sooner. This site sets no tracking cookies; product views are counted anonymously.';
 
@@ -73,41 +78,22 @@ async function storefront(slug) {
   return cached('sf:' + slug, 30000, async () => {
     const r = await sb('GET', `dealer_storefronts?slug=eq.${enc(slug)}&select=id,dealer_id,company_id,slug,enabled,hcps_blocked,headline,about,phone,email,hours,show_address,lines,hidden_categories,price_mode`);
     const sf = r && r[0]; if (!sf || !sf.enabled || sf.hcps_blocked) return null;
-    const [d, dms, names, metas] = await Promise.all([
-      sb('GET', `dealers?id=eq.${enc(sf.dealer_id)}&select=id,business_name,address,city,state,zip,active,parent_id`),
-      sb('GET', `dealer_manufacturers?dealer_id=eq.${enc(sf.dealer_id)}&active=eq.true&select=manufacturer`),
-      sb('GET', 'manufacturers?select=slug,name'), sb('GET', 'manufacturer_meta?select=slug,active,enriched_only')]);
+    const d = await sb('GET', `dealers?id=eq.${enc(sf.dealer_id)}&select=id,business_name,address,city,state,zip,active,parent_id`);
     const loc = d && d[0]; if (!loc || loc.active === false) return null;            // a closed location is never public
     for (const hid of [loc.parent_id, sf.company_id].filter((x) => x && String(x) !== String(loc.id))) {
       const h = await sb('GET', `dealers?id=eq.${enc(hid)}&select=active`); if (!(h && h[0]) || h[0].active === false) return null;   // nor one whose head office is
     }
     let logo = null;
     for (const id of [sf.dealer_id, sf.company_id]) { try { const x = await sb('GET', `dealers?id=eq.${enc(id)}&select=logo_url`); const u = x && x[0] && x[0].logo_url; if (u && SF.logoOk(u, SUPABASE_URL)) { logo = u; break; } } catch (e) { /* no logo column */ } }
-    const off = new Set((metas || []).filter((m) => m.active === false).map((m) => m.slug)), enrOnly = new Set((metas || []).filter((m) => m.enriched_only === true).map((m) => m.slug)), nm = new Map((names || []).map((m) => [m.slug, m.name || m.slug]));
-    let lines = [...new Set((dms || []).map((x) => String(x.manufacturer || '')))].filter((s) => s && !GOLDEN.has(s) && !off.has(s) && !RETIRED.isRetiredLine(s));
-    if (Array.isArray(sf.lines)) lines = lines.filter((s) => sf.lines.includes(s));
-    const hiddenCats = new Set((sf.hidden_categories || []).map((x) => String(x).toLowerCase()));
-    const products = [], lineList = [];
-    for (const line of lines) {
-      const q = `manufacturer=eq.${enc(line)}`;
-      const [file, records, overrides, custom, pages] = await Promise.all([catalogFile(line),
-        sbAll(`product_skus?${q}&select=code,msrp,msrp_auto,status,uom,case_qty,msrp_basis&order=code.asc`), sbAll(`product_overrides?${q}&select=code,patch&order=code.asc`),
-        sbAll(`custom_products?${q}&select=code,msrp,msrp_auto&order=code.asc`), sbAll(`product_content?${q}&select=page_key,status,disabled,skus&order=page_key.asc`)]);
-      const facts = SF.lineFacts({ records, overrides, custom, pages, enrichedOnly: enrOnly.has(line) });
-      let n = 0;
-      for (const p of file) {
-        if (!p || !p.code || facts.isHidden(p.code) || p.active === false || p.discontinued === true) continue;
-        const pp = SF.publicProduct(p, line, facts, sf.price_mode);
-        if (hiddenCats.has(pp.category.toLowerCase())) continue;
-        products.push(pp); n++; if (products.length >= 6000) break;
-      }
-      if (n) lineList.push({ slug: line, name: nm.get(line) || line, count: n });
-    }
+    const built = await SC.build(sf, { sb, sbAll, catalogFile, contentFile: FILES.contentFile, flags: () => flags((p) => sb('GET', p)), supabaseUrl: SUPABASE_URL });
+    const products = built.products, lineList = built.lineList;
+    const anyMsrp = products.some((p) => p.price_label === 'MSRP');
     return { sf, codes: new Set(products.map((p) => p.manufacturer + '|' + p.code)), public: {
       dealer: { name: loc.business_name || '', headline: sf.headline || '', about: sf.about || '', hours: sf.hours || '', logo,
         phone: sf.phone || '', email: sf.email || '',            // only contact details the dealer entered for the storefront
         address: sf.show_address ? { street: loc.address || '', city: loc.city || '', state: loc.state || '', zip: loc.zip || '' } : { city: loc.city || '', state: loc.state || '' } },
-      lines: lineList, products, price_note: sf.price_mode === 'msrp' ? 'Prices shown are the manufacturer\'s suggested retail price (MSRP). Call the dealer for current pricing and availability.' : 'Call the dealer for pricing and availability.',
+      lines: lineList, products, price_note: sf.price_mode === 'call' || !products.some((p) => p.price != null) ? 'Call the dealer for pricing and availability.'
+        : (anyMsrp ? 'Prices marked MSRP are the manufacturer\'s suggested retail price. ' : '') + 'Prices may change — call the dealer for current pricing and availability.',
       privacy: PRIVACY } };
   });
 }

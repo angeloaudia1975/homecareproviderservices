@@ -123,7 +123,8 @@ const FORMS = {
     stamp: [['signer.name', 1, 313, 718, 140], ['signer.title', 1, 463, 718, 110], ['biz.legal_name', 2, 163, 709, 300], ['signer.name', 2, 163, 733, 150], ['signer.title', 2, 322, 733, 110],
       ['signer.name', 3, 160, 498, 160], ['signer.title', 3, 360, 498, 180]],
     sign: [box(1, 311, 733, 145, 11), box(2, 161, 749, 150, 11), box(3, 100, 522, 200, 20)], date: [box(1, 462, 733, 100, 11), box(2, 321, 749, 100, 11), box(3, 360, 526, 120, 16)],
-    notice: 'Page 4 of this application is a personal guarantee; it is left for the guarantors to complete with Dalton directly.' },
+    guarantee: { page: 4 },
+    notice: 'Page 4 of this application is a personal guarantee. It is never signed electronically here: each guarantor prints the guarantee page, signs it by hand, and it is uploaded with the application (or sent to Dalton directly).' },
 };
 function pick(l) { return { file: l.file, sha256: l.sha256 }; }
 

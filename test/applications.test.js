@@ -40,6 +40,10 @@ function world(o) {
       if (!/at=gte\.\d{4}-\d{2}-01T0[56]%3A00%3A00/.test(u)) throw new Error('month start not a Chicago midnight: ' + u);
       const n = W.db.dealer_application_events.filter((e) => e.action === act && (!dm || e.detail.dealer === decodeURIComponent(dm[1]))).length; return res(200, [], { 'content-range': `0-0/${n}` }); }
     if (u.startsWith(M.BASE + '/storage/v1/object/sign/')) return res(200, { signedURL: '/object/sign/x?token=t' });
+    if (u.startsWith(M.BASE + '/storage/v1/object/list/dealer-applications')) { if (o.listFails) return res(500, 'no'); const b = JSON.parse(opts.body);
+      return res(200, stored.filter((x) => !x.deleted && x.path.startsWith(b.prefix)).map((x) => ({ name: x.path.slice(b.prefix.length), id: 'f-' + x.path }))); }
+    if (u === M.BASE + '/storage/v1/object/dealer-applications' && opts.method === 'DELETE') { if (o.deleteFailsOnce && !W.delFailed) { W.delFailed = true; return res(500, 'no'); } const b = JSON.parse(opts.body); W.deletes = (W.deletes || []).concat(b.prefixes);
+      for (const x of stored) if (b.prefixes.includes(x.path)) x.deleted = true; return res(200, []); }
     if (u.startsWith(M.BASE + '/storage/v1/object/dealer-applications/')) { stored.push({ path: u.split('/dealer-applications/')[1], bytes: opts.body.length, upsert: hd['x-upsert'] }); return res(200, { Key: 'k' }); }
     if (u.startsWith('https://app.documenso.com/api/v2/')) {
       if (String(hd.Authorization) !== 'api_test_token') return res(401, { message: 'unauthorized' });
@@ -213,6 +217,82 @@ async function filled(W, m) { const C = api(W); const a = await started(W, 'hq',
     const S = require(path.join(ROOT, '_app_store.js'));
     eq(S.chicagoMonthStart(new Date('2026-01-15T12:00:00Z')), '2026-01-01T06:00:00.000Z'); eq(S.chicagoMonthStart(new Date('2026-07-15T12:00:00Z')), '2026-07-01T05:00:00.000Z');
     eq(S.chicagoMonthStart(new Date('2026-11-01T03:00:00Z')), '2026-10-01T05:00:00.000Z', 'still October in Chicago');
+  });
+  /* ---- Stage 5 follow-ups (owner 2026-11-06 13:25 CT) ---- */
+  const PDF64 = Buffer.from('%PDF-1.4\n' + 'x'.repeat(400)).toString('base64');
+  await t('paper-signed: the dealer uploads the hand-signed copy (a real PDF, never overwriting); status offline_signed → the President\'s normal review path', async () => {
+    const W = world(); const C = api(W); const a = await filled(W, 'access4u');
+    eq((await as(C, 'hq', { action: 'app_upload_paper', id: a.id, version: a.version, kind: 'signed', pdf_base64: Buffer.from('hello not a pdf at all '.repeat(20)).toString('base64') })).status, 400, 'not a PDF');
+    eq((await as(C, 'hq', { action: 'app_upload_paper', id: a.id, version: a.version + 5, kind: 'signed', pdf_base64: PDF64 })).status, 409, 'stale');
+    eq((await as(C, 'br', { action: 'app_upload_paper', id: a.id, version: a.version, kind: 'signed', pdf_base64: PDF64 })).status, 404, 'another location');
+    const r = await as(C, 'hq', { action: 'app_upload_paper', id: a.id, version: a.version, kind: 'signed', pdf_base64: PDF64 });
+    eq([r.status, r.body.application.status], [200, 'offline_signed'], JSON.stringify(r.body));
+    const st = W.stored.find((x) => /paper-signed-[0-9a-f]{16}\.pdf$/.test(x.path)); ok(st && st.upsert === 'false' && st.path.startsWith(HQ + '/' + a.id + '/'), JSON.stringify(W.stored));
+    ok(W.mail.length === 1 && !/Sample Medical/.test(JSON.stringify(W.mail[0])), 'President told, no contents');
+    eq((await as(C, 'hq', { action: 'app_save', id: a.id, version: r.body.application.version, answers: COMPLETE })).status, 409, 'no edits after signing');
+    eq((await as(C, 'hq', { action: 'app_upload_paper', id: a.id, version: r.body.application.version, kind: 'signed', pdf_base64: PDF64 })).status, 409, 'a second paper copy can\'t replace the signed one');
+    const A = adm(W); const g = await as(A, 'boss', { action: 'get', id: a.id }); eq([g.body.next, !!g.body.files.signed], [['under_review', 'sent_to_manufacturer', 'declined'], true]);
+    eq((await as(A, 'boss', { action: 'set_status', id: a.id, version: g.body.application.version, status: 'under_review' })).status, 200);
+    ok(W.db.dealer_application_events.some((e) => e.action === 'paper_signed_uploaded' && e.detail.sha256 && !JSON.stringify(e.detail).includes('Sample')), 'event without contents');
+  });
+  await t('paper-signed: an incomplete questionnaire, or one out for e-signature, can\'t be replaced by an upload; the President can upload one he received', async () => {
+    const W = world(); const C = api(W); const a = await started(W, 'hq', 'access4u');
+    eq((await as(C, 'hq', { action: 'app_upload_paper', id: a.id, version: a.version, kind: 'signed', pdf_base64: PDF64 })).status, 400, 'incomplete');
+    const A = adm(W); eq((await as(A, 'rep', { action: 'upload_paper', id: a.id, version: a.version, kind: 'signed', pdf_base64: PDF64 })).status, 403, 'rep');
+    const r = await as(A, 'boss', { action: 'upload_paper', id: a.id, version: a.version, kind: 'signed', pdf_base64: PDF64, signed_on: '2026-11-02' });
+    eq([r.status, r.body.application.status, W.db.dealer_applications[0].signed_at], [200, 'offline_signed', '2026-11-02T12:00:00Z']);
+  });
+  await t('Dalton guarantee page: the original page 4, blank, to print (never e-signed); the guarantor\'s hand-signed page is kept with the application', async () => {
+    const W = world(); const C = api(W); const a = await filled(W, 'dalton');
+    const gp = await as(C, 'hq', { action: 'app_guarantee_page', id: a.id }); eq(gp.status, 200);
+    const { PDFDocument } = require('pdf-lib'); const doc = await PDFDocument.load(Buffer.from(gp.body.pdf_base64, 'base64')); eq(doc.getPageCount(), 1, 'one page');
+    const b = await filled(W, 'access4u'); eq((await as(C, 'hq', { action: 'app_guarantee_page', id: b.id })).status, 400, 'no guarantee page for Access4U');
+    eq((await as(C, 'hq', { action: 'app_upload_paper', id: a.id, version: a.version, kind: 'guarantee', pdf_base64: PDF64 })).status, 200);
+    ok(W.stored.some((x) => /\/guarantee-[0-9a-f]{16}\.pdf$/.test(x.path)), 'stored');
+    for (let i = 0; i < 4; i++) eq((await as(C, 'hq', { action: 'app_upload_paper', id: a.id, version: a.version, kind: 'guarantee', pdf_base64: Buffer.from('%PDF-1.4\n' + i + 'z'.repeat(400)).toString('base64') })).status, 200);
+    eq((await as(C, 'hq', { action: 'app_upload_paper', id: a.id, version: a.version, kind: 'guarantee', pdf_base64: PDF64 })).status, 429, 'at most 5 guarantee pages');
+    const g = await as(adm(W), 'boss', { action: 'get', id: a.id }); ok(!!g.body.files.guarantee, 'President sees the guarantee page');
+    const L = await as(C, 'hq', { action: 'app_get', id: a.id }); ok(/never signed electronically/.test(L.body.notice), L.body.notice);
+  });
+  await t('usage: this month used / 5, waiting count and the last months — Documenso Free only', async () => {
+    const now = new Date().toISOString(); const W = world({ events: [{ id: 1, application_id: 'x', at: now, actor: 's', action: 'slot_reserved', detail: { dealer: HQ } }, { id: 2, application_id: 'x', at: now, actor: 's', action: 'slot_reserved', detail: { dealer: HQ } }, { id: 3, application_id: 'x', at: now, actor: 's', action: 'slot_released', detail: { dealer: HQ } }] });
+    const r = await as(adm(W), 'boss', { action: 'usage' }); eq([r.status, r.body.used, r.body.limit, r.body.months.length, r.body.months[0].used, r.body.waiting], [200, 1, 5, 1, 1, 0], JSON.stringify(r.body));
+    eq((await as(adm(W), 'rep', { action: 'usage' })).status, 403);
+  });
+  await t('retention: listed only after the retention date; purge needs DELETE, deletes every stored file and the encrypted answers, keeps the record and its log', async () => {
+    const W = world(); const C = api(W); const a = await filled(W, 'access4u');
+    await as(C, 'hq', { action: 'app_upload_paper', id: a.id, version: a.version, kind: 'signed', pdf_base64: PDF64 });
+    const A = adm(W); let app = W.db.dealer_applications[0];
+    await as(A, 'boss', { action: 'set_status', id: a.id, version: app.version, status: 'declined' }); app = W.db.dealer_applications[0];
+    eq((await as(A, 'boss', { action: 'retention' })).body.due.length, 0, 'kept 7 years');
+    eq((await as(A, 'boss', { action: 'purge', id: a.id, version: app.version, confirm: 'DELETE' })).status, 400, 'before the date');
+    app.retention_until = '2020-01-01';
+    const due = (await as(A, 'boss', { action: 'retention' })).body.due; eq([due.length, due[0].id, due[0].answers_enc], [1, a.id, undefined], 'listed without contents');
+    eq((await as(A, 'boss', { action: 'purge', id: a.id, version: app.version })).status, 400, 'no confirmation');
+    eq((await as(A, 'rep', { action: 'purge', id: a.id, version: app.version, confirm: 'DELETE' })).status, 403);
+    const p = await as(A, 'boss', { action: 'purge', id: a.id, version: app.version, confirm: 'DELETE' }); eq([p.status, p.body.files_deleted], [200, 1], JSON.stringify(p.body));
+    app = W.db.dealer_applications[0]; eq([app.answers_enc, app.signed_path, app.signer_email, app.status, app.manufacturer], [null, null, null, 'declined', 'access4u']);
+    ok(W.stored.every((x) => x.deleted), 'files left'); ok(W.db.dealer_application_events.some((e) => e.action === 'purged'), 'logged');
+    eq((await as(A, 'boss', { action: 'retention' })).body.due.length, 0, 'not listed again');
+    const W2 = world({ listFails: true }); const b = await filled(W2, 'access4u'); const A2 = adm(W2);
+    await as(api(W2), 'hq', { action: 'app_withdraw', id: b.id }); const r2 = W2.db.dealer_applications[0]; r2.retention_until = '2020-01-01';
+    eq((await as(A2, 'boss', { action: 'purge', id: b.id, version: r2.version, confirm: 'DELETE' })).status, 503, 'storage unreadable → nothing cleared');
+    ok(W2.db.dealer_applications[0].answers_enc, 'answers kept when the files could not be listed');
+    const W3 = world({ deleteFailsOnce: true }); const c3 = await filled(W3, 'access4u'); const A3 = adm(W3);
+    await as(api(W3), 'hq', { action: 'app_upload_paper', id: c3.id, version: c3.version, kind: 'signed', pdf_base64: PDF64 });
+    let r3 = W3.db.dealer_applications[0]; await as(A3, 'boss', { action: 'set_status', id: c3.id, version: r3.version, status: 'declined' }); r3 = W3.db.dealer_applications[0]; r3.retention_until = '2020-01-01';
+    eq((await as(A3, 'boss', { action: 'purge', id: c3.id, version: r3.version, confirm: 'DELETE' })).status, 503, 'delete failed');
+    r3 = W3.db.dealer_applications[0]; eq([r3.answers_enc, !!r3.signed_path], [null, true], 'answers cleared first; file marker kept');
+    eq((await as(A3, 'boss', { action: 'retention' })).body.due.length, 1, 'still listed for a retry');
+    eq((await as(A3, 'boss', { action: 'purge', id: c3.id, version: r3.version, confirm: 'DELETE' })).status, 200, 'retry');
+    eq([W3.db.dealer_applications[0].signed_path, W3.stored.every((x) => x.deleted)], [null, true]);
+    const W4 = world({ deleteFailsOnce: true }); const c4 = await filled(W4, 'dalton'); const A4 = adm(W4);
+    await as(api(W4), 'hq', { action: 'app_upload_paper', id: c4.id, version: c4.version, kind: 'guarantee', pdf_base64: PDF64 });
+    await as(api(W4), 'hq', { action: 'app_withdraw', id: c4.id }); let r4 = W4.db.dealer_applications[0]; r4.retention_until = '2020-01-01';
+    eq((await as(A4, 'boss', { action: 'purge', id: c4.id, version: r4.version, confirm: 'DELETE' })).status, 503);
+    ok(W4.db.dealer_applications[0].answers_enc, 'no signed file: answers kept as the marker'); eq((await as(A4, 'boss', { action: 'retention' })).body.due.length, 1, 'listed for retry');
+    r4 = W4.db.dealer_applications[0]; eq((await as(A4, 'boss', { action: 'purge', id: c4.id, version: r4.version, confirm: 'DELETE' })).status, 200);
+    eq([W4.db.dealer_applications[0].answers_enc, W4.stored.every((x) => x.deleted)], [null, true]);
   });
   console.log(`\napplications: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
