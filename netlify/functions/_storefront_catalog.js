@@ -104,6 +104,8 @@ async function lineData(deps, line, enrichedOnly) {
      page's primary: flagged → the page image → the gallery's first; "none" = no photo). First visible page claiming a SKU wins,
      as in the shop. Only our own /assets photos ever reach the public (SF.publicProduct). */
   const content = new Map(); const S = (v) => String(v == null ? '' : v).trim();
+  // a name typed in the admin (product_overrides.patch.name) outranks the page name, as in the shop (_nameFromOverride)
+  const ovName = new Map(); for (const o of overrides || []) { const nm = o && o.patch && S(o.patch.name); if (nm) ovName.set(S(o.code).toUpperCase(), nm); }
   for (const page of pg) {
     if (!page || page.disabled === true || !['published', 'active', 'discontinued'].includes(S(page.status))) continue;
     const g = (Array.isArray(page.images_gallery) ? page.images_gallery : []).filter((x) => x && S(x.url));
@@ -112,7 +114,7 @@ async function lineData(deps, line, enrichedOnly) {
     for (const sx of Array.isArray(page.skus) ? page.skus : []) {
       const c = S(sx && (sx.sku || sx.code)).toUpperCase(); if (!c || content.has(c)) continue;
       const own = S(sx.image);
-      content.set(c, { name: S(sx.name) || null, description: S(page.description) || null, image: own === 'none' ? '' : (own || primary || null) });
+      content.set(c, { name: ovName.get(c) || S(sx.name) || null, description: S(page.description) || null, image: own === 'none' ? '' : (own || primary || null) });
     }
   }
   /* standard cost and MAP: the shop's own engine (no contract price, no line discount, quantity 1 — a quantity break or

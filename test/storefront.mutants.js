@@ -75,6 +75,8 @@ const M = [
   { f: C, from: "ct.image && SF.IMG.test(ct.image)", to: "ct.image", why: 'third-party photo published' },
   { f: C, from: "if (!page || page.disabled === true ||", to: "if (!page ||", why: 'switched-off page content shown' },
   { f: C, from: "ct.description ? { description: ct.description } : {}", to: "{}", why: 'page description dropped' },
+  { f: C, from: "skus,description,image,images_gallery&order=page_key.asc", to: "skus&order=page_key.asc", why: 'database page content not read' },
+  { f: C, from: "name: ovName.get(c) || S(sx.name) || null", to: "name: S(sx.name) || null", why: 'admin name override lost' },
 ];
 const run = () => { for (const t of ['storefront.test.js', 'retail-price.test.js', 'storefront-rules.test.js']) { const r = spawnSync(process.execPath, [path.join(__dirname, t)], { encoding: 'utf8' }); if (r.status !== 0) return r; } return { status: 0 }; };
 if (run().status !== 0) { console.log('CONTROL FAILED'); process.exit(1); }

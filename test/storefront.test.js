@@ -86,6 +86,15 @@ const live = (x) => Object.assign({ id: 'sf-hq', dealer_id: HQ, company_id: HQ, 
     eq([by.B2.name, by.B2.image], ['Seat — Other', null], '"none" = no photo');
     eq([by.B1.description, by.B1.image], ['Ext', '/assets/products/bemis/B1.jpg'], 'a third-party page photo never replaces our own');
     eq([by.B5.description, by.B5.image], ['Gal', '/assets/products/bemis/second.jpg'], 'unflagged gallery: the page image is the primary');
+    eq(by.B6.name !== undefined, true);
+  });
+  await t('database pages carry their description and photo to the storefront; an admin name outranks the page name', async () => {
+    const pages = [{ manufacturer: 'bemis', page_key: 'db', status: 'published', disabled: false, description: 'DB story', image: '/assets/products/bemis/db.jpg',
+      skus: [{ sku: 'B1', name: 'Page name B1' }, { sku: 'B6', name: 'Page name B6' }] }];
+    const W = world({ pages, storefronts: [live({ hidden_categories: [] })] }); W.db.product_overrides.find((o) => o.code === 'B6').patch.name = 'Admin name';
+    const r = await pubGet(pubApi(W), 'acme-medical'); const by = Object.fromEntries(r.body.products.map((p) => [p.code, p]));
+    eq([by.B1.name, by.B1.description, by.B1.image], ['Page name B1', 'DB story', '/assets/products/bemis/db.jpg']);
+    eq(by.B6.name, 'Admin name', 'admin name override kept');
   });
   await t('a SKU retired in the line\'s static content file (no live database page) never appears on the public storefront', async () => {
     const content = { bemis: { pages: { old: { status: 'published', skus: [{ sku: 'B6', status: 'hidden', disabled: true, retired: { reason: 'x' } }] } } } };
