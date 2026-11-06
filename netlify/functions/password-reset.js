@@ -40,8 +40,8 @@ const json = (c, o) => ({ statusCode: c,
    to a site they control. */
 const PORTALS = {
   dealer: {
-    label: "Partner 360",
-    intro: "your HCPS Partner 360 dealer account",
+    label: "360 Dealer Portal",
+    intro: "your HCPS 360 Dealer Portal account",
     redirect: "https://hcpsonlineordering.netlify.app/reset.html",
   },
   staff: {

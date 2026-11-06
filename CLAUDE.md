@@ -102,6 +102,17 @@ This does not change who runs production SQL: Angelo still runs every migration 
 - Partner/manufacturer lists are **data-driven** from `activeManufacturers`
   (manufacturers.json filtered by `hidden !== true`). Never hardcode a partner list.
 - Resource files: `src/_data/documents.json` is **admin-managed — do not hand-edit**.
+- **360 Dealer Portal branding (approved by Angelo 2026-11-05, mockup + original logo).** The dealer ordering platform is
+  named **"360 Dealer Portal"** (subtitle "Online Ordering • Customer Quotes • Dealer Business Tools") everywhere a dealer sees
+  it — website, ordering platform, dealer emails, Academy messages and the HCPS link in Golden's portal. Staff-only admin text
+  and code comments may still say "Partner 360". The HCPS logo is ALWAYS Angelo's original file
+  (`/assets/brand/hcps-logo-original.png|webp`, cropped only of its empty transparent border) — never recreated or altered.
+  The "360" mark and the "Dealer Portal" wordmark are vector outlines (Nunito Sans 800 / 800 italic) with the orange swoosh,
+  inlined as SVG so they're crisp at every size and need no extra font: website `src/_includes/dp-lockup.njk` /
+  `dp-button.njk`, CSS under "360 Dealer Portal" in site.css; ordering `public/index.html` (`#dpLockTpl`, `dpLockHtml()`).
+  Navy #072b5a, swoosh orange #f6830f. Website button: navy by default, orange on hover/focus; below 1280px the header button
+  drops the words (cart + 360 mark), phones keep a compact header button and the full one leads the menu panel. Golden's own
+  brand is untouched — only the HCPS cross-link is restyled there.
   Manufacturer identity/category resolves via the `manuById` / `resourceCat` filters.
 
 ## 6. Commission importer (Ohio Medical / GCE and others)

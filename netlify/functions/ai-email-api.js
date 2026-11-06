@@ -224,8 +224,8 @@ function composeHtml({body, product, imageUrl, productUrl, signature}){
       style="max-width:100%;height:auto;border-radius:10px;border:1px solid #e5e9ee"></p>`:"";
   const cap=product&&product.name?`<p style="margin:-8px 0 16px;color:#6b7280;font-size:12.5px">${escH(product.name)}${product.code?` · ${escH(product.code)}`:""}</p>`:"";
   const btn=productUrl?`<p style="margin:18px 0 6px"><a href="${escH(productUrl)}"
-      style="background:#F5821F;color:#fff;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:8px;display:inline-block;font-size:15px">View this product on Partner 360 →</a></p>
-    <p style="margin:0 0 16px;color:#6b7280;font-size:12px">Not signed up yet? The link walks you through setting up your Partner 360 account, then opens the product.</p>`:"";
+      style="background:#F5821F;color:#fff;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:8px;display:inline-block;font-size:15px">View this product on the 360 Dealer Portal →</a></p>
+    <p style="margin:0 0 16px;color:#6b7280;font-size:12px">Not signed up yet? The link walks you through setting up your 360 Dealer Portal account, then opens the product.</p>`:"";
   const sig=signature?`<p style="margin:18px 0 0;color:#6b7280;font-size:12.5px;line-height:1.5">${escH(signature).replace(/\n/g,"<br>")}</p>`:"";
   return `<div style="max-width:560px;margin:0 auto;font-family:Arial,Helvetica,sans-serif">
     ${img}${cap}${paras}${btn}${sig}</div>`;
@@ -352,7 +352,7 @@ ${contextLines(ctx)}
 ${lineName?`\nThe line being promoted: ${lineName}`:""}
 ${recap?`\nMEETING RECAP — approved by the rep. This is what happened at the visit; the email must agree with it:\n${recap}`:""}
 ${brief?`\nThe product this email is about — these are APPROVED facts from the HCPS product record. Ground the email in them, and connect them to what this dealer actually sells:\n${brief}`:""}
-${brief?`\nThe email will show an approved photo of the product and a button through to its page on the Partner 360 dealer portal, so do NOT describe the photo or paste a URL — just make a dealer want to click.`:""}
+${brief?`\nThe email will show an approved photo of the product and a button through to its page on the HCPS 360 Dealer Portal, so do NOT describe the photo or paste a URL — just make a dealer want to click.`:""}
 
 Format:
 - Greeting to the contact by first name if provided ("Hi ${firstName||"there"},").${!firstName&&recap?` No recipient has been chosen yet, so greet with exactly "Hi there," — no one's name.`:""}

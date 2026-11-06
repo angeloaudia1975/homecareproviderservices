@@ -26,7 +26,7 @@
       { "label": "Resource Library", "url": "/resources/", "external": false },
       { "label": "Training Academy", "url": "/training-academy/", "external": false },
       { "label": "Consulting", "url": "/consulting/", "external": false },
-      { "label": "Online Ordering Portal", "url": "https://hcpsonlineordering.netlify.app/", "external": true }
+      { "label": "360 Dealer Portal", "url": "https://hcpsonlineordering.netlify.app/", "external": true }
     ] },
     { "heading": "Company", "links": [
       { "label": "Our Team", "url": "/#team", "external": false },
