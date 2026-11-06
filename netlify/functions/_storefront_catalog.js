@@ -54,11 +54,14 @@ async function build(sf, deps, opts) {
     return Object.assign(RP.publicPrice(d), { price_unit: d.price != null ? unit : null }, opts.editor ? { editor: RP.editorPrice(d) } : {});
   };
   for (const line of lines) {
-    const { file, facts, costs } = await lineData(deps, line, enrOnly.has(line));
+    const { file, facts, costs, content } = await lineData(deps, line, enrOnly.has(line));
     let n = 0;
     for (const p of file) {
       if (!p || !p.code || facts.isHidden(p.code) || p.active === false || p.discontinued === true) continue;
-      const pp = SF.publicProduct(p, line, facts, 'call', deps.supabaseUrl);
+      const ct = content.get(String(p.code).trim().toUpperCase());
+      const src = ct ? Object.assign({}, p, ct.name ? { name: ct.name } : {}, ct.description ? { description: ct.description } : {},
+        ct.image === '' ? { image: '' } : (ct.image && SF.IMG.test(ct.image)) ? { image: ct.image } : {}) : p;
+      const pp = SF.publicProduct(src, line, facts, 'call', deps.supabaseUrl);
       if (hiddenCats.has(pp.category.toLowerCase())) continue;
       const c = costs && costs.get(String(p.code));
       products.push(Object.assign(pp, priced(p, line, facts, c && c.cost, c && c.map, c && c.msrp))); n++; if (products.length >= 6000) break;
@@ -85,7 +88,7 @@ async function lineData(deps, line, enrichedOnly) {
   const q = `manufacturer=eq.${enc(line)}`;
   const [file, records, overrides, custom, pages] = await Promise.all([deps.catalogFile(line),
     deps.sbAll(`product_skus?${q}&select=code,msrp,msrp_auto,status,uom,case_qty,msrp_basis,map_basis&order=code.asc`), deps.sbAll(`product_overrides?${q}&select=code,patch&order=code.asc`),
-    deps.sbAll(`custom_products?${q}&select=code,msrp,msrp_auto&order=code.asc`), deps.sbAll(`product_content?${q}&select=page_key,status,disabled,skus&order=page_key.asc`)]);
+    deps.sbAll(`custom_products?${q}&select=code,msrp,msrp_auto&order=code.asc`), deps.sbAll(`product_content?${q}&select=page_key,status,disabled,skus,description,image,images_gallery&order=page_key.asc`)]);
   /* review fix (2026-11-06, retired ABM / PediFix SKUs): the dealer shop reads a line's pages from product_content and,
      when the line has NO visible page there, from its static content file (./data/content/<line>.json) — where retired
      SKUs are switched off (status hidden, disabled). Read the same way here, so a product the shop doesn't list is never
@@ -96,6 +99,24 @@ async function lineData(deps, line, enrichedOnly) {
     pg = Object.keys(o).map((k) => Object.assign({ page_key: k }, o[k]));
   }
   const facts = SF.lineFacts({ records, overrides, custom, pages: pg, enrichedOnly: !!enrichedOnly });
+  /* the shop's own product content (C3-07 James Medical review, 2026-11-06): a SKU claimed by a visible, switched-on page shows
+     that page's description, its own per-SKU name, and its photo by the shop's one image rule (the SKU's own photo, else the
+     page's primary: flagged → the page image → the gallery's first; "none" = no photo). First visible page claiming a SKU wins,
+     as in the shop. Only our own /assets photos ever reach the public (SF.publicProduct). */
+  const content = new Map(); const S = (v) => String(v == null ? '' : v).trim();
+  // a name typed in the admin (product_overrides.patch.name) outranks the page name, as in the shop (_nameFromOverride)
+  const ovName = new Map(); for (const o of overrides || []) { const nm = o && o.patch && S(o.patch.name); if (nm) ovName.set(S(o.code).toUpperCase(), nm); }
+  for (const page of pg) {
+    if (!page || page.disabled === true || !['published', 'active', 'discontinued'].includes(S(page.status))) continue;
+    const g = (Array.isArray(page.images_gallery) ? page.images_gallery : []).filter((x) => x && S(x.url));
+    let i = g.findIndex((x) => x.primary === true); if (i < 0) i = g.findIndex((x) => S(x.url) === S(page.image));
+    const primary = i >= 0 ? S(g[i].url) : (S(page.image) || (g.length ? S(g[0].url) : ''));
+    for (const sx of Array.isArray(page.skus) ? page.skus : []) {
+      const c = S(sx && (sx.sku || sx.code)).toUpperCase(); if (!c || content.has(c)) continue;
+      const own = S(sx.image);
+      content.set(c, { name: ovName.get(c) || S(sx.name) || null, description: S(page.description) || null, image: own === 'none' ? '' : (own || primary || null) });
+    }
+  }
   /* standard cost and MAP: the shop's own engine (no contract price, no line discount, quantity 1 — a quantity break or
      special never applies at 1) */
   let costs = null;
@@ -106,7 +127,7 @@ async function lineData(deps, line, enrichedOnly) {
     costs = new Map((lp.products || []).map((p) => { let c = null; try { c = lp.engine.unitPrice(p, 1); } catch (e) { c = null; }
       const m = Number(p.msrp); return [String(p.code), { cost: c, map: p.map, msrp: !p._msrp_suggested && p.msrp_auto !== true && m > 0 ? m : null }]; }));
   } catch (e) { console.error('storefront cost read failed', line, e && String(e.message).slice(0, 120)); costs = null; }
-  return { file: file || [], facts, costs };
+  return { file: file || [], facts, costs, content };
 }
 
 /* C3-07 owner directive 2026-11-06 15:23 CT: the DEFAULT customer retail of each product of a line, for My Retail Prices,

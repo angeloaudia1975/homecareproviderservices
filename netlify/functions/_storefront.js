@@ -136,4 +136,4 @@ function logoOk(u, supabaseUrl) {
   const base = String(supabaseUrl || '').replace(/\/+$/, '');
   return !!base && v.startsWith(base + '/storage/v1/object/public/') && /^[^\s"'<>`]{1,1900}$/.test(v) && !/\.\./.test(v);
 }
-module.exports = { logoOk, unitOf, slugify, slugProblem, validateSettings, lineFacts, publicProduct, validateInquiry, inquiryEmail, RESERVED, EMAIL_RE };
+module.exports = { IMG, logoOk, unitOf, slugify, slugProblem, validateSettings, lineFacts, publicProduct, validateInquiry, inquiryEmail, RESERVED, EMAIL_RE };
