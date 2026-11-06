@@ -2210,6 +2210,23 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     only — no paid plan. Tests: retail-price 8, storefront 18 + mutants 57/57, storefront-rules 5, golden-retail 4 +
     mutants 11/11 (with quotes 12), applications 20 + mutants 10/10; ordering storefront.browser 45, brochure-auth 27,
     applications.browser 27.
+    **Independent review (2026-11-06) NO-GO → fixed → GO; merged admin #103 → a9ff585, ordering #60 → 552b90f, both
+    Published.** RULES from it: (1) MAP is compared in the SAME unit as the price — on a pack the dealer / calculated price
+    is per order unit, MAP per piece unless map_basis 'order_unit' (so MAP × case_qty); a pack whose quantity is unknown
+    has no comparable MAP → held under MAP rules; (2) under MAP rules an MSRP below the MAP is not published either;
+    (3) Golden's catalog is read at most once a minute per Golden account and once per quote (never shared across
+    accounts); (4) application purge clears the record first only when a signed file still marks it, otherwise deletes
+    the files first — a failed delete always stays on the retention list for a retry; (5) at most 5 guarantee pages per
+    application; (6) staff pages pass ids through data-* attributes, never inside inline-script strings. Owner-approved
+    consequence on record: a published "Price" that is HCPS calculated retail reveals standard cost by halving.
+    Live 2026-11-06 ~14:15 CT: Storefront Advertising Rules page lists 12 lines, all "not recorded" except Golden (eMAP);
+    MAP on file Bemis 9/10, Climbing Steps 40/46, Strongback 19/29, Ovation 0/639; TEST storefront Off. Signed-out
+    Golden brochure prints no price and ignores the page's figure. Applications usage card 1 of 5 (Nov). Public-key probe
+    (storefront key, verified on a public table): dealer_applications, dealer_application_events, dealer_account_claims
+    (read + insert), dealer_retail_prices, dealer_storefronts, storefront_inquiries 401/42501; dealer-applications bucket
+    lists nothing; `credit_applications` does not exist in the exposed schema (404 PGRST205) — the legacy action is 410.
+    Account-number claims: only dealer_account_claims (pending); ordering, pricing and the Golden account gate read
+    dealer_manufacturers only, written from a claim solely by management `claim_verify` (never turns ordering on).
   · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
     (ordering) are authorized for deletion (the session's safety control refused the delete — Angelo deletes them on
     GitHub); no real account numbers remain in either public repo's current files; the private Golden repo's baseline
