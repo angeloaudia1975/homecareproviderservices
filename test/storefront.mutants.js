@@ -3,8 +3,8 @@ const fs = require('fs'), path = require('path'), { spawnSync } = require('child
 const F = (n) => path.join(__dirname, '..', 'netlify', 'functions', n);
 const R = F('_storefront.js'), P = F('storefront-public.js'), D = F('dealer-storefront-api.js'), C = F('_storefront_catalog.js'), G = F('_golden_storefront.js'), RP = F('_retail_price.js');
 const M = [
-  { f: RP, from: "if (msrpOrder && q > 1 && m * q > msrpOrder + 0.005) return { map: m, msrpMap: null };", to: '', why: 'per-pack MAP multiplied again (PediFix blocked)' },
-  { f: RP, from: "return { map: q > 1 ? Math.round(m * q * 100) / 100 : null, msrpMap: null };\n  }", to: "return { map: m, msrpMap: null };\n  }", why: 'unknown-unit MAP not read per piece (below-MAP risk)' },
+  { f: RP, from: "if (ms > 0 && q > 1 && r.msrp_basis === 'order_unit' && m * q > ms + 0.005)", to: "if (ms > 0 && q > 1 && m * q > ms + 0.005)", why: 'per-piece MSRP taken as per-pack proof (below-MAP risk)' },
+  { f: RP, from: "    return { map: null, msrpMap: null };\n  }", to: "    return { map: m, msrpMap: m };\n  }", why: 'unknown-unit MAP used as is' },
   { f: C, from: "const msrpV = facts ? (facts.msrp.get(String(p.code)) || fileMsrp || null) : p._msrp;", to: "const msrpV = facts ? (facts.msrp.get(String(p.code)) || null) : p._msrp;", why: 'official catalog-file MSRP ignored on the storefront' },
   { f: RP, from: "const orderMap = perOrder ? m : (q > 1 ? Math.round(m * q * 100) / 100 : null)", to: "const orderMap = m", why: 'pack price compared with a per-piece MAP' },
   { f: RP, from: "const perOrder = basis === 'order_unit';", to: "const perOrder = false;", why: 'per-case MAP multiplied again' },

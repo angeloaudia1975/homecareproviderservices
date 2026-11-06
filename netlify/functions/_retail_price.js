@@ -103,12 +103,12 @@ function mapsFor(p, rec, map, msrp) {
   const pack = q > 1 || (u && !/^(each|ea|1)$/i.test(u)); if (!pack) return { map: m, msrpMap: m };
   const basis = r.map_basis || p.map_basis;
   if (basis !== 'each' && basis !== 'order_unit') {
-    /* unit not recorded (legacy lines): the manufacturer's own MSRP is never blocked on a guess (msrpMap null); MAP is per
-       piece (× pack quantity) unless the MSRP proves it is quoted per pack — a MAP above the MSRP is impossible (2026-11-06) */
-    const ms = Number(msrp); const msrpEach = r.msrp_basis === 'each' || (r.msrp_basis !== 'order_unit' && p.msrp_each === true);
-    const msrpOrder = ms > 0 ? (msrpEach && q > 1 ? ms * q : ms) : null;
-    if (msrpOrder && q > 1 && m * q > msrpOrder + 0.005) return { map: m, msrpMap: null };
-    return { map: q > 1 ? Math.round(m * q * 100) / 100 : null, msrpMap: null };
+    /* unit not recorded (legacy lines, review 2026-11-06): the manufacturer's own MSRP is never blocked on a guess
+       (msrpMap null); a dealer / calculated pack price can't be checked against a MAP of unknown unit → no comparable MAP
+       (held as "no MAP on file") — unless an MSRP STATED per order unit proves the MAP is per pack (MAP × qty > MSRP) */
+    const ms = Number(msrp);
+    if (ms > 0 && q > 1 && r.msrp_basis === 'order_unit' && m * q > ms + 0.005) return { map: m, msrpMap: null };
+    return { map: null, msrpMap: null };
   }
   const perOrder = basis === 'order_unit';
   const orderMap = perOrder ? m : (q > 1 ? Math.round(m * q * 100) / 100 : null), pieceMap = perOrder ? (q > 1 ? Math.round(m / q * 100) / 100 : null) : m;
