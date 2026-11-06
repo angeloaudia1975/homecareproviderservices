@@ -120,7 +120,7 @@ const readsOf = (W, tb) => W.calls.filter((c) => c.method === 'GET' && String(c.
     eq([r.status, r.body.sent_to], [200, 'pat@cust.test'], JSON.stringify(r.body));
     eq(W.sends.length, 1); eq([W.sends[0].p_kind, W.sends[0].p_dealer, W.sends[0].p_domain], ['quote', HQ, 'cust.test']); ok(!JSON.stringify(W.sends[0]).includes('pat@'), 'address stored');
     const mail = W.outbound.filter((x) => x.kind === 'resend'); eq(mail.length, 1);
-    eq([mail[0].body.to, mail[0].body.reply_to], [['pat@cust.test'], 'hq@acme.test']); ok(/^Acme Medical HQ via HCPS <orders@hcps\.test>$/.test(mail[0].body.from), mail[0].body.from);
+    eq([mail[0].body.to, mail[0].body.reply_to], [['pat@cust.test'], 'hq@acme.test']); eq(mail[0].body.from, '"Acme Medical HQ via HCPS" <orders@hcps.test>');
     ok(mail[0].body.html.includes('Hi &lt;b&gt;Pat&lt;/b&gt;') && !mail[0].body.html.includes('54.99'), 'mail body');
     const row = W.db.dealer_saved_quotes[0]; eq([row.status, row.sent_count, row.customer_email], ['sent', 1, 'pat@cust.test']);
   });
@@ -146,6 +146,33 @@ const readsOf = (W, tb) => W.calls.filter((c) => c.method === 'GET' && String(c.
     const C = api(world());
     ok(/^Q261105-[0-9A-HJ-NP-Z]{4}$/.test(C._newQuoteNo(new Date('2026-11-06T04:30:00Z'))), 'not the Chicago day');
     ok(/^Q260101-/.test(C._newQuoteNo(new Date('2026-01-01T06:30:00Z'))), 'winter offset');
+  });
+  await t('review fixes: one plain address only; quoted From; "$" in a message is text; part number = the code; upgrade has no MSRP basis', async () => {
+    const W = world(); const C = api(W);
+    W.db.dealers[0].business_name = 'Smith Medical, LLC';
+    const q = (await as(C, 'hq', { action: 'quote_save', header: {}, lines: [L()] })).body.quote;
+    for (const bad of ['foo<pat@cust.test>', '"Pat" <pat@cust.test>', 'pat@cust.test (x)', 'pat@@cust.test'])
+      eq((await as(C, 'hq', { action: 'quote_email', id: q.id, to: bad })).status, 400, bad);
+    eq(W.sends.length, 0, 'a refused address reached the limiter');
+    eq((await as(C, 'hq', { action: 'quote_email', id: q.id, to: 'pat@cust.test', message: "costs $' and $&" })).status, 200);
+    const m = W.outbound.filter((x) => x.kind === 'resend')[0];
+    eq(m.body.from, '"Smith Medical, LLC via HCPS" <orders@hcps.test>');
+    ok(m.body.html.includes("costs $' and $amp;") || m.body.html.includes("costs $' and $&amp;"), 'message text mangled');
+    eq((m.body.html.match(/Raised|Yuwell Concentrator/g) || []).length < 4, true, 'quote duplicated by a $ pattern');
+    eq((await as(C, 'hq', { action: 'quote_render', header: {}, lines: [L({ sku: 'BE-1' })] })).status, 400, 'another product\'s MSRP');
+    eq((await as(C, 'hq', { action: 'quote_render', header: {}, lines: [L({ mfr: 'golden', code: 'PR501|u=Heat', sku: 'PR501', basis: 'msrp', unit: 999 })] })).status, 400, 'Golden upgrade priced as MSRP from the request');
+    eq((await as(C, 'hq', { action: 'quote_render', header: {}, lines: [L({ mfr: 'golden', code: 'PR501-XXX|std|Black|standard|0', sku: 'PR501-ABC', basis: 'msrp', unit: 1299 })] })).status, 200, 'Golden configuration key');
+  });
+  await t('review fixes: closed locations hidden; limits per company; a head office opening a branch quote gets that branch\'s retail', async () => {
+    const W = world(); W.db.dealers.push({ id: '55555555-5555-5555-5555-555555555555', parent_id: HQ, business_name: 'Closed Br', active: false });
+    W.db.dealer_saved_quotes.push({ id: '66666666-6666-6666-6666-666666666666', dealer_id: HQ, location_id: '55555555-5555-5555-5555-555555555555', quote_no: 'Q261105-AAAA', lines: [], status: 'draft', updated_at: 'x' });
+    const C = api(W);
+    eq((await as(C, 'hq', { action: 'quote_get', id: '66666666-6666-6666-6666-666666666666' })).status, 404, 'closed location visible');
+    const bq = (await as(C, 'br', { action: 'quote_save', header: {}, lines: [L({ basis: 'retail' })] })).body.quote;
+    const g = await as(C, 'hq', { action: 'quote_get', id: bq.id });
+    eq([g.body.own_location, g.body.retail_at_location['yuwell|YU-1']], [false, 125]);
+    eq((await as(C, 'br', { action: 'quote_email', id: bq.id, to: 'c@cust.test' })).status, 200);
+    eq(W.sends[0].p_dealer, HQ, 'counted against the branch, not the company');
   });
   console.log(`\nquotes: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

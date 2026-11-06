@@ -119,7 +119,8 @@ exports.handler = async (event) => {
     if (b.action === "branding_set") {
       const url = String(b.logo_url || "").trim();
       // Accept an https image URL or a data: URL (small inline logo). Reject anything else.
-      if (url && !/^https:\/\//i.test(url) && !/^data:image\//i.test(url)) return json(400, { error: "logo_url must be an https image URL or a data:image URL" });
+      // (dealer-supplied: no quotes, spaces or brackets — it is written into brochure / quote markup)
+      if (url && !(/^https:\/\/[^\s"'<>`]+$/i.test(url) && url.length <= 2000) && !(/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/i.test(url) && url.length < 600000)) return json(400, { error: "logo_url must be an https image URL or a PNG / JPEG / WebP data URL" });
       try { await sb("PATCH", `dealers?id=eq.${encodeURIComponent(did)}`, { logo_url: url || null }, { Prefer: "return=minimal" }); } catch (e) { return json(200, { ok: false, error: "save_failed (is the logo_url column present?)" }); }
       return json(200, { ok: true, logo_url: url || null });
     }

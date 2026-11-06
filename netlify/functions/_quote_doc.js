@@ -28,13 +28,17 @@ function cleanLine(x, i) {
   const mfr = clip(x.mfr, 60).toLowerCase();
   if (!/^[a-z0-9-]{2,60}$/.test(mfr)) return { error: `Line ${n}: unknown manufacturer.` };
   const code = clip(x.code, 120); if (!code) return { error: `Line ${n} needs its part number.` };
-  const sku = clip(x.sku || code.split('|u=')[0], 60);
+  /* the part number printed (and whose MSRP is looked up) is the line's own code — never a different product's. A Golden
+     line's code is its configuration key (model|fabric|colour|tier|footrest); its item number is Golden's own. */
+  const sku = GOLDEN.has(mfr) ? clip(x.sku || code.split('|')[0], 60) : clip(code.split('|u=')[0], 60);
+  if (!GOLDEN.has(mfr) && x.sku != null && String(x.sku).trim() && String(x.sku).trim() !== sku) return { error: `Line ${n}: the part number does not match the product.` };
   const name = clip(x.name, 200) || sku;
   const qty = Number(x.qty == null ? 1 : x.qty);
   if (!Number.isInteger(qty) || qty < 1 || qty > 9999) return { error: `Line ${n}: quantity must be a whole number from 1 to 9,999.` };
   const basis = String(x.basis || '').toLowerCase();
   if (!BASES.has(basis)) return { error: `Line ${n}: choose MSRP, your retail price or a one-time price.` };
   let unit = null;
+  if (basis === 'msrp' && GOLDEN.has(mfr) && /\|u=/.test(code)) return { error: `Line ${n}: an upgraded configuration has no manufacturer MSRP — choose your retail price or a one-time price.` };
   if (basis === 'once' || (basis === 'msrp' && GOLDEN.has(mfr))) {
     unit = price(x.unit);
     if (Number.isNaN(unit)) return { error: `Line ${n}: the price must be more than $0.` };
@@ -53,7 +57,7 @@ function cleanLines(input) {
 function cleanHeader(x) {
   x = x || {};
   const email = clip(x.customer_email, 200);
-  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: 'Enter a valid customer email, or leave it blank.' };
+  if (email && !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(email)) return { error: 'Enter a valid customer email, or leave it blank.' };
   return { header: { title: clip(x.title, 120), customer_name: clip(x.customer_name, 120), customer_email: email,
     customer_phone: clip(x.customer_phone, 40), valid_for: clip(x.valid_for, 40) || '30 days', notes: clip(x.notes, 2000) } };
 }

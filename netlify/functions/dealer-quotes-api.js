@@ -29,7 +29,7 @@ const json = (c, o) => ({ statusCode: c, headers: { "content-type": "application
 const H = () => ({ apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}` });
 const enc = encodeURIComponent;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const EMAIL_RE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;   // one plain address — no display name / brackets (the send limit counts real recipients)
 const MISSING = (e) => { const m = String(e && e.message); return /PGRST205|42P01/.test(m) && /dealer_saved_quotes/.test(m); };
 const NOT_YET = "Saved quotes open shortly.";
 const SEL = "id,dealer_id,location_id,quote_no,title,customer_name,customer_email,customer_phone,valid_for,notes,lines,status,sent_count,sent_at,created_at,updated_at";
@@ -71,7 +71,7 @@ async function priceLookups(owner, locationId, lines) {
   const retailLines = lines.filter((l) => l.basis === "retail");
   const msrp = new Map(), retail = new Map();
   if (msrpLines.length) {
-    const mfrs = [...new Set(msrpLines.map((l) => l.mfr))].map(enc).join(","), codes = [...new Set(msrpLines.map((l) => l.sku))].map((c) => `"${String(c).replace(/"/g, "")}"`).map(enc).join(",");
+    const mfrs = [...new Set(msrpLines.map((l) => l.mfr))].map(enc).join(","), codes = [...new Set(msrpLines.map((l) => l.sku))].map((c) => `"${String(c).replace(/[\\"]/g, "")}"`).map(enc).join(",");
     const q = `manufacturer=in.(${mfrs})&code=in.(${codes})`;
     const [rec, ov, cp] = await Promise.all([sb("GET", `product_skus?${q}&select=manufacturer,code,msrp`), sb("GET", `product_overrides?${q}&select=manufacturer,code,patch`), sb("GET", `custom_products?${q}&select=manufacturer,code,msrp`)]);
     const k = (m, c) => m + "|" + c;
@@ -82,7 +82,7 @@ async function priceLookups(owner, locationId, lines) {
     }
   }
   if (retailLines.length) {
-    const codes = [...new Set(retailLines.map((l) => l.code))].map((c) => `"${String(c).replace(/"/g, "")}"`).map(enc).join(",");
+    const codes = [...new Set(retailLines.map((l) => l.code))].map((c) => `"${String(c).replace(/[\\"]/g, "")}"`).map(enc).join(",");
     const rows = await sb("GET", `dealer_retail_prices?dealer_id=eq.${enc(owner)}&code=in.(${codes})&select=manufacturer,code,location_id,price`);
     for (const r of rows || []) {   // the location's own price wins over the company default
       const key = r.manufacturer + "|" + r.code, own = String(r.location_id || "") === String(locationId);
@@ -116,7 +116,9 @@ exports.handler = async (event) => {
     const d = await sb("GET", `dealers?id=eq.${enc(did)}&select=id,parent_id,business_name`); self = d && d[0];
     if (!self) return json(404, { ok: false, error: "Account not found." });
     const root = self.parent_id || self.id;
-    const family = await sb("GET", `dealers?or=(id.eq.${enc(root)},parent_id.eq.${enc(root)})&select=id,parent_id,business_name&limit=200`);
+    const fq = `dealers?or=(id.eq.${enc(root)},parent_id.eq.${enc(root)})&select=id,parent_id,business_name`;
+    let family = await sbOpt(fq + ",active&limit=200"); if (family == null) family = await sb("GET", fq + "&limit=200");
+    family = (family || []).filter((x) => x.active !== false || String(x.id) === String(did));   // closed locations are not listed (the login's own always is)
     let scopeRow = null;
     try { const s = await sb("GET", `dealer_user_scope?uid=eq.${enc(who.uid)}&select=scope,locations`); scopeRow = (s && s[0]) || null; }
     catch (e) { if (!/PGRST205|42P01/.test(String(e.message))) throw e; }
@@ -143,7 +145,14 @@ exports.handler = async (event) => {
     }
     if (b.action === "quote_get") {
       const L = await load(b.id); if (L.error) return json(L.status, { ok: false, error: L.error });
-      return json(200, { ok: true, quote: pub(L.q, names), can_edit: mayWrite(L.q.location_id) });
+      /* the saved-retail prices that apply at the QUOTE's location (a head office opening a branch quote sees what that
+         branch's document will print, not its own company price) */
+      const c = DOC.cleanLines(L.q.lines); const retail = {};
+      if (!c.error && c.lines.some((l) => l.basis === "retail")) {
+        const lk = await priceLookups(owner, L.q.location_id, c.lines.filter((l) => l.basis === "retail"));
+        for (const l of c.lines) if (l.basis === "retail") { const v = await lk.retail(l.mfr, l.code); if (v != null) retail[l.mfr + "|" + l.code] = v; }
+      }
+      return json(200, { ok: true, quote: pub(L.q, names), can_edit: mayWrite(L.q.location_id), retail_at_location: retail, own_location: String(L.q.location_id) === String(did) });
     }
     if (b.action === "quote_save") {
       const h = DOC.cleanHeader(b.header); if (h.error) return json(400, { ok: false, error: h.error });
@@ -166,6 +175,7 @@ exports.handler = async (event) => {
           return json(200, { ok: true, quote: pub(ins && ins[0], names) });
         } catch (e) { if (e.status === 409 && attempt < 2) continue; throw e; }   // a quote number collision: draw another
       }
+      return json(503, { ok: false, error: "That could not be completed just now — please try again." });
     }
     if (b.action === "quote_delete") {
       const L = await load(b.id); if (L.error) return json(L.status, { ok: false, error: L.error });
@@ -195,7 +205,7 @@ exports.handler = async (event) => {
       const to = String(b.to || "").trim().slice(0, 200);
       if (!EMAIL_RE.test(to)) return json(400, { ok: false, error: "Enter a valid email address." });
       if (!process.env.RESEND_API_KEY) return json(503, { ok: false, error: "Email is not set up on this site yet." });
-      const lim = await SEND.reserve({ url: SUPABASE_URL, key: SERVICE_ROLE, dealer_id: did, kind: "quote", to });
+      const lim = await SEND.reserve({ url: SUPABASE_URL, key: SERVICE_ROLE, dealer_id: owner, kind: "quote", to });   // limits per company, not per branch login
       if (!lim.ok) return json(lim.status || 429, { ok: false, error: lim.error });
       const note = String(b.message || "").slice(0, 2000);
       const html = DOC.renderQuote({ dealer: brand, header, lines: priced, quote_no, date, forEmail: true });
@@ -205,7 +215,7 @@ exports.handler = async (event) => {
       let res;
       try {
         res = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ from: `${fromName} via HCPS <${MAIL_FROM_ADDR}>`, to: [to], reply_to: EMAIL_RE.test(who.email) ? who.email : undefined, subject, html: html.replace("<body>", "<body>" + intro) }) });
+          body: JSON.stringify({ from: `"${fromName.replace(/["\\]/g, "")} via HCPS" <${MAIL_FROM_ADDR}>`, to: [to], reply_to: EMAIL_RE.test(who.email) ? who.email : undefined, subject, html: html.replace("<body>", () => "<body>" + intro) }) });
       } catch (e) { res = null; }
       if (!res || !res.ok) {
         console.error("quote email refused by the provider", res && res.status);
