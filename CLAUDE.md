@@ -2069,6 +2069,27 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     Saved-quotes SQL `supabase/c7_s4b_saved_quotes.sql` RUN by Angelo 2026-11-05 21:38 CT (1,true,0,0,0); public-key probe:
     read / insert / update / delete all 401 42501 (control table 200); live quote_list 200 — never ask him to rerun it.
     Tests: admin quotes 11, account-center 23, retail-prices 11; ordering quotes-retail.browser 65, brochure-auth 24.
+  · **Stage 5 LIVE (code) 2026-11-05 ~22:40 CT — admin #98 → 7324c18, ordering #54 → b2d6ad4: Manufacturer Account Setup
+    Center.** Owner rules 21:45 CT: Documenso FREE only (no paid features / trials / subscription; Angelo created the account —
+    never create another); synthetic data only in tests; no real application or signature request to a real dealer during
+    testing; President-only review; NEVER automatic manufacturer submission or approval; Golden keeps Nuvo.
+    How it works: the 10 resource-library application PDFs (SHA-256 pinned, bundled via netlify.toml included_files) are
+    completed from one questionnaire — fill (Climbing Steps, Strongback, ABM, PediFix, AirAvant), label-placed overlay
+    (Access4U, Ovation; `scripts/app-forms-layout.py` → `_app_forms_layout.json`), or original + details page (Bemis, Yuwell,
+    Dalton). Corsicana (Word) + Golden (Nuvo) = links; Ohio Medical retired. Answers AES-256-GCM (APPLICATIONS_ENC_KEY, AAD =
+    row id); SSNs / bank account numbers are never stored — the signer types them on Documenso's screen. Documenso API v2:
+    distributionMethod NONE + every emailSettings flag false (D5: no signed PDF by email); THE SIGNER MUST BE THE SIGNED-IN
+    PORTAL USER (link signing doesn't check the address); claim (CAS) + `slot_reserved` event BEFORE the API call; 5 a month
+    for HCPS (Chicago month), max 2 per company (DOCUMENSO_DEALER_MONTHLY) — beyond → queued + President emailed (no
+    contents). Webhook: X-Documenso-Secret (plain secret, constant-time), refused when unset, envelope re-read from the API,
+    finalize only the row's own envelope while 'signing' (a withdrawn one stays withdrawn, file kept as an event). Private
+    bucket `dealer-applications`; admin `/admin/applications.html` (President only; 2-minute links; signed → under review →
+    sent to manufacturer → approved/declined; 7-year retention; President withdraw; read-only `forms_check`).
+    Production check 22:45 CT: forms_check ok, all 10 forms build from the bundled originals. Known: Documenso keeps its own
+    copy of a completed document (no API delete on Free) — note for retention.
+    NOT yet: SQL `supabase/c7_s5_applications.sql` (Angelo), Netlify env APPLICATIONS_ENC_KEY / DOCUMENSO_API_TOKEN /
+    DOCUMENSO_WEBHOOK_SECRET (Angelo — Claude never sees them), Documenso webhook (Angelo creates it: Chrome autofills that
+    form with a saved login — clear the Triggers and Secret fields first), then one synthetic end-to-end signing test.
   · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
     (ordering) are authorized for deletion (the session's safety control refused the delete — Angelo deletes them on
     GitHub); no real account numbers remain in either public repo's current files; the private Golden repo's baseline
