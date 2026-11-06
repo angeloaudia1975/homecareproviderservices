@@ -23,7 +23,10 @@ const PDF = require('./_app_pdf.js');
 const S = require('./_app_store.js');
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
-const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type, authorization' };
+/* called only by the 360 Dealer Portal (and its deploy previews) */
+const ORIGIN_OK = (o) => /^https:\/\/(hcpsonlineordering\.netlify\.app|deploy-preview-\d+--hcpsonlineordering\.netlify\.app)$/.test(String(o || ''));
+let CORS = {};
+const corsFor = (event) => { const o = (event.headers || {}).origin || (event.headers || {}).Origin; return { 'access-control-allow-origin': ORIGIN_OK(o) ? o : 'https://hcpsonlineordering.netlify.app', vary: 'Origin', 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type, authorization' }; };
 const json = (c, o) => ({ statusCode: c, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...CORS }, body: JSON.stringify(o) });
 const enc = encodeURIComponent;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -32,6 +35,7 @@ const NOT_YET = 'Manufacturer applications open shortly.';
 const OPEN = new Set(['draft', 'queued', 'signing_failed']);           // the dealer may still edit
 const ACTIVE = ['draft', 'queued', 'signing', 'signing_failed', 'signed', 'offline_signed', 'under_review', 'sent_to_manufacturer'];
 const RETIRED = new Set(['ohio-medical', 'gce', 'complete-medical-supplies']);
+const DEALER_MONTHLY = Math.max(1, Number(process.env.DOCUMENSO_DEALER_MONTHLY || 2));   // one company's share of the free signatures each month
 
 async function dealerFromToken(event) {
   const auth = event.headers['authorization'] || event.headers['Authorization'] || '';
@@ -67,6 +71,7 @@ const pub = (app, names, answers) => app && ({ id: app.id, manufacturer: app.man
   signed_at: app.signed_at, submitted_at: app.submitted_at, updated_at: app.updated_at, answers: answers || undefined });
 
 exports.handler = async (event) => {
+  CORS = corsFor(event);
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'method not allowed' });
   if (!SUPABASE_URL || !SERVICE_ROLE) return json(500, { ok: false, error: 'not configured' });
@@ -123,7 +128,7 @@ exports.handler = async (event) => {
       if (!form) return json(400, { ok: false, error: F.EXTERNAL[m] ? 'This manufacturer uses its own application — use the link shown.' : 'Unknown manufacturer.' });
       const loc = String(b.location_id || did);
       if (!mayWrite(loc)) return json(403, { ok: false, error: "You can't apply for that location." });
-      const open = await S.sb('GET', `dealer_applications?location_id=eq.${enc(loc)}&manufacturer=eq.${enc(m)}&status=in.(${ACTIVE.join(',')})&select=${S.SEL}`);
+      const open = await S.sb('GET', `dealer_applications?dealer_id=eq.${enc(owner)}&location_id=eq.${enc(loc)}&manufacturer=eq.${enc(m)}&status=in.(${ACTIVE.join(',')})&select=${S.SEL}`);
       if (open && open[0]) return json(200, { ok: true, application: pub(open[0], names), existing: true });
       const answers = await prefill(loc, owner, who);
       const id = require('crypto').randomUUID();
@@ -165,53 +170,71 @@ exports.handler = async (event) => {
       if (Number(b.version) !== app.version) return json(409, { ok: false, error: 'This application was changed somewhere else — reopen it.' });
       const ans = answersOf(app); const miss = missing(ans);
       if (miss.length) return json(400, { ok: false, error: 'Please complete: ' + miss.slice(0, 6).join(', ') + (miss.length > 6 ? '…' : ''), missing: miss });
+      /* the signing link is opened by whoever is signed in here, and Documenso (link signing) does not check the address —
+         so the authorised signer must BE the person signed in. Another signer signs from their own 360 Dealer Portal login. */
+      if (String(ans['signer.email']).toLowerCase() !== String(who.email).toLowerCase())
+        return json(400, { ok: false, error: `The authorised signer must sign in with their own 360 Dealer Portal login. You are signed in as ${who.email} — make yourself the signer, or ask ${ans['signer.email']} to sign in and sign.`, signer_mismatch: true });
       if (!S.DS.configured()) return json(503, { ok: false, error: 'Electronic signing opens shortly — you can print the completed application and sign it by hand meanwhile.' });
-      const used = await S.envelopesThisMonth();
-      if (used >= S.FREE_MONTHLY) {
+      const queue = async (reason, extra) => {
         const row = await S.update(app, { status: 'queued', submitted_at: new Date().toISOString() }, by);
-        await S.event(app.id, by, 'queued', { reason: 'monthly_limit', used });
+        await S.event(app.id, by, 'queued', Object.assign({ reason }, extra || {}));
         await S.notifyPresident(row, 'queued').catch(() => {});
-        return json(200, { ok: true, queued: true, application: pub(row, names) });
-      }
-      const built = await PDF.build(app.manufacturer, ans, { preview: false });
-      const fields = []
-        .concat((form.sign || []).map((b2) => Object.assign({ type: 'SIGNATURE' }, b2)))
-        .concat([...(form.date || []), ...(form.dateTop || [])].map((b2) => Object.assign({ type: 'DATE' }, b2)))
-        .concat((form.signerText || []).map((t) => ({ type: 'TEXT', page: t.page, positionX: t.positionX, positionY: t.positionY, width: t.width, height: t.height, fieldMeta: { type: 'text', label: t.label, required: false, fontSize: 9 } })));
-      let created;
+        return json(200, { ok: true, queued: true, reason, application: pub(row, names) });
+      };
+      /* free plan: 5 a month for HCPS; one company may use at most DEALER_MONTHLY of them — the rest wait for the President */
+      if ((await S.envelopesThisMonth()) >= S.FREE_MONTHLY) return queue('monthly_limit');
+      if ((await S.envelopesThisMonth(owner)) >= DEALER_MONTHLY) return queue('company_limit');
+      /* claim the application BEFORE calling Documenso: a second tab / double tap fails here (409) instead of creating a
+         second envelope; the slot is reserved first so an envelope that exists is always counted */
+      let claimed = await S.update(app, { status: 'signing', signing_token_enc: null, envelope_id: null, submitted_at: new Date().toISOString() }, by);
+      await S.event(app.id, by, 'slot_reserved', { dealer: owner, signer: who.email });
+      const giveBack = async (status, why) => {
+        await S.event(app.id, by, 'slot_released', { dealer: owner, why });
+        try { claimed = await S.update(claimed, { status }, by); } catch (e) { /* recorded */ }
+      };
+      let built, created;
       try {
+        built = await PDF.build(app.manufacturer, ans, { preview: false });
+        const fields = []
+          .concat((form.sign || []).map((b2) => Object.assign({ type: 'SIGNATURE' }, b2)))
+          .concat([...(form.date || []), ...(form.dateTop || [])].map((b2) => Object.assign({ type: 'DATE' }, b2)))
+          .concat((form.signerText || []).map((t) => ({ type: 'TEXT', page: t.page, positionX: t.positionX, positionY: t.positionY, width: t.width, height: t.height, fieldMeta: { type: 'text', label: t.label, required: false, fontSize: 9 } })));
         created = await S.DS.createForSigning({ title: `${form.name} application — ${ans['biz.legal_name']}`, pdf: built.bytes, signer: { name: ans['signer.name'], email: ans['signer.email'] }, fields, externalId: app.id,
           redirectUrl: process.env.APPLICATIONS_RETURN_URL || 'https://hcpsonlineordering.netlify.app/#account' });
       } catch (e) {
-        if (e.limit) {
-          const row = await S.update(app, { status: 'queued', submitted_at: new Date().toISOString() }, by);
-          await S.event(app.id, by, 'queued', { reason: 'provider_limit', status: e.status });
-          await S.notifyPresident(row, 'queued').catch(() => {});
-          return json(200, { ok: true, queued: true, application: pub(row, names) });
+        if (e.envelopeId) {   // created but not distributed: cancel it, keep the slot counted
+          try { await S.DS.cancel(e.envelopeId); } catch (x) { /* recorded */ }
+          await S.event(app.id, by, 'signing_error', { status: e.status || 0, envelope: e.envelopeId });
+          try { await S.update(claimed, { status: 'signing_failed' }, by); } catch (x) {}
+          return json(502, { ok: false, error: 'The signing service could not finish preparing it — please try again in a few minutes.' });
         }
-        console.error('documenso create failed', e.status);
+        if (e.limit) { await giveBack('queued', 'provider_limit'); await S.event(app.id, by, 'queued', { reason: 'provider_limit', status: e.status }); await S.notifyPresident(claimed, 'queued').catch(() => {}); return json(200, { ok: true, queued: true, reason: 'provider_limit', application: pub(claimed, names) }); }
+        console.error('documenso create failed', e.status || e.code);
+        await giveBack('draft', 'error');
         await S.event(app.id, by, 'signing_error', { status: e.status || 0 });
+        if (e.code === 'form_changed' || e.code === 'form_missing') throw e;
         return json(502, { ok: false, error: 'The signing service could not be reached — please try again in a few minutes.' });
       }
-      await S.event(app.id, by, 'envelope_created', { envelope: created.envelopeId, sent_sha256: built.sha256, pages: built.pages });
-      const row = await S.update(app, { status: 'signing', envelope_id: created.envelopeId, signing_token_enc: S.CRYPTO.seal({ t: created.token, u: created.url }, 'tok:' + app.id),
-        sent_pdf_sha256: built.sha256, submitted_at: new Date().toISOString() }, by);
+      await S.event(app.id, by, 'envelope_created', { envelope: created.envelopeId, sent_sha256: built.sha256, pages: built.pages, opened_by: who.email });
+      const row = await S.update(claimed, { envelope_id: created.envelopeId, signing_token_enc: S.CRYPTO.seal({ t: created.token, u: created.url }, 'tok:' + app.id), sent_pdf_sha256: built.sha256 }, by);
       return json(200, { ok: true, url: created.url, application: pub(row, names) });
     }
     if (b.action === 'app_signing_link') {
       if (app.status !== 'signing' || !app.signing_token_enc) return json(409, { ok: false, error: 'There is nothing waiting to be signed.' });
+      if (String(app.signer_email || '').toLowerCase() !== String(who.email).toLowerCase()) return json(403, { ok: false, error: `Only the signer (${app.signer_email}) can open the signing page — from their own login.` });
+      await S.event(app.id, by, 'signing_link_opened', {});
       const t = S.CRYPTO.open(app.signing_token_enc, 'tok:' + app.id) || {};
       return json(200, { ok: true, url: t.u || S.DS.signUrl(t.t) });
     }
     if (b.action === 'app_refresh') {
       if (app.status !== 'signing') return json(200, { ok: true, application: pub(app, names) });
-      const r = await S.finalize(app, by);
+      const r = await S.finalize(app, by, app.envelope_id);
       return json(200, { ok: true, application: pub(r.application || (await S.getApp(app.id)), names), state: r.reason || (r.ok ? 'signed' : '') });
     }
     if (b.action === 'app_withdraw') {
       if (!['draft', 'queued', 'signing', 'signing_failed'].includes(app.status)) return json(409, { ok: false, error: 'This application is already with HCPS — ask HCPS to withdraw it.' });
       if (app.status === 'signing' && app.envelope_id) { try { await S.DS.cancel(app.envelope_id); } catch (e) { /* recorded */ } }
-      await S.update(app, { status: 'withdrawn', signing_token_enc: null }, by);
+      await S.update(app, { status: 'withdrawn', signing_token_enc: null, decided_at: new Date().toISOString(), retention_until: retention() }, by);
       await S.event(app.id, by, 'withdrawn', {});
       return json(200, { ok: true });
     }
@@ -240,5 +263,6 @@ async function prefill(loc, owner, who) {
   return cleanAnswers(a);
 }
 
+function retention() { const d = new Date(); return `${d.getUTCFullYear() + 7}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`; }
 module.exports._cleanAnswers = cleanAnswers;
 module.exports._missing = missing;

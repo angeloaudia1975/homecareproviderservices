@@ -35,8 +35,10 @@ function world(o) {
     if (u.startsWith(M.BASE + '/auth/v1/user')) { const tok = String(hd.Authorization || '').replace(/^Bearer\s+/i, '');
       const map = { hq: { id: 'u-hq' }, br: { id: 'u-br' }, ot: { id: 'u-ot' }, boss: { id: 's1', email: 'boss@hcps.test' }, rep: { id: 's2', email: 'rep@hcps.test' } };
       return map[tok] ? res(200, map[tok]) : res(401, {}); }
-    if (u.includes('/rest/v1/dealer_application_events?action=eq.envelope_created')) {
-      const n = W.db.dealer_application_events.filter((e) => e.action === 'envelope_created').length; return res(200, [], { 'content-range': `0-0/${n}` }); }
+    if (/\/rest\/v1\/dealer_application_events\?action=eq\.slot_(reserved|released)/.test(u)) {
+      const act = u.match(/action=eq\.(slot_\w+)/)[1]; const dm = u.match(/detail->>dealer=eq\.([^&]+)/); W.countCalls = (W.countCalls || 0) + 1;
+      if (!/at=gte\.\d{4}-\d{2}-01T0[56]%3A00%3A00/.test(u)) throw new Error('month start not a Chicago midnight: ' + u);
+      const n = W.db.dealer_application_events.filter((e) => e.action === act && (!dm || e.detail.dealer === decodeURIComponent(dm[1]))).length; return res(200, [], { 'content-range': `0-0/${n}` }); }
     if (u.startsWith(M.BASE + '/storage/v1/object/sign/')) return res(200, { signedURL: '/object/sign/x?token=t' });
     if (u.startsWith(M.BASE + '/storage/v1/object/dealer-applications/')) { stored.push({ path: u.split('/dealer-applications/')[1], bytes: opts.body.length, upsert: hd['x-upsert'] }); return res(200, { Key: 'k' }); }
     if (u.startsWith('https://app.documenso.com/api/v2/')) {
@@ -69,7 +71,7 @@ const adm = (W, env) => M.load('applications-admin-api.js', W, Object.assign({},
 const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer ' + who } });
 const COMPLETE = { 'biz.legal_name': 'Sample Medical HQ LLC', 'biz.address': '1 Main St', 'biz.city': 'Dayton', 'biz.state': 'OH', 'biz.zip': '45402', 'biz.phone': '555-0100',
   'biz.email': 'office@sample.test', 'biz.ein': '00-0000000', 'ap.name': 'Alex Payables', 'ap.email': 'ap@sample.test', 'owner1.name': 'Jordan Owner',
-  'signer.name': 'Jordan Owner', 'signer.title': 'President', 'signer.email': 'owner@sample.test', 'biz.entity': 'llc', 'bank.name': 'Test Bank' };
+  'signer.name': 'Jordan Owner', 'signer.title': 'President', 'signer.email': 'hq@sample.test', 'biz.entity': 'llc', 'bank.name': 'Test Bank' };
 async function started(W, who, m, loc) { const C = api(W); const r = await as(C, who || 'hq', { action: 'app_start', manufacturer: m || 'access4u', location_id: loc }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.application; }
 async function filled(W, m) { const C = api(W); const a = await started(W, 'hq', m); const s = await as(C, 'hq', { action: 'app_save', id: a.id, version: a.version, answers: COMPLETE }); eq(s.status, 200, JSON.stringify(s.body)); return s.body.application; }
 
@@ -123,7 +125,7 @@ async function filled(W, m) { const C = api(W); const a = await started(W, 'hq',
     const W2 = world(); const C2 = api(W2); const a = await filled(W2, 'access4u');
     const r = await as(C2, 'hq', { action: 'app_sign', id: a.id, version: a.version }); eq(r.status, 200, JSON.stringify(r.body));
     eq(r.body.url, 'https://app.documenso.com/sign/tokenvelope_1');
-    const c = W2.docs.created[0]; eq([c.pay.meta.distributionMethod, c.pay.externalId, c.pay.recipients[0].email, c.pay.recipients[0].role], ['NONE', a.id, 'owner@sample.test', 'SIGNER']);
+    const c = W2.docs.created[0]; eq([c.pay.meta.distributionMethod, c.pay.externalId, c.pay.recipients[0].email, c.pay.recipients[0].role], ['NONE', a.id, 'hq@sample.test', 'SIGNER']);
     ok(c.pay.recipients[0].fields.some((f) => f.type === 'SIGNATURE') && c.pay.recipients[0].fields.some((f) => f.type === 'DATE'), 'fields');
     ok(c.pay.recipients[0].fields.every((f) => f.positionX >= 0 && f.positionX + f.width <= 100 && f.positionY >= 0 && f.positionY + f.height <= 100), 'field inside the page');
     eq(W2.docs.distributed[0].meta.distributionMethod, 'NONE');
@@ -133,7 +135,7 @@ async function filled(W, m) { const C = api(W); const a = await started(W, 'hq',
     eq((await as(C2, 'hq', { action: 'app_signing_link', id: a.id })).body.url, 'https://app.documenso.com/sign/tokenvelope_1');
   });
   await t('free plan: past 5 envelopes this month (or Documenso refusing) → queued, the President told without contents, never charged', async () => {
-    const ev = [1, 2, 3, 4, 5].map((i) => ({ id: i, application_id: 'x', at: new Date().toISOString(), actor: 's', action: 'envelope_created', detail: {} }));
+    const ev = [1, 2, 3, 4, 5].map((i) => ({ id: i, application_id: 'x', at: new Date().toISOString(), actor: 's', action: 'slot_reserved', detail: { dealer: 'other-' + i } }));
     const W = world({ events: ev }); const a = await filled(W, 'bemis');
     const r = await as(api(W), 'hq', { action: 'app_sign', id: a.id, version: a.version }); eq([r.status, r.body.queued], [200, true]); eq(W.docs.created.length, 0);
     eq(W.mail.length, 1); ok(!JSON.stringify(W.mail[0]).includes('Sample Medical') && /Bemis/.test(W.mail[0].subject), 'contents in the email');
@@ -179,6 +181,37 @@ async function filled(W, m) { const C = api(W); const a = await started(W, 'hq',
     const W = world(); const a = await filled(W, 'access4u'); await as(api(W), 'hq', { action: 'app_sign', id: a.id, version: a.version });
     eq((await as(api(W), 'hq', { action: 'app_withdraw', id: a.id })).status, 200); eq(W.docs.cancelled[0].envelopeId, 'envelope_1'); eq(W.db.dealer_applications[0].status, 'withdrawn');
     const W2 = world({ missingTables: ['dealer_applications'] }); const r = await as(api(W2), 'hq', { action: 'app_list' }); eq([r.status, r.body.error], [503, 'Manufacturer applications open shortly.']);
+  });
+  await t('review fixes: the signer must be the signed-in user; a double tap claims once (one envelope); one company gets 2 of the 5 free slots; a provider refusal gives the slot back', async () => {
+    const W = world(); const C = api(W); const a = await started(W);
+    await as(C, 'hq', { action: 'app_save', id: a.id, version: a.version, answers: Object.assign({}, COMPLETE, { 'signer.email': 'someone@sample.test' }) });
+    const m = await as(C, 'hq', { action: 'app_sign', id: a.id, version: a.version + 1 }); eq([m.status, m.body.signer_mismatch], [400, true]); eq(W.docs.created.length, 0);
+    const W2 = world(); const C2 = api(W2); const b = await filled(W2, 'access4u');
+    const [r1, r2] = await Promise.all([as(C2, 'hq', { action: 'app_sign', id: b.id, version: b.version }), as(C2, 'hq', { action: 'app_sign', id: b.id, version: b.version })]);
+    eq([r1.status, r2.status].sort(), [200, 409]); eq(W2.docs.created.length, 1, 'two envelopes');
+    const W3 = world({ events: [1, 2].map((i) => ({ id: i, application_id: 'x', at: new Date().toISOString(), actor: 's', action: 'slot_reserved', detail: { dealer: HQ } })) });
+    const c3 = await filled(W3, 'bemis'); const q = await as(api(W3), 'hq', { action: 'app_sign', id: c3.id, version: c3.version }); eq([q.body.queued, q.body.reason], [true, 'company_limit']);
+    const W4 = world({ dsLimit: true }); const d4 = await filled(W4, 'yuwell'); await as(api(W4), 'hq', { action: 'app_sign', id: d4.id, version: d4.version });
+    eq(W4.db.dealer_application_events.filter((e) => /^slot_/.test(e.action)).map((e) => e.action), ['slot_reserved', 'slot_released']);
+  });
+  await t('review fixes: a withdrawn application signed later stays withdrawn (file kept on record); the link is only for the signer; President can withdraw', async () => {
+    const W = world(); const a = await filled(W, 'access4u'); await as(api(W), 'hq', { action: 'app_sign', id: a.id, version: a.version });
+    eq((await as(api(W), 'br', { action: 'app_signing_link', id: a.id })).status, 404, 'branch sees HQ application');
+    await as(api(W), 'hq', { action: 'app_withdraw', id: a.id });
+    W.docs.envelopes.envelope_1.status = 'COMPLETED';
+    const r = await M.call(hook(W), { event: 'DOCUMENT_COMPLETED', payload: { envelopeId: 'envelope_1' } }, { headers: { 'x-documenso-secret': SECRET } });
+    eq([r.status, W.db.dealer_applications[0].status], [200, 'withdrawn']); ok(W.db.dealer_application_events.some((e) => e.action === 'signed_after_withdrawal'), 'kept on record');
+    ok(W.db.dealer_applications[0].retention_until, 'withdrawn has a retention date');
+    const W2 = world(); const b = await filled(W2, 'pedifix'); await as(api(W2), 'hq', { action: 'app_sign', id: b.id, version: b.version });
+    const g = await as(adm(W2), 'boss', { action: 'get', id: b.id }); const w = await as(adm(W2), 'boss', { action: 'withdraw', id: b.id }); eq(w.status, 200); eq(W2.docs.cancelled.length, 1);
+  });
+  await t('review fixes: CORS only for the 360 Dealer Portal; the month starts at Chicago midnight (CST and CDT)', async () => {
+    const W = world(); const C = api(W); const raw = (origin) => C.handler({ httpMethod: 'POST', headers: { authorization: 'Bearer hq', origin }, body: JSON.stringify({ action: 'app_list' }) });
+    eq((await raw('https://evil.example')).headers['access-control-allow-origin'], 'https://hcpsonlineordering.netlify.app');
+    eq((await raw('https://deploy-preview-52--hcpsonlineordering.netlify.app')).headers['access-control-allow-origin'], 'https://deploy-preview-52--hcpsonlineordering.netlify.app');
+    const S = require(path.join(ROOT, '_app_store.js'));
+    eq(S.chicagoMonthStart(new Date('2026-01-15T12:00:00Z')), '2026-01-01T06:00:00.000Z'); eq(S.chicagoMonthStart(new Date('2026-07-15T12:00:00Z')), '2026-07-01T05:00:00.000Z');
+    eq(S.chicagoMonthStart(new Date('2026-11-01T03:00:00Z')), '2026-10-01T05:00:00.000Z', 'still October in Chicago');
   });
   console.log(`\napplications: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

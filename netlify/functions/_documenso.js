@@ -21,7 +21,8 @@ async function call(method, path, body, raw) {
 function httpErr(status, text) {
   const e = new Error('documenso ' + status); e.status = status;
   const s = String(text || '');
-  e.limit = status === 402 || status === 429 || /limit|quota|plan|upgrade|exceed/i.test(s);   // free-plan monthly limit (never retried)
+  /* the free plan's monthly document limit: a refusal that says so (never a 429 rate limit, never a validation error) */
+  e.limit = status === 402 || ((status === 400 || status === 403) && /(document|monthly|plan)[^\n]{0,40}limit|limit[^\n]{0,40}(document|month|plan)|upgrade/i.test(s));
   e.detail = s.replace(/api_[A-Za-z0-9]+/g, 'api_***').slice(0, 300);
   return e;
 }
@@ -40,7 +41,7 @@ async function createForSigning({ title, pdf, signer, fields, externalId, redire
   const created = await call('POST', '/envelope/create', fd);
   const envelopeId = created && (created.id || created.envelopeId);
   if (!envelopeId) throw httpErr(502, 'no envelope id');
-  const dist = await call('POST', '/envelope/distribute', { envelopeId, meta: { distributionMethod: 'NONE' } });
+  let dist; try { dist = await call('POST', '/envelope/distribute', { envelopeId, meta: { distributionMethod: 'NONE' } }); } catch (e) { e.envelopeId = envelopeId; throw e; }
   let rs = (dist && dist.recipients) || null;
   if (!rs || !rs.length) rs = ((await getEnvelope(envelopeId)) || {}).recipients || [];
   const r = rs.find((x) => String(x.email).toLowerCase() === String(signer.email).toLowerCase()) || rs[0];

@@ -24,12 +24,15 @@ exports.handler = async (event) => {
   const kind = String(b.event || '').toUpperCase();
   const p = b.payload || {};
   const envelopeId = String(p.envelopeId || (Array.isArray(p.recipients) && p.recipients[0] && p.recipients[0].envelopeId) || '');
-  if (!ENV_ID.test(envelopeId)) return json(200, { ok: true, ignored: 'no envelope' });
+  if (!ENV_ID.test(envelopeId) && !/^[0-9a-f-]{36}$/i.test(String(p.externalId || ''))) return json(200, { ok: true, ignored: 'no envelope' });
   try {
     const rows = await S.sb('GET', `dealer_applications?envelope_id=eq.${encodeURIComponent(envelopeId)}&select=${S.SEL}`);
-    const app = rows && rows[0];
+    let app = rows && rows[0];
+    /* the envelope id is the link; an externalId (our application id) is only a hint to find a row whose OWN stored
+       envelope is then re-read — never the payload's */
+    if (!app && /^[0-9a-f-]{36}$/i.test(String(p.externalId || ''))) { const r2 = await S.getApp(p.externalId); if (r2 && r2.envelope_id) app = r2; }
     if (!app) return json(200, { ok: true, ignored: 'not an application' });   // other Documenso documents are not ours
-    if (/COMPLETED/.test(kind)) { const r = await S.finalize(app, 'documenso'); return json(200, { ok: true, state: r.ok ? 'signed' : r.reason }); }
+    if (/COMPLETED/.test(kind)) { const r = await S.finalize(app, 'documenso', app.envelope_id); return json(200, { ok: true, state: r.ok ? 'signed' : r.reason }); }
     if (/REJECTED|CANCELLED|EXPIRED/.test(kind) && app.status === 'signing') {
       /* re-read: only a status Documenso itself reports changes the application */
       const env = await S.DS.getEnvelope(app.envelope_id);

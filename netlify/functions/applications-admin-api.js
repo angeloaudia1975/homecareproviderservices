@@ -17,7 +17,7 @@ const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const json = (c, o) => ({ statusCode: c, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }, body: JSON.stringify(o) });
 const enc = encodeURIComponent;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NEXT = { signed: ['under_review', 'sent_to_manufacturer', 'declined'], offline_signed: ['under_review', 'sent_to_manufacturer', 'declined'],
+const NEXT = { signed: ['under_review', 'sent_to_manufacturer', 'declined'],
   under_review: ['sent_to_manufacturer', 'declined'], sent_to_manufacturer: ['approved', 'declined'] };
 
 async function whoami(event) {
@@ -78,6 +78,13 @@ exports.handler = async (event) => {
       const row = await S.update(app, patch, by);
       await S.event(app.id, by, 'status', { from: app.status, to });
       return json(200, { ok: true, application: { id: row.id, status: row.status, version: row.version, decided_at: row.decided_at, retention_until: row.retention_until } });
+    }
+    if (b.action === 'withdraw') {
+      if (['approved', 'declined', 'withdrawn'].includes(app.status)) return json(400, { ok: false, error: 'This application is already closed.' });
+      if (app.status === 'signing' && app.envelope_id) { try { await S.DS.cancel(app.envelope_id); } catch (e) { /* recorded below */ } }
+      const d = new Date(); const row = await S.update(app, { status: 'withdrawn', signing_token_enc: null, decided_at: d.toISOString(), retention_until: `${d.getUTCFullYear() + 7}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`, review_notes: b.notes == null ? app.review_notes : String(b.notes).slice(0, 4000) }, by);
+      await S.event(app.id, by, 'withdrawn_by_hcps', { from: app.status });
+      return json(200, { ok: true, application: { id: row.id, status: row.status, version: row.version } });
     }
     if (b.action === 'retry_signing') {
       if (!['queued', 'signing_failed'].includes(app.status)) return json(400, { ok: false, error: 'Only a waiting or failed signature can be sent back to the dealer.' });

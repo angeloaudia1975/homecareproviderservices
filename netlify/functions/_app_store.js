@@ -30,13 +30,25 @@ async function update(app, patch, by) {
   return r[0];
 }
 /* envelopes created this calendar month (Chicago) — the free plan allows FREE_MONTHLY */
-async function envelopesThisMonth() {
-  const now = new Date(); const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit' }).formatToParts(now).map((x) => [x.type, x.value]));
-  const start = new Date(`${p.year}-${p.month}-01T00:00:00-06:00`).toISOString();
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/dealer_application_events?action=eq.envelope_created&at=gte.${enc(start)}&select=id`, { headers: { ...H(), Prefer: 'count=exact', Range: '0-0' } });
+/* the first instant of the current month in Chicago (CST or CDT — the offset of that very day, never a fixed -06:00) */
+function chicagoMonthStart(now) {
+  now = now || new Date();
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit' }).formatToParts(now).map((x) => [x.type, x.value]));
+  const guess = new Date(Date.UTC(+p.year, +p.month - 1, 1, 6));
+  const off = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', timeZoneName: 'shortOffset' }).formatToParts(guess).find((x) => x.type === 'timeZoneName');
+  const h = off && /GMT([+-]\d+)/.test(off.value) ? -Number(off.value.match(/GMT([+-]\d+)/)[1]) : 6;
+  return new Date(Date.UTC(+p.year, +p.month - 1, 1, h)).toISOString();
+}
+async function countEvents(action, extra) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/dealer_application_events?action=eq.${action}&at=gte.${enc(chicagoMonthStart())}${extra || ''}&select=id`, { headers: { ...H(), Prefer: 'count=exact', Range: '0-0' } });
   if (!r.ok) { const e = new Error('count ' + r.status); e.status = 503; throw e; }
-  const cr = r.headers.get('content-range') || ''; const n = Number(cr.split('/')[1]);
-  return Number.isFinite(n) ? n : 0;
+  const n = Number(String(r.headers.get('content-range') || '').split('/')[1]); return Number.isFinite(n) ? n : 0;
+}
+/* signing slots used this month: every reservation, less the ones given back because no envelope was created.
+   Reserved BEFORE Documenso is called, so a failure after the envelope exists still counts it. dealer: that company only. */
+async function envelopesThisMonth(dealer) {
+  const f = dealer ? `&detail->>dealer=eq.${enc(dealer)}` : '';
+  return (await countEvents('slot_reserved', f)) - (await countEvents('slot_released', f));
 }
 
 async function putFile(path, bytes) {
@@ -52,9 +64,12 @@ async function signedLink(path, seconds) {
 
 /* a completed envelope → the signed PDF, certificate and audit log in private storage; status "signed" (awaiting the
    President). Re-reads the envelope from Documenso — a webhook payload is never trusted. Idempotent. */
-async function finalize(app, actor) {
-  if (!app.envelope_id) return { ok: false, reason: 'no_envelope' };
-  if (['signed', 'under_review', 'sent_to_manufacturer', 'approved', 'declined'].includes(app.status) && app.signed_path) return { ok: true, already: true };
+async function finalize(app, actor, envelopeId) {
+  if (!app.envelope_id || (envelopeId && envelopeId !== app.envelope_id)) return { ok: false, reason: 'not_current_envelope' };
+  if (app.signed_path) return { ok: true, already: true };
+  /* only an application that is WITH the signer becomes "signed"; a withdrawn / reopened one keeps its status (the
+     President still gets the signed file on record, as an event) */
+  const current = app.status === 'signing';
   const env = await DS.getEnvelope(app.envelope_id);
   if (!env || (env.externalId && env.externalId !== app.id)) return { ok: false, reason: 'mismatch' };
   if (env.status !== 'COMPLETED') return { ok: false, reason: 'not_completed', status: env.status };
@@ -69,6 +84,7 @@ async function finalize(app, actor) {
   if (cert) await putFile(`${base}/certificate.pdf`, cert);
   if (audit) await putFile(`${base}/audit-log.pdf`, audit);
   const sha = crypto.createHash('sha256').update(signed).digest('hex');
+  if (!current) { await event(app.id, actor, 'signed_after_withdrawal', { envelope: app.envelope_id, status: app.status, signed_sha256: sha, stored: `${base}/signed.pdf` }); return { ok: true, late: true }; }
   const row = await update(app, { status: 'signed', signed_path: `${base}/signed.pdf`, signed_sha256: sha, certificate_path: cert ? `${base}/certificate.pdf` : null,
     audit_path: audit ? `${base}/audit-log.pdf` : null, signed_at: env.completedAt || new Date().toISOString(), signing_token_enc: null }, actor);
   await event(app.id, actor, 'signed', { envelope: app.envelope_id, signed_sha256: sha, certificate: !!cert, audit_log: !!audit });
@@ -90,4 +106,4 @@ async function notifyPresident(app, why) {
       html: `<p>${what}</p><p><a href="${ADMIN_PAGE}">Open Manufacturer Applications</a> (Connect 360, President only).</p><p style="color:#777;font-size:12px">The application itself is kept private on HCPS's systems and is never sent by email.</p>` }) });
 }
 
-module.exports = { sb, getApp, event, update, envelopesThisMonth, putFile, signedLink, finalize, notifyPresident, SEL, FREE_MONTHLY, MISSING, BUCKET, CRYPTO, DS };
+module.exports = { sb, getApp, event, update, envelopesThisMonth, chicagoMonthStart, putFile, signedLink, finalize, notifyPresident, SEL, FREE_MONTHLY, MISSING, BUCKET, CRYPTO, DS };
