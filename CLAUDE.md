@@ -2132,6 +2132,37 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     mutants 22/22; ordering reports.browser 24 (390/768/1280). Independent review: no High security; all findings fixed.
     Live: Williams Brothers (9 locations, read-only preview) — report ~1 s, YTD Jan–Sep, like-for-like −32.9%. Public key with files present: bucket list [],
     public read "Bucket not found", tables 401/42501.
+  · **Stage 7 MERGED 2026-11-06 (admin #101 → e58d1fc, ordering #58 → fe1999d); SQL `supabase/c7_s7_storefront.sql` (sha256
+    2f33b6a9…f054) sent to Angelo, not yet run.** `dealer-storefront-api` (dealer manages), `storefront-public` (public data),
+    `storefront-retention` (daily purge); public page `/store/<address>` = ordering `public/store.html` + `store.js`. RULES:
+    storefront per LOCATION, off until the dealer turns it on; head office manages its locations, a branch only itself, a
+    preview never writes and never reads customers' requests; HCPS may block (`hcps_blocked`, dealer can't clear). Public
+    data is a whitelist (`_storefront.publicProduct`): authorized, live lines only, never Golden; products hidden by the
+    record status, saved-edit flags and VISIBLE enrichment pages exactly as the dealer shop reads them (a hidden/draft page
+    is ignored; a discontinued page or a SKU off/hidden/discontinued on a visible page hides it; enriched-only lines show
+    only SKUs on published/active pages); never discontinued publicly. PRICE (D3): verified MSRP only (record MSRP when not
+    HCPS-derived, else saved edit, else added product) or "Call for Price"; the MSRP's unit follows the Phase 4 basis
+    (record msrp_basis, else catalog msrp_each, else order unit) with the record's uom/case_qty; never wholesale, tiers, MAP,
+    contract or account data; no checkout. Contacts: ONLY the phone/email the dealer entered for the storefront (account
+    details never pre-filled — a "Use my account phone and email" button); a live storefront needs one. Photos: our own
+    /assets only; logo only our storage, /assets or inline. Closed location or head office → not available. PRIVACY (D4):
+    no cookies/storage; requests kept 24 months then purged; visitor known only as an HMAC of the network address
+    (`x-nf-client-connection-ip`; IPv6 by /64) in `storefront_rate`, purged after 2 days. LIMITS live in SQL, checked and
+    written in one call under advisory locks: request 3/visitor/hour, 8/day; 3 per email or phone (digits) a day; 200 stored
+    per storefront a day; 10 emailed per storefront an hour (the rest wait in My Storefront); views 400/visitor/storefront
+    per 24 h and 20,000/storefront/day; all functions refuse a storefront that is off or blocked. Product name in a request
+    comes from the catalog. Cache 30 s, never "not found". `/store.html` + `/store/*` carry a strict CSP (no inline script;
+    img-src self, data:, *.supabase.co). Tests: admin storefront 14 + mutants 47/47 + storefront.pg 8 (20 simultaneous
+    requests); ordering storefront.browser (390/768/1280, under the live CSP). Two independent reviews: no High; all fixed.
+  · **Stage 8 BUILT (admin #102, ordering #59).** Demand Intelligence (`demand-intel-api`, `_demand.js`,
+    `/admin/demand-intel.html` under Sales Data & Analytics + rep menu), Dealer 360 "Storefront demand" card, Command Center
+    card (hidden while viewing another rep). RULES: anonymous `storefront_daily_counts` only, inquiry contacts never read;
+    interest always labelled views/requests, never summed with money or called sales; "dealer companies buying" = families
+    with a manufacturer-reported purchase in 12 months (either lane, counted once, no units added); "not ordered" judged for
+    the dealer's whole family incl. live portal orders (cancelled and test orders excluded); reps scoped to their book, My
+    Sales Workspace to the President's book; TEST dealers excluded; portal orders read in batches of 100 dealers.
+    Promotional downloads (ordering My Storefront): three canvas PNGs from the storefront's public details, download only,
+    offered only while the storefront is live. Tests: demand-intel 10 + mutants 19/19 + UI; storefront.browser 41.
   · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
     (ordering) are authorized for deletion (the session's safety control refused the delete — Angelo deletes them on
     GitHub); no real account numbers remain in either public repo's current files; the private Golden repo's baseline
