@@ -154,6 +154,21 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
     const W = world({ changes: [1, 2, 3, 4, 5].map(i => ({ id: i, dealer_id: HQ, status: 'pending', changes: {} })) });
     eq((await as(tools(W), 'hq', { action: 'account_change_request', changes: { company: { phone: '555-999-0000' } } })).status, 429);
   });
+  await t('Stage 3 branches: head office sees each location\'s contact + address and may request a change FOR a branch; a branch only for itself', async () => {
+    const W = world(); const r = await as(tools(W), 'hq', { action: 'account_center' });
+    const br = r.body.locations.find(l => l.id === BR); eq([br.address, br.zip, br.can_request], ['2 Side St', '45385', true]);
+    const q = await as(tools(W), 'hq', { action: 'account_change_request', location_id: BR, changes: { company: { phone: '555-222-3333' } } });
+    eq([q.status, W.db.dealer_change_requests[0].dealer_id], [200, BR], JSON.stringify(q.body));
+    eq(writesTo(W, 'dealers').length, 0, 'nothing applied');
+    const b = await as(tools(W), 'br', { action: 'account_center' }); eq(b.body.locations.map(l => [l.name, l.can_request]), [['Acme Branch', true]]);
+    eq((await as(tools(W), 'br', { action: 'account_change_request', location_id: BR2, changes: { company: { phone: '555-222-3333' } } })).status, 403, 'branch → sister');
+    eq((await as(tools(W), 'br', { action: 'account_change_request', location_id: HQ, changes: { company: { phone: '555-222-3333' } } })).status, 403, 'branch → head office');
+    eq((await as(tools(W), 'hq', { action: 'account_change_request', location_id: OTHER, changes: { company: { phone: '555-222-3333' } } })).status, 403, 'another dealer');
+    const N = world({ scope: [{ uid: UHQ, scope: 'own', locations: null, set_by: 'x' }] });
+    eq((await as(tools(N), 'hq', { action: 'account_change_request', location_id: BR, changes: { company: { phone: '555-222-3333' } } })).status, 403, 'narrowed head office');
+    const L = world({ changes: [1, 2, 3, 4, 5].map(i => ({ id: i, dealer_id: HQ, status: 'pending', changes: {} })) });
+    eq((await as(tools(L), 'hq', { action: 'account_change_request', location_id: BR, changes: { company: { phone: '555-999-0000' } } })).status, 200, 'the limit counts per location');
+  });
   await t('default ship-to: one of its own addresses only', async () => {
     const W = world(); const C = tools(W);
     eq((await as(C, 'hq', { action: 'default_ship_set', key: 'ship-wh' })).body.default_ship_key, 'ship-wh');

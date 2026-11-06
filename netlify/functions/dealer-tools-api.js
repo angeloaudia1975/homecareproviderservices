@@ -138,7 +138,7 @@ exports.handler = async (event) => {
           self[col] = (r && r[0] && r[0][col]) || null;
         }
         const root = self.parent_id || self.id;
-        const fq = `dealers?or=(id.eq.${encodeURIComponent(root)},parent_id.eq.${encodeURIComponent(root)})&select=id,business_name,address,city,state,zip,parent_id,golden_status`;
+        const fq = `dealers?or=(id.eq.${encodeURIComponent(root)},parent_id.eq.${encodeURIComponent(root)})&select=id,business_name,contact_name,phone,email,address,city,state,zip,parent_id,golden_status`;
         family = await sbOpt(fq + ",active&limit=200", fq + "&limit=200");
         family = (family || []).filter((x) => x.active !== false || String(x.id) === String(did));   // closed locations are not listed (the login's own always is)
         scopeRow = await sbOpt(`dealer_user_scope?uid=eq.${encodeURIComponent(who.uid)}&select=scope,locations`, null);
@@ -167,6 +167,9 @@ exports.handler = async (event) => {
       const vcBy = new Map((claims || []).filter((r) => r.status === "verified").map((r) => [key(r), r]));   // newest last wins
       const locations = visible.map((loc) => ({
         id: loc.id, name: loc.business_name || "", city: loc.city || "", state: loc.state || "", is_self: String(loc.id) === String(did),
+        /* a head office manages its company's locations (D2): their address and main contact, changed through HCPS approval */
+        address: loc.address || "", zip: loc.zip || "", contact_name: loc.contact_name || "", phone: loc.phone || "", email: loc.email || "",
+        can_request: String(loc.id) === String(did) || !self.parent_id,
         accounts: L.map((m) => Object.assign({ slug: m.slug, name: m.name }, AC.accountStatus({ slug: m.slug, dm: dmBy.get(loc.id + "|" + m.slug) || null,
           claim: clBy.get(loc.id + "|" + m.slug) || null, verifiedClaim: vcBy.get(loc.id + "|" + m.slug) || null, accessOpen: acBy.has(loc.id + "|" + m.slug), goldenStatus: loc.golden_status }))),
       }));
@@ -182,11 +185,31 @@ exports.handler = async (event) => {
     if (b.action === "account_change_request") {
       const v = AC.validateChanges(b.changes);
       if (v.error) return json(400, { ok: false, error: v.error });
+      /* C3-07 Stage 3 (D2): a head office may send a change for one of its company's locations it can see; a branch login only
+         for itself. The request is filed on the TARGET location, so HCPS's approval applies it there. */
+      let target = did;
+      if (b.location_id != null && String(b.location_id) !== String(did)) {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(b.location_id))) return json(400, { ok: false, error: "Unknown location." });
+        let selfRow, fam, scopeRow;
+        try {
+          const d = await sb("GET", `dealers?id=eq.${encodeURIComponent(did)}&select=id,parent_id`); selfRow = d && d[0];
+          if (!selfRow) return json(404, { ok: false, error: "Account not found." });
+          const root = selfRow.parent_id || selfRow.id;
+          const fq = `dealers?or=(id.eq.${encodeURIComponent(root)},parent_id.eq.${encodeURIComponent(root)})&select=id,business_name,parent_id`;
+          fam = await sbOpt(fq + ",active&limit=200", fq + "&limit=200");
+          fam = (fam || []).filter((x) => x.active !== false || String(x.id) === String(did));
+          scopeRow = await sbOpt(`dealer_user_scope?uid=eq.${encodeURIComponent(who.uid)}&select=scope,locations`, null);
+          scopeRow = (scopeRow && scopeRow[0]) || null;
+        } catch (e) { return json(503, { ok: false, error: "Your changes could not be sent right now — please try again." }); }
+        const vis = AC.visibleLocations(did, fam, scopeRow);
+        if (selfRow.parent_id || !vis.some((x) => String(x.id) === String(b.location_id))) return json(403, { ok: false, error: "You can send changes only for your own location." });
+        target = String(b.location_id);
+      }
       let open;
-      try { open = await sb("GET", `dealer_change_requests?dealer_id=eq.${encodeURIComponent(did)}&status=eq.pending&select=id&limit=6`); }
+      try { open = await sb("GET", `dealer_change_requests?dealer_id=eq.${encodeURIComponent(target)}&status=eq.pending&select=id&limit=6`); }
       catch (e) { return json(503, { ok: false, error: "Your changes could not be sent right now — please try again." }); }
       if ((open || []).length >= 5) return json(429, { ok: false, error: "You have 5 changes waiting for HCPS — they'll be reviewed shortly before you can send more." });
-      try { await sb("POST", "dealer_change_requests", { dealer_id: did, uid: who.uid, email: who.email, changes: v.changes, status: "pending", created_at: new Date().toISOString() }, { Prefer: "return=minimal" }); }
+      try { await sb("POST", "dealer_change_requests", { dealer_id: target, uid: who.uid, email: who.email, changes: v.changes, status: "pending", created_at: new Date().toISOString() }, { Prefer: "return=minimal" }); }
       catch (e) { console.error("change request not recorded", e && e.message); return json(503, { ok: false, error: "Your changes could not be sent right now — please try again." }); }
       return json(200, { ok: true, message: "Sent to HCPS for approval — your account updates once approved." });
     }
