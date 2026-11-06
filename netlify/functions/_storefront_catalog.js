@@ -44,10 +44,10 @@ async function build(sf, deps, opts) {
      calculated price are per ORDER UNIT while MAP is per piece (map_basis 'each', the standing rule) or per order unit
      (map_basis 'order_unit'); a pack whose quantity isn't known can't be checked → no MAP (held under MAP rules). */
   const mapsFor = RP.mapsFor;
-  const priced = (p, line, facts, cost, map) => {
+  const priced = (p, line, facts, cost, map, fileMsrp) => {
     const rec = facts && facts.unit ? facts.unit.get(String(p.code)) : null;
     const mm = mapsFor(p, rec, map);
-    const d = RP.decide({ dealerPrice: RP.dealerPriceFor(retail, sf.dealer_id, line, p.code), msrp: facts ? facts.msrp.get(String(p.code)) : p._msrp,
+    const d = RP.decide({ dealerPrice: RP.dealerPriceFor(retail, sf.dealer_id, line, p.code), msrp: facts ? (facts.msrp.get(String(p.code)) || fileMsrp || null) : p._msrp,
       cost, map: mm.map, msrpMap: mm.msrpMap, policy: policies[line] || 'unknown', priceMode: sf.price_mode });
     const unit = d.unit_basis === 'msrp' ? SF.unitOf(p, rec) : d.unit_basis === 'order_unit' ? SF.unitOf(p, Object.assign({}, rec || {}, { msrp_basis: 'order_unit' })) : null;
     return Object.assign(RP.publicPrice(d), { price_unit: d.price != null ? unit : null }, opts.editor ? { editor: RP.editorPrice(d) } : {});
@@ -60,7 +60,7 @@ async function build(sf, deps, opts) {
       const pp = SF.publicProduct(p, line, facts, 'call', deps.supabaseUrl);
       if (hiddenCats.has(pp.category.toLowerCase())) continue;
       const c = costs && costs.get(String(p.code));
-      products.push(Object.assign(pp, priced(p, line, facts, c && c.cost, c && c.map))); n++; if (products.length >= 6000) break;
+      products.push(Object.assign(pp, priced(p, line, facts, c && c.cost, c && c.map, c && c.msrp))); n++; if (products.length >= 6000) break;
     }
     if (n) lineList.push({ slug: line, name: nm.get(line) || line, count: n });
   }
@@ -91,7 +91,10 @@ async function lineData(deps, line, enrichedOnly) {
   let costs = null;
   try {
     const lp = await PR.lineProducts({ slug: line, sb: deps.sb, catalogFile: deps.catalogFile, contentFile: deps.contentFile, contract: {}, rates: {}, cart: new Map() });
-    costs = new Map((lp.products || []).map((p) => { let c = null; try { c = lp.engine.unitPrice(p, 1); } catch (e) { c = null; } return [String(p.code), { cost: c, map: p.map }]; }));
+    /* official MSRP on file in the private commercial catalog (legacy lines keep it there): the merged product's MSRP unless
+       the shop derived it (_msrp_suggested = 2 × dealer price, never an official figure) */
+    costs = new Map((lp.products || []).map((p) => { let c = null; try { c = lp.engine.unitPrice(p, 1); } catch (e) { c = null; }
+      const m = Number(p.msrp); return [String(p.code), { cost: c, map: p.map, msrp: !p._msrp_suggested && p.msrp_auto !== true && m > 0 ? m : null }]; }));
   } catch (e) { console.error('storefront cost read failed', line, e && String(e.message).slice(0, 120)); costs = null; }
   return { file: file || [], facts, costs };
 }
@@ -103,14 +106,16 @@ async function lineDefaults(deps, line, opts) {
   opts = opts || {};
   const setting = opts.setting !== undefined ? opts.setting : await deps.sb('GET', 'app_settings?key=eq.advertising_policies&select=value').then((r) => (r && r[0] && r[0].value) || null);
   const policy = RP.policiesFrom(setting, POLICY_DEFAULTS)[line] || 'unknown';
-  const { file, facts, costs } = await lineData(deps, line, false);
+  const meta = opts.meta !== undefined ? opts.meta : await deps.sb('GET', `manufacturer_meta?slug=eq.${enc(line)}&select=enriched_only`);
+  const { file, facts, costs } = await lineData(deps, line, !!(meta && meta[0] && meta[0].enriched_only === true));
   const items = new Map();
   for (const p of file) {
     if (!p || !p.code) continue;
     const rec = facts.unit ? facts.unit.get(String(p.code)) : null; const c = costs && costs.get(String(p.code));
     const mm = RP.mapsFor(p, rec, c && c.map);
-    const d = RP.decide({ msrp: facts.msrp.get(String(p.code)), cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy });
+    const d = RP.decide({ msrp: facts.msrp.get(String(p.code)) || (c && c.msrp) || null, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy });
     d.active = !(facts.isHidden(p.code) || p.active === false || p.discontinued === true); d.no_cost = !(c && c.cost > 0);
+    if (!d.active) { d.price = null; d.label = 'Call for Price'; d.source = 'call'; }   // review fix: never a price for a product no storefront shows
     items.set(String(p.code), d);
   }
   return { policy, items, costs_readable: !!costs };

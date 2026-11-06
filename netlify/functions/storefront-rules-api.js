@@ -87,15 +87,16 @@ exports.handler = async (event) => {
       const off = new Set((metas || []).filter((m) => m.active === false).map((m) => m.slug));
       const want = (mfrs || []).filter((m) => m.slug && !off.has(m.slug) && !RETIRED.isRetiredLine(m.slug) && m.slug !== 'golden-technologies' && m.slug !== 'golden' && (!b.slug || m.slug === b.slug));
       const out = [];
-      for (const m of want) {
+      const one = async (m) => {
         try {
           const r = await SC.lineDefaults(deps, m.slug, { setting: setting.value });
           const c = { msrp: 0, calculated: 0, call: 0 }; const calls = [];
           for (const [code, d] of r.items) { if (!d.active) continue; c[d.source] = (c[d.source] || 0) + 1;
             if (d.source === 'call') calls.push({ code, reason: d.no_cost ? 'no_standard_cost' : (d.flags.length ? d.flags[d.flags.length - 1].flag : 'no_price') }); }
-          out.push({ slug: m.slug, name: m.name || m.slug, policy: r.policy, costs_readable: r.costs_readable, counts: c, call: calls.slice(0, 300) });
-        } catch (e) { out.push({ slug: m.slug, name: m.name || m.slug, error: 'could not be read' }); }
-      }
+          return { slug: m.slug, name: m.name || m.slug, policy: r.policy, costs_readable: r.costs_readable, counts: c, call: calls.slice(0, 300) };
+        } catch (e) { return { slug: m.slug, name: m.name || m.slug, error: 'could not be read' }; }
+      };
+      for (let i = 0; i < want.length; i += 4) out.push(...await Promise.all(want.slice(i, i + 4).map(one)));   // review fix: 4 lines at a time
       return json(200, { ok: true, lines: out });
     }
     if (b.action === 'set_policy') {

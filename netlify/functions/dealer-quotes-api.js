@@ -35,8 +35,12 @@ const DEPS = () => ({ sb, sbAll: sbAllQ, catalogFile: (slug) => FILES.catalogFil
    calculated retail (2 × STANDARD dealer cost) when the line's advertising rules allow it. One catalog read per line. */
 async function defaultsFor(mfrs) {
   const setting = await sb("GET", "app_settings?key=eq.advertising_policies&select=value").then((r) => (r && r[0] && r[0].value) || null);
-  const out = new Map();
-  for (const m of [...new Set(mfrs)].slice(0, 12)) out.set(m, (await SC.lineDefaults(DEPS(), m, { setting })).items);
+  const out = new Map(), list = [...new Set(mfrs)].filter((m) => m !== "golden-technologies" && m !== "golden");
+  /* review fix: lines read 4 at a time (each is one catalog file + its layers), never one after another */
+  for (let i = 0; i < list.length; i += 4) {
+    const part = await Promise.all(list.slice(i, i + 4).map((m) => SC.lineDefaults(DEPS(), m, { setting }).then((r) => [m, r.items])));
+    for (const [m, items] of part) out.set(m, items);
+  }
   return out;
 }
 const crypto = require("crypto");
@@ -166,10 +170,20 @@ exports.handler = async (event) => {
     /* C3-07 2026-11-06: a brochure's default customer price, read on the server for the signed-in dealer (brochure.js calls
        this server-to-server): official MSRP, else HCPS calculated retail under the line's advertising rules. Never the cost. */
     if (b.action === "default_retail") {
-      const m = String(b.manufacturer || "").toLowerCase(), code = String(b.code || "").trim();
-      if (!/^[a-z0-9-]{2,60}$/.test(m) || !code || code.length > 60 || /\|u=/.test(code) || m === "golden-technologies" || m === "golden") return json(200, { ok: true, price: null, label: null, source: "none" });
-      const d = ((await defaultsFor([m])).get(m) || new Map()).get(code);
-      return json(200, { ok: true, price: d && d.price != null ? d.price : null, label: d && d.price != null ? d.label : null, source: d ? d.source : "none" });
+      /* one {manufacturer, code} (brochures) or items:[…] ≤ 500 (My Retail Prices / quote builder); only lines this dealer's
+         company is authorized for, never Golden (its own rule), never a hidden or discontinued product (review fix) */
+      const ask = (Array.isArray(b.items) ? b.items.slice(0, 500) : [{ manufacturer: b.manufacturer, code: b.code }])
+        .map((x) => ({ m: String((x && x.manufacturer) || "").toLowerCase(), code: String((x && x.code) || "").trim() }))
+        .filter((x) => /^[a-z0-9-]{2,60}$/.test(x.m) && x.code && x.code.length <= 60 && !/\|u=/.test(x.code) && x.m !== "golden-technologies" && x.m !== "golden");
+      const fam = [...names.keys()].concat([owner]).map(enc).join(",");
+      const dm = ask.length ? await sb("GET", `dealer_manufacturers?dealer_id=in.(${fam})&active=eq.true&select=manufacturer`) : [];
+      const allowed = new Set((dm || []).map((r) => r.manufacturer));
+      const defs = await defaultsFor(ask.filter((x) => allowed.has(x.m)).map((x) => x.m));
+      const items = ask.map((x) => { const d = allowed.has(x.m) ? (defs.get(x.m) || new Map()).get(x.code) : null;
+        return { manufacturer: x.m, code: x.code, price: d && d.price != null ? d.price : null, label: d && d.price != null ? d.label : null, source: d ? d.source : "none" }; });
+      if (Array.isArray(b.items)) return json(200, { ok: true, items });
+      const one = items[0] || { price: null, label: null, source: "none" };
+      return json(200, { ok: true, price: one.price, label: one.label, source: one.source });
     }
     if (b.action === "quote_list") {
       const locs = [...names.keys()].map(enc).join(",");

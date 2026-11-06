@@ -17,8 +17,10 @@ const M = [
   { f: G, from: "if (hit && Date.now() - hit.at < TTL) return hit.r;", to: '', why: 'Golden catalog read for every line' },
   { f: G, from: "const key = JSON.stringify([deleg.sub_dealer, deleg.sub_branch, deleg.acct || null]);", to: "const key = 'all';", why: 'catalog cache shared across Golden accounts' },
   { f: A, from: 'msrp.set(l.mfr + "|" + l.sku, d && d.price != null ? { price: d.price, calc: d.source === "calculated" } : null);', to: 'msrp.set(l.mfr + "|" + l.sku, d && d.price != null ? { price: d.price, calc: false } : null);', why: 'calculated retail labelled MSRP on a quote' },
-  { f: C2, from: "const d = RP.decide({ msrp: facts.msrp.get(String(p.code)), cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy });", to: "const d = RP.decide({ msrp: facts.msrp.get(String(p.code)), cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy: 'open' });", why: 'advertising rules ignored for defaults' },
-  { f: A, from: '|| m === "golden-technologies" || m === "golden") return json(200, { ok: true, price: null, label: null, source: "none" });', to: ') return json(200, { ok: true, price: null, label: null, source: "none" });', why: 'Golden priced by the generic default' },
+  { f: C2, from: "if (!d.active) { d.price = null; d.label = 'Call for Price'; d.source = 'call'; }", to: '', why: 'discontinued product priced' },
+  { f: C2, from: "const d = RP.decide({ msrp: facts.msrp.get(String(p.code)) || (c && c.msrp) || null, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy });", to: "const d = RP.decide({ msrp: facts.msrp.get(String(p.code)) || (c && c.msrp) || null, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy: 'open' });", why: 'advertising rules ignored for defaults' },
+  { f: C2, from: "msrp: facts.msrp.get(String(p.code)) || (c && c.msrp) || null, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy });", to: "msrp: facts.msrp.get(String(p.code)) || null, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy });", why: 'official MSRP from the commercial catalog ignored' },
+  { f: A, from: "const allowed = new Set((dm || []).map((r) => r.manufacturer));", to: "const allowed = new Set(ask.map((x) => x.m));", why: 'unauthorized line priced' },
 ];
 const runs = ['golden-retail.test.js', 'quotes.test.js'];
 const run = () => runs.every((t) => spawnSync(process.execPath, [path.join(__dirname, t)], { encoding: 'utf8' }).status === 0);

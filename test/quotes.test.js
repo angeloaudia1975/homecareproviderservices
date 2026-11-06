@@ -20,14 +20,16 @@ function world(o) {
   o = o || {};
   const sends = [];
   const W = M.createWorld({ tokens: {}, failRead: o.failRead, failWrite: o.failWrite, missingTables: o.missingTables, catalog: {
-    yuwell: [{ code: 'YU-1', name: 'Yuwell Concentrator', category: 'Respiratory', price: 54.99, base_price: 54.99 }, { code: 'YU-2', name: 'Yuwell Two', category: 'Respiratory', price: 10, base_price: 10 }, { code: 'YU-3', name: 'Yuwell Case', category: 'Respiratory', price: 30, base_price: 30, case_qty: 4, uom: 'Case', map: 9 }],
+    yuwell: [{ code: 'YU-1', name: 'Yuwell Concentrator', category: 'Respiratory', price: 54.99, base_price: 54.99 }, { code: 'YU-2', name: 'Yuwell Two', category: 'Respiratory', price: 10, base_price: 10 }, { code: 'YU-3', name: 'Yuwell Case', category: 'Respiratory', price: 30, base_price: 30, case_qty: 4, uom: 'Case', map: 9 }, { code: 'YU-9', name: 'Gone', category: 'Respiratory', price: 50, base_price: 50, discontinued: true }, { code: 'YU-4', name: 'Listed MSRP', category: 'Respiratory', price: 30, base_price: 30, msrp: 77 }],
+    dalton: [{ code: 'DA-1', name: 'Dalton', category: 'Beds', price: 40, base_price: 40 }],
     bemis: [{ code: 'BE-1', name: 'Bemis seat', category: 'Bath', price: 20, base_price: 20 }], 'golden-technologies': [{ code: 'PR501-SMA', name: 'Cloud', category: 'Lift Chairs', price: 1100, base_price: 1100 }] }, tables: {
     dealers: [{ id: HQ, parent_id: null, business_name: 'Acme Medical <HQ>', address: '1 Main St', city: 'Dayton', state: 'OH', zip: '45402', phone: '555-0100', email: 'sales@acme.test', website: 'acme.test', logo_url: 'https://cdn.acme.test/logo.png' },
       { id: BR, parent_id: HQ, business_name: 'Acme Branch', city: 'Xenia', state: 'OH', phone: '555-0200', email: 'br@acme.test', logo_url: null },
       { id: BR2, parent_id: HQ, business_name: 'Acme Two' }, { id: OTHER, parent_id: null, business_name: 'Else' }],
     dealer_users: [{ uid: 'u-hq', status: 'approved', dealer_id: HQ, email: 'hq@acme.test' }, { uid: 'u-br', status: 'approved', dealer_id: BR, email: 'br@acme.test' },
       { uid: 'u-b2', status: 'approved', dealer_id: BR2, email: 'b2@acme.test' }, { uid: 'u-ot', status: 'approved', dealer_id: OTHER, email: 'x@else.test' }],
-    dealer_user_scope: [], dealer_saved_quotes: o.quotes || [],
+    dealer_user_scope: [], dealer_saved_quotes: o.quotes || [], dealer_manufacturers: [{ dealer_id: HQ, manufacturer: 'yuwell', active: true }, { dealer_id: HQ, manufacturer: 'bemis', active: true }, { dealer_id: HQ, manufacturer: 'golden-technologies', active: true }],
+    manufacturer_meta: [],
     dealer_retail_prices: [{ id: 1, dealer_id: HQ, location_id: null, manufacturer: 'yuwell', code: 'YU-1', price: 120 }, { id: 2, dealer_id: HQ, location_id: BR, manufacturer: 'yuwell', code: 'YU-1', price: 125 },
       { id: 3, dealer_id: OTHER, location_id: null, manufacturer: 'yuwell', code: 'YU-1', price: 1 }],
     product_skus: [{ manufacturer: 'yuwell', code: 'YU-1', msrp: 159.99, base_price: 54.99 }, { manufacturer: 'yuwell', code: 'YU-2', msrp: null, base_price: 10 }],
@@ -189,6 +191,11 @@ const readsOf = (W, tb) => W.calls.filter((c) => c.method === 'GET' && String(c.
     eq(await D({ manufacturer: 'yuwell', code: 'YU-2' }, { yuwell: { policy: 'open' } }), { ok: true, price: 20, label: 'Price', source: 'calculated' });
     eq(await D({ manufacturer: 'yuwell', code: 'YU-1' }), { ok: true, price: 159.99, label: 'MSRP', source: 'msrp' });
     eq((await D({ manufacturer: 'yuwell', code: 'YU-2' })).price, null, 'rules not recorded');
+    eq((await D({ manufacturer: 'yuwell', code: 'YU-9' }, { yuwell: { policy: 'open' } })).price, null, 'a discontinued product is never priced');
+    eq(await D({ manufacturer: 'yuwell', code: 'YU-4' }, { yuwell: { policy: 'open' } }), { ok: true, price: 77, label: 'MSRP', source: 'msrp' }, 'the official MSRP kept in the catalog file wins over 2 × cost');
+    eq((await D({ manufacturer: 'dalton', code: 'DA-1' }, { dalton: { policy: 'open' } })).price, null, 'a line the dealer is not authorized for');
+    const bat = await D({ items: [{ manufacturer: 'yuwell', code: 'YU-2' }, { manufacturer: 'yuwell', code: 'YU-1' }, { manufacturer: 'dalton', code: 'DA-1' }] }, { yuwell: { policy: 'open' }, dalton: { policy: 'open' } });
+    eq(bat.items.map((x) => [x.code, x.price, x.source]), [['YU-2', 20, 'calculated'], ['YU-1', 159.99, 'msrp'], ['DA-1', null, 'none']], 'batched');
     eq((await as(api(world()), 'nobody', { action: 'default_retail', manufacturer: 'yuwell', code: 'YU-1' })).status, 401, 'dealer sign-in needed');
     eq(await D({ manufacturer: 'golden-technologies', code: 'PR501-SMA' }, { 'golden-technologies': { policy: 'open' } }), { ok: true, price: null, label: null, source: 'none' }, 'Golden is priced only by its own rule (golden-proxy retail)');
   });

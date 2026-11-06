@@ -3,6 +3,7 @@ const fs = require('fs'), path = require('path'), { spawnSync } = require('child
 const F = (n) => path.join(__dirname, '..', 'netlify', 'functions', n);
 const R = F('_storefront.js'), P = F('storefront-public.js'), D = F('dealer-storefront-api.js'), C = F('_storefront_catalog.js'), G = F('_golden_storefront.js'), RP = F('_retail_price.js');
 const M = [
+  { f: C, from: "msrp: facts ? (facts.msrp.get(String(p.code)) || fileMsrp || null) : p._msrp,", to: "msrp: facts ? (facts.msrp.get(String(p.code)) || null) : p._msrp,", why: 'official catalog-file MSRP ignored on the storefront' },
   { f: RP, from: "const orderMap = perOrder ? m : (q > 1 ? Math.round(m * q * 100) / 100 : null)", to: "const orderMap = m", why: 'pack price compared with a per-piece MAP' },
   { f: RP, from: "const perOrder = (r.map_basis || p.map_basis) === 'order_unit';", to: "const perOrder = false;", why: 'per-case MAP multiplied again' },
   { f: RP, from: "if (msrp && policy === 'map' && msrpMap && msrp < msrpMap)", to: 'if (false)', why: 'MSRP below MAP published' },
