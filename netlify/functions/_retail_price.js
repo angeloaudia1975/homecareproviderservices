@@ -97,11 +97,20 @@ const FLAG_TEXT = {
 /* MAP in the same unit as the price it is compared with (review fix 2026-11-06): on a pack (case_qty > 1) the dealer's
    and the calculated price are per ORDER UNIT; MAP is per piece unless map_basis is 'order_unit'. A pack whose quantity
    isn't known has no comparable MAP. → { map (per order unit), msrpMap (in the MSRP's unit) } */
-function mapsFor(p, rec, map) {
+function mapsFor(p, rec, map, msrp) {
   const m = Number(map); if (!(m > 0)) return { map: null, msrpMap: null };
   const r = rec || {}; const u = String(r.uom || p.uom || '').trim(); const q = Number(r.case_qty || p.case_qty);
   const pack = q > 1 || (u && !/^(each|ea|1)$/i.test(u)); if (!pack) return { map: m, msrpMap: m };
-  const perOrder = (r.map_basis || p.map_basis) === 'order_unit';
+  const basis = r.map_basis || p.map_basis;
+  if (basis !== 'each' && basis !== 'order_unit') {
+    /* unit not recorded (legacy lines): the manufacturer's own MSRP is never blocked on a guess (msrpMap null); MAP is per
+       piece (× pack quantity) unless the MSRP proves it is quoted per pack — a MAP above the MSRP is impossible (2026-11-06) */
+    const ms = Number(msrp); const msrpEach = r.msrp_basis === 'each' || (r.msrp_basis !== 'order_unit' && p.msrp_each === true);
+    const msrpOrder = ms > 0 ? (msrpEach && q > 1 ? ms * q : ms) : null;
+    if (msrpOrder && q > 1 && m * q > msrpOrder + 0.005) return { map: m, msrpMap: null };
+    return { map: q > 1 ? Math.round(m * q * 100) / 100 : null, msrpMap: null };
+  }
+  const perOrder = basis === 'order_unit';
   const orderMap = perOrder ? m : (q > 1 ? Math.round(m * q * 100) / 100 : null), pieceMap = perOrder ? (q > 1 ? Math.round(m / q * 100) / 100 : null) : m;
   const msrpEach = r.msrp_basis === 'each' || (r.msrp_basis !== 'order_unit' && p.msrp_each === true);
   return { map: orderMap, msrpMap: msrpEach ? pieceMap : orderMap };

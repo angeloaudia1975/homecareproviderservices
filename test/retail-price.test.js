@@ -55,4 +55,13 @@ t('editor slice explains the restriction; texts exist for every flag', () => {
   eq([e.price, e.source, e.calculated, e.flags[0].flag], [120, 'msrp', 60, 'below_map']);
   for (const k of ['no_map_on_file', 'below_map', 'msrp_only', 'no_public_price', 'rules_unknown', 'dealer_call_for_price']) if (!RP.FLAG_TEXT[k]) throw new Error('no text for ' + k);
 });
+t('pack MAP units: explicit basis honoured; unknown basis never blocks the manufacturer\'s MSRP, and an MSRP proves a per-pack MAP', () => {
+  eq(RP.mapsFor({ case_qty: 6 }, { map_basis: 'each' }, 2, 30), { map: 12, msrpMap: 12 }); eq(RP.mapsFor({ case_qty: 6 }, { map_basis: 'each', msrp_basis: 'each' }, 2, 5), { map: 12, msrpMap: 2 });
+  eq(RP.mapsFor({ case_qty: 6 }, { map_basis: 'order_unit' }, 12, 30), { map: 12, msrpMap: 12 });
+  eq(RP.mapsFor({ case_qty: 6 }, {}, 12.75, 15), { map: 12.75, msrpMap: null }, 'MAP 12.75 × 6 would exceed the MSRP 15 → MAP is per pack');
+  eq(RP.mapsFor({ case_qty: 6 }, {}, 2, 15), { map: 12, msrpMap: null }, 'per piece × 6 ≤ MSRP → kept per piece (the stricter reading)');
+  eq(RP.mapsFor({ case_qty: 6 }, {}, 2, null), { map: 12, msrpMap: null }, 'no MSRP → stricter reading');
+  eq(RP.mapsFor({ uom: 'Box' }, {}, 5, 20), { map: null, msrpMap: null }, 'pack size unknown → no comparable MAP');
+  eq(D({ msrp: 15, ...RP.mapsFor({ case_qty: 6 }, {}, 12.75, 15), policy: 'map' }), [15, 'MSRP', 'msrp'], 'the MSRP is published');
+});
 console.log(`\nretail-price: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
