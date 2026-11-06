@@ -12,7 +12,7 @@ const M=[
   ['_golden_client.js','network error reported as success','return { configured:true, ok:false, status:0, json:null, error:"golden_unreachable" };','return { configured:true, ok:true, status:200, json:{state:"account",capabilities:{}}, error:null };'],
   ['golden-proxy.js','master switch ignored','if(f.golden_p360_catalog !== true) return json(200, { ok:true, enabled:false, reason:"switched_off" });',''],
   ['golden-proxy.js','truthy switch accepted','if(f.golden_p360_catalog !== true)','if(!f.golden_p360_catalog)'],
-  ['golden-proxy.js','pilot list ignored','if(!envName && !who.pilot.includes(String(c.sub_dealer)) && !who.pilot.includes(String(who.dealer_id))) return json(200, { ok:true, enabled:false, reason:"not_in_pilot" });',''],
+  ['golden-proxy.js','pilot list ignored','if(!envName && !who.allLinked && !who.pilot.includes(String(c.sub_dealer)) && !who.pilot.includes(String(who.dealer_id))) return json(200, { ok:true, enabled:false, reason:"not_in_pilot" });',''],
   ['golden-proxy.js','branch sent as the organisation','return d.parent_id ? { sub_dealer: d.parent_id, sub_branch: d.id }','return d.parent_id ? { sub_dealer: d.id, sub_branch: null }'],
   ['golden-proxy.js','preview may order','order: caps.order === true && !who.preview','order: caps.order === true'],
   ['golden-proxy.js','Golden answer echoed whole','return json(200, Object.assign({ ok:true, enabled:true, available:true,\n        state:','return json(200, Object.assign({ ...g, ok:true, enabled:true, available:true,\n        state:'],
