@@ -2226,7 +2226,21 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     (read + insert), dealer_retail_prices, dealer_storefronts, storefront_inquiries 401/42501; dealer-applications bucket
     lists nothing; `credit_applications` does not exist in the exposed schema (404 PGRST205) — the legacy action is 410. Angelo's
     read-only check 2026-11-06 14:14 CT (`information_schema.tables` ilike '%credit%'): no rows — no credit-application table
-    exists in any schema, so no legacy credit-application records are stored.
+    exists in any schema. That is NOT proof no sensitive data exists elsewhere (owner 2026-11-06 14:17): the old generic
+    credit form (closed in Stage 3) inserted into that never-created table (silently failed) and EMAILED EIN + bank
+    reference to HCPS — copies may sit in the HCPS mailbox and, as a body preview, in email_messages.snippet.
+    **Advertising-rule research (2026-11-06 ~14:40 CT, from repo documents + live catalog data; counts only):** documented
+    MAP for Bemis (Terms of Agreement, dealer application 2026 — written MAP policy incl. dealer websites; "call for price"
+    allowed; dealers selling online must notify Bemis and use Bemis content), Golden (eMAP per product), Strongback (Rev C
+    MAP column), Climbing Steps (2026 workbook MAP, 23/23), Access4U (Fall 2026 list: MAP = MSRP × 0.70, 125/125), AirAvant /
+    BongoRx (18023 Rev F MAP, 12/12), PediFix (OTC list eff. 2025-07-01 MAP, 487/516). No MAP document or figures: ABM,
+    Corsicana, Dalton (no MSRP either → Call for Price), Ovation (2026 list has no MAP), Yuwell → stay "not recorded"
+    (MSRP only). Recording the six MAP rules from Chrome was REFUSED by the session's permission check — Angelo records them
+    on the page (or explicitly authorizes it). Pilot candidates (Golden account + approved portal login + another line
+    with an account, active, non-TEST): Glasgow Prescription Center (KY, Bemis/Ovation/PediFix/Strongback, 1 branch) —
+    recommended; Plaza Drug (KY, Climbing Steps/Dalton/Ovation/PediFix); Poole's Pharmacy (KY, PediFix, 5 branches);
+    alternate Kentuckiana Mobility Scooter Rental (Access4U). Golden's own link check (linked === true) is confirmed at
+    pilot setup through a staff view-as preview.
     Account-number claims: only dealer_account_claims (pending); ordering, pricing and the Golden account gate read
     dealer_manufacturers only, written from a claim solely by management `claim_verify` (never turns ordering on).
   · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
