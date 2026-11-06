@@ -66,7 +66,9 @@ const M = [
   { f: R, from: ".replace(/[\\r\\n\\t]+/g, ' ');\n  return { subject: subj,", to: ";\n  return { subject: subj,", why: 'line breaks in subject' },
   { f: D, from: "if (eff.enabled === true && !eff.phone && !eff.email)", to: "if (false)", why: 'live storefront without contact' },
   { f: D, from: "if (who.preview) return json(200, { ok: true, inquiries: [], hidden_in_preview: true });", to: "", why: 'preview reads customers' },
-  { f: C, from: "if (!pg.some((r) => ['published', 'active', 'discontinued'].includes(String((r && r.status) || ''))) && deps.contentFile) {", to: "if (false) {", why: 'retired SKUs in the static content file shown / priced' },
+  { f: C, from: "if (!pg.some((r) => r && r.disabled !== true && ['published', 'active', 'discontinued'].includes(String(r.status || ''))) && deps.contentFile) {", to: "if (false) {", why: 'retired SKUs in the static content file shown / priced' },
+  { f: C, from: "r && r.disabled !== true && ['published'", to: "r && ['published'", why: 'switched-off database page blocks the content-file fallback (shop reads it with RLS)' },
+  { f: C, from: "if (!pg.some((r) =>", to: "if (true || !pg.some((r) =>", why: 'content file read over a live database page' },
   { f: C, from: "pg = Object.keys(o).map((k) => Object.assign({ page_key: k }, o[k]));", to: "pg = [];", why: 'content-file pages ignored' },
 ];
 const run = () => { for (const t of ['storefront.test.js', 'retail-price.test.js', 'storefront-rules.test.js']) { const r = spawnSync(process.execPath, [path.join(__dirname, t)], { encoding: 'utf8' }); if (r.status !== 0) return r; } return { status: 0 }; };

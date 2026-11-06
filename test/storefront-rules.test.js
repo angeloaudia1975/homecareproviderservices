@@ -16,7 +16,7 @@ function world(o) {
     manufacturers: [{ slug: 'bemis', name: 'Bemis' }, { slug: 'golden-technologies', name: 'Golden Technologies' }, { slug: 'dalton', name: 'Dalton' }],
     manufacturer_meta: [{ slug: 'dalton', active: false }],
     product_skus: [{ id: 1, manufacturer: 'bemis', code: 'B1', status: 'active', map: 79, msrp: 99, msrp_auto: false }, { id: 2, manufacturer: 'bemis', code: 'B2', status: 'active', map: null, msrp: 20, msrp_auto: true }],
-    custom_products: [], app_settings: o.settings ? [{ key: 'advertising_policies', value: o.settings }] : [],
+    custom_products: [], product_content: o.pages || [], app_settings: o.settings ? [{ key: 'advertising_policies', value: o.settings }] : [],
     dealer_storefronts: [{ id: 'sf1', dealer_id: D, slug: 'acme', enabled: true, hcps_blocked: false, version: 2 }],
     dealers: [{ id: D, business_name: 'Acme', city: 'Dayton', state: 'OH' }] } });
   const inner = W.fetch; W.patches = 0;
@@ -84,6 +84,14 @@ const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer
     const l = r.body.lines[0]; eq([l.counts.msrp, l.counts.calculated, l.counts.call, l.call], [1, 1, 0, []], 'B3 retired → not counted ' + JSON.stringify(l));
     const r2 = await as(api(world({ content: { bemis: 'fail' } })), 'boss', { action: 'coverage', slug: 'bemis' });
     eq(r2.body.lines[0].error, 'could not be read', 'strict read');
+  });
+  await t('the database pages win when one is live; a switched-off database page does not count (the shop reads them through RLS) → the content file decides', async () => {
+    const content = { bemis: { pages: { 'p-old': { status: 'published', skus: [{ sku: 'B3', status: 'hidden', disabled: true }] } } } };
+    const settings = { rev: 1, lines: { bemis: { policy: 'open', note: 'x' } } };
+    const live = await as(api(world({ content, settings, pages: [{ manufacturer: 'bemis', page_key: 'db', status: 'published', disabled: false, skus: [{ sku: 'B1' }] }] })), 'boss', { action: 'coverage', slug: 'bemis' });
+    eq(live.body.lines[0].counts.call, 1, 'live DB page → static file not read, B3 counted ' + JSON.stringify(live.body.lines[0]));
+    const off = await as(api(world({ content, settings, pages: [{ manufacturer: 'bemis', page_key: 'db', status: 'published', disabled: true, skus: [{ sku: 'B1' }] }] })), 'boss', { action: 'coverage', slug: 'bemis' });
+    eq(off.body.lines[0].counts.call, 0, 'only a switched-off DB page → static file read, B3 retired ' + JSON.stringify(off.body.lines[0]));
   });
   console.log(`\nstorefront-rules: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

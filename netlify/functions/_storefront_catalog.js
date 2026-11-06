@@ -91,7 +91,7 @@ async function lineData(deps, line, enrichedOnly) {
      SKUs are switched off (status hidden, disabled). Read the same way here, so a product the shop doesn't list is never
      priced, quoted or shown on a storefront. A content file that can't be read is an error (strict), never "no pages". */
   let pg = pages || [];
-  if (!pg.some((r) => ['published', 'active', 'discontinued'].includes(String((r && r.status) || ''))) && deps.contentFile) {
+  if (!pg.some((r) => r && r.disabled !== true && ['published', 'active', 'discontinued'].includes(String(r.status || ''))) && deps.contentFile) {
     const cj = await deps.contentFile(line); const o = (cj && cj.pages && typeof cj.pages === 'object') ? cj.pages : {};
     pg = Object.keys(o).map((k) => Object.assign({ page_key: k }, o[k]));
   }

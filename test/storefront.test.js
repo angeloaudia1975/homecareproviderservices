@@ -57,6 +57,8 @@ function world(o) {
     if (h.Prefer === 'count=exact') { const r = await inner(u, { method: 'GET', headers: { apikey: 'svc' } }); const rows = await r.json(); return { ok: true, status: 206, headers: { get: () => '0-0/' + rows.length }, text: async () => '[]' }; }
     if (u.startsWith('https://golden.test/v1/catalog')) { W.golden.push({ url: u, headers: h }); const G = o.golden || { linked: false, products: [] };
       return { ok: true, status: 200, json: async () => Object.assign({ prices_visible: true }, G) }; }
+    { const m = u.match(/\/data\/content\/([a-z0-9-]+)\.json/); if (m) { const c = (o.content || {})[m[1]];
+      return c ? { ok: true, status: 200, json: async () => c } : { ok: false, status: 404, json: async () => null }; } }
     if (u.includes('api.resend.com')) { const b = JSON.parse(opts.body); W.mail.push(b); if (o.mailFails) return { ok: false, status: 500, text: async () => 'no' }; return { ok: true, status: 200, text: async () => '{"id":"m1"}', json: async () => ({ id: 'm1' }) }; }
     return inner(url, opts); };
   return W;
@@ -71,6 +73,12 @@ const pubPost = (C, b, ip) => M.call(C, b, { headers: ip ? { 'x-nf-client-connec
 const live = (x) => Object.assign({ id: 'sf-hq', dealer_id: HQ, company_id: HQ, slug: 'acme-medical', enabled: true, hcps_blocked: false, headline: 'Welcome', about: null, phone: '555-0199', email: 'shop@acme.test', hours: null, show_address: true, lines: null, hidden_categories: ['Parts'], price_mode: 'msrp', version: 1 }, x || {});
 
 (async () => {
+  await t('a SKU retired in the line\'s static content file (no live database page) never appears on the public storefront', async () => {
+    const content = { bemis: { pages: { old: { status: 'published', skus: [{ sku: 'B6', status: 'hidden', disabled: true, retired: { reason: 'x' } }] } } } };
+    const codes = async (o) => { const r = await pubGet(pubApi(world(Object.assign({ storefronts: [live()] }, o))), 'acme-medical'); eq(r.status, 200, JSON.stringify(r.body).slice(0, 200)); return r.body.products.map((p) => p.code); };
+    ok((await codes({})).includes('B6'), 'control: B6 listed without the retirement');
+    ok(!(await codes({ content })).includes('B6'), 'retired B6 listed');
+  });
   await t('sf_get: head office sees its locations with only authorized, active, non-retired, non-Golden lines; a branch only itself', async () => {
     const W = world(); const r = await as(dealerApi(W), 'hq', { action: 'sf_get' });
     eq(r.status, 200); eq(r.body.locations.map((l) => [l.name, l.can_edit, l.lines.map((x) => x.slug)]), [['Acme Medical', true, ['bemis', 'strongback']], ['Acme Branch', true, ['bemis']]]);
