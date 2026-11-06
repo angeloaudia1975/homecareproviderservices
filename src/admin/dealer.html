@@ -343,6 +343,7 @@ function render(D,A){
   const intelCard=`<div class="card"><h2>Digital activity &amp; interest</h2><div id="intel"><div class="hint">Loading activity…</div></div></div>`;
   const mfrIntelCard=`<div class="card" id="mfrIntelCard" style="display:none"><h2>Manufacturer-reported intelligence</h2><div id="mfrintel"></div></div>`;
   const academyCard=`<div class="card" id="academyCard" style="display:none"><h2>HCPS Academy</h2><div id="academy360"></div></div>`;
+  const demandCard=`<div class="card" id="demandCard" style="display:none"><h2>Storefront demand</h2><div id="demand360"></div></div>`;
   const salesCard=`<div class="card" id="salesCard"><h2>Monthly sales &amp; product detail</h2><div id="sales"><div class="hint">Loading sales…</div></div></div>`;
   const commCard=`<div class="card"><h2>Commission — paid vs. outstanding</h2><div id="commled"><div class="hint">Loading…</div></div></div>`;
   const emailCard=`<div class="card" id="emailCard"><h2>Outlook email <span id="emailCount" style="float:right;font-size:11px;color:var(--gray);font-weight:600"></span></h2>
@@ -380,10 +381,10 @@ function render(D,A){
   $("#body").innerHTML=`${header}${nextBanner}
     <div class="d360">
       <div>${notesCard}${contactsCard}${emailCard}${callCard}${touchCard}${visitsCard}${handoutCard}${intelCard}${history}${salesCard}${commCard}</div>
-      <div>${tasksCard}${signals}${addrCard}${acctCard}${academyCard}${mfrIntelCard}</div>
+      <div>${tasksCard}${signals}${addrCard}${acctCard}${academyCard}${demandCard}${mfrIntelCard}</div>
     </div>`;
   if(CUR!==d.id) TOUCH_LAST_STATUS=""; // Do not carry a previous dealer\'s save notice to a different account.
-  CUR=d.id; DPHONE=d.phone||""; VLIM=25; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadVisits(); loadHandout(); loadMfrIntel(); loadAcademy360();
+  CUR=d.id; DPHONE=d.phone||""; VLIM=25; loadCRM(); loadIntel(); loadContacts(); loadSales(); loadEmails(); loadVisits(); loadHandout(); loadMfrIntel(); loadAcademy360(); loadDemand360();
 }
 function nextBestAction(d,lines,monthsSince,cart,sess){
   const due=(lines||[]).filter(l=>l.status==="due");
@@ -1877,6 +1878,23 @@ async function loadMfrIntel(){
       ${obs?`<ul style="margin:6px 0 0 16px;padding:0;font-size:12px">${obs}</ul>`:""}
     </div>`;}).join("");
   card.style.display="";
+}
+/* C3-07 Stage 8 — storefront demand (demand-intel-api dealer): what this dealer's public storefront visitors looked at and asked
+   about in the last 90 days, and which of those products the dealer hasn't ordered in 12 months. Anonymous counts — interest,
+   not sales; customers' contact details stay with the dealer. Hidden when the dealer has no storefront. */
+async function loadDemand360(){
+  const card=document.getElementById("demandCard"), box=document.getElementById("demand360"); if(!card||!box) return;
+  const want=CUR; let j=null;
+  try{ const r=await fetch("/.netlify/functions/demand-intel-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify({action:"dealer",dealer_id:want,days:90})}); j=await r.json(); }catch(e){ j=null; }
+  if(want!==CUR) return;
+  if(!j||!j.ok||!j.installed||!j.storefront){ card.style.display="none"; return; }
+  const sf=j.storefront, T=j.totals||{};
+  let h=`<div class="hint" style="margin-bottom:6px">${sf.blocked?"Paused by HCPS":sf.live?"Storefront is live":"Storefront is off"} · <a href="${esc(sf.link)}" target="_blank" rel="noopener">open</a> · last 90 days: ${esc(String(T.views||0))} product views, ${esc(String(T.inquiries||0))} requests. Interest, not sales.</div>`;
+  const ops=(j.dealer_opportunities||[]).slice(0,6), top=(j.products||[]).slice(0,5);
+  if(ops.length) h+=`<div style="font-weight:700;color:var(--navy);margin-top:4px">Looked at here, not ordered in 12 months</div><ul style="margin:4px 0 6px 16px;padding:0;font-size:12px">${ops.map(x=>`<li>${esc(x.name)} <span class="hint">(${esc(x.manufacturer_name)} #${esc(x.code)} · ${esc(String(x.views))} views${x.inquiries?", "+esc(String(x.inquiries))+" requests":""})</span></li>`).join("")}</ul>`;
+  else if(top.length) h+=`<div style="font-weight:700;color:var(--navy);margin-top:4px">Most viewed</div><ul style="margin:4px 0 6px 16px;padding:0;font-size:12px">${top.map(x=>`<li>${esc(x.name)} <span class="hint">(${esc(String(x.views))} views)</span></li>`).join("")}</ul>`;
+  else h+=`<div class="hint">No storefront activity in the last 90 days.</div>`;
+  box.innerHTML=h+`<div class="hint"><a href="/admin/demand-intel.html">Demand Intelligence →</a></div>`; card.style.display="";
 }
 /* HCPS Academy (crm-api academy, switch academy_dealer360): who here is in training — course progress, exam passed /
    not passed with the attempt count, HCPS certificates and expiry. Status only: never a score. Hidden while switched off. */

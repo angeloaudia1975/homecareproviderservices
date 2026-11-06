@@ -444,7 +444,23 @@ function render(){
   const L={morning:[pBrief,pRecap,pPriorities,pRoute,pPrep,pFollow], field:[pBrief,pRecap,pProgress,pRoute,pActivity,pPriorities,pPrep], wrap:[pRecap,pBrief,pEod,pActivity,pFollow,pProgress]};
   const R={morning:[pOpps,pTomorrow], field:[pFollow,pOpps,pEod], wrap:[pOpps,pTomorrow,pPriorities]};
   const ph=L[j.phase]?j.phase:"morning";
-  $("#body").innerHTML=pHeader(j)+`<div class="cc"><div>${L[ph].map(f=>f(j)).join("")}</div><div>${R[ph].map(f=>f(j)).join("")}</div></div>`;
+  $("#body").innerHTML=pHeader(j)+`<div class="cc"><div>${L[ph].map(f=>f(j)).join("")}</div><div>${R[ph].map(f=>f(j)).join("")}<div id="demandcc"></div></div></div>`;
+  demandCC(j);
+}
+/* C3-07 Stage 8 — storefront demand in this person's dealers (demand-intel-api, scoped on the server like Dealer 360): products
+   storefront visitors looked at or asked about that the dealer hasn't ordered in 12 months. Anonymous counts — interest, not
+   sales. Only on one's own day (never while viewing another rep); hidden when there's nothing to show. */
+let DEMAND=null;
+async function demandCC(j){
+  const box=document.getElementById("demandcc"); if(!box) return;
+  if(j.header&&j.header.viewing_other){ box.innerHTML=""; return; }
+  if(DEMAND===null){ DEMAND=false; try{ const r=await api("demand-intel-api",{action:"overview",days:30}); DEMAND=(r.status===200&&r.body&&r.body.installed)?r.body:false; }catch(e){ DEMAND=false; } }
+  const b=document.getElementById("demandcc"); if(!b) return;
+  const O=(DEMAND&&DEMAND.dealer_opportunities||[]).slice(0,5); if(!O.length){ b.innerHTML=""; return; }
+  b.innerHTML=`<div class="card"><h2>Storefront demand <span class="n">last 30 days</span></h2>
+    <div class="sm2" style="margin-bottom:6px">Products customers looked at on a dealer's storefront that the dealer hasn't ordered in 12 months — a reason to call. Interest, not sales.</div>
+    ${O.map(x=>`<div class="row"><div class="m"><div>${dlink(x.dealer_id,x.dealer)}</div><div class="d">${esc(x.name)} · ${esc(x.manufacturer_name)} · ${esc(String(x.views))} views${x.inquiries?", "+esc(String(x.inquiries))+" requests":""}</div></div></div>`).join("")}
+    <div class="qa"><a class="btn ghost" href="/admin/demand-intel.html">Demand Intelligence</a></div></div>`;
 }
 async function doneTask(id,btn){
   if(DATA&&DATA.header&&DATA.header.viewing_other) return;

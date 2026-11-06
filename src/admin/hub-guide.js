@@ -197,6 +197,16 @@ window.HUB_GUIDE = {
     problems: "Turns raw manufacturer spreadsheets into clean, attributed sales the whole platform can trust.",
     intelligence: "Automatic period-dating and fuzzy customer matching to canonical dealers."
   },
+  "Demand Intelligence": {
+    tagline: "What retail customers look at and ask about on dealers' public storefronts — interest, never confused with sales.",
+    what: "C3-07 Stage 8. Dealers' storefronts count, anonymously and per day, how often each product is opened and how many \"Request information\" messages name it. This page adds them up by product, manufacturer, category, region and storefront, and sets them beside ordering: how many dealer companies ordered each product in the past 12 months (manufacturer-reported purchases and portal orders). It lists products customers asked about that at most one dealer company orders, and per dealer the products its own storefront visitors looked at that the dealer hasn't ordered — conversation starters for reps. Reps see only their own dealers. No visitor is identified and customers' contact details stay with the dealer.",
+    features: ["Views and requests by product, line, category, state and storefront", "Requested but rarely ordered across the network", "Dealer opportunities: interest the dealer hasn't ordered in 12 months", "Same figures on Dealer 360", "7 / 30 / 90 / 365-day periods"],
+    data: "storefront_daily_counts (anonymous daily counts), dealers, monthly_sales and portal orders — read only.",
+    actions: ["Pick a period", "Open a dealer in Dealer 360"],
+    reports: ["Most-viewed products", "Requested but rarely ordered", "Dealer opportunities", "By manufacturer / category / region / storefront"],
+    connects: ["Fed by dealers' public storefronts (Partner 360 → My Storefront)", "Dealer 360 storefront demand card"],
+    problems: "Shows where retail demand exists that the network isn't stocking — without tracking individual customers.",
+  },
   "Dealer Intelligence Import": {
     tagline: "A manufacturer's dealer report, read from the original file, matched to HCPS dealers and kept as the manufacturer's own statements.",
     what: "MI-1c. Takes an accepted dealer-intelligence report from Manufacturer Report History (first: Strongback's monthly PDF), reads the stored original on the server after checking its SHA-256, and shows a preview of every dealer it prints: Strongback's tier, trend, amounts, last order, ErgoSteel and chair-on-the-floor wording exactly as printed, the contacts and notes on each dealer page, a match proposal with its evidence, and the differences from HCPS records. Nothing is written until an administrator imports it; dealers that are not an obvious single match go to a review queue where a person decides, with a reason. Strongback's figures are never added to HCPS sales or commissions, and an import never creates, merges or re-assigns a dealer.",
