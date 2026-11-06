@@ -142,6 +142,9 @@ const live = (x) => Object.assign({ id: 'sf-hq', dealer_id: HQ, company_id: HQ, 
     eq(await P({ bemis: { policy: 'open' } }), [['B1', 99.99, 'MSRP'], ['B2', 20, 'Price'], ['B5', 40, 'Price'], ['B6', 75, 'Price']], 'open: B2 = 2 × $10 standard cost (never the record\'s derived MSRP label), the dealer\'s own prices');
     eq(await P({ bemis: { policy: 'map' } }), [['B1', 99.99, 'MSRP'], ['B2', null, 'Call for Price'], ['B5', null, 'Call for Price'], ['B6', 61.25, 'MSRP']], 'map with no MAP on file: held for review');
     eq(await P({ bemis: { policy: 'open' } }, { storefronts: [live({ id: 'sf-br', dealer_id: BR, slug: 'acme-xenia', hidden_categories: [] })], retail: retail.concat([{ id: 3, dealer_id: HQ, location_id: BR, manufacturer: 'bemis', code: 'B6', price: 80 }]) }), [['B1', 99.99, 'MSRP'], ['B2', 20, 'Price'], ['B5', 40, 'Price'], ['B6', 80, 'Price']], 'a branch\'s own price beats the company default');
+    /* an official MSRP kept only in the (private) catalog file is the manufacturer's MSRP, never replaced by 2 × cost */
+    { const b5 = CAT.bemis.find((x) => x.code === 'B5'); b5.msrp = 44;
+      try { eq((await P({ bemis: { policy: 'open' } }, { retail: [] })).find((x) => x[0] === 'B5'), ['B5', 44, 'MSRP']); } finally { delete b5.msrp; } }
     /* review fix: a pack's price is checked against MAP in the same unit (MAP $12 each × 4 = $48 a pack) */
     const b5 = CAT.bemis.find((x) => x.code === 'B5'); const keep = Object.assign({}, b5); Object.assign(b5, { map: 12, case_qty: 4, uom: 'Case' });
     try {

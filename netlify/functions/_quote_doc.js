@@ -77,7 +77,7 @@ async function resolvePrices(lines, lookups) {
       if (unit == null) note = 'MSRP not provided';
     }
     else if (l.upgrade) note = 'MSRP not provided for this configuration';
-    else { unit = await lookups.msrp(l.mfr, l.sku); if (unit == null) note = 'MSRP not provided'; }
+    else { const v = await lookups.msrp(l.mfr, l.sku); if (v && typeof v === 'object') { unit = v.price; calc = !!v.calc; } else unit = v; if (unit == null) note = 'MSRP not provided'; }
     out.push(Object.assign({}, l, { unit, note, calc, amount: unit != null ? Math.round(unit * l.qty * 100) / 100 : null }));
   }
   return out;

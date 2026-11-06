@@ -4,6 +4,8 @@
 //     {action:"get"}  -> {ok, lines:[{slug,name,policy,note,set_by,set_at,map_on_file,msrp_on_file,products}], storefronts:[…], history:[…]}
 //     {action:"set_policy", slug, policy, note}   policy ∈ open | map | msrp_only | no_price | unknown; note (evidence) ≥ 5 chars
 //     {action:"block", dealer_id, blocked:true|false, reason}   HCPS pauses / restores one storefront (the dealer can't clear it)
+//     {action:"coverage", slug?}  -> per line: active products by default price source (official MSRP · HCPS calculated · Call for
+//        Price) and every Call-for-Price code with its reason — counts and codes only, never a price or cost
 // The ADVERTISING RULES decide which public prices a storefront may show (_retail_price.js): a line whose rules HCPS hasn't
 // recorded shows only the manufacturer's MSRP — nothing is assumed. Stored as app_settings "advertising_policies"
 // {lines:{slug:{policy,note,set_by,set_at}}, history:[…last 200]} — one record, written compare-and-set on its own text.
@@ -11,6 +13,8 @@
 'use strict';
 const RP = require('./_retail_price.js');
 const RETIRED = require('./_retired_lines.js');
+const SC = require('./_storefront_catalog.js');
+const PR = require('./_pricing.js');
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const ORDERING_BASE = (process.env.ORDERING_BASE || 'https://hcpsonlineordering.netlify.app').replace(/\/+$/, '');
@@ -75,6 +79,25 @@ exports.handler = async (event) => {
       return json(200, { ok: true, policies: RP.POLICIES, lines: out, history: ((setting.value && setting.value.history) || []).slice(0, 50),
         storefronts: (sfs || []).map((s) => { const d = nm.get(String(s.dealer_id)) || {}; return { dealer_id: s.dealer_id, dealer: d.business_name || '', city: [d.city, d.state].filter(Boolean).join(', '), test: d.is_test === true,
           link: `${ORDERING_BASE}/store/${s.slug}`, live: !!(s.enabled && !s.hcps_blocked), enabled: !!s.enabled, blocked: !!s.hcps_blocked }; }) });
+    }
+    if (b.action === 'coverage') {
+      const FILES = PR.remoteFiles(ORDERING_BASE); const CF = { 'ohio-medical': 'gce' };
+      const deps = { sb, sbAll, catalogFile: (s2) => FILES.catalogFile(CF[s2] || s2), contentFile: FILES.contentFile };
+      const [mfrs, metas, setting] = await Promise.all([sb('GET', 'manufacturers?select=slug,name&order=name.asc'), sb('GET', 'manufacturer_meta?select=slug,active'), readSetting()]);
+      const off = new Set((metas || []).filter((m) => m.active === false).map((m) => m.slug));
+      const want = (mfrs || []).filter((m) => m.slug && !off.has(m.slug) && !RETIRED.isRetiredLine(m.slug) && m.slug !== 'golden-technologies' && m.slug !== 'golden' && (!b.slug || m.slug === b.slug));
+      const out = [];
+      const one = async (m) => {
+        try {
+          const r = await SC.lineDefaults(deps, m.slug, { setting: setting.value });
+          const c = { msrp: 0, calculated: 0, call: 0 }; const calls = [];
+          for (const [code, d] of r.items) { if (!d.active) continue; c[d.source] = (c[d.source] || 0) + 1;
+            if (d.source === 'call') calls.push({ code, reason: d.no_cost ? 'no_standard_cost' : (d.flags.length ? d.flags[d.flags.length - 1].flag : 'no_price') }); }
+          return { slug: m.slug, name: m.name || m.slug, policy: r.policy, costs_readable: r.costs_readable, counts: c, call: calls.slice(0, 300) };
+        } catch (e) { return { slug: m.slug, name: m.name || m.slug, error: 'could not be read' }; }
+      };
+      for (let i = 0; i < want.length; i += 4) out.push(...await Promise.all(want.slice(i, i + 4).map(one)));   // review fix: 4 lines at a time
+      return json(200, { ok: true, lines: out });
     }
     if (b.action === 'set_policy') {
       const slug = String(b.slug || ''); if (!/^[a-z0-9-]{2,60}$/.test(slug)) return json(400, { ok: false, error: 'Unknown line.' });

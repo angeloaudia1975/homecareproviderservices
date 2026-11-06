@@ -8,6 +8,7 @@
 //     {action:"quote_delete", id}                                 -> {ok}
 //     {action:"quote_render", id? | header+lines}                 -> {ok, html}                  (print / Save as PDF; sends nothing)
 //     {action:"quote_email", id, to, message?}                    -> {ok, sent_to}               (saved quotes only; limits below)
+//     {action:"default_retail", manufacturer, code}               -> {ok, price, label, source}   (official MSRP or HCPS calculated retail)
 //
 // PRICES: each line's customer price comes from its basis, resolved HERE on HCPS's records (_quote_doc.js): verified MSRP,
 // the dealer's saved retail price, or a one-time price. A dealer cost, tier, contract price or MAP is never read.
@@ -23,6 +24,25 @@ const GR = require("./_golden_retail.js");
 const RP = require("./_retail_price.js");
 const { flags: readFlags } = require("./_flags.js");
 const SEND = require("./_send_limit.js");
+const SC = require("./_storefront_catalog.js");
+const PR = require("./_pricing.js");
+const ORDERING_BASE = (process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app").replace(/\/+$/, "");
+const FILES = PR.remoteFiles(ORDERING_BASE);
+const CATALOG_FILE = { "ohio-medical": "gce" };
+async function sbAllQ(base) { let from = 0, out = []; for (;;) { const rows = await sb("GET", `${base}&limit=1000&offset=${from}`); out = out.concat(rows || []); if (!rows || rows.length < 1000) return out; from += 1000; } }
+const DEPS = () => ({ sb, sbAll: sbAllQ, catalogFile: (slug) => FILES.catalogFile(CATALOG_FILE[slug] || slug), contentFile: FILES.contentFile });
+/* C3-07 owner directive 2026-11-06 15:23 CT: the customer's default retail for one line — official MSRP, else HCPS
+   calculated retail (2 × STANDARD dealer cost) when the line's advertising rules allow it. One catalog read per line. */
+async function defaultsFor(mfrs) {
+  const setting = await sb("GET", "app_settings?key=eq.advertising_policies&select=value").then((r) => (r && r[0] && r[0].value) || null);
+  const out = new Map(), list = [...new Set(mfrs)].filter((m) => m !== "golden-technologies" && m !== "golden");
+  /* review fix: lines read 4 at a time (each is one catalog file + its layers), never one after another */
+  for (let i = 0; i < list.length; i += 4) {
+    const part = await Promise.all(list.slice(i, i + 4).map((m) => SC.lineDefaults(DEPS(), m, { setting }).then((r) => [m, r.items])));
+    for (const [m, items] of part) out.set(m, items);
+  }
+  return out;
+}
 const crypto = require("crypto");
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
@@ -73,16 +93,9 @@ async function priceLookups(owner, locationId, lines) {
   const msrpLines = lines.filter((l) => l.basis === "msrp" && !l.upgrade && l.mfr !== "golden-technologies" && l.mfr !== "golden");
   const retailLines = lines.filter((l) => l.basis === "retail");
   const msrp = new Map(), retail = new Map();
-  if (msrpLines.length) {
-    const mfrs = [...new Set(msrpLines.map((l) => l.mfr))].map(enc).join(","), codes = [...new Set(msrpLines.map((l) => l.sku))].map((c) => `"${String(c).replace(/[\\"]/g, "")}"`).map(enc).join(",");
-    const q = `manufacturer=in.(${mfrs})&code=in.(${codes})`;
-    const [rec, ov, cp] = await Promise.all([sb("GET", `product_skus?${q}&select=manufacturer,code,msrp`), sb("GET", `product_overrides?${q}&select=manufacturer,code,patch`), sb("GET", `custom_products?${q}&select=manufacturer,code,msrp`)]);
-    const k = (m, c) => m + "|" + c;
-    const recBy = new Map((rec || []).map((r) => [k(r.manufacturer, r.code), r])), ovBy = new Map((ov || []).map((r) => [k(r.manufacturer, r.code), r])), cpBy = new Map((cp || []).map((r) => [k(r.manufacturer, r.code), r]));
-    for (const l of msrpLines) {   // same order as brochures: the commercial master answers when it has the SKU, then a saved edit, then an added product
-      const key = k(l.mfr, l.sku); const r = recBy.get(key);
-      msrp.set(key, r ? num(r.msrp) : ((ovBy.get(key) && ovBy.get(key).patch && num(ovBy.get(key).patch.msrp)) || (cpBy.get(key) && num(cpBy.get(key).msrp)) || null));
-    }
+  if (msrpLines.length) {   /* official MSRP, else HCPS calculated retail (labelled "Retail price" on the quote) */
+    const defs = await defaultsFor(msrpLines.map((l) => l.mfr));
+    for (const l of msrpLines) { const d = (defs.get(l.mfr) || new Map()).get(String(l.sku)); msrp.set(l.mfr + "|" + l.sku, d && d.price != null ? { price: d.price, calc: d.source === "calculated" } : null); }
   }
   if (retailLines.length) {
     const codes = [...new Set(retailLines.map((l) => l.code))].map((c) => `"${String(c).replace(/[\\"]/g, "")}"`).map(enc).join(",");
@@ -154,6 +167,24 @@ exports.handler = async (event) => {
   };
 
   try {
+    /* C3-07 2026-11-06: a brochure's default customer price, read on the server for the signed-in dealer (brochure.js calls
+       this server-to-server): official MSRP, else HCPS calculated retail under the line's advertising rules. Never the cost. */
+    if (b.action === "default_retail") {
+      /* one {manufacturer, code} (brochures) or items:[…] ≤ 500 (My Retail Prices / quote builder); only lines this dealer's
+         company is authorized for, never Golden (its own rule), never a hidden or discontinued product (review fix) */
+      const ask = (Array.isArray(b.items) ? b.items.slice(0, 500) : [{ manufacturer: b.manufacturer, code: b.code }])
+        .map((x) => ({ m: String((x && x.manufacturer) || "").toLowerCase(), code: String((x && x.code) || "").trim() }))
+        .filter((x) => /^[a-z0-9-]{2,60}$/.test(x.m) && x.code && x.code.length <= 60 && !/\|u=/.test(x.code) && x.m !== "golden-technologies" && x.m !== "golden");
+      const fam = [...names.keys()].concat([owner]).map(enc).join(",");
+      const dm = ask.length ? await sb("GET", `dealer_manufacturers?dealer_id=in.(${fam})&active=eq.true&select=manufacturer`) : [];
+      const allowed = new Set((dm || []).map((r) => r.manufacturer));
+      const defs = await defaultsFor(ask.filter((x) => allowed.has(x.m)).map((x) => x.m));
+      const items = ask.map((x) => { const d = allowed.has(x.m) ? (defs.get(x.m) || new Map()).get(x.code) : null;
+        return { manufacturer: x.m, code: x.code, price: d && d.price != null ? d.price : null, label: d && d.price != null ? d.label : null, source: d ? d.source : "none" }; });
+      if (Array.isArray(b.items)) return json(200, { ok: true, items });
+      const one = items[0] || { price: null, label: null, source: "none" };
+      return json(200, { ok: true, price: one.price, label: one.label, source: one.source });
+    }
     if (b.action === "quote_list") {
       const locs = [...names.keys()].map(enc).join(",");
       const rows = await sb("GET", `dealer_saved_quotes?dealer_id=eq.${enc(owner)}&location_id=in.(${locs})&select=${SEL}&order=updated_at.desc&limit=200`);
