@@ -30,7 +30,9 @@ function world(o) {
       { id: 3, dealer_id: OTHER, location_id: null, manufacturer: 'yuwell', code: 'YU-1', price: 1 }],
     product_skus: [{ manufacturer: 'yuwell', code: 'YU-1', msrp: 159.99, base_price: 54.99 }, { manufacturer: 'yuwell', code: 'YU-2', msrp: null, base_price: 10 }],
     product_overrides: [{ manufacturer: 'bemis', code: 'BE-1', patch: { msrp: 49.5, base_price: 20 } }], custom_products: [],
-    dealer_contract_prices: [{ dealer_id: HQ, code: 'YU-1', price: 33.33 }] } });
+    dealer_contract_prices: [{ dealer_id: HQ, code: 'YU-1', price: 33.33 }],
+    app_settings: [{ key: 'phase2_flags', value: o.goldenFlags || { golden_p360_catalog: true, golden_p360_all_linked: true } }] } });
+  W.golden = [];
   const inner = W.fetch;
   W.fetch = async (url, opts) => { const u = String(url);
     if (u.startsWith(M.BASE + '/auth/v1/user')) { const tok = String(((opts && opts.headers) || {}).Authorization || '').replace(/^Bearer\s+/i, '');
@@ -41,12 +43,21 @@ function world(o) {
       const n = sends.filter((s) => s.p_dealer === b.p_dealer).length;
       const body = o.limitAfter && n > o.limitAfter ? { ok: false, reason: 'hour', limit: 10 } : { ok: true, id: n };
       return { ok: true, status: 200, text: async () => JSON.stringify(body), json: async () => body }; }
+    if (u.startsWith('https://golden.test/v1/')) { W.golden.push(u); const path = u.split('?')[0].replace('https://golden.test', '');
+      if (path === '/v1/catalog') return { ok: true, status: 200, json: async () => ({ prices_visible: true, linked: o.goldenLinked !== false, products: [
+        { sku: 'PR501-SMA', category: 'Lift Chairs', msrp: 2499, emap: 1999, dealer_price: 1100, price_source: 'standard' },
+        { sku: 'GB121', category: 'Scooters', msrp: null, emap: 1200, dealer_price: 700, price_source: 'standard' },
+        { sku: 'GB999', category: 'Scooters', msrp: null, emap: 400, dealer_price: 500, price_source: 'account' },
+        { sku: 'GB050', category: 'Scooters', msrp: null, emap: 1500, dealer_price: 700, price_source: 'standard' }] }) };
+      if (path === '/v1/config') return { ok: true, status: 200, json: async () => ({ prices_visible: true, linked: true, config: { sku: 'PR501-SMA', sizes: [{ sku: 'PR501-SMA', msrp: 2499 }],
+        tabs: [{ key: 'xover', msrp: 300 }, { key: 'brisa', msrp: null }], tiers: { included: false, options: [{ key: 'irheat', msrp: 450 }] }, footrest: { eligible: true, msrp: 129 } } }) };
+      return { ok: false, status: 404, json: async () => ({}) }; }
     if (u.includes('api.resend.com') && o.mailFails) { W.outbound.push({ kind: 'resend-refused' }); return { ok: false, status: 422, text: async () => 'no', json: async () => ({}) }; }
     return inner(url, opts); };
   W.sends = sends;
   return W;
 }
-const api = (W, env) => M.load('dealer-quotes-api.js', W, Object.assign({ RESEND_API_KEY: 're_test', HCPS_MAIL_FROM: 'HCPS <orders@hcps.test>' }, env || {}), ROOT);
+const api = (W, env) => M.load('dealer-quotes-api.js', W, Object.assign({ RESEND_API_KEY: 're_test', HCPS_MAIL_FROM: 'HCPS <orders@hcps.test>', GOLDEN_P360_KEY_ID: 'kid-test', GOLDEN_P360_SECRET: 'x'.repeat(48), GOLDEN_API_BASE: 'https://golden.test' }, env || {}), ROOT);
 const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer ' + who } });
 const L = (x) => Object.assign({ mfr: 'yuwell', code: 'YU-1', sku: 'YU-1', name: 'Yuwell Concentrator', qty: 1, basis: 'msrp' }, x);
 const readsOf = (W, tb) => W.calls.filter((c) => c.method === 'GET' && String(c.url || '').includes('/rest/v1/' + tb + '?'));
@@ -162,6 +173,18 @@ const readsOf = (W, tb) => W.calls.filter((c) => c.method === 'GET' && String(c.
     eq((await as(C, 'hq', { action: 'quote_render', header: {}, lines: [L({ sku: 'BE-1' })] })).status, 400, 'another product\'s MSRP');
     eq((await as(C, 'hq', { action: 'quote_render', header: {}, lines: [L({ mfr: 'golden', code: 'PR501|u=Heat', sku: 'PR501', basis: 'msrp', unit: 999 })] })).status, 400, 'Golden upgrade priced as MSRP from the request');
     eq((await as(C, 'hq', { action: 'quote_render', header: {}, lines: [L({ mfr: 'golden', code: 'PR501-XXX|std|Black|standard|0', sku: 'PR501-ABC', basis: 'msrp', unit: 1299 })] })).status, 200, 'Golden configuration key');
+  });
+  await t('GOLDEN (P4, owner 2026-11-06): the price is read from Golden on the server — MSRP (configured = the configurator\'s sum), else HCPS calculated retail (2× standard, ≥ eMAP) printed as "Retail price", never the page\'s figure', async () => {
+    const W = world(); const C = api(W); const G = (code, unit) => L({ mfr: 'golden-technologies', code, sku: code.split('|')[0], basis: 'msrp', unit });
+    const r = await as(C, 'hq', { action: 'quote_render', header: {}, lines: [G('PR501-SMA', 1), G('PR501-SMA|xover|ABC|irheat|1', 1), G('GB121', 1), G('GB999', 1), G('GB050', 1), G('PR501-SMA|brisa|ABC|standard|0', 1)] });
+    eq(r.status, 200); const h = r.body.html;
+    ok(h.includes('$2,499.00') && h.includes('$3,378.00') && h.includes('$1,400.00'), 'MSRP, configured sum 2499+300+450+129, 2× standard');
+    ok(!/\$1\.00/.test(h), 'the page\'s figure was used');
+    ok(!h.includes('$1,000.00') && !h.includes('$1,100.00') && !h.includes('$700.00'), 'an account price used as cost, or a dealer price shown');
+    ok(!h.includes('$1,400.00<div class="sub">MSRP'), 'calculated price called MSRP'); ok(h.includes('$1,400.00<div class="sub">Retail price'), 'calculated labelled');
+    eq((h.match(/MSRP not provided/g) || []).length, 3, 'account-priced, below eMAP, brisa without MSRP → Price on request');
+    eq((await as(api(world({ goldenLinked: false })), 'hq', { action: 'quote_render', header: {}, lines: [G('PR501-SMA', 2499)] })).body.html.includes('$2,499.00'), false, 'not linked → no Golden price');
+    eq((await as(api(world({ goldenFlags: {} })), 'hq', { action: 'quote_render', header: {}, lines: [G('PR501-SMA', 2499)] })).body.html.includes('$2,499.00'), false, 'Golden switched off → no price');
   });
   await t('review fixes: closed locations hidden; limits per company; a head office opening a branch quote gets that branch\'s retail', async () => {
     const W = world(); W.db.dealers.push({ id: '55555555-5555-5555-5555-555555555555', parent_id: HQ, business_name: 'Closed Br', active: false });

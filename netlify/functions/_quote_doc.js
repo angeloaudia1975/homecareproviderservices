@@ -4,8 +4,9 @@
 
    Each line carries ONE customer price basis (the three approved choices) — never the dealer's wholesale cost:
      msrp   the manufacturer's VERIFIED suggested retail, looked up on HCPS's own records at render time (never taken from
-            the request; Golden's official retail is taken from the configured record, as on brochures). No verified MSRP
-            → the line prints "Price on request" and is left out of the total.
+            the request). Golden: Golden's own MSRP for the item / configuration, else HCPS calculated retail (2× Golden's
+            standard dealer price, at or above eMAP — printed as "Retail price", never as MSRP), read on the server by
+            _golden_retail.js (C3-07 P4, owner 2026-11-06). No price → "Price on request", left out of the total.
      retail the dealer's SAVED retail price (dealer_retail_prices: the location's own price, else the company default),
             looked up at render time — what the dealer saved is what the customer sees.
      once   a one-time price for this quote only, typed by the dealer.
@@ -39,7 +40,7 @@ function cleanLine(x, i) {
   if (!BASES.has(basis)) return { error: `Line ${n}: choose MSRP, your retail price or a one-time price.` };
   let unit = null;
   if (basis === 'msrp' && GOLDEN.has(mfr) && /\|u=/.test(code)) return { error: `Line ${n}: an upgraded configuration has no manufacturer MSRP — choose your retail price or a one-time price.` };
-  if (basis === 'once' || (basis === 'msrp' && GOLDEN.has(mfr))) {
+  if (basis === 'once') {   // a Golden MSRP line no longer carries the page's figure — the server looks it up (P4)
     unit = price(x.unit);
     if (Number.isNaN(unit)) return { error: `Line ${n}: the price must be more than $0.` };
     if (basis === 'once' && unit == null) return { error: `Line ${n}: enter the one-time price.` };
@@ -67,13 +68,17 @@ function cleanHeader(x) {
 async function resolvePrices(lines, lookups) {
   const out = [];
   for (const l of lines) {
-    let unit = null, note = '';
+    let unit = null, note = '', calc = false;
     if (l.basis === 'once') unit = l.unit;
     else if (l.basis === 'retail') { unit = await lookups.retail(l.mfr, l.code); if (unit == null) note = 'no saved retail price'; }
-    else if (GOLDEN.has(l.mfr)) unit = l.unit;                                   // Golden's official retail, as on brochures
+    else if (GOLDEN.has(l.mfr)) {                                                 // Golden: MSRP, else HCPS calculated retail (server-read)
+      const g = lookups.golden ? await lookups.golden(l.code) : null;
+      unit = g && g.price != null ? g.price : null; calc = !!(g && g.source === 'calculated');
+      if (unit == null) note = 'MSRP not provided';
+    }
     else if (l.upgrade) note = 'MSRP not provided for this configuration';
     else { unit = await lookups.msrp(l.mfr, l.sku); if (unit == null) note = 'MSRP not provided'; }
-    out.push(Object.assign({}, l, { unit, note, amount: unit != null ? Math.round(unit * l.qty * 100) / 100 : null }));
+    out.push(Object.assign({}, l, { unit, note, calc, amount: unit != null ? Math.round(unit * l.qty * 100) / 100 : null }));
   }
   return out;
 }
@@ -91,7 +96,7 @@ function renderQuote({ dealer, header, lines, quote_no, date, forEmail }) {
       <td class="pic">${l.image ? `<img src="${esc(l.image)}" alt="" width="56" height="56">` : ''}</td>
       <td><b>${esc(l.name)}</b>${l.option ? `<div class="sub">${esc(l.option)}</div>` : ''}<div class="sub">${l.mfrName ? esc(l.mfrName) + ' · ' : ''}Item ${esc(l.sku)}</div></td>
       <td class="n">${l.qty}</td>
-      <td class="n">${l.unit != null ? money(l.unit) + (l.basis === 'msrp' ? '<div class="sub">MSRP</div>' : '') : `<span class="na">${esc(l.note || 'Price on request')}</span>`}</td>
+      <td class="n">${l.unit != null ? money(l.unit) + (l.basis === 'msrp' ? (l.calc ? '<div class="sub">Retail price</div>' : '<div class="sub">MSRP</div>') : '') : `<span class="na">${esc(l.note || 'Price on request')}</span>`}</td>
       <td class="n">${l.amount != null ? money(l.amount) : '—'}</td></tr>`).join('');
   const css = `body{margin:0;background:${forEmail ? '#ffffff' : '#eef1f4'};font-family:Helvetica,Arial,sans-serif;color:#1e2732}
     .sheet{max-width:8in;margin:${forEmail ? '0 auto' : '24px auto'};background:#fff;padding:.55in .6in;box-sizing:border-box;${forEmail ? '' : 'box-shadow:0 6px 24px rgba(0,0,0,.12)'}}
@@ -118,7 +123,7 @@ ${forEmail ? '' : '<div class="toolbar"><button onclick="window.print()">Print /
   <table><thead><tr><th></th><th>Product</th><th class="n">Qty</th><th class="n">Price</th><th class="n">Amount</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No products on this quote yet.</td></tr>'}</tbody></table>
   <div class="tot"><div><span>Total</span><span>${money(total)}</span></div></div>
   ${header.notes ? `<div class="notes">${esc(header.notes)}</div>` : ''}
-  <div class="fine">Prices are quoted by ${esc(d.business_name || 'your provider')}${lines.some((l) => l.basis === 'msrp' && l.unit != null) ? '; items marked MSRP show the manufacturer’s suggested retail price' : ''}.${unpriced ? ' Items without a price are not included in the total — ask us for pricing.' : ''} Taxes, delivery and installation are not included unless listed. This quote is valid for ${esc(header.valid_for || '30 days')} from the date above.</div>
+  <div class="fine">Prices are quoted by ${esc(d.business_name || 'your provider')}${lines.some((l) => l.basis === 'msrp' && l.unit != null && !l.calc) ? '; items marked MSRP show the manufacturer’s suggested retail price' : ''}.${unpriced ? ' Items without a price are not included in the total — ask us for pricing.' : ''} Taxes, delivery and installation are not included unless listed. This quote is valid for ${esc(header.valid_for || '30 days')} from the date above.</div>
 </div></body></html>`;
 }
 module.exports = { cleanLine, cleanLines, cleanHeader, resolvePrices, renderQuote, MAX_LINES, safeImg };

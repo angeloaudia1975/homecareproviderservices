@@ -19,6 +19,9 @@
 
 const AC = require("./_account_center.js");
 const DOC = require("./_quote_doc.js");
+const GR = require("./_golden_retail.js");
+const RP = require("./_retail_price.js");
+const { flags: readFlags } = require("./_flags.js");
 const SEND = require("./_send_limit.js");
 const crypto = require("crypto");
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -90,7 +93,19 @@ async function priceLookups(owner, locationId, lines) {
       if (own) retail.set(key, num(r.price));
     }
   }
-  return { msrp: async (m, s) => msrp.get(m + "|" + s) ?? null, retail: async (m, c) => retail.get(m + "|" + c) ?? null };
+  /* Golden (C3-07 P4): Golden's MSRP for the item / configuration, else HCPS calculated retail — read from Golden on the
+     server for THIS location, once per distinct configuration; a Golden read that fails prints "Price on request". */
+  const goldenLines = lines.filter((l) => l.basis === "msrp" && (l.mfr === "golden-technologies" || l.mfr === "golden"));
+  const golden = new Map();
+  if (goldenLines.length) {
+    const sbGet = (p) => sb("GET", p);
+    const [f, pset] = await Promise.all([readFlags(sbGet), sb("GET", "app_settings?key=eq.advertising_policies&select=value")]);
+    const pol = RP.policiesFrom(pset && pset[0] && pset[0].value, { "golden-technologies": "map" })["golden-technologies"];
+    for (const code of [...new Set(goldenLines.map((l) => l.code))].slice(0, 30)) {
+      try { golden.set(code, await GR.retailFor(sbGet, locationId, code, f, pol)); } catch (e) { console.error("golden retail failed", e && e.message); golden.set(code, null); }
+    }
+  }
+  return { msrp: async (m, s) => msrp.get(m + "|" + s) ?? null, retail: async (m, c) => retail.get(m + "|" + c) ?? null, golden: async (c) => golden.get(c) || null };
 }
 async function dealerBrand(did) {
   const d = await sb("GET", `dealers?id=eq.${enc(did)}&select=id,parent_id,business_name,address,city,state,zip,phone,email`);

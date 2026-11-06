@@ -40,6 +40,8 @@
 const { flags } = require("./_flags.js");
 const GC = require("./_golden_client.js");
 const GA = require("./_golden_addresses.js");
+const GR = require("./_golden_retail.js");
+const RP = require("./_retail_price.js");
 
 const SUPABASE_URL = process.env.SUPABASE_URL, SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 // Same CORS as orders-api: authorization is the dealer's bearer token (no cookies), never the Origin.
@@ -431,7 +433,7 @@ exports.handler = async (event) => {
     if(event.httpMethod !== "POST") return json(405, { ok:false, error:"method not allowed" });
     let b; try{ b = JSON.parse(event.body || "{}"); }catch{ return json(400, { ok:false, error:"bad JSON" }); }
     const action = b.action;
-    if(!Object.prototype.hasOwnProperty.call(ACTIONS, action)) return json(400, { ok:false, error:"unknown action" });
+    if(action !== "retail" && !Object.prototype.hasOwnProperty.call(ACTIONS, action)) return json(400, { ok:false, error:"unknown action" });
     const family = action === "family" ? String(b.family || "").trim().toUpperCase() : null;
     if(action === "family" && !FAMILY_RE.test(family)) return json(400, { ok:false, error:"bad family" });
     let cfgQuery = null;
@@ -468,6 +470,16 @@ exports.handler = async (event) => {
     try{ who = (await dealerFromToken(event)) || (await dealerFromPreview(event)); }
     catch(e){ return json(503, { ok:false, error:"sign-in could not be checked" }); }
     if(!who) return json(401, { ok:false, error:"unauthorized" });
+
+    /* C3-07 P4 (owner 2026-11-06): the CUSTOMER retail price of one Golden item for a brochure / quote — Golden's MSRP
+       (configured chairs summed as the configurator does), else HCPS calculated retail (2× standard, at or above eMAP),
+       else none. Read-only; never the dealer price. Brochure.js calls this server-to-server with the dealer's sign-in. */
+    if(b.action === "retail"){
+      let f, pol; try{ f = await flags(sbGet); const s = await sbGet("app_settings?key=eq.advertising_policies&select=value"); pol = RP.policiesFrom(s && s[0] && s[0].value, { "golden-technologies": "map" })["golden-technologies"]; }
+      catch(e){ return json(503, { ok:false, error:"switches could not be read" }); }
+      let r; try{ r = await GR.retailFor(sbGet, who.dealer_id, b.code, f, pol); }catch(e){ return json(503, { ok:false, error:"Golden retail could not be read" }); }
+      return json(200, { ok:true, price: r.price, label: r.label, source: r.source, reason: r.reason || null });
+    }
 
     const hdr = k => String((event.headers || {})[k] || (event.headers || {})[k.toLowerCase()] || "");
     const wantsPreview = hdr("x-hcps-golden-env").trim().toLowerCase() === "preview";

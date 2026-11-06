@@ -116,4 +116,13 @@ function markBoxes(doc, font, form) {
   for (const b of form.signerText || []) draw(b, b.label, rgb(0.45, 0.2, 0.6));
 }
 
-module.exports = { build, clean, sha };
+/* C3-07 Stage 5 follow-up: the manufacturer's own guarantee page (e.g. Dalton page 4), exactly as published — blank, to
+   print and sign by hand. Nothing is filled in: a personal guarantee is the guarantor's own signature, never e-signed here. */
+async function guaranteePage(key) {
+  const form = F.FORMS[key]; if (!form || !form.guarantee) { const e = new Error('no guarantee page'); e.code = 'unknown_form'; throw e; }
+  const src = source(form.file); if (sha(src) !== form.sha256) { const e = new Error('form changed'); e.code = 'form_changed'; throw e; }
+  const orig = await PDFDocument.load(src, { ignoreEncryption: true }); const out = await PDFDocument.create();
+  const [pg] = await out.copyPages(orig, [form.guarantee.page - 1]); out.addPage(pg);
+  return Buffer.from(await out.save());
+}
+module.exports = { build, clean, sha, guaranteePage };

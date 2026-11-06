@@ -49,12 +49,22 @@ async function boot(){
   const r=await api({action:"list",status:FILT});
   if(r.status!==200){ $("#body").innerHTML=`<div class="apnote">${esc(r.body.error||"Could not load applications.")}</div>`; return; }
   LIST=r.body; render();
+  /* Stage 5 follow-ups: Documenso Free usage and records past their retention date */
+  api({action:"usage"}).then(u=>{ const el=$("#apusage"); if(!el||u.status!==200) return; const b=u.body, pct=Math.min(100,Math.round(b.used/b.limit*100));
+    el.innerHTML=`<div class="apsec">E-signature usage — Documenso Free (no paid plan)</div><div class="m">This month: <b>${esc(b.used)} of ${esc(b.limit)}</b> free signatures used${b.waiting?` · <b>${esc(b.waiting)}</b> waiting for next month's slots`:""}.${b.used>=b.limit?" New signature requests wait until next month (dealers can still sign on paper and upload).":b.used>=b.limit-1?" One signature left this month.":""}</div>
+      <div style="height:8px;background:#eef1f4;border-radius:99px;margin:6px 0"><div style="height:8px;width:${pct}%;border-radius:99px;background:${b.used>=b.limit?"#b42323":b.used>=b.limit-1?"#d4880f":"#1f7a44"}"></div></div>
+      <div class="m">${(b.months||[]).map(x=>esc(x.month+": "+x.used)).join(" · ")||"No signatures yet."}</div>`; });
+  api({action:"retention"}).then(x=>{ const el=$("#apret"); if(!el||x.status!==200) return; const due=x.body.due||[];
+    el.innerHTML=due.length?`<div class="apsec">Past their retention date (${due.length})</div><div class="m">These closed applications have been kept 7 years. Deleting removes every stored file and the encrypted answers for good; the record that the application existed stays, with its history. Documenso Free keeps its own copy of completed documents — delete those in Documenso if needed.</div>${due.map(d=>`<div class="apc"><div class="hd"><div class="t">${esc(d.name)} — ${esc(d.business_name||"")}</div><span class="apst ${esc(d.status)}">${esc(LABEL[d.status]||d.status)}</span></div><div class="m">Kept until ${esc(d.retention_until)}</div><div style="margin-top:8px"><button class="apbtn" data-id="${esc(d.id)}" data-v="${esc(d.version)}" onclick="purge(this.dataset.id,this.dataset.v)">Delete stored documents…</button></div></div>`).join("")}`:""; });
 }
+async function purge(id,v){ const t=prompt("This permanently deletes the signed files and the encrypted answers of this application. Type DELETE to confirm."); if(t!=="DELETE") return;
+  const r=await api({action:"purge",id,version:Number(v),confirm:"DELETE"}); alert(r.status===200?`Deleted ${r.body.files_deleted} stored file(s).`:(r.body.error||"Could not delete.")); boot(); }
 function render(){
   const m=LIST.monthly, apps=LIST.applications||[];
   const opts=["","signed","under_review","sent_to_manufacturer","queued","signing","approved","declined","draft"].map(s=>`<option value="${s}" ${FILT===s?"selected":""}>${s?LABEL[s]:"All open + decided"}</option>`).join("");
   $("#body").innerHTML=`<div class="apnote">E-signature: ${LIST.signing?"connected (Documenso Free)":"<b>not connected yet</b> — dealers can still complete and print applications"}${m?` · this month ${m.used} of ${m.limit} free signatures used`:""}.</div>
     <div class="apf"><label for="apfs" style="font-size:12px;color:var(--gray)">Show</label><select id="apfs" onchange="FILT=this.value;boot()">${opts}</select></div>
+    <div class="apc" id="apusage"></div><div id="apret"></div>
     <div id="apdetail"></div>
     ${apps.length?apps.map(a=>`<div class="apc"><div class="hd"><div class="t">${esc(a.name)} — ${esc(a.business_name||(a.location&&a.location.business_name)||"")}</div><span class="apst ${esc(a.status)}">${esc(LABEL[a.status]||a.status)}</span></div>
       <div class="m">${esc([a.location&&a.location.business_name,a.location&&[a.location.city,a.location.state].filter(Boolean).join(", ")].filter(Boolean).join(" · "))}${a.signer_name?` · signer ${esc(a.signer_name)}`:""} · updated ${esc(fmt(a.updated_at))}${a.signed_at?` · signed ${esc(fmt(a.signed_at))}`:""}</div>
@@ -66,12 +76,16 @@ async function openApp(id){
   const r=await api({action:"get",id}); if(r.status!==200){ d.innerHTML=`<div class="apnote">${esc(r.body.error||"Could not open it.")}</div>`; return; }
   OPEN=r.body; const a=OPEN.application, ans=OPEN.answers||{};
   const rows=OPEN.sections.map(s=>{ const f=s.fields.filter(x=>ans[x.key]); return f.length?`<div class="apsec">${esc(s.title)}</div><div class="apgrid">${f.map(x=>`<div class="k">${esc(x.label)}</div><div>${esc(ans[x.key])}</div>`).join("")}</div>`:""; }).join("");
-  const files=Object.entries({signed:"Signed application (PDF)",certificate:"Signing certificate",audit:"Audit log"}).filter(([k])=>OPEN.files[k]).map(([k,l])=>`<a class="apbtn" target="_blank" rel="noopener" href="${esc(OPEN.files[k])}">${esc(l)}</a>`).join(" ");
+  const files=Object.entries({signed:a.status==="offline_signed"?"Hand-signed application (PDF)":"Signed application (PDF)",certificate:"Signing certificate",audit:"Audit log",guarantee:"Hand-signed guarantee page"}).filter(([k])=>OPEN.files[k]).map(([k,l])=>`<a class="apbtn" target="_blank" rel="noopener" href="${esc(OPEN.files[k])}">${esc(l)}</a>`).join(" ");
   const next=(OPEN.next||[]).map(s=>`<button class="apbtn${s==="sent_to_manufacturer"?" pri":""}" data-s="${s}" onclick="setStatus(this.dataset.s)">Mark: ${esc(LABEL[s])}</button>`).join(" ");
   d.innerHTML=`<div class="apc" style="border-color:var(--navy)"><div class="hd"><div class="t">${esc(a.name)} application — ${esc(a.business_name||"")}</div><span class="apst ${esc(a.status)}">${esc(LABEL[a.status]||a.status)}</span></div>
     <div class="m">Files open for two minutes. ${a.retention_until?`Kept until ${esc(a.retention_until)} (7 years from the decision).`:""}</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">${files||'<span class="m">No signed file yet.</span>'} <button class="apbtn" onclick="preview()">Completed form (before signing)</button>
       ${["queued","signing_failed"].includes(a.status)?'<button class="apbtn" onclick="retry()">Send back to the dealer to sign</button>':""}</div>
+    ${!["approved","declined","withdrawn"].includes(a.status)?`<div class="apsec">Received on paper?</div><div class="m">Upload a hand-signed PDF you received (4 MB or less). It is stored privately and never sent anywhere.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center"><input type="file" id="appaper" accept="application/pdf" aria-label="Hand-signed PDF" style="max-width:100%;min-height:44px;font-size:16px">
+      ${["draft","queued","signing_failed"].includes(a.status)?`<label class="m" for="apon">Signed on</label><input type="date" id="apon" style="min-height:44px"><button class="apbtn" onclick="upPaper('signed')">Upload signed application</button>`:""}
+      ${OPEN.guarantee?'<button class="apbtn" onclick="upPaper(\'guarantee\')">Upload signed guarantee page</button>':""}</div>`:""}
     ${rows}
     ${next?`<div class="apsec">Your decision</div><textarea class="apn" id="apnotes" aria-label="Review notes" placeholder="Notes (private)">${esc(a.review_notes||"")}</textarea><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${next}</div>`:""}
     <div class="aperr" id="aperr" role="alert"></div>
@@ -84,6 +98,12 @@ async function setStatus(s){
   if(r.status!==200){ $("#aperr").textContent=r.body.error||"Could not save."; return; }
   await openApp(a.id); boot();
 }
+async function upPaper(kind){
+  const f=($("#appaper")||{}).files&&$("#appaper").files[0]; if(!f){ $("#aperr").textContent="Choose the PDF first."; return; }
+  if(f.size>4*1024*1024){ $("#aperr").textContent="Choose a PDF of 4 MB or less."; return; }
+  const b64=await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(",")[1]||""); fr.onerror=rej; fr.readAsDataURL(f); });
+  const a=OPEN.application; const r=await api({action:"upload_paper",id:a.id,version:a.version,kind,pdf_base64:b64,signed_on:($("#apon")||{}).value||""});
+  if(r.status!==200){ $("#aperr").textContent=r.body.error||"Could not upload."; return; } await openApp(a.id); boot(); }
 async function retry(){ const a=OPEN.application; const r=await api({action:"retry_signing",id:a.id}); if(r.status!==200){ $("#aperr").textContent=r.body.error||"Could not change it."; return; } await openApp(a.id); boot(); }
 async function preview(){
   const r=await api({action:"preview",id:OPEN.application.id}); if(r.status!==200){ $("#aperr").textContent=r.body.error||"Could not build it."; return; }

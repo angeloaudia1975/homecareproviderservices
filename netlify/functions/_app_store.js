@@ -106,4 +106,46 @@ async function notifyPresident(app, why) {
       html: `<p>${what}</p><p><a href="${ADMIN_PAGE}">Open Manufacturer Applications</a> (Connect 360, President only).</p><p style="color:#777;font-size:12px">The application itself is kept private on HCPS's systems and is never sent by email.</p>` }) });
 }
 
-module.exports = { sb, getApp, event, update, envelopesThisMonth, chicagoMonthStart, putFile, signedLink, finalize, notifyPresident, SEL, FREE_MONTHLY, MISSING, BUCKET, CRYPTO, DS };
+/* ---- C3-07 Stage 5 follow-ups (owner 2026-11-06 13:25 CT) ---- */
+const PAPER_MAX = 4 * 1024 * 1024;   // a scanned, hand-signed PDF (Netlify's request limit leaves room for ~4 MB)
+/* a hand-signed PDF sent as base64 → { bytes, sha256 } or { error } — a real PDF only, never stored over another file */
+function paperPdf(b64) {
+  const s = String(b64 || ''); if (!s || s.length > Math.ceil(PAPER_MAX / 3) * 4 + 8 || !/^[A-Za-z0-9+/=\s]+$/.test(s)) return { error: 'Choose a PDF of 4 MB or less.' };
+  const bytes = Buffer.from(s, 'base64'); if (bytes.length < 200 || bytes.length > PAPER_MAX) return { error: 'Choose a PDF of 4 MB or less.' };
+  if (bytes.slice(0, 5).toString('latin1') !== '%PDF-') return { error: 'That file is not a PDF.' };
+  return { bytes, sha256: require('crypto').createHash('sha256').update(bytes).digest('hex') };
+}
+async function putNew(path, bytes) {   // x-upsert false: a stored document is never overwritten
+  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, { method: 'POST', headers: { ...H(), 'content-type': 'application/pdf', 'x-upsert': 'false' }, body: bytes });
+  if (r.status === 409 || r.status === 400) { const t = await r.text().catch(() => ''); if (/exists|Duplicate/i.test(t)) return path; const e = new Error('storage ' + r.status); e.status = 502; throw e; }
+  if (!r.ok) { const e = new Error('storage ' + r.status); e.status = 502; throw e; }
+  return path;
+}
+/* every stored file of one application (its own folder) */
+async function listFiles(app) {
+  const prefix = `${app.dealer_id}/${app.id}/`; const out = [];
+  for (let off = 0; ; off += 100) {
+    const r = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${BUCKET}`, { method: 'POST', headers: { ...H(), 'content-type': 'application/json' }, body: JSON.stringify({ prefix, limit: 100, offset: off }) });
+    if (!r.ok) { const e = new Error('storage list ' + r.status); e.status = 502; throw e; }
+    const j = await r.json(); for (const f of j || []) if (f && f.name && f.id) out.push(prefix + f.name);
+    if (!j || j.length < 100) return out;
+  }
+}
+async function removeFiles(paths) {
+  for (let i = 0; i < paths.length; i += 100) {
+    const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}`, { method: 'DELETE', headers: { ...H(), 'content-type': 'application/json' }, body: JSON.stringify({ prefixes: paths.slice(i, i + 100) }) });
+    if (!r.ok) { const e = new Error('storage delete ' + r.status); e.status = 502; throw e; }
+  }
+}
+/* today in Chicago, YYYY-MM-DD (retention dates are calendar dates) */
+function chicagoToday(now) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now || new Date()); }
+/* Documenso Free usage: signing slots per Chicago month for the last n months (reserved less released) */
+async function usageByMonth(n) {
+  const since = new Date(Date.now() - (n || 6) * 31 * 864e5).toISOString();
+  const r = await sb('GET', `dealer_application_events?action=in.(slot_reserved,slot_released)&at=gte.${enc(since)}&select=at,action&order=at.asc&limit=5000`);
+  const m = {}; const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit' });
+  for (const e of r || []) { const k = fmt.format(new Date(e.at)); m[k] = (m[k] || 0) + (e.action === 'slot_reserved' ? 1 : -1); }
+  return Object.keys(m).sort().slice(-(n || 6)).map((k) => ({ month: k, used: Math.max(0, m[k]) }));
+}
+module.exports = { sb, getApp, event, update, envelopesThisMonth, chicagoMonthStart, putFile, signedLink, finalize, notifyPresident, SEL, FREE_MONTHLY, MISSING, BUCKET, CRYPTO, DS,
+  paperPdf, putNew, listFiles, removeFiles, chicagoToday, usageByMonth, PAPER_MAX };
