@@ -2179,6 +2179,37 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     (4) Golden brochure/quote: verified Golden MSRP, else the 2× fallback clearly labelled HCPS-calculated; quote choices
     (MSRP · saved retail · one-time) kept; Golden wholesale, order totals, freight and ordering API unchanged. (5) Real-dealer
     pilot: one dealer first, only with that dealer's participation; no synthetic requests against real storefronts.
+    **How it is built (2026-11-06, admin c7/s7-pricing, ordering c7/s7-pricing):** ONE price rule `_retail_price.js decide()`
+    (pure) used by the storefront, the dealer's price editor and Golden brochures/quotes. ADVERTISING RULES per line are
+    HCPS's record, app_settings `advertising_policies` {rev, lines:{slug:{policy,note,set_by,set_at}}, history}, written
+    compare-and-set by `storefront-rules-api` (president/admin/owner; page Connect 360 → Online Ordering → Storefront
+    Advertising Rules; also HCPS's Pause / Restore of any storefront with a reason): open · map (dealer / calculated price
+    only at or above the product's MAP; no MAP on file → held) · msrp_only · no_price · unknown (= nothing recorded → MSRP
+    only; dealer and calculated prices flagged "rules not recorded yet"). Golden defaults to `map` (Golden publishes eMAP);
+    every other line stays unknown until Angelo records it — never record a rule without his evidence. Standard cost =
+    the shop's own engine at quantity 1 with no contract (`_pricing.lineProducts`); Golden's standard = Golden's own
+    dealer_price only when price_source is "standard" (never promo / account). Public answers carry only price +
+    price_label ("MSRP" | "Price" | "Call for Price"); the editor (`dealer-storefront-api` sf_prices / sf_preview) adds the
+    source, the 2× figure and the reason a price is held — never the cost. The storefront reads Golden through the signed
+    client as HCPS's server (role hcps_staff, actor "storefront:<address>", same gate as golden-proxy, linked === true).
+    **Golden brochure / quote price (P4):** read on the server, never from the page — golden-proxy action `retail`
+    (`_golden_retail.js`; Golden's MSRP, a configured chair summed as the configurator does, else 2× standard at or
+    above eMAP, else none; read-only GETs). brochure.js (ordering) calls it server-to-server with the dealer's own sign-in
+    (or a staff view-as token); signed out → no Golden price. Quote documents (`_quote_doc.js` / dealer-quotes-api) price
+    Golden "MSRP" lines the same way for the quote's location and print a calculated figure as "Retail price", never "MSRP".
+    **Stage 5 follow-ups (built 2026-11-06):** (a) paper-signed applications: the dealer (`app_upload_paper` kind signed,
+    questionnaire complete, status draft/queued/signing_failed) or the President (`upload_paper`, with the signed-on date)
+    uploads a hand-signed PDF ≤ 4 MB (%PDF check, SHA-256 named, x-upsert false — never overwritten) → status
+    offline_signed → the normal review path; (b) Dalton guarantee page: page 4 of the pinned original, blank, to print
+    (`app_guarantee_page`) — a personal guarantee is NEVER e-signed or filled by HCPS; the guarantor's hand-signed page is
+    uploaded (kind guarantee) and shown to the President; (c) retention: President `retention` lists closed applications
+    past retention_until (7 years); `purge` (typed DELETE, only after that date) deletes every stored file of the
+    application and clears the encrypted answers, signer email and notes, keeping the record + event log; storage
+    unreadable → nothing cleared; Documenso Free keeps its own copy (no API delete on Free) — noted on the page;
+    (d) Documenso usage: `usage` = this month used / 5, waiting, last 6 months, shown with a bar on the page. Documenso Free
+    only — no paid plan. Tests: retail-price 8, storefront 18 + mutants 57/57, storefront-rules 5, golden-retail 4 +
+    mutants 11/11 (with quotes 12), applications 20 + mutants 10/10; ordering storefront.browser 45, brochure-auth 27,
+    applications.browser 27.
   · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
     (ordering) are authorized for deletion (the session's safety control refused the delete — Angelo deletes them on
     GitHub); no real account numbers remain in either public repo's current files; the private Golden repo's baseline
