@@ -23,6 +23,9 @@ function world(o) {
   W.fetch = async (url, opts) => { const u = String(url); const h = (opts && opts.headers) || {};
     if (u.startsWith(M.BASE + '/auth/v1/user')) { const tok = String(h.Authorization || '').replace(/^Bearer\s+/i, ''); const map = { boss: { email: 'boss@hcps.test' }, rep: { email: 'rep@hcps.test' } };
       return map[tok] ? { ok: true, status: 200, json: async () => map[tok] } : { ok: false, status: 401, json: async () => ({}) }; }
+    { const m = u.match(/\/data\/content\/([a-z0-9-]+)\.json/); if (m) { const c = (o.content || {})[m[1]];
+      if (c === 'fail') return { ok: false, status: 500, json: async () => ({}), text: async () => '' };
+      return c ? { ok: true, status: 200, json: async () => c, text: async () => JSON.stringify(c) } : { ok: false, status: 404, json: async () => null, text: async () => '' }; } }
     // the fake has no ->> filter: emulate the revision guard
     if (opts && opts.method === 'PATCH' && /\/rest\/v1\/app_settings\?key=eq\.advertising_policies&value->>rev=(eq\.(\d+)|is\.null)/.test(u)) {
       const m = u.match(/value->>rev=(?:eq\.(\d+)|is\.null)/); const row = W.db.app_settings.find((r) => r.key === 'advertising_policies');
@@ -74,6 +77,13 @@ const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer
     eq([l.policy, l.counts.msrp, l.counts.calculated, l.counts.call, l.call], ['open', 1, 1, 1, [{ code: 'B3', reason: 'no_standard_cost' }]], 'B1 official MSRP, B2 derived MSRP → HCPS calculated, B3 no cost', JSON.stringify(l));
     eq(/\b(40|10|79|20|80)\b/.test(JSON.stringify(r.body.lines)), false, 'a price or cost in the answer');
     eq((await as(api(world()), 'rep', { action: 'coverage' })).status, 403);
+  });
+  await t('retired SKUs switched off in the line\'s static content file (no live page in the database) are not active products — never counted, never priced; an unreadable file fails the line', async () => {
+    const content = { bemis: { pages: { 'p-one': { status: 'published', skus: [{ sku: 'B1' }] }, 'p-old': { status: 'published', skus: [{ sku: 'B3', status: 'hidden', disabled: true, retired: { reason: 'x' } }] } } } };
+    const r = await as(api(world({ content, settings: { rev: 1, lines: { bemis: { policy: 'open', note: 'x' } } } })), 'boss', { action: 'coverage', slug: 'bemis' });
+    const l = r.body.lines[0]; eq([l.counts.msrp, l.counts.calculated, l.counts.call, l.call], [1, 1, 0, []], 'B3 retired → not counted ' + JSON.stringify(l));
+    const r2 = await as(api(world({ content: { bemis: 'fail' } })), 'boss', { action: 'coverage', slug: 'bemis' });
+    eq(r2.body.lines[0].error, 'could not be read', 'strict read');
   });
   console.log(`\nstorefront-rules: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

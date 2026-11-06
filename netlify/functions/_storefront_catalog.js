@@ -86,7 +86,16 @@ async function lineData(deps, line, enrichedOnly) {
   const [file, records, overrides, custom, pages] = await Promise.all([deps.catalogFile(line),
     deps.sbAll(`product_skus?${q}&select=code,msrp,msrp_auto,status,uom,case_qty,msrp_basis,map_basis&order=code.asc`), deps.sbAll(`product_overrides?${q}&select=code,patch&order=code.asc`),
     deps.sbAll(`custom_products?${q}&select=code,msrp,msrp_auto&order=code.asc`), deps.sbAll(`product_content?${q}&select=page_key,status,disabled,skus&order=page_key.asc`)]);
-  const facts = SF.lineFacts({ records, overrides, custom, pages, enrichedOnly: !!enrichedOnly });
+  /* review fix (2026-11-06, retired ABM / PediFix SKUs): the dealer shop reads a line's pages from product_content and,
+     when the line has NO visible page there, from its static content file (./data/content/<line>.json) — where retired
+     SKUs are switched off (status hidden, disabled). Read the same way here, so a product the shop doesn't list is never
+     priced, quoted or shown on a storefront. A content file that can't be read is an error (strict), never "no pages". */
+  let pg = pages || [];
+  if (!pg.some((r) => ['published', 'active', 'discontinued'].includes(String((r && r.status) || ''))) && deps.contentFile) {
+    const cj = await deps.contentFile(line); const o = (cj && cj.pages && typeof cj.pages === 'object') ? cj.pages : {};
+    pg = Object.keys(o).map((k) => Object.assign({ page_key: k }, o[k]));
+  }
+  const facts = SF.lineFacts({ records, overrides, custom, pages: pg, enrichedOnly: !!enrichedOnly });
   /* standard cost and MAP: the shop's own engine (no contract price, no line discount, quantity 1 — a quantity break or
      special never applies at 1) */
   let costs = null;

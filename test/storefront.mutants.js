@@ -66,8 +66,10 @@ const M = [
   { f: R, from: ".replace(/[\\r\\n\\t]+/g, ' ');\n  return { subject: subj,", to: ";\n  return { subject: subj,", why: 'line breaks in subject' },
   { f: D, from: "if (eff.enabled === true && !eff.phone && !eff.email)", to: "if (false)", why: 'live storefront without contact' },
   { f: D, from: "if (who.preview) return json(200, { ok: true, inquiries: [], hidden_in_preview: true });", to: "", why: 'preview reads customers' },
+  { f: C, from: "if (!pg.some((r) => ['published', 'active', 'discontinued'].includes(String((r && r.status) || ''))) && deps.contentFile) {", to: "if (false) {", why: 'retired SKUs in the static content file shown / priced' },
+  { f: C, from: "pg = Object.keys(o).map((k) => Object.assign({ page_key: k }, o[k]));", to: "pg = [];", why: 'content-file pages ignored' },
 ];
-const run = () => { for (const t of ['storefront.test.js', 'retail-price.test.js']) { const r = spawnSync(process.execPath, [path.join(__dirname, t)], { encoding: 'utf8' }); if (r.status !== 0) return r; } return { status: 0 }; };
+const run = () => { for (const t of ['storefront.test.js', 'retail-price.test.js', 'storefront-rules.test.js']) { const r = spawnSync(process.execPath, [path.join(__dirname, t)], { encoding: 'utf8' }); if (r.status !== 0) return r; } return { status: 0 }; };
 if (run().status !== 0) { console.log('CONTROL FAILED'); process.exit(1); }
 let k = 0; const s = [];
 for (const m of M) { const o = fs.readFileSync(m.f, 'utf8'); if (!o.includes(m.from)) { s.push(m.why + ' (missing)'); continue; }
