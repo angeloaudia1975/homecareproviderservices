@@ -138,11 +138,13 @@ exports.handler = async (event) => {
       /* review fix: the record is cleared FIRST (compare-and-set), then the files; signed_path stays as the marker until every
          file is gone, so a failed or partial delete is recorded and the application stays on the list for a retry */
       const files = await S.listFiles(app);
-      let row = await S.update(app, { answers_enc: null, signing_token_enc: null, signer_email: null, review_notes: null }, by);
+      /* with no signed_path to mark it (e.g. only a guarantee page), the answers are the marker: files go first */
+      const answersLast = !app.signed_path && files.length > 0;
+      let row = answersLast ? app : await S.update(app, { answers_enc: null, signing_token_enc: null, signer_email: null, review_notes: null }, by);
       await S.event(app.id, by, 'purge_started', { files: files.length });
       try { if (files.length) await S.removeFiles(files); }
       catch (e) { await S.event(app.id, by, 'purge_failed', { files: files.length }).catch(() => {}); return json(503, { ok: false, error: 'The stored documents could not all be deleted just now — the answers are cleared; try Delete again.' }); }
-      row = await S.update(row, { signed_path: null, certificate_path: null, audit_path: null }, by);
+      row = await S.update(row, Object.assign({ signed_path: null, certificate_path: null, audit_path: null }, answersLast ? { answers_enc: null, signing_token_enc: null, signer_email: null, review_notes: null } : {}), by);
       await S.event(app.id, by, 'purged', { files: files.length, note: 'Documenso Free keeps its own copy of a completed document (no delete on the free plan).' });
       return json(200, { ok: true, application: { id: row.id, status: row.status, version: row.version }, files_deleted: files.length });
     }

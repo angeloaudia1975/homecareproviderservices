@@ -15,7 +15,8 @@ const M = [
   { f: D, from: "if (kind === 'signed' && !OPEN.has(app.status))", to: 'if (false)', why: 'paper copy replaces a signed one' },
   { f: D, from: "if (!(form && form.guarantee)) return json(400, { ok: false, error: 'This application has no guarantee page.' });", to: "if (!form) return json(400, {});", why: 'guarantee page for a form without one' },
   { f: D, from: "if ((prior || []).length >= 5)", to: 'if (false)', why: 'unlimited guarantee uploads' },
-  { f: A, from: "row = await S.update(row, { signed_path: null, certificate_path: null, audit_path: null }, by);", to: '', why: 'file marker left after purge' },
+  { f: A, from: "row = await S.update(row, Object.assign({ signed_path: null, certificate_path: null, audit_path: null }, answersLast ? { answers_enc: null, signing_token_enc: null, signer_email: null, review_notes: null } : {}), by);", to: '', why: 'file marker left after purge' },
+  { f: A, from: "const answersLast = !app.signed_path && files.length > 0;", to: "const answersLast = false;", why: 'unmarked files lost after a failed delete' },
 ];
 const run = () => spawnSync(process.execPath, [path.join(__dirname, 'applications.test.js')], { encoding: 'utf8' });
 if (run().status !== 0) { console.log('CONTROL FAILED'); process.exit(1); }

@@ -286,6 +286,13 @@ async function filled(W, m) { const C = api(W); const a = await started(W, 'hq',
     eq((await as(A3, 'boss', { action: 'retention' })).body.due.length, 1, 'still listed for a retry');
     eq((await as(A3, 'boss', { action: 'purge', id: c3.id, version: r3.version, confirm: 'DELETE' })).status, 200, 'retry');
     eq([W3.db.dealer_applications[0].signed_path, W3.stored.every((x) => x.deleted)], [null, true]);
+    const W4 = world({ deleteFailsOnce: true }); const c4 = await filled(W4, 'dalton'); const A4 = adm(W4);
+    await as(api(W4), 'hq', { action: 'app_upload_paper', id: c4.id, version: c4.version, kind: 'guarantee', pdf_base64: PDF64 });
+    await as(api(W4), 'hq', { action: 'app_withdraw', id: c4.id }); let r4 = W4.db.dealer_applications[0]; r4.retention_until = '2020-01-01';
+    eq((await as(A4, 'boss', { action: 'purge', id: c4.id, version: r4.version, confirm: 'DELETE' })).status, 503);
+    ok(W4.db.dealer_applications[0].answers_enc, 'no signed file: answers kept as the marker'); eq((await as(A4, 'boss', { action: 'retention' })).body.due.length, 1, 'listed for retry');
+    r4 = W4.db.dealer_applications[0]; eq((await as(A4, 'boss', { action: 'purge', id: c4.id, version: r4.version, confirm: 'DELETE' })).status, 200);
+    eq([W4.db.dealer_applications[0].answers_enc, W4.stored.every((x) => x.deleted)], [null, true]);
   });
   console.log(`\napplications: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
