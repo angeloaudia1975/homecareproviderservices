@@ -50,6 +50,14 @@ exports.handler = async (event) => {
       return json(200, { ok: true, monthly, signing: S.DS.configured(), applications: (rows || []).map((r) => ({ ...r, name: (F.FORMS[r.manufacturer] || {}).name || r.manufacturer,
         location: dn.get(String(r.location_id)) || null, company: dn.get(String(r.dealer_id)) || null })) });
     }
+    if (b.action === 'forms_check') {   // read-only: every bundled original form is present, unchanged and buildable (synthetic answers)
+      const out = [];
+      for (const k of Object.keys(F.FORMS)) {
+        try { const r = await PDF.build(k, { 'biz.legal_name': 'Forms check (synthetic)', 'signer.name': 'Test Signer', 'signer.title': 'Test' }, { preview: true }); out.push({ form: k, ok: true, pages: r.pages }); }
+        catch (e) { out.push({ form: k, ok: false, error: e.code || 'build_failed' }); }
+      }
+      return json(200, { ok: out.every((x) => x.ok), forms: out, signing: S.DS.configured(), encryption: S.CRYPTO.available(), webhook_secret: (process.env.DOCUMENSO_WEBHOOK_SECRET || '').length >= 16 });
+    }
     if (!UUID.test(String(b.id || ''))) return json(404, { ok: false, error: 'Unknown application.' });
     const app = await S.getApp(b.id); if (!app) return json(404, { ok: false, error: 'Unknown application.' });
 

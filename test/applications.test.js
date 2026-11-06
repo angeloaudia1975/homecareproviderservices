@@ -166,6 +166,7 @@ async function filled(W, m) { const C = api(W); const a = await started(W, 'hq',
   await t('admin: President only; sees decrypted answers + 2-minute file links; statuses follow the review path; a decision keeps it 7 years', async () => {
     const W = world(); const a = await filled(W, 'access4u'); await as(api(W), 'hq', { action: 'app_sign', id: a.id, version: a.version });
     W.docs.envelopes.envelope_1.status = 'COMPLETED'; await M.call(hook(W), { event: 'DOCUMENT_COMPLETED', payload: { envelopeId: 'envelope_1' } }, { headers: { 'x-documenso-secret': SECRET } });
+    const fc = await as(adm(W), 'boss', { action: 'forms_check' }); eq([fc.status, fc.body.ok, fc.body.forms.length, fc.body.encryption, fc.body.webhook_secret], [200, true, 10, true, true]);
     eq((await as(adm(W), 'rep', { action: 'list' })).status, 403); eq((await as(adm(W), 'hq', { action: 'list' })).status, 401);
     const l = await as(adm(W), 'boss', { action: 'list' }); eq(l.body.applications.length, 1);
     const g = await as(adm(W), 'boss', { action: 'get', id: a.id }); eq(g.body.answers['biz.ein'], '00-0000000'); ok(g.body.files.signed && g.body.files.certificate, 'links');
