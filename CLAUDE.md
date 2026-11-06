@@ -4542,6 +4542,18 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
     `GOLDEN_ORDERING_ENABLED` false**, so dealers saw no Golden line at all despite the server go-live. Turn-on = ordering
     #48 (draft), merged only on Angelo's go-ahead. Lesson: a go-live check must open the real dealer page (cart + checkout),
     not only eligibility / prices through staff view-as.
+  · **B7 RELEASED 2026-11-05 ~19:44–20:25 CT (owner decisions 19:41: waivers follow the actual dealer-added address;
+    branch users order directly under the account number, no head-office review queue).** Order: Golden #288 (b6354cb) →
+    HCPS #95 (586bc24) → ordering #50 (67ae358), switches off → Angelo ran `golden_b7_shipto.sql` (4/4 true) → Golden env
+    `P360_ACCOUNT_LINKS` + `P360_HCPS_SHIPTO` = true, redeployed → Angelo set `golden_p360_account_gate` +
+    `golden_p360_hcps_shipto` true → live checks (staff view-as, read-only) → ordering #48 merged (ed3a15b; Golden visible,
+    cart + ordering open) → #51 (18251db) removed the stale "ordering is being finished" card note (Browse only stays on
+    non-orderable items). Live: AdaptHealth branch + King Drug branch = account, prices, 7 / 6 shared locations in the
+    book, quotes priced per location (freight + 3% S&H); no-number dealer → no_golden_account; 1A Medical (190027) →
+    account_not_in_golden; SaveRite / Retail Medical Solutions / JD Medical (different names) → account; Mobility Works
+    (both head offices) → account_not_enabled until `config/p360-link-230482-mobility-works.sql` (Golden) is run; a staff
+    preview can list but never save an address or validate. No order placed. Real-dealer add-address / validate / place
+    are proven by the real-chain browser test (ordering test/golden-b7.browser.js), not live.
 - **No real account numbers or dealer identities in public test data (RULE, 2026-11-05).** Golden `customer_no` doubles as
   the dealer's Golden portal login, and both HCPS repos are public: tests, fixtures, PR text and commits use made-up names
   and clearly fake numbers (e.g. `T90100`), never a real dealer's name, account number or one copied from a working file.
