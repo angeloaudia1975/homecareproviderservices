@@ -2097,7 +2097,23 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     business "TEST — Synthetic Application (do not process)", signer = Angelo): app_sign → envelope → Angelo signed →
     webhook → status signed, signed PDF + certificate + audit log stored and opened via 2-minute links; review path
     signed → under_review → sent_to_manufacturer; illegal jump 400, stale version 409; withdrawn by HCPS (retention
-    2033-11-06; it stays on record). Free slots used: 1 of 5 (November). Public key with files present: bucket list [],
+    2033-11-06; it stays on record). Free slots used: 1 of 5 (November).
+    **Stage 5 OPERATIONALLY VERIFIED (owner 2026-11-06 11:18 CT).** Tracked follow-ups (not blockers): paper-signed
+    application upload; Dalton guarantee page; retention + deletion workflow for application documents; Documenso Free's
+    5-a-month limit. Don't spend signing credits in development (tests mock Documenso); no other e-signature account or
+    paid plan. The two old Golden branches are a separate cleanup — don't raise them during C3-07 work.
+    **Stages 6–8 authorized (owner 2026-11-06 11:18 CT; scope PRs, report deploy evidence; escalate only security, new
+    spending or material business-behaviour changes):** 6 dealer/branch reporting inside the EXISTING Reports section
+    (company dashboard, branch + head-office consolidated, manufacturer activity, category performance, YoY only where
+    verified history exists, top products / weak categories, assortment opportunities where data supports it, AI
+    recommendations labelled as such, branded PDF, phone/tablet/desktop; company/branch access; never invent sales, costs,
+    margins or traffic; orders kept apart from quotes, browsing interest, estimates and recommendations). 7 dealer-branded
+    public storefront by shareable link (logo, contacts, authorized products, photos/specs, compliant retail price — Call for
+    Price when MAP/pricing rules aren't verified; Call Dealer + Request Information → the dealer; NO checkout; never
+    wholesale, account or restricted data). 8 HCPS demand intelligence (anonymous aggregated product interest by storefront,
+    manufacturer, category and region; popular-but-not-bought and inquired-but-not-ordered; rep opportunities in Dealer 360
+    + Command Center; downloadable marketing assets, never auto-posted; no individual-customer tracking; interest ≠ sales).
+    Ordering sandbox PR #26 stays open; Golden checkout/integration stays out of scope. Public key with files present: bucket list [],
     public read "Bucket not found", tables 401/42501.
   · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
     (ordering) are authorized for deletion (the session's safety control refused the delete — Angelo deletes them on
