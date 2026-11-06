@@ -30,7 +30,7 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
        do $$ begin if not exists (select 1 from pg_roles where rolname='anon') then create role anon; end if;
          if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if;
          if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role; end if; end $$;
-       create table dealers (id uuid primary key default gen_random_uuid(), business_name text);
+       create table dealers (id uuid primary key default gen_random_uuid(), business_name text, active boolean);
        insert into dealers values ('${D}','Synthetic Dealer');`);
     await t('install: 4 tables, RLS on, no policies, nothing public; a second run is safe', async () => {
       assert.strictEqual(file(DB, SQL).split('\n').pop(), '4|t|0|0|0|0');
@@ -47,10 +47,10 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
       const r = [1, 2, 3, 4].map((i) => JSON.parse(add({ name: 'V', email: `v${i}@x.test` }, cli('a'))));
       assert.deepStrictEqual(r.map((x) => x.refused || 'ok'), ['ok', 'ok', 'ok', 'client']);
     });
-    await t('per email and per phone: 3 a day, whichever visitor sends them', async () => {
+    await t('per email and per phone (digits compared): 3 a day, whichever visitor sends them', async () => {
       const e = ['b', 'c', 'd', 'e'].map((c) => JSON.parse(add({ name: 'E', email: 'same@x.test' }, cli(c))).refused || 'ok');
       assert.deepStrictEqual(e, ['ok', 'ok', 'ok', 'contact']);
-      const p = ['f', '1', '2', '3'].map((c) => JSON.parse(add({ name: 'P', phone: '555 0100' }, cli(c))).refused || 'ok');
+      const p = ['f', '1', '2', '3'].map((c, i) => JSON.parse(add({ name: 'P', phone: ['555 0100', '(555) 0100', '555-0100', '5550100'][i] }, cli(c))).refused || 'ok');
       assert.deepStrictEqual(p, ['ok', 'ok', 'ok', 'contact']);
     });
     await t('20 simultaneous requests from one visitor store exactly 3 (advisory locks)', async () => {
@@ -76,6 +76,9 @@ run('postgres', `drop database if exists ${DB}`); run('postgres', `create databa
       assert.strictEqual(JSON.parse(add({ name: 'Off', email: 'off@x.test' }, cli('5'))).refused, 'unavailable');
       q(`update dealer_storefronts set enabled=true, hcps_blocked=true where true`);
       assert.strictEqual(JSON.parse(add({ name: 'Blk', email: 'blk@x.test' }, cli('4'))).refused, 'unavailable');
+      q(`update dealer_storefronts set hcps_blocked=false where true; update dealers set active=false where true`);
+      assert.strictEqual(JSON.parse(add({ name: 'Closed', email: 'cl@x.test' }, cli('3'))).refused, 'unavailable', 'a closed location refuses at once');
+      q(`update dealers set active=null where true`);
     });
     await t('purge: expired requests and rate rows older than 2 days', async () => {
       q(`update storefront_inquiries set delete_after = current_date - 1 where name='Svc'; insert into storefront_rate (bucket, client, dealer_id, views) values (now() - interval '3 days', 'none', '${D}', 1)`);

@@ -119,12 +119,16 @@ const live = (x) => Object.assign({ id: 'sf-hq', dealer_id: HQ, company_id: HQ, 
   });
   await t('D3: discontinued / hidden / switched-off enrichment pages and SKUs never public; enriched-only lines show only published pages; pack MSRP names its unit', async () => {
     const pages = [{ manufacturer: 'bemis', page_key: 'p1', status: 'discontinued', skus: [{ sku: 'b1' }] }, { manufacturer: 'bemis', page_key: 'p2', status: 'published', skus: [{ sku: 'B2', status: 'hidden' }, { sku: 'B6' }] },
-      { manufacturer: 'strongback', page_key: 's1', status: 'published', disabled: true, skus: [{ code: 'S1' }] }];
+      { manufacturer: 'bemis', page_key: 'p3', status: 'hidden', disabled: true, skus: [{ sku: 'B6', status: 'hidden' }] },
+      { manufacturer: 'strongback', page_key: 's1', status: 'published', disabled: true, skus: [{ code: 'S1', disabled: true }] }];
     const r = await pubGet(pubApi(world({ storefronts: [live()], pages })), 'acme-medical');
-    eq(r.body.products.map((p) => p.code), ['B6'], 'B1 (page discontinued, lower-case), B2 (SKU hidden), S1 (page switched off) gone');
+    eq(r.body.products.map((p) => p.code), ['B6', 'S1'], 'B1 (page discontinued, lower-case) and B2 (SKU hidden) gone; a hidden or switched-off page is ignored as the dealer shop ignores it (B6, S1 stay)');
     const e = await pubGet(pubApi(world({ storefronts: [live()], meta: [{ slug: 'bemis', enriched_only: true }], pages: [{ manufacturer: 'bemis', page_key: 'p', status: 'published', skus: [{ sku: 'B6' }] }, { manufacturer: 'bemis', page_key: 'd', status: 'pending_review', skus: [{ sku: 'B1' }] }] })), 'acme-medical');
     eq(e.body.products.filter((p) => p.manufacturer === 'bemis').map((p) => p.code), ['B6'], 'enriched-only: a draft page is not enough');
     eq([SF.unitOf({ uom: '12-roll pack', case_qty: 12 }), SF.unitOf({ uom: 'Case', case_qty: 2 }), SF.unitOf({ uom: 'Each' }), SF.unitOf({ case_qty: 4 })], ['per 12-roll pack', 'per Case (2 each)', null, 'per pack of 4']);
+    eq([SF.unitOf({ uom: '2/CS' }, { uom: 'Case', case_qty: 2, msrp_basis: 'each' }), SF.unitOf({ uom: 'Case', case_qty: 2, msrp_each: true }), SF.unitOf({ uom: 'Case', msrp_each: true }, { msrp_basis: 'order_unit', case_qty: 3 }), SF.unitOf({}, { uom: 'Each', case_qty: 1, msrp_basis: 'each' })],
+      ['each', 'each', 'per Case (3 each)', null], 'Phase 4 basis: Bemis MSRP is per piece; the record\'s unit wins');
+    eq([SF.publicProduct({ code: 'X', image: 'https://maker.example/x.jpg' }, 'bemis', { msrp: new Map() }, 'msrp').image, SF.publicProduct({ code: 'X', image: '/assets/p/x.jpg' }, 'bemis', { msrp: new Map() }, 'msrp').image], [null, '/assets/p/x.jpg'], 'third-party photo hosts never');
   });
   await t('D4 counts: only products this storefront shows, at most 40, nothing about the visitor', async () => {
     const W = world({ storefronts: [live()] }); const C = pubApi(W);
@@ -135,6 +139,8 @@ const live = (x) => Object.assign({ id: 'sf-hq', dealer_id: HQ, company_id: HQ, 
     await pubPost(C, { action: 'view', s: 'acme-medical', items: [{ manufacturer: ['bemis'], code: 'B1' }, null, 5, { manufacturer: 'bemis', code: 'B1' }] }, '203.0.113.9');
     const last = W.counts[W.counts.length - 1]; eq(last.p_items.length, 1, 'malformed items skipped, no crash'); ok(/^[0-9a-f]{32}$/.test(last.p_client), 'keyed hash of the address');
     ok(!JSON.stringify(last).includes('203.0.113'), 'the address itself never sent');
+    const k = (ip) => C._test.clientKey({ headers: { 'x-nf-client-connection-ip': ip } });
+    eq([k('2001:db8:1:2:aaaa::1') === k('2001:0db8:0001:0002:ffff:1:2:3'), k('2001:db8:1:3::1') === k('2001:db8:1:2::1'), k('203.0.113.9') === k('203.0.113.10'), k('203.0.113.9') === k('203.0.113.9')], [true, false, false, true], 'IPv6 keyed by /64, IPv4 by address');
   });
   await t('inquiry: validated, consent required, honeypot silently dropped, stored with only what was typed, emailed to the dealer (reply-to customer, escaped)', async () => {
     const W = world({ storefronts: [live({ email: 'shop@acme.test' })] }); const C = pubApi(W);
