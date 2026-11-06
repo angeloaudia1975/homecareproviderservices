@@ -2113,7 +2113,24 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     wholesale, account or restricted data). 8 HCPS demand intelligence (anonymous aggregated product interest by storefront,
     manufacturer, category and region; popular-but-not-bought and inquired-but-not-ordered; rep opportunities in Dealer 360
     + Command Center; downloadable marketing assets, never auto-posted; no individual-customer tracking; interest ≠ sales).
-    Ordering sandbox PR #26 stays open; Golden checkout/integration stays out of scope. Public key with files present: bucket list [],
+    Ordering sandbox PR #26 stays open; Golden checkout/integration stays out of scope.
+  · **Stage 6 LIVE 2026-11-06 ~12:10 CT — admin #99 → a3f5a2d + #100 → 46f69a4, ordering #56 → 0b4e88b + #57 → 5a4a1ff.**
+    `dealer-reports-api` (report / report_pdf / report_ai) + `_dealer_report.js` (pure) + `_report_pdf.js`; the storefront
+    Reports section is rebuilt on it. RULES: purchases = manufacturer-reported monthly_sales ONLY (commission line repeating a
+    sales-report line counted once; blank amount never $0); portal orders and quotes shown APART, never summed (the old page
+    summed them — fixed); scope = `_account_center.visibleLocations` (branch: itself; head office: company or a location);
+    preview tokens read-only, must carry an expiry, no AI. YEAR-OVER-YEAR is like-for-like by REPORTED MONTHS: a month compares
+    only when HCPS holds a report for that line in that month AND the same month last year (any dealer) — reporting lag, a
+    recently started line or a gap is never compared as $0; the current year runs through the latest reported month; when only
+    some lines compare, the tile reads "Same months: $X vs $Y". SKUs the HCPS catalog doesn't list (Golden) are grouped as
+    "<line> — category not listed", never flagged declining. Network opportunities: ≥3 other COMPANIES (head-office roots;
+    this company incl. closed branches and TEST dealers excluded), lines this company buys, not bought in 12 months, catalog
+    names only, no other dealer's name or figures. AI: on request only, facts cited + only the facts' numbers, ≤2 provider
+    calls, 20 s timeout, per-instance limit (known: not database-backed). PDF: HCPS original logo bundled, dealer logo only
+    inline PNG/JPEG, no AI, no remote fetch. Excel cells starting = + - @ are made text. Staff-session.js REPLACES the
+    Authorization header on admin pages — use XMLHttpRequest for a preview-token call there. Tests: admin dealer-reports 18 +
+    mutants 22/22; ordering reports.browser 24 (390/768/1280). Independent review: no High security; all findings fixed.
+    Live: Williams Brothers (9 locations, read-only preview) — report ~1 s, YTD Jan–Sep, like-for-like −32.9%. Public key with files present: bucket list [],
     public read "Bucket not found", tables 401/42501.
   · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
     (ordering) are authorized for deletion (the session's safety control refused the delete — Angelo deletes them on
