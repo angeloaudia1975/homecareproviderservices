@@ -18,8 +18,8 @@ const M = [
   { f: G, from: "const key = JSON.stringify([deleg.sub_dealer, deleg.sub_branch, deleg.acct || null]);", to: "const key = 'all';", why: 'catalog cache shared across Golden accounts' },
   { f: A, from: 'msrp.set(l.mfr + "|" + l.sku, d && d.price != null ? { price: d.price, calc: d.source === "calculated" } : null);', to: 'msrp.set(l.mfr + "|" + l.sku, d && d.price != null ? { price: d.price, calc: false } : null);', why: 'calculated retail labelled MSRP on a quote' },
   { f: C2, from: "if (!d.active) { d.price = null; d.label = 'Call for Price'; d.source = 'call'; }", to: '', why: 'discontinued product priced' },
-  { f: C2, from: "const d = RP.decide({ msrp: facts.msrp.get(String(p.code)) || (c && c.msrp) || null, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy });", to: "const d = RP.decide({ msrp: facts.msrp.get(String(p.code)) || (c && c.msrp) || null, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy: 'open' });", why: 'advertising rules ignored for defaults' },
-  { f: C2, from: "msrp: facts.msrp.get(String(p.code)) || (c && c.msrp) || null, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy });", to: "msrp: facts.msrp.get(String(p.code)) || null, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy });", why: 'official MSRP from the commercial catalog ignored' },
+  { f: C2, from: "const d = RP.decide({ msrp: msrpV, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy });", to: "const d = RP.decide({ msrp: msrpV, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy: 'open' });", why: 'advertising rules ignored for defaults' },
+  { f: C2, from: "const msrpV = facts.msrp.get(String(p.code)) || (c && c.msrp) || null;", to: "const msrpV = facts.msrp.get(String(p.code)) || null;", why: 'official MSRP from the commercial catalog ignored' },
   { f: A, from: "const allowed = new Set((dm || []).map((r) => r.manufacturer));", to: "const allowed = new Set(ask.map((x) => x.m));", why: 'unauthorized line priced' },
 ];
 const runs = ['golden-retail.test.js', 'quotes.test.js'];

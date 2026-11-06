@@ -46,8 +46,9 @@ async function build(sf, deps, opts) {
   const mapsFor = RP.mapsFor;
   const priced = (p, line, facts, cost, map, fileMsrp) => {
     const rec = facts && facts.unit ? facts.unit.get(String(p.code)) : null;
-    const mm = mapsFor(p, rec, map);
-    const d = RP.decide({ dealerPrice: RP.dealerPriceFor(retail, sf.dealer_id, line, p.code), msrp: facts ? (facts.msrp.get(String(p.code)) || fileMsrp || null) : p._msrp,
+    const msrpV = facts ? (facts.msrp.get(String(p.code)) || fileMsrp || null) : p._msrp;
+    const mm = mapsFor(p, rec, map, msrpV);
+    const d = RP.decide({ dealerPrice: RP.dealerPriceFor(retail, sf.dealer_id, line, p.code), msrp: msrpV,
       cost, map: mm.map, msrpMap: mm.msrpMap, policy: policies[line] || 'unknown', priceMode: sf.price_mode });
     const unit = d.unit_basis === 'msrp' ? SF.unitOf(p, rec) : d.unit_basis === 'order_unit' ? SF.unitOf(p, Object.assign({}, rec || {}, { msrp_basis: 'order_unit' })) : null;
     return Object.assign(RP.publicPrice(d), { price_unit: d.price != null ? unit : null }, opts.editor ? { editor: RP.editorPrice(d) } : {});
@@ -112,8 +113,9 @@ async function lineDefaults(deps, line, opts) {
   for (const p of file) {
     if (!p || !p.code) continue;
     const rec = facts.unit ? facts.unit.get(String(p.code)) : null; const c = costs && costs.get(String(p.code));
-    const mm = RP.mapsFor(p, rec, c && c.map);
-    const d = RP.decide({ msrp: facts.msrp.get(String(p.code)) || (c && c.msrp) || null, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy });
+    const msrpV = facts.msrp.get(String(p.code)) || (c && c.msrp) || null;
+    const mm = RP.mapsFor(p, rec, c && c.map, msrpV);
+    const d = RP.decide({ msrp: msrpV, cost: c && c.cost, map: mm.map, msrpMap: mm.msrpMap, policy });
     d.active = !(facts.isHidden(p.code) || p.active === false || p.discontinued === true); d.no_cost = !(c && c.cost > 0);
     if (!d.active) { d.price = null; d.label = 'Call for Price'; d.source = 'call'; }   // review fix: never a price for a product no storefront shows
     items.set(String(p.code), d);
