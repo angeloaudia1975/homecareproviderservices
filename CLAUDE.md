@@ -2087,7 +2087,10 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     sent to manufacturer → approved/declined; 7-year retention; President withdraw; read-only `forms_check`).
     Production check 22:45 CT: forms_check ok, all 10 forms build from the bundled originals. Known: Documenso keeps its own
     copy of a completed document (no API delete on Free) — note for retention.
-    NOT yet: SQL `supabase/c7_s5_applications.sql` (Angelo), Netlify env APPLICATIONS_ENC_KEY / DOCUMENSO_API_TOKEN /
+    SQL RUN by Angelo 2026-11-05 22:29 CT: `2,true,0,0,false,0` (sha256 bd3a0327…). Public-key probe (Claude, storefront
+    key verified on a public table first): both tables read/insert/update/delete 401/42501 (8/8), guard function 404, bucket
+    public read NoSuchBucket, upload AccessDenied, list empty (bucket empty — re-check listing once a file is stored).
+    NOT yet: Netlify env APPLICATIONS_ENC_KEY / DOCUMENSO_API_TOKEN /
     DOCUMENSO_WEBHOOK_SECRET (Angelo — Claude never sees them), Documenso webhook (Angelo creates it: Chrome autofills that
     form with a saved login — clear the Triggers and Secret fields first), then one synthetic end-to-end signing test.
   · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
