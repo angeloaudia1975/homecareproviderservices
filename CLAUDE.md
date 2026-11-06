@@ -2090,9 +2090,15 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     SQL RUN by Angelo 2026-11-05 22:29 CT: `2,true,0,0,false,0` (sha256 bd3a0327…). Public-key probe (Claude, storefront
     key verified on a public table first): both tables read/insert/update/delete 401/42501 (8/8), guard function 404, bucket
     public read NoSuchBucket, upload AccessDenied, list empty (bucket empty — re-check listing once a file is stored).
-    NOT yet: Netlify env APPLICATIONS_ENC_KEY / DOCUMENSO_API_TOKEN /
-    DOCUMENSO_WEBHOOK_SECRET (Angelo — Claude never sees them), Documenso webhook (Angelo creates it: Chrome autofills that
-    form with a saved login — clear the Triggers and Secret fields first), then one synthetic end-to-end signing test.
+    **Stage 5 VERIFIED LIVE 2026-11-06 ~11:15 CT.** Angelo set APPLICATIONS_ENC_KEY / DOCUMENSO_API_TOKEN /
+    DOCUMENSO_WEBHOOK_SECRET in Netlify (first redeploy failed Netlify secrets scanning because the token variable's VALUE
+    was its own name — the scanner was right; never add our files to SECRETS_SCAN_OMIT_PATHS) and created the Documenso
+    webhook. forms_check: signing / encryption / webhook all true. Synthetic test (HCPS's own portal account, Climbing Steps,
+    business "TEST — Synthetic Application (do not process)", signer = Angelo): app_sign → envelope → Angelo signed →
+    webhook → status signed, signed PDF + certificate + audit log stored and opened via 2-minute links; review path
+    signed → under_review → sent_to_manufacturer; illegal jump 400, stale version 409; withdrawn by HCPS (retention
+    2033-11-06; it stays on record). Free slots used: 1 of 5 (November). Public key with files present: bucket list [],
+    public read "Bucket not found", tables 401/42501.
   · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
     (ordering) are authorized for deletion (the session's safety control refused the delete — Angelo deletes them on
     GitHub); no real account numbers remain in either public repo's current files; the private Golden repo's baseline
