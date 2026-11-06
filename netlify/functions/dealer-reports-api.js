@@ -41,7 +41,7 @@ async function dealerFromToken(event) {
   if (/^preview:/i.test(raw)) {   // HCPS staff's read-only preview of a dealer (same token as My Orders)
     const token = raw.replace(/^preview:/i, '').trim(); if (!token) return null;
     const rows = await sb('GET', `dealer_preview_tokens?token=eq.${enc(token)}&select=dealer_id,expires_at`); const t = rows && rows[0];
-    if (!t || !t.dealer_id || (t.expires_at && new Date(t.expires_at).getTime() < Date.now())) return null;
+    if (!t || !t.dealer_id || !t.expires_at || !(new Date(t.expires_at).getTime() > Date.now())) return null;   // no expiry = refused
     return { dealer_id: t.dealer_id, uid: null, preview: true };
   }
   const ur = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${raw}` } });
@@ -69,6 +69,14 @@ async function coverageFor(slugs) {
   await Promise.all(slugs.map(async (s) => { out[s] = await cached('cov:' + s, 600000, async () => { const r = await sb('GET', `monthly_sales?manufacturer=eq.${enc(s)}&select=period&order=period.asc&limit=1`); return r && r[0] ? String(r[0].period).slice(0, 7) : null; }); }));
   return out;
 }
+/* the months HCPS holds any report for a line (all dealers), from the start of the comparison year */
+async function reportedMonthsFor(slugs, fromYear) {
+  const out = {};
+  await Promise.all(slugs.map(async (s) => { out[s] = await cached(`rm:${s}:${fromYear}`, 600000, async () => [...new Set((await sbAll(`monthly_sales?manufacturer=eq.${enc(s)}&period=gte.${fromYear}-01-01&select=period&order=id.asc`)).map((r) => String(r.period).slice(0, 7)))]); }));
+  return out;
+}
+/* every dealer's company (head office id) — the network minimum counts COMPANIES, so one company's branches never meet it alone */
+async function companyOf() { return cached('roots', 600000, async () => new Map(((await sbAll('dealers?select=id,parent_id&order=id.asc')) || []).map((d) => [String(d.id), String(d.parent_id || d.id)]))); }
 async function testDealers() { return cached('test', 600000, async () => new Set(((await sb('GET', 'dealers?is_test=eq.true&select=id')) || []).map((d) => String(d.id)))); }
 function addMonthsYm(m, k) { let [y, mo] = m.split('-').map(Number); mo += k; while (mo < 1) { mo += 12; y--; } while (mo > 12) { mo -= 12; y++; } return y + '-' + String(mo).padStart(2, '0'); }
 
@@ -78,8 +86,8 @@ async function loadAll(who, b) {
   if (!self) return { status: 404, error: 'Account not found.' };
   const root = self.parent_id || self.id;
   const fq = `dealers?or=(id.eq.${enc(root)},parent_id.eq.${enc(root)})&select=id,parent_id,business_name,city,state`;
-  let family; try { family = await sb('GET', fq + ',active&limit=200'); } catch (e) { if (!/42703/.test(String(e.message))) throw e; family = await sb('GET', fq + '&limit=200'); }
-  family = (family || []).filter((x) => x.active !== false || String(x.id) === did);
+  let family; try { family = await sbAll(fq + ',active&order=id.asc'); } catch (e) { if (!/42703/.test(String(e.message))) throw e; family = await sbAll(fq + '&order=id.asc'); }
+  family = (family || []).filter((x) => x.active !== false || String(x.id) === did);   // closed locations are not listed
   let scopeRow = null;
   if (who.uid) { try { const s = await sb('GET', `dealer_user_scope?uid=eq.${enc(who.uid)}&select=scope,locations`); scopeRow = (s && s[0]) || null; } catch (e) { if (!/PGRST205|42P01/.test(String(e.message))) throw e; } }
   const visible = AC.visibleLocations(did, family, scopeRow);
@@ -95,27 +103,28 @@ async function loadAll(who, b) {
   const inIds = ids.map(enc).join(',');
   const [sales, orders, quotesRaw, names, tests] = await Promise.all([
     sbAll(`monthly_sales?dealer_id=in.(${inIds})&select=dealer_id,manufacturer,period,product_code,product_name,qty,amount,source,external_ref&order=id.asc`),
-    sb('GET', `orders?dealer_id=in.(${inIds})&select=dealer_id,manufacturer,status,subtotal,submitted_at,order_items(code,qty)&order=submitted_at.desc&limit=3000`),
-    sb('GET', `dealer_saved_quotes?dealer_id=eq.${enc(root)}&location_id=in.(${inIds})&select=location_id,status,created_at,lines&limit=2000`).catch((e) => { if (/PGRST205|42P01/.test(String(e.message))) return null; throw e; }),
+    sbAll(`orders?dealer_id=in.(${inIds})&select=id,dealer_id,manufacturer,status,subtotal,submitted_at,order_items(code,qty)&order=id.asc`),
+    sbAll(`dealer_saved_quotes?dealer_id=eq.${enc(root)}&location_id=in.(${inIds})&select=id,location_id,status,created_at,lines&order=id.asc`).catch((e) => { if (/PGRST205|42P01/.test(String(e.message))) return null; throw e; }),
     sb('GET', 'manufacturers?select=slug,name'),
     testDealers(),
   ]);
   const mfrName = {}; for (const m of names || []) mfrName[m.slug] = m.name || m.slug;
   // anonymous network view: other dealers only (not this company, not TEST dealers), the past 12 months
   const since = addMonthsYm(today.slice(0, 7), -11);
-  const familyIds = new Set(family.map((f) => String(f.id)));
+  const roots = await companyOf(), ownRoot = String(root);
   const net = new Map();
   for (const r of await networkRows(since)) {
-    const dl = String(r.dealer_id || ''); if (!dl || familyIds.has(dl) || tests.has(dl) || !r.product_code) continue;
-    const k = r.manufacturer + '|' + r.product_code; const x = net.get(k) || { manufacturer: r.manufacturer, code: String(r.product_code), name: r.product_name || '', dealerSet: new Set(), units: 0 };
-    x.dealerSet.add(dl); x.units += Number(r.qty) || 0; net.set(k, x);
+    const dl = String(r.dealer_id || ''); if (!dl || tests.has(dl) || !r.product_code) continue;
+    const co = roots.get(dl) || dl; if (co === ownRoot || tests.has(co)) continue;   // this company (open or closed locations) never counts
+    const k = r.manufacturer + '|' + r.product_code; const x = net.get(k) || { manufacturer: r.manufacturer, code: String(r.product_code), companies: new Set(), units: 0 };
+    x.companies.add(co); x.units += Number(r.qty) || 0; net.set(k, x);
   }
-  const network = [...net.values()].map((x) => ({ manufacturer: x.manufacturer, code: x.code, name: x.name, dealers: x.dealerSet.size, units: x.units }));
+  const network = [...net.values()].map((x) => ({ manufacturer: x.manufacturer, code: x.code, dealers: x.companies.size, units: x.units }));
   const slugs = [...new Set((sales || []).map((r) => r.manufacturer).filter(Boolean))];
-  const [coverageStart, cats] = await Promise.all([coverageFor(slugs), Promise.all(slugs.map(async (s) => [s, await catalogFor(s)]))]);
+  const [firstReport, reportedMonths, cats] = await Promise.all([coverageFor(slugs), reportedMonthsFor(slugs, Number(year) - 1), Promise.all(slugs.map(async (s) => [s, await catalogFor(s)]))]);
   const catalog = {}; for (const [s, c] of cats) if (c) catalog[s] = c;
   const report = REP.build({ year, today, locations, scope, sales: sales || [], orders: (orders || []).map((o) => Object.assign(o, { items: o.order_items || [] })),
-    quotes: quotesRaw || [], catalog, mfrName, coverageStart, network, isRetired: RETIRED.isRetiredLine });
+    quotes: quotesRaw || [], catalog, mfrName, firstReport, reportedMonths, network, isRetired: RETIRED.isRetiredLine });
   if (quotesRaw == null) report.notes.push('Saved quotes are not available yet.');
   let brand = { business_name: self.business_name || '', logo_url: null };
   for (const id of [did, String(root)]) { try { const r = await sb('GET', `dealers?id=eq.${enc(id)}&select=logo_url`); if (r && r[0] && r[0].logo_url) { brand.logo_url = r[0].logo_url; break; } } catch (e) { /* no logo column yet */ } }
@@ -132,11 +141,13 @@ async function aiRecommendations(L, dealerId) {
   const F = REP.facts(L.report, L.scopeName);
   let guide = ''; try { guide = await STYLE.loadStyleGuide((p) => sb('GET', p)); } catch (e) { guide = STYLE.STYLE_GUIDE || ''; }
   const prompt = `You are a knowledgeable HomeCare Provider Services (HCPS) representative writing short, practical growth suggestions for a home medical equipment dealer, based ONLY on these facts from their HCPS report.\n\nFACTS (id: text):\n${F.map((f) => `${f.id}: ${f.text}`).join('\n')}\n\nRULES:\n- Give 3 to 5 suggestions. Each must cite the fact ids it relies on in "refs".\n- Use only numbers that appear in the facts; do not calculate new totals, percentages, margins, costs, forecasts or customer counts.\n- Purchases are manufacturer-reported; portal orders and quotes are activity, not sales. Opportunities are what other dealers order — say so, never claim they will sell.\n- No pricing promises, discounts or medical claims. Plain, confident, helpful; no hype.\n\nStyle guide:\n${guide}\n\nAnswer with minified JSON only: {"recommendations":[{"title":"…","detail":"…","refs":["id"]}]}`;
-  const send = (thinking) => fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+  const send = (thinking) => fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined, headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify(Object.assign({ model: process.env.HCPS_AI_MODEL || 'claude-sonnet-5-5', max_tokens: 1200, messages: [{ role: 'user', content: prompt }] }, thinking ? { thinking } : {})) });
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let r = await send({ type: 'disabled' }); let t = await r.text();
-    if (r.status === 400 && /thinking/i.test(t)) { r = await send(null); t = await r.text(); }
+  let calls = 0, thinking = { type: 'disabled' };
+  while (calls < 2) {   // at most two calls to the AI provider per request
+    let r, t; calls++;
+    try { r = await send(thinking); t = await r.text(); } catch (e) { break; }
+    if (r.status === 400 && /thinking/i.test(t)) { thinking = null; continue; }
     if (!r.ok) continue;
     let text = ''; try { for (const c of (JSON.parse(t).content || [])) if (c && typeof c.text === 'string') text += c.text; } catch (e) {}
     const s = text.indexOf('{'), e = text.lastIndexOf('}'); let raw = null; try { raw = JSON.parse(text.slice(s, e + 1)); } catch (x) {}

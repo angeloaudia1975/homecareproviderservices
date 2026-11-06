@@ -37,7 +37,7 @@ async function render({ report, dealer, scopeName, generated }) {
   const clip = (s, w, size, bold) => { s = safe(s); if (width(s, size, bold) <= w) return s; while (s.length > 1 && width(s + '…', size, bold) > w) s = s.slice(0, -1); return s + '…'; };
   const wrap = (s, w, size) => { const out = []; let cur = ''; for (const word of safe(s).split(/\s+/)) { const t = cur ? cur + ' ' + word : word; if (width(t, size) > w && cur) { out.push(cur); cur = word; } else cur = t; } if (cur) out.push(cur); return out; };
   const need = (h) => { if (y - h < M + 30) newPage(); };
-  const heading = (t, sub) => { need(48); y -= 18; text(t, M, y, { size: 12.5, bold: true, color: NAVY }); page.drawRectangle({ x: M, y: y - 5, width: 34, height: 2, color: ORANGE }); y -= 12; if (sub) { for (const l of wrap(sub, W - 2 * M, 8)) { y -= 10; text(l, M, y, { size: 8, color: MUTED }); } } y -= 6; };
+  const heading = (t, sub) => { need(95); y -= 18; text(t, M, y, { size: 12.5, bold: true, color: NAVY }); page.drawRectangle({ x: M, y: y - 5, width: 34, height: 2, color: ORANGE }); y -= 12; if (sub) { for (const l of wrap(sub, W - 2 * M, 8)) { y -= 10; text(l, M, y, { size: 8, color: MUTED }); } } y -= 6; };
   const para = (s, o = {}) => { for (const l of wrap(s, W - 2 * M, o.size || 8.5)) { need(12); y -= 11; text(l, M, y, { size: o.size || 8.5, color: o.color || INK }); } };
   /* cols: [{label, w, align:'r'|'l', get(row)->string, color?(row)}] */
   const table = (cols, rows, empty) => {
@@ -64,7 +64,8 @@ async function render({ report, dealer, scopeName, generated }) {
   y -= 66;
   page.drawRectangle({ x: M, y: y - 4, width: W - 2 * M, height: 3, color: BLUE });
   y -= 24; text('Dealer Performance Report', M, y, { size: 18, bold: true, color: NAVY });
-  y -= 16; text(clip(`${dealer.business_name || ''}${scopeName && scopeName !== dealer.business_name ? ' — ' + scopeName : ''}`, W - 2 * M, 11, true), M, y, { size: 11, bold: true });
+  const who = scopeName && dealer.business_name && !String(scopeName).startsWith(dealer.business_name) ? `${dealer.business_name} — ${scopeName}` : (scopeName || dealer.business_name || '');
+  y -= 16; text(clip(who, W - 2 * M, 11, true), M, y, { size: 11, bold: true });
   y -= 13; text(`${report.period.label} · prepared ${generated} by HomeCare Provider Services`, M, y, { size: 8.5, color: MUTED });
 
   // ---- scorecard tiles

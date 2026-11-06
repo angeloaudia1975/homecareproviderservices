@@ -17,12 +17,13 @@ async function t(n, f) { try { await f(); pass++; console.log('ok   ' + n); } ca
 const eq = (a, b, w) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error((w || '') + ' got ' + JSON.stringify(a) + ' expected ' + JSON.stringify(b)); };
 const ok = (c, w) => { if (!c) throw new Error(w); };
 const HQ = '11111111-1111-1111-1111-111111111111', BR = '22222222-2222-2222-2222-222222222222', OTHER = '44444444-4444-4444-4444-444444444444';
+const F1 = '77777777-7777-7777-7777-777777777771', F2 = '77777777-7777-7777-7777-777777777772', F3 = '77777777-7777-7777-7777-777777777773';
 const N1 = '55555555-5555-5555-5555-555555555551', N2 = '55555555-5555-5555-5555-555555555552', N3 = '55555555-5555-5555-5555-555555555553', TST = '66666666-6666-6666-6666-666666666666';
 const Y = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric' }).format(new Date()));
 const p = (y, m) => `${y}-${String(m).padStart(2, '0')}-01`;
 let id = 0;
 const sale = (dealer, mfr, period, code, qty, amount, source, extra) => Object.assign({ id: ++id, dealer_id: dealer, manufacturer: mfr, period, product_code: code, product_name: code + ' name', qty, amount, source: source || 'sales_report', external_ref: source === 'commission' ? null : 'x' }, extra || {});
-const CAT = { strongback: [{ code: 'SB1', name: 'Excursion', category: 'Wheelchairs' }, { code: 'SB2', name: 'Rollator', category: 'Rollators' }, { code: 'SB9', name: 'Popular Chair', category: 'Wheelchairs' }, { code: 'SB8', name: 'Seat', category: 'Accessories' }, { code: 'SB7', name: 'Walker', category: 'Rollators' }],
+const CAT = { strongback: [{ code: 'SB1', name: 'Excursion', category: 'Wheelchairs' }, { code: 'SB2', name: 'Rollator', category: 'Rollators' }, { code: 'SB9', name: 'Popular Chair', category: 'Wheelchairs' }, { code: 'SB8', name: 'Seat', category: 'Accessories' }, { code: 'SB7', name: 'Walker', category: 'Rollators' }, { code: 'SB6', name: 'Branch favourite', category: 'Wheelchairs' }],
   bemis: [{ code: 'BE1', name: 'Seat', category: 'Bath Safety' }], gce: [{ code: 'G1', name: 'Retired line item', category: 'Oxygen' }, { code: 'G0', name: 'Old', category: 'Oxygen' }] };
 
 function seed(o) {
@@ -41,6 +42,7 @@ function seed(o) {
     sale(TST, 'strongback', p(Y, 1), 'SB8', 1, 10), sale(N1, 'strongback', p(Y, 1), 'SB8', 1, 10), sale(N2, 'strongback', p(Y, 1), 'SB8', 1, 10),
     sale(N1, 'gce', p(Y, 1), 'G1', 1, 10), sale(N2, 'gce', p(Y, 1), 'G1', 1, 10), sale(N3, 'gce', p(Y, 1), 'G1', 1, 10),
     sale(OTHER, 'strongback', p(Y, 1), 'SB1', 1, 99999),
+    sale(F1, 'strongback', p(Y, 1), 'SB6', 1, 300), sale(F2, 'strongback', p(Y, 1), 'SB6', 1, 300), sale(F3, 'strongback', p(Y, 1), 'SB6', 1, 300),
     sale(N1, 'strongback', p(Y, 1), 'SB7', 1, 300), sale(N2, 'strongback', p(Y, 1), 'SB7', 1, 300), sale(BR, 'strongback', p(Y, 1), 'SB7', 1, 0),
     sale(N1, 'strongback', p(Y, 1), 'SB1', 1, 300), sale(N2, 'strongback', p(Y, 1), 'SB1', 1, 300), sale(N3, 'strongback', p(Y, 1), 'SB1', 1, 300),
     sale(HQ, 'gce', p(Y - 1, 0 + 1).replace(/-01-01$/, '-01-01'), 'G0', 1, 5, 'sales_report', { period: `${Y - 2}-12-01` }),
@@ -48,9 +50,9 @@ function seed(o) {
   const W = M.createWorld({ tokens: {}, failRead: o.failRead, missingTables: o.missingTables, catalog: CAT, tables: {
     dealers: [{ id: HQ, parent_id: null, business_name: 'Acme Medical', city: 'Dayton', state: 'OH', logo_url: null }, { id: BR, parent_id: HQ, business_name: 'Acme Branch', city: 'Xenia', state: 'OH' },
       { id: OTHER, parent_id: null, business_name: 'Else Medical' }, { id: N1, parent_id: null, business_name: 'N1' }, { id: N2, parent_id: null, business_name: 'N2' }, { id: N3, parent_id: null, business_name: 'N3' },
-      { id: TST, parent_id: null, business_name: 'TEST', is_test: true }],
+      { id: TST, parent_id: null, business_name: 'TEST', is_test: true }, { id: F1, parent_id: null, business_name: 'Fam' }, { id: F2, parent_id: F1, business_name: 'Fam 2' }, { id: F3, parent_id: F1, business_name: 'Fam 3' }],
     dealer_users: [{ uid: 'u-hq', status: 'approved', dealer_id: HQ, email: 'hq@acme.test' }, { uid: 'u-br', status: 'approved', dealer_id: BR, email: 'br@acme.test' }, { uid: 'u-ot', status: 'approved', dealer_id: OTHER, email: 'x@else.test' }],
-    dealer_user_scope: [], dealer_preview_tokens: [{ token: 'pv1', dealer_id: HQ, expires_at: new Date(Date.now() + 600000).toISOString() }],
+    dealer_user_scope: [], dealer_preview_tokens: [{ token: 'pv1', dealer_id: HQ, expires_at: new Date(Date.now() + 600000).toISOString() }, { token: 'pvnull', dealer_id: HQ, expires_at: null }, { token: 'pvold', dealer_id: HQ, expires_at: new Date(Date.now() - 1000).toISOString() }],
     monthly_sales: sales,
     orders: [{ id: 'o1', dealer_id: HQ, manufacturer: 'strongback', status: 'submitted', subtotal: 250, submitted_at: `${Y}-01-15T10:00:00Z` },
       { id: 'o2', dealer_id: HQ, manufacturer: 'strongback', status: 'cancelled', subtotal: 999, submitted_at: `${Y}-01-16T10:00:00Z` },
@@ -74,7 +76,7 @@ const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer
   await t('purchases: a commission line repeating a sales-report line counts once; a line with no amount is not $0', async () => {
     const W = seed(); const C = api(W); const r = await as(C, 'hq', { action: 'report', scope: HQ, year: Y });
     eq(r.status, 200); const R = r.body.report;
-    eq(R.purchases.total, 700, 'HQ purchases'); ok(R.notes.some((n) => /1 commission-statement line/.test(n)), 'dup note'); ok(R.notes.some((n) => /1 reported line\(s\) without an amount/.test(n)), 'no-amount note');
+    eq(R.purchases.total, 700, 'HQ purchases'); ok(R.notes.some((n) => /1 commission-statement line/.test(n)), 'dup note'); ok(R.notes.some((n) => /1 reported line\(s\) have no amount/.test(n)), 'no-amount note');
   });
   await t('portal orders shown apart (cancelled excluded) and never added to purchases; quotes are activity', async () => {
     const W = seed(); const C = api(W); const R = (await as(C, 'hq', { action: 'report', scope: 'company', year: Y })).body.report;
@@ -84,8 +86,9 @@ const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer
   await t('year-over-year only where HCPS history covers the window: Strongback compared, Bemis shown as "—", the company total withheld with a note', async () => {
     const W = seed(); const C = api(W); const R = (await as(C, 'hq', { action: 'report', scope: 'company', year: Y })).body.report;
     const sb = R.manufacturers.find((m) => m.slug === 'strongback'), be = R.manufacturers.find((m) => m.slug === 'bemis');
-    eq([sb.purchases, sb.prior, sb.change_pct], [700, 1300, -46.2]); eq([be.prior, be.change_pct], [null, null]); eq(R.purchases.prior, null);
-    ok(R.notes.some((n) => /Bemis/.test(n) && /not shown/.test(n)), 'coverage note');
+    eq([sb.purchases, sb.prior, sb.change_pct], [700, 1300, -46.2]); eq([be.prior, be.change_pct], [null, null]);
+    eq([R.purchases.total, R.purchases.current_compared, R.purchases.prior, R.purchases.change_pct, R.purchases.partial], [1100, 700, 1300, -46.2, true], 'company: like-for-like over the comparable line only');
+    ok(R.notes.some((n) => /No year-over-year comparison for: Bemis/.test(n)), 'coverage note');
     const hq = (await as(C, 'hq', { action: 'report', scope: HQ, year: Y })).body.report; eq([hq.purchases.prior, hq.purchases.change_pct], [1300, -46.2], 'HQ alone is fully covered');
   });
   await t('categories from the catalog; Rollators flagged as declining (≥$500 last year, ≤ -20%)', async () => {
@@ -113,7 +116,7 @@ const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer
   await t('HCPS preview token reads the report; AI is refused in preview', async () => {
     const W = seed(); const C = api(W);
     eq((await as(C, 'preview:pv1', { action: 'report', scope: 'company', year: Y })).body.report.purchases.total, 1100);
-    eq((await as(C, 'preview:pv1', { action: 'report_ai', scope: 'company' })).status, 403); eq((await as(C, 'preview:nope', { action: 'report' })).status, 401);
+    eq((await as(C, 'preview:pv1', { action: 'report_ai', scope: 'company' })).status, 403); eq((await as(C, 'preview:nope', { action: 'report' })).status, 401); eq((await as(C, 'preview:pvnull', { action: 'report' })).status, 401, 'no expiry refused'); eq((await as(C, 'preview:pvold', { action: 'report' })).status, 401, 'expired');
   });
   await t('strict: unreadable purchases or orders answer 503, never an empty report', async () => {
     for (const tb of ['monthly_sales', 'orders']) { const W = seed({ failRead: (table, qs) => (table === tb && /dealer_id=in/.test(decodeURIComponent(String(qs || ''))) ? 500 : 0) }); const r = await as(api(W), 'hq', { action: 'report', year: Y }); eq(r.status, 503, tb); }
@@ -137,9 +140,31 @@ const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer
     eq((await as(api(seed(), { ANTHROPIC_API_KEY: '' }), 'hq', { action: 'report_ai' })).status, 503);
     const W2 = seed({ aiText: '{}' }); const C2 = api(W2); const codes = []; for (let i = 0; i < 5; i++) codes.push((await as(C2, 'hq', { action: 'report_ai' })).status); eq(codes, [502, 502, 502, 502, 429]);
   });
+  await t('one company with three branches never meets the 3-dealer network minimum alone', async () => {
+    const R = (await as(api(seed()), 'hq', { action: 'report', scope: HQ, year: Y })).body.report; ok(!R.opportunities.some((o) => o.code === 'SB6'), JSON.stringify(R.opportunities));
+  });
+  await t('reporting lag: months not yet reported are left out of this year and of the comparison (Jan–Sep vs Jan–Sep, 0%)', async () => {
+    const rows = [], rm = [];
+    for (let m = 1; m <= 12; m++) { rows.push({ dealer_id: 'a', manufacturer: 'x', period: `2025-${String(m).padStart(2, '0')}-01`, product_code: 'X', qty: 1, amount: 100, source: 'sales_report', external_ref: 'r' }); rm.push(`2025-${String(m).padStart(2, '0')}`); }
+    for (let m = 1; m <= 9; m++) { rows.push({ dealer_id: 'a', manufacturer: 'x', period: `2026-${String(m).padStart(2, '0')}-01`, product_code: 'X', qty: 1, amount: 100, source: 'sales_report', external_ref: 'r' }); rm.push(`2026-${String(m).padStart(2, '0')}`); }
+    const R = REP.build({ year: '2026', today: '2026-11-06', locations: [{ id: 'a', name: 'A' }], scope: 'a', sales: rows, catalog: {}, reportedMonths: { x: rm } });
+    eq([R.period.through, R.purchases.total, R.purchases.prior, R.purchases.change_pct, R.monthly.length], ['2026-09', 900, 900, 0, 9]);
+  });
+  await t('a gap in a line\'s reports (Feb never reported this year) compares only the months reported in both years', async () => {
+    const rows = [], rm = ['2025-01', '2025-02', '2025-03', '2026-01', '2026-03'];
+    for (const m of rm) rows.push({ dealer_id: 'a', manufacturer: 'x', period: m + '-01', product_code: 'X', qty: 1, amount: 100, source: 'sales_report', external_ref: 'r' });
+    const R = REP.build({ year: '2026', today: '2026-04-10', locations: [{ id: 'a', name: 'A' }], scope: 'a', sales: rows, catalog: {}, reportedMonths: { x: rm } });
+    eq([R.purchases.total, R.purchases.current_compared, R.purchases.prior, R.purchases.change_pct, R.manufacturers[0].compared_months], [200, 200, 200, 0, 2]);
+  });
+  await t('PDF survives emoji, CJK, right-to-left and control characters in names', async () => {
+    const PDF = require(path.join(ROOT, '_report_pdf.js'));
+    const rep = REP.build({ year: '2026', today: '2026-04-10', locations: [{ id: 'a', name: 'A' }], scope: 'a', sales: [{ dealer_id: 'a', manufacturer: 'x', period: '2026-01-01', product_code: 'X', product_name: 'Chair 🪑 椅子 كرسي \u0007 ≥', qty: 1, amount: 5, source: 'sales_report', external_ref: 'r' }], catalog: {}, reportedMonths: { x: ['2026-01'] } });
+    const b = await PDF.render({ report: rep, dealer: { business_name: 'Dealer 🙂 名前', logo_url: 'data:image/png;base64,AAAA' }, scopeName: 'Scope \u202e evil', generated: 'today' }); ok(b.slice(0, 5).toString() === '%PDF-', 'pdf');
+  });
   await t('builder: the current-year window is Jan→this month, compared with the same months last year', async () => {
-    const w = REP.windowFor(2026, '2026-03-15'); eq([w.months, w.prior, w.ytd], [['2026-01', '2026-02', '2026-03'], ['2025-01', '2025-02', '2025-03'], true]);
-    eq(REP.windowFor(2025, '2026-03-15').months.length, 12); eq(REP.numbersOk('Down 46.2% from $1,300.00', [{ id: 'a', text: '$1,300.00 and -46.2%' }]), true); eq(REP.numbersOk('Down 47%', [{ id: 'a', text: '46.2' }]), false);
+    const w = REP.windowFor(2026, '2026-03-15', '2026-03'); eq([w.months, w.prior, w.ytd], [['2026-01', '2026-02', '2026-03'], ['2025-01', '2025-02', '2025-03'], true]);
+    eq(REP.windowFor(2025, '2026-03-15').months.length, 12); eq(REP.windowFor(2026, '2026-03-15', '2026-02').months, ['2026-01', '2026-02']); eq(REP.windowFor(2026, '2026-03-15').months, ['2026-01', '2026-02'], 'nothing reported → through last month');
+    eq(REP.windowFor(2026, '2026-03-15', '2026-02').months, ['2026-01', '2026-02'], 'stops at the last reported month'); eq(REP.windowFor(2026, '2026-03-15', '2025-12').months, ['2026-01', '2026-02'], 'no data this year → through last month'); eq(REP.numbersOk('Down 46.2% from $1,300.00', [{ id: 'a', text: '$1,300.00 and -46.2%' }]), true); eq(REP.numbersOk('Down 47%', [{ id: 'a', text: '46.2' }]), false);
   });
   console.log(`\ndealer reports: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
