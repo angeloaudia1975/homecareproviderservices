@@ -2052,6 +2052,28 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     40/day per dealer, 5 per recipient/day, checked and recorded atomically by `dealer_document_send_reserve` (advisory
     lock); recipient stored as domain + SHA-256 of the normalised address. SQL `supabase/c7_s4_retail_and_send_limits.sql`
     — NOT run yet (Angelo); before it the code answers "opens shortly" / sends untracked as before.
+  · **Stage 3 + Stage 4 SQL both RUN by Angelo (2026-11-05) and probed: never ask him to rerun them.**
+  · **Stages 3–4 completion LIVE 2026-11-05 ~21:30 CT (admin #96 → 1e215dd, ordering #52 → b5c80f0).** Customer Quotes
+    (quantity + ONE price per line: verified MSRP / my retail / one-time; save / reopen / delete / Print-PDF / email via
+    `dealer-quotes-api`, re-priced and branded on the server from HCPS records), My Retail Prices (company + per-location,
+    bulk MSRP / markup / clear, CSV import → editor, export, history), Account Center per-location details + "Request a
+    change for this location" (head office for a visible branch; a branch only itself), dealer-branded brochures.
+    RULES: the dealer's cost / contract / tier tables are never read for a customer document; a quote line's printed part
+    number is its own code (Golden: its configuration key + item no.); an upgraded configuration has no verified MSRP;
+    dealer logos only a plain https URL or a PNG/JPEG/WebP data URL, always attribute-escaped (stored-XSS fix); customer
+    email = ONE plain address (no display name / brackets — they defeated the per-recipient limit); From display name
+    quoted; message text inserted with a function replacer; send limits (10/h, 40/day, 5/recipient/day) count per COMPANY
+    (head office) across quotes + brochures and fail closed when the reserve function is missing; a head office opening a
+    branch's quote previews that branch's retail. Storefront inline handlers may only call names exported on `window`
+    (the page script is an IIFE) — `qCust` / `rpUi` / `p360ReportYear` replaced handlers that silently did nothing.
+    Saved quotes need `supabase/c7_s4b_saved_quotes.sql` (NOT run yet — until then "Saved quotes open shortly.").
+    Tests: admin quotes 11, account-center 23, retail-prices 11; ordering quotes-retail.browser 65, brochure-auth 24.
+  · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
+    (ordering) are authorized for deletion (the session's safety control refused the delete — Angelo deletes them on
+    GitHub); no real account numbers remain in either public repo's current files; the private Golden repo's baseline
+    list and its own output files are production information and stay. Dealer passwords / resets / GitHub Support are NOT
+    required (owner accepts the risk; do not raise again). HCPS keeps reviewing every manufacturer order before it is
+    processed — never add automated manufacturer submission without separate authorization.
   · **Documenso free feasibility (research 2026-11-05):** 5 documents/month, $0, API on free (v2: upload, fields by page %,
     signing link, webhooks, signed PDF + audit + certificate downloads); at the limit the API refuses (400, never charges);
     fillable fields flattened (HCPS fills + flattens the actual PDF itself); encrypted PDFs refused; signer checks = email
