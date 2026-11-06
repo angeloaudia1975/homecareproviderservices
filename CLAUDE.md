@@ -2252,6 +2252,14 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     under Cloud Medical Supply) is NOT part of the pilot unless Angelo says so. No 360 Dealer Portal login exists for
     James Medical. Do NOT publish its storefront or send real inquiries until Angelo authorizes public activation;
     preview through a staff view-as link only.
+    **Pack MAP unit (PR #105, 2026-11-06, 373fc74):** a pack whose MAP unit (map_basis) is not recorded never has its
+    MAP multiplied by the pack quantity. Unknown unit → no dealer/calculated price under it (held), but the official MSRP
+    is still published; the per-piece MAP is treated as per pack only when msrp_basis = order_unit AND MAP × qty > MSRP.
+    **Live coverage after #105 (storefront-rules-api coverage, 2026-11-06 ~16:00 CT):** ABM 20 MSRP / 15 calculated / 7
+    call (no standard cost) · Access4U 125 MSRP · AirAvant 12 MSRP · Bemis 8 MSRP · Climbing Steps 18 MSRP · Corsicana 14
+    MSRP · Dalton 330 calculated / 9 call (no standard cost) · Ovation 186 MSRP / 30 calculated · PediFix 464 MSRP / 31 call
+    (7 no standard cost, 24 no MSRP and no MAP on file) · Strongback 7 calculated · Yuwell 9 MSRP. James Medical preview
+    (Bowling Green, staff view-as): Golden with photos + MSRP, PediFix MSRP restored, no prices to the public API.
     **Advertising-rule research (2026-11-06 ~14:40 CT, from repo documents + live catalog data; counts only):** documented
     MAP for Bemis (Terms of Agreement, dealer application 2026 — written MAP policy incl. dealer websites; "call for price"
     allowed; dealers selling online must notify Bemis and use Bemis content), Golden (eMAP per product), Strongback (Rev C
