@@ -142,3 +142,9 @@
   from = "/rep"
   to = "/admin/rep-home.html"
   status = 200
+
+# C3-07 Stage 5: manufacturer application PDFs travel with the functions that complete them (SHA-256 pinned in _app_forms.js).
+[functions."dealer-applications-api"]
+  included_files = ["src/assets/docs/climbing-steps-dealer-application-2025-hps-ms84xfg3.pdf", "src/assets/docs/2026-dealer-account-application-hps-mud66qww.pdf", "src/assets/docs/abm-respiratory-care-dealer-application-2026-mw3trycz.pdf", "src/assets/docs/pedifix-credit-application-w-sales-tax-info-rev-feb-2022-mw3tvh1j.pdf", "src/assets/docs/bongo-rx-airavant-medical-new-customer-credit-application-20-ms0lb7p9.pdf", "src/assets/docs/credit-application-for-access4u-2023-ms4v7utn.pdf", "src/assets/docs/ovation-medical-new-customer-credit-application-rev-082017-mw3ttkj5.pdf", "src/assets/docs/bemis-hme-dme-dealer-application-2026-ms97gpvy.pdf", "src/assets/docs/yuwell-new-customer-credit-application-2026.pdf", "src/assets/docs/dalton-medical-credit-application-2026-mud64ho3.pdf"]
+[functions."applications-admin-api"]
+  included_files = ["src/assets/docs/climbing-steps-dealer-application-2025-hps-ms84xfg3.pdf", "src/assets/docs/2026-dealer-account-application-hps-mud66qww.pdf", "src/assets/docs/abm-respiratory-care-dealer-application-2026-mw3trycz.pdf", "src/assets/docs/pedifix-credit-application-w-sales-tax-info-rev-feb-2022-mw3tvh1j.pdf", "src/assets/docs/bongo-rx-airavant-medical-new-customer-credit-application-20-ms0lb7p9.pdf", "src/assets/docs/credit-application-for-access4u-2023-ms4v7utn.pdf", "src/assets/docs/ovation-medical-new-customer-credit-application-rev-082017-mw3ttkj5.pdf", "src/assets/docs/bemis-hme-dme-dealer-application-2026-ms97gpvy.pdf", "src/assets/docs/yuwell-new-customer-credit-application-2026.pdf", "src/assets/docs/dalton-medical-credit-application-2026-mud64ho3.pdf"]

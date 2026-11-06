@@ -88,6 +88,7 @@
         { href:"/admin/call-list.html",     label:"Sales Call Workspace",  icon:"📞", owns:true, desc:"Who to call, why, what to say — AI call strategy, outcome capture & follow-up" },
         { href:"/admin/health.html",        label:"Dealer Health",         icon:"❤️", desc:"Every dealer scored on recency, rhythm & trend" },
         { href:"/admin/dealers.html",       label:"Dealer Manager",        icon:"🏢", owns:true, desc:"Master dealer database, locations & hierarchy" },
+        { href:"/admin/applications.html",  label:"Manufacturer Applications", icon:"✍️", status:"new", desc:"President only — signed manufacturer credit / dealer applications from the 360 Dealer Portal: review privately, send them on yourself, record the answer" },
         { href:"/admin/account-assignment.html", label:"Account Assignment", icon:"🧑‍💼", desc:"Assign every dealer to a sales rep — bulk & fast" },
         { href:"/admin/dealer.html",        label:"Dealer 360 & CRM",      icon:"📇", desc:"Full account command center — activity, contacts, tasks" },
         { href:"/admin/map.html",           label:"Territory Map",         icon:"🗺️", desc:"Dealer map, drive routes & saved trips" },

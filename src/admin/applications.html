@@ -1,0 +1,95 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Manufacturer Applications</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .apf{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+ .apf select{padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:14px;min-height:44px}
+ .apc{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:#fff}
+ .apc .hd{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+ .apc .t{font-weight:800;color:var(--navy);font-size:14px;overflow-wrap:anywhere}
+ .apc .m{font-size:12.5px;color:var(--gray);margin-top:4px;overflow-wrap:anywhere}
+ .apst{display:inline-block;border-radius:999px;padding:2px 10px;font-size:11px;font-weight:800;border:1px solid #d5dbe2;background:#f0f2f5;color:#55606c}
+ .apst.signed,.apst.offline_signed{background:#fff7e0;color:#8a5a00;border-color:#f1d48a}
+ .apst.under_review{background:#e8f0fb;color:#1f4f8f;border-color:#b9cdea}
+ .apst.sent_to_manufacturer{background:#eef0ff;color:#3b3f9a;border-color:#c5c8f0}
+ .apst.approved{background:#e9f7ef;color:#1f7a44;border-color:#a9dcbc}
+ .apst.declined,.apst.signing_failed{background:#fdecec;color:#b42323;border-color:#f3b4b4}
+ .apbtn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 14px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--navy);font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;text-decoration:none}
+ .apbtn.pri{background:var(--navy);color:#fff;border-color:var(--navy)}
+ .apgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 18px;font-size:13px}
+ .apgrid .k{color:var(--gray);font-size:11.5px}
+ .apsec{margin:14px 0 4px;font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#ef6325}
+ .apev{font-size:12px;border-top:1px dashed var(--line);margin-top:10px;padding-top:6px}
+ .apnote{background:#f5f8fc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--navy2);margin-bottom:12px}
+ .aperr{color:#b42323;font-size:13px;margin-top:8px}
+ textarea.apn{width:100%;min-height:80px;border:1px solid var(--line);border-radius:8px;padding:8px;font-family:inherit;font-size:14px;box-sizing:border-box}
+ @media(max-width:700px){.apgrid{grid-template-columns:minmax(0,1fr)} textarea.apn,.apf select{font-size:16px}}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Manufacturer Applications</h1>
+    <div class="sub">Credit / dealer applications completed and signed in the 360 Dealer Portal on each manufacturer's own form. President only. Nothing is sent to a manufacturer automatically — you review each one, send it yourself, and record the answer here.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let TOKEN=HCPS.token(), LIST=null, FILT="", OPEN=null;
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+const LABEL={draft:"Draft (dealer)",queued:"Waiting for a signing slot",signing:"With the signer",signing_failed:"Signing stopped",signed:"Signed — review",offline_signed:"Signed on paper — review",under_review:"Under review",sent_to_manufacturer:"Sent to manufacturer",approved:"Approved by manufacturer",declined:"Declined",withdrawn:"Withdrawn"};
+const fmt=d=>d?new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}):"";
+async function api(p){ const r=await fetch("/.netlify/functions/applications-admin-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(p)});
+  let b={}; try{ b=await r.json(); }catch(e){} return {status:r.status,body:b}; }
+async function boot(){
+  if(!TOKEN){ $("#body").innerHTML='<div class="apnote">Please sign in to Connect 360.</div>'; return; }
+  const r=await api({action:"list",status:FILT});
+  if(r.status!==200){ $("#body").innerHTML=`<div class="apnote">${esc(r.body.error||"Could not load applications.")}</div>`; return; }
+  LIST=r.body; render();
+}
+function render(){
+  const m=LIST.monthly, apps=LIST.applications||[];
+  const opts=["","signed","under_review","sent_to_manufacturer","queued","signing","approved","declined","draft"].map(s=>`<option value="${s}" ${FILT===s?"selected":""}>${s?LABEL[s]:"All open + decided"}</option>`).join("");
+  $("#body").innerHTML=`<div class="apnote">E-signature: ${LIST.signing?"connected (Documenso Free)":"<b>not connected yet</b> — dealers can still complete and print applications"}${m?` · this month ${m.used} of ${m.limit} free signatures used`:""}.</div>
+    <div class="apf"><label for="apfs" style="font-size:12px;color:var(--gray)">Show</label><select id="apfs" onchange="FILT=this.value;boot()">${opts}</select></div>
+    <div id="apdetail"></div>
+    ${apps.length?apps.map(a=>`<div class="apc"><div class="hd"><div class="t">${esc(a.name)} — ${esc(a.business_name||(a.location&&a.location.business_name)||"")}</div><span class="apst ${esc(a.status)}">${esc(LABEL[a.status]||a.status)}</span></div>
+      <div class="m">${esc([a.location&&a.location.business_name,a.location&&[a.location.city,a.location.state].filter(Boolean).join(", ")].filter(Boolean).join(" · "))}${a.signer_name?` · signer ${esc(a.signer_name)}`:""} · updated ${esc(fmt(a.updated_at))}${a.signed_at?` · signed ${esc(fmt(a.signed_at))}`:""}</div>
+      <div style="margin-top:8px"><button class="apbtn" data-id="${esc(a.id)}" onclick="openApp(this.dataset.id)">Open</button></div></div>`).join("")
+      :'<div class="apnote">No applications yet.</div>'}`;
+}
+async function openApp(id){
+  const d=$("#apdetail"); d.innerHTML='<div class="apnote">Opening…</div>';
+  const r=await api({action:"get",id}); if(r.status!==200){ d.innerHTML=`<div class="apnote">${esc(r.body.error||"Could not open it.")}</div>`; return; }
+  OPEN=r.body; const a=OPEN.application, ans=OPEN.answers||{};
+  const rows=OPEN.sections.map(s=>{ const f=s.fields.filter(x=>ans[x.key]); return f.length?`<div class="apsec">${esc(s.title)}</div><div class="apgrid">${f.map(x=>`<div class="k">${esc(x.label)}</div><div>${esc(ans[x.key])}</div>`).join("")}</div>`:""; }).join("");
+  const files=Object.entries({signed:"Signed application (PDF)",certificate:"Signing certificate",audit:"Audit log"}).filter(([k])=>OPEN.files[k]).map(([k,l])=>`<a class="apbtn" target="_blank" rel="noopener" href="${esc(OPEN.files[k])}">${esc(l)}</a>`).join(" ");
+  const next=(OPEN.next||[]).map(s=>`<button class="apbtn${s==="sent_to_manufacturer"?" pri":""}" data-s="${s}" onclick="setStatus(this.dataset.s)">Mark: ${esc(LABEL[s])}</button>`).join(" ");
+  d.innerHTML=`<div class="apc" style="border-color:var(--navy)"><div class="hd"><div class="t">${esc(a.name)} application — ${esc(a.business_name||"")}</div><span class="apst ${esc(a.status)}">${esc(LABEL[a.status]||a.status)}</span></div>
+    <div class="m">Files open for two minutes. ${a.retention_until?`Kept until ${esc(a.retention_until)} (7 years from the decision).`:""}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">${files||'<span class="m">No signed file yet.</span>'} <button class="apbtn" onclick="preview()">Completed form (before signing)</button>
+      ${["queued","signing_failed"].includes(a.status)?'<button class="apbtn" onclick="retry()">Send back to the dealer to sign</button>':""}</div>
+    ${rows}
+    ${next?`<div class="apsec">Your decision</div><textarea class="apn" id="apnotes" aria-label="Review notes" placeholder="Notes (private)">${esc(a.review_notes||"")}</textarea><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${next}</div>`:""}
+    <div class="aperr" id="aperr" role="alert"></div>
+    <div class="apev"><b>History</b>${(OPEN.events||[]).map(e=>`<div>${esc(fmt(e.at))} — ${esc(e.action)} · ${esc(e.actor)}</div>`).join("")}</div></div>`;
+  d.scrollIntoView({behavior:"smooth"});
+}
+async function setStatus(s){
+  const a=OPEN.application; if(s==="approved"&&!confirm("Record that the manufacturer APPROVED this account? (This records the outcome only — verify the account number in Dealer Manager → Account changes.)")) return;
+  const r=await api({action:"set_status",id:a.id,version:a.version,status:s,notes:($("#apnotes")||{}).value||""});
+  if(r.status!==200){ $("#aperr").textContent=r.body.error||"Could not save."; return; }
+  await openApp(a.id); boot();
+}
+async function retry(){ const a=OPEN.application; const r=await api({action:"retry_signing",id:a.id}); if(r.status!==200){ $("#aperr").textContent=r.body.error||"Could not change it."; return; } await openApp(a.id); boot(); }
+async function preview(){
+  const r=await api({action:"preview",id:OPEN.application.id}); if(r.status!==200){ $("#aperr").textContent=r.body.error||"Could not build it."; return; }
+  const bin=atob(r.body.pdf_base64), u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+  const url=URL.createObjectURL(new Blob([u8],{type:"application/pdf"})); window.open(url,"_blank","noopener"); setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+boot();
+</script>
+</body></html>

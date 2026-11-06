@@ -1,0 +1,562 @@
+{
+ "access4u": {
+  "file": "credit-application-for-access4u-2023-ms4v7utn.pdf",
+  "sha256": "3fa8981a154b44ec2b39a092654f0b419cde26688fc9a22c151149912faf18c7",
+  "height": 792.0,
+  "text": [
+   {
+    "key": "biz.legal_name",
+    "page": 1,
+    "x": 101.2,
+    "baseline": 70.3,
+    "w": 465.8
+   },
+   {
+    "key": "biz.address",
+    "page": 1,
+    "x": 99.2,
+    "baseline": 89.3,
+    "w": 227.8
+   },
+   {
+    "key": "biz.city",
+    "page": 1,
+    "x": 355.6,
+    "baseline": 89.3,
+    "w": 99.4
+   },
+   {
+    "key": "biz.state",
+    "page": 1,
+    "x": 486.5,
+    "baseline": 89.3,
+    "w": 20.5
+   },
+   {
+    "key": "biz.zip",
+    "page": 1,
+    "x": 532.3,
+    "baseline": 89.3,
+    "w": 40.7
+   },
+   {
+    "key": "biz.phone",
+    "page": 1,
+    "x": 65.0,
+    "baseline": 108.5,
+    "w": 124.0
+   },
+   {
+    "key": "biz.fax",
+    "page": 1,
+    "x": 216.3,
+    "baseline": 108.5,
+    "w": 120.7
+   },
+   {
+    "key": "biz.ein",
+    "page": 1,
+    "x": 406.5,
+    "baseline": 108.2,
+    "w": 166.5
+   },
+   {
+    "key": "ship.address",
+    "page": 1,
+    "x": 106.8,
+    "baseline": 129.5,
+    "w": 200.2
+   },
+   {
+    "key": "ship.city",
+    "page": 1,
+    "x": 336.3,
+    "baseline": 129.5,
+    "w": 123.7
+   },
+   {
+    "key": "ship.state",
+    "page": 1,
+    "x": 492.0,
+    "baseline": 129.5,
+    "w": 16.0
+   },
+   {
+    "key": "ship.zip",
+    "page": 1,
+    "x": 534.0,
+    "baseline": 129.5,
+    "w": 39.0
+   },
+   {
+    "key": "biz.resale_no",
+    "page": 1,
+    "x": 107.8,
+    "baseline": 149.7,
+    "w": 122.2
+   },
+   {
+    "key": "biz.years",
+    "page": 1,
+    "x": 467.2,
+    "baseline": 150.1,
+    "w": 105.8
+   },
+   {
+    "key": "biz.started",
+    "page": 1,
+    "x": 121.4,
+    "baseline": 170.6,
+    "w": 75.6
+   },
+   {
+    "key": "biz.nature",
+    "page": 1,
+    "x": 276.9,
+    "baseline": 170.6,
+    "w": 296.1
+   },
+   {
+    "key": "purch.name",
+    "page": 1,
+    "x": 116.7,
+    "baseline": 232.9,
+    "w": 170.3
+   },
+   {
+    "key": "purch.email",
+    "page": 1,
+    "x": 323.1,
+    "baseline": 232.9,
+    "w": 136.9
+   },
+   {
+    "key": "purch.phone",
+    "page": 1,
+    "x": 496.5,
+    "baseline": 232.9,
+    "w": 76.5
+   },
+   {
+    "key": "ap.name",
+    "page": 1,
+    "x": 133.4,
+    "baseline": 251.1,
+    "w": 150.6
+   },
+   {
+    "key": "ap.email",
+    "page": 1,
+    "x": 319.0,
+    "baseline": 251.1,
+    "w": 143.0
+   },
+   {
+    "key": "ap.phone",
+    "page": 1,
+    "x": 497.7,
+    "baseline": 251.1,
+    "w": 75.3
+   },
+   {
+    "key": "bank.name",
+    "page": 1,
+    "x": 85.2,
+    "baseline": 306.2,
+    "w": 173.8
+   },
+   {
+    "key": "bank.phone",
+    "page": 1,
+    "x": 462.2,
+    "baseline": 306.2,
+    "w": 110.8
+   },
+   {
+    "key": "bank.address",
+    "page": 1,
+    "x": 72.0,
+    "baseline": 324.5,
+    "w": 194.0
+   },
+   {
+    "key": "bank.city",
+    "page": 1,
+    "x": 294.8,
+    "baseline": 324.5,
+    "w": 137.2
+   },
+   {
+    "key": "bank.state",
+    "page": 1,
+    "x": 463.7,
+    "baseline": 324.5,
+    "w": 16.3
+   },
+   {
+    "key": "bank.zip",
+    "page": 1,
+    "x": 505.7,
+    "baseline": 324.5,
+    "w": 67.3
+   },
+   {
+    "key": "ref1.name",
+    "page": 1,
+    "x": 134.2,
+    "baseline": 361.2,
+    "w": 213.8
+   },
+   {
+    "key": "ref1.phone",
+    "page": 1,
+    "x": 384.4,
+    "baseline": 361.2,
+    "w": 188.6
+   },
+   {
+    "key": "ref1.contact",
+    "page": 1,
+    "x": 130.2,
+    "baseline": 379.4,
+    "w": 218.8
+   },
+   {
+    "key": "ref1.fax",
+    "page": 1,
+    "x": 375.9,
+    "baseline": 379.4,
+    "w": 197.1
+   },
+   {
+    "key": "ref2.name",
+    "page": 1,
+    "x": 134.2,
+    "baseline": 397.8,
+    "w": 213.8
+   },
+   {
+    "key": "ref2.phone",
+    "page": 1,
+    "x": 384.4,
+    "baseline": 397.8,
+    "w": 188.6
+   },
+   {
+    "key": "ref2.contact",
+    "page": 1,
+    "x": 130.2,
+    "baseline": 416.1,
+    "w": 218.8
+   },
+   {
+    "key": "ref2.fax",
+    "page": 1,
+    "x": 375.9,
+    "baseline": 416.1,
+    "w": 197.1
+   },
+   {
+    "key": "ref3.name",
+    "page": 1,
+    "x": 134.2,
+    "baseline": 434.5,
+    "w": 213.8
+   },
+   {
+    "key": "ref3.phone",
+    "page": 1,
+    "x": 384.4,
+    "baseline": 434.5,
+    "w": 188.6
+   },
+   {
+    "key": "ref3.contact",
+    "page": 1,
+    "x": 130.2,
+    "baseline": 452.7,
+    "w": 218.8
+   },
+   {
+    "key": "ref3.fax",
+    "page": 1,
+    "x": 375.9,
+    "baseline": 452.7,
+    "w": 197.1
+   },
+   {
+    "key": "owner1.name",
+    "page": 1,
+    "x": 63.9,
+    "baseline": 494.1,
+    "w": 140.1
+   },
+   {
+    "key": "owner1.title",
+    "page": 1,
+    "x": 234.5,
+    "baseline": 494.1,
+    "w": 100.5
+   },
+   {
+    "key": "owner1.email",
+    "page": 1,
+    "x": 370.5,
+    "baseline": 494.1,
+    "w": 101.5
+   },
+   {
+    "key": "owner1.phone",
+    "page": 1,
+    "x": 508.2,
+    "baseline": 494.1,
+    "w": 64.8
+   },
+   {
+    "key": "owner2.name",
+    "page": 1,
+    "x": 63.9,
+    "baseline": 514.9,
+    "w": 140.1
+   },
+   {
+    "key": "owner2.title",
+    "page": 1,
+    "x": 234.5,
+    "baseline": 514.9,
+    "w": 100.5
+   },
+   {
+    "key": "owner2.email",
+    "page": 1,
+    "x": 370.5,
+    "baseline": 514.9,
+    "w": 101.5
+   },
+   {
+    "key": "owner2.phone",
+    "page": 1,
+    "x": 508.2,
+    "baseline": 514.9,
+    "w": 64.8
+   }
+  ]
+ },
+ "ovation-medical": {
+  "file": "ovation-medical-new-customer-credit-application-rev-082017-mw3ttkj5.pdf",
+  "sha256": "3fde4370b3e91fbb9851c02a008dc51668a14c70d3cb34d47d408105e5fd3584",
+  "height": 792.0,
+  "text": [
+   {
+    "key": "biz.legal_name",
+    "page": 1,
+    "x": 98.7,
+    "baseline": 195.0,
+    "w": 293.3
+   },
+   {
+    "key": "biz.phone",
+    "page": 1,
+    "x": 424.9,
+    "baseline": 195.0,
+    "w": 148.1
+   },
+   {
+    "key": "biz.full_address",
+    "page": 1,
+    "x": 106.8,
+    "baseline": 210.5,
+    "w": 466.2
+   },
+   {
+    "key": "biz.years",
+    "page": 1,
+    "x": 78.8,
+    "baseline": 226.1,
+    "w": 61.2
+   },
+   {
+    "key": "biz.annual_volume",
+    "page": 1,
+    "x": 126.0,
+    "baseline": 241.6,
+    "w": 50.0
+   },
+   {
+    "key": "biz.sales_area",
+    "page": 1,
+    "x": 225.0,
+    "baseline": 241.6,
+    "w": 94.0
+   },
+   {
+    "key": "owner1.name",
+    "page": 1,
+    "x": 61.4,
+    "baseline": 288.2,
+    "w": 78.6
+   },
+   {
+    "key": "owner1.title",
+    "page": 1,
+    "x": 167.4,
+    "baseline": 288.2,
+    "w": 44.6
+   },
+   {
+    "key": "owner1.address",
+    "page": 1,
+    "x": 251.9,
+    "baseline": 288.2,
+    "w": 103.1
+   },
+   {
+    "key": "owner1.phone",
+    "page": 1,
+    "x": 388.9,
+    "baseline": 288.2,
+    "w": 74.1
+   },
+   {
+    "key": "owner2.name",
+    "page": 1,
+    "x": 61.4,
+    "baseline": 303.8,
+    "w": 78.6
+   },
+   {
+    "key": "owner2.title",
+    "page": 1,
+    "x": 167.4,
+    "baseline": 303.8,
+    "w": 44.6
+   },
+   {
+    "key": "owner2.address",
+    "page": 1,
+    "x": 251.9,
+    "baseline": 303.8,
+    "w": 103.1
+   },
+   {
+    "key": "owner2.phone",
+    "page": 1,
+    "x": 388.9,
+    "baseline": 303.8,
+    "w": 74.1
+   },
+   {
+    "key": "ref1.name",
+    "page": 1,
+    "x": 61.4,
+    "baseline": 365.8,
+    "w": 78.6
+   },
+   {
+    "key": "ref1.full_address",
+    "page": 1,
+    "x": 179.8,
+    "baseline": 365.8,
+    "w": 139.2
+   },
+   {
+    "key": "ref1.phone",
+    "page": 1,
+    "x": 352.9,
+    "baseline": 365.8,
+    "w": 74.1
+   },
+   {
+    "key": "ref1.contact",
+    "page": 1,
+    "x": 466.4,
+    "baseline": 365.8,
+    "w": 106.6
+   },
+   {
+    "key": "ref2.name",
+    "page": 1,
+    "x": 61.4,
+    "baseline": 381.3,
+    "w": 78.6
+   },
+   {
+    "key": "ref2.full_address",
+    "page": 1,
+    "x": 179.8,
+    "baseline": 381.3,
+    "w": 139.2
+   },
+   {
+    "key": "ref2.phone",
+    "page": 1,
+    "x": 352.9,
+    "baseline": 381.3,
+    "w": 74.1
+   },
+   {
+    "key": "ref2.contact",
+    "page": 1,
+    "x": 466.4,
+    "baseline": 381.3,
+    "w": 106.6
+   },
+   {
+    "key": "ref3.name",
+    "page": 1,
+    "x": 61.4,
+    "baseline": 396.9,
+    "w": 78.6
+   },
+   {
+    "key": "ref3.full_address",
+    "page": 1,
+    "x": 179.8,
+    "baseline": 396.9,
+    "w": 139.2
+   },
+   {
+    "key": "ref3.phone",
+    "page": 1,
+    "x": 352.9,
+    "baseline": 396.9,
+    "w": 74.1
+   },
+   {
+    "key": "ref3.contact",
+    "page": 1,
+    "x": 466.4,
+    "baseline": 396.9,
+    "w": 106.6
+   },
+   {
+    "key": "bank.name",
+    "page": 1,
+    "x": 59.0,
+    "baseline": 521.1,
+    "w": 153.0
+   },
+   {
+    "key": "bank.full_address",
+    "page": 1,
+    "x": 251.9,
+    "baseline": 521.1,
+    "w": 175.1
+   },
+   {
+    "key": "bank.phone",
+    "page": 1,
+    "x": 460.9,
+    "baseline": 521.1,
+    "w": 112.1
+   },
+   {
+    "key": "bank.contact",
+    "page": 1,
+    "x": 82.7,
+    "baseline": 536.6,
+    "w": 129.3
+   }
+  ]
+ }
+}
