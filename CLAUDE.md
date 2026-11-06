@@ -2279,6 +2279,41 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     is Bemis's/Angelo's call, never assumed. The MAP section (p.3) DOES cover "web site listings … websites owned by Buyer"
     and allows "call for price" — enforced. (5) Social Media Ad Builder / scheduling: planning approved, kept separate from
     the storefront pilot; no dependency on social API permissions.
+  · **HCPS CATALOG 4 — FINAL CONSOLIDATED PRODUCTION DIRECTIVE (owner 2026-11-06 17:40 CT — RULES, do not re-ask):**
+    (1) **Ordering authorization ≠ manufacturer account setup.** Dealer Manager (`dealer_manufacturers.active`, the
+    ordering grid) is the ONLY source of which lines a dealer may shop and order. An approved line shows in Shop, search,
+    cart, checkout, quotes, retail pricing, brochures, storefront and marketing tools for every active, orderable SKU — a
+    missing manufacturer account number never hides or blocks it. A line not approved stays out of the dealer's portal.
+    Retired / discontinued / inactive SKUs stay non-orderable. Enforced server-side. Golden keeps its own account pricing
+    and order validation, but never stops an eligible dealer from starting an order that needs account setup.
+    (2) **Checkout without an account:** the dealer is told an account must be set up, offered that manufacturer's
+    application (Stage 5 Account Setup Center, prefilled, save/resume, Documenso or paper), the cart is kept, and that
+    manufacturer's order is recorded as "Pending Manufacturer Account Setup", HCPS notified internally; it is never released
+    to the manufacturer until setup is done, then processed without the dealer re-entering it. Mixed carts: ready lines go
+    on. Pricing that isn't authoritative is labelled pending confirmation; a later price change needs the dealer's
+    confirmation. A recorded HCPS account identifier (any form) = no new application. Applications are never auto-emailed.
+    (3) **HCPS-entered identifiers are verified at once:** when HCPS staff save a manufacturer account number / name /
+    username in Dealer 360 (CRM) it is saved to `dealer_manufacturers` and marked verified immediately (who + when) and
+    shows so everywhere (Dealer 360, Dealer Manager, Command Center, 360 Dealer Portal) — no second button, no waiting for
+    reports. Identifiers may be numeric, alphanumeric or usernames. Dealer-entered identifiers never self-verify. The
+    historical backfill of the 630 existing identifiers runs only after Angelo approves a dry-run list (provenance,
+    proposed status, conflicts); manufacturer reports are never a prerequisite.
+    (4) Reports: categories from the Shop catalog (commercial record + enrichment → manufacturer category records → catalog
+    files → Golden catalog → verified legacy mappings; Golden suffixes; Strongback 1010+AB-2025 → 1010AB when evidence
+    confirms; signs / brochures / displays → "Marketing & Displays"). **Potential retail revenue = verified purchased qty ×
+    Shop retail reference (official MSRP → HCPS 2× standard cost → unavailable), per product — never 2× total purchases**;
+    no invented Golden upgrade prices; coverage and gaps shown; historical purchases valued at current prices are labelled.
+    Dealer-custom valuation (My Retail Prices, company default + branch override) shown SEPARATELY, never replacing the
+    benchmark. Potential gross profit = matched retail − corresponding wholesale; margin = profit ÷ matched retail. Never
+    implies inventory was sold. Total Sales tab, branch vs company (same periods, no double counting), PDF + Excel use the
+    same calculation. Strongback units reconciled from source evidence, never edited by hand.
+    (5) Account Center: remove "Your terms by line"; Resale certificate, Manufacturer account applications and Pricing
+    export go under Addresses (left); correct the "HCPS account" label when it holds the Golden account number.
+    (6) Live testing on James Medical uses Angelo's existing authenticated session or read-only/synthetic checks — no new
+    login request, no real manufacturer orders, applications, messages or external transactions to prove a workflow.
+    (7) Social Media Ad Builder + scheduling continue (official APIs, dealer authorization; no subscriptions, paid campaigns
+    or external publishing without approval) and never block the portal corrections. Routine safe code merges/deploys
+    proceed through review; backfills, real entitlement changes, paid services and manufacturer transactions need approval.
     **Advertising-rule research (2026-11-06 ~14:40 CT, from repo documents + live catalog data; counts only):** documented
     MAP for Bemis (Terms of Agreement, dealer application 2026 — written MAP policy incl. dealer websites; "call for price"
     allowed; dealers selling online must notify Bemis and use Bemis content), Golden (eMAP per product), Strongback (Rev C
