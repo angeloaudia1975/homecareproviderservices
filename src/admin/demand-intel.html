@@ -1,0 +1,61 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Demand Intelligence</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .dmf{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+ .dmf select{padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:14px;min-height:44px}
+ .dmnote{background:#f5f8fc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--navy2);margin-bottom:12px}
+ .dmk{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+ .dmk div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}.dmk b{display:block;font-size:24px;color:var(--navy)}.dmk span{font-size:11.5px;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;font-weight:800}
+ .dmg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+ .dmc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0;margin-bottom:14px}.dmc h2{font-size:15px;margin:0 0 4px;color:var(--navy)}.dmc .s{font-size:12px;color:var(--gray);margin-bottom:8px}
+ .dmt{width:100%;border-collapse:collapse;font-size:13px}.dmt th{text-align:left;font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--line);padding:6px 4px}.dmt td{border-bottom:1px solid #eef1f4;padding:6px 4px;vertical-align:top}.dmt .n{text-align:right;white-space:nowrap}
+ .dmw{overflow-x:auto;-webkit-overflow-scrolling:touch}.dms{font-size:11.5px;color:var(--gray)}
+ @media(max-width:860px){.dmg{grid-template-columns:minmax(0,1fr)}.dmk{grid-template-columns:repeat(2,minmax(0,1fr))}.dmf select{font-size:16px}}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Demand Intelligence</h1>
+    <div class="sub">What retail customers look at and ask about on dealers' public storefronts. Anonymous counts only — interest, not sales.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+/* C3-07 Stage 8 — demand-intel-api overview. Views and "Request information" counts from dealer storefronts (no visitor data
+   exists); "not ordered" = no manufacturer-reported purchase or portal order of that product by that dealer in 12 months. */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let TOKEN=HCPS.token(), DAYS=30;
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+const n=x=>Number(x||0).toLocaleString("en-US");
+async function api(p){ const r=await fetch("/.netlify/functions/demand-intel-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(p)}); let b={}; try{ b=await r.json(); }catch(e){} return {status:r.status,body:b}; }
+function table(head,rows,empty){ return `<div class="dmw"><table class="dmt"><thead><tr>${head.map(h=>`<th class="${h[1]?"n":""}">${esc(h[0])}</th>`).join("")}</tr></thead><tbody>${rows.length?rows.join(""):`<tr><td colspan="${head.length}" class="dms">${esc(empty||"Nothing yet.")}</td></tr>`}</tbody></table></div>`; }
+async function boot(){
+  if(!TOKEN){ $("#body").innerHTML='<div class="dmnote">Please sign in to Connect 360.</div>'; return; }
+  $("#body").innerHTML='<div class="msg">Loading…</div>';
+  const r=await api({action:"overview",days:DAYS}); const R=r.body||{};
+  if(r.status!==200){ $("#body").innerHTML=`<div class="dmnote">${esc(R.error||"Demand figures could not be loaded.")}</div>`; return; }
+  const sel=`<div class="dmf"><label for="dmd" style="font-size:12px;color:var(--gray)">Period</label><select id="dmd" onchange="DAYS=+this.value;boot()">${[7,30,90,365].map(d=>`<option value="${d}" ${d===DAYS?"selected":""}>Last ${d} days</option>`).join("")}</select></div>`;
+  if(!R.installed){ $("#body").innerHTML=sel+'<div class="dmnote">Dealer storefronts aren\'t switched on yet, so there is no storefront activity to show.</div>'; return; }
+  const T=R.totals||{};
+  $("#body").innerHTML=sel+`<div class="dmnote">Counts start when a dealer turns on their storefront. A view is someone opening a product; a request is someone sending "Request information". Interest is not a sale; "not ordered" means no manufacturer-reported purchase or portal order of that product by that dealer in the past 12 months. Customer contact details belong to the dealer and are not shown here.</div>
+  <div class="dmk"><div><span>Product views</span><b>${n(T.views)}</b></div><div><span>Requests</span><b>${n(T.inquiries)}</b></div><div><span>Storefronts with activity</span><b>${n(T.storefronts_with_activity)}</b></div><div><span>Requests per 100 views</span><b>${T.request_rate_pct==null?"—":esc(T.request_rate_pct)}</b></div></div>
+  <div class="dmc"><h2>Most-viewed products</h2><div class="s">Across ${R.days==null?"":"the last "+esc(R.days)+" days"} — with how many dealer companies ordered each in the past 12 months.</div>
+   ${table([["Product"],["Views",1],["Requests",1],["Storefronts",1],["Dealers ordering (12 mo.)",1]],(R.products||[]).slice(0,25).map(p=>`<tr><td><b>${esc(p.name)}</b><div class="dms">${esc(p.manufacturer_name)} · #${esc(p.code)} · ${esc(p.category)}</div></td><td class="n">${n(p.views)}</td><td class="n">${n(p.inquiries)}</td><td class="n">${n(p.storefronts)}</td><td class="n">${n(p.dealers_ordering_12m)}</td></tr>`),"No storefront activity in this period.")}</div>
+  <div class="dmc"><h2>Requested but rarely ordered</h2><div class="s">Products customers asked about that at most one dealer company ordered in the past 12 months — candidates for stocking or display conversations.</div>
+   ${table([["Product"],["Requests",1],["Views",1],["Dealers ordering (12 mo.)",1]],(R.interest_not_ordered||[]).map(p=>`<tr><td><b>${esc(p.name)}</b><div class="dms">${esc(p.manufacturer_name)} · #${esc(p.code)}</div></td><td class="n">${n(p.inquiries)}</td><td class="n">${n(p.views)}</td><td class="n">${n(p.dealers_ordering_12m)}</td></tr>`))}</div>
+  <div class="dmc"><h2>Dealer opportunities</h2><div class="s">Products a dealer's own storefront visitors looked at or asked about that the dealer hasn't ordered in 12 months. Open Dealer 360 to plan a conversation.</div>
+   ${table([["Dealer"],["Product"],["Views",1],["Requests",1]],(R.dealer_opportunities||[]).slice(0,30).map(x=>`<tr><td><a href="/admin/dealer.html?id=${encodeURIComponent(x.dealer_id)}">${esc(x.dealer)}</a><div class="dms">${esc(x.city)}</div></td><td>${esc(x.name)}<div class="dms">${esc(x.manufacturer_name)} · #${esc(x.code)}</div></td><td class="n">${n(x.views)}</td><td class="n">${n(x.inquiries)}</td></tr>`))}</div>
+  <div class="dmg">
+   <div class="dmc"><h2>By manufacturer</h2>${table([["Line"],["Views",1],["Requests",1]],(R.by_manufacturer||[]).map(m=>`<tr><td>${esc(m.name)}</td><td class="n">${n(m.views)}</td><td class="n">${n(m.inquiries)}</td></tr>`))}</div>
+   <div class="dmc"><h2>By category</h2>${table([["Category"],["Views",1],["Requests",1]],(R.by_category||[]).map(c=>`<tr><td>${esc(c.category)}</td><td class="n">${n(c.views)}</td><td class="n">${n(c.inquiries)}</td></tr>`))}</div>
+   <div class="dmc"><h2>By region</h2>${table([["State"],["Storefronts",1],["Views",1],["Requests",1]],(R.by_region||[]).map(g=>`<tr><td>${esc(g.state)}</td><td class="n">${n(g.storefronts)}</td><td class="n">${n(g.views)}</td><td class="n">${n(g.inquiries)}</td></tr>`))}</div>
+   <div class="dmc"><h2>By storefront</h2>${table([["Dealer"],["Views",1],["Requests",1]],(R.storefronts||[]).map(s=>`<tr><td><a href="/admin/dealer.html?id=${encodeURIComponent(s.dealer_id)}">${esc(s.name)}</a><div class="dms">${esc([s.city,s.state].filter(Boolean).join(", "))}${s.top_product?" · top: "+esc(s.top_product):""}</div></td><td class="n">${n(s.views)}</td><td class="n">${n(s.inquiries)}</td></tr>`))}</div>
+  </div>`;
+}
+boot();
+</script>
+</body></html>
