@@ -86,15 +86,16 @@ function build(input) {
     const firstReport = [...(REPM[slug] || [])].sort()[0] || null;
     return { slug, name: mName(slug), purchases: x.purchases, units: x.units, prior: x.prior, change_pct: x.change_pct, partial: x.partial, compared_months: x.compared_months,
       share_pct: totalCur > 0 ? Math.round(x.purchases / totalCur * 1000) / 10 : 0, history_from: x.prior == null ? ((input.firstReport && input.firstReport[slug]) || firstReport) : null };
-  }).sort((a, b) => b.purchases - a.purchases || (b.prior || 0) - (a.prior || 0));
+  }).filter((m) => m.purchases !== 0 || (m.prior || 0) !== 0).sort((a, b) => b.purchases - a.purchases || (b.prior || 0) - (a.prior || 0));
 
   // by category (catalog category of each SKU; a SKU no current catalog lists is shown as such)
-  const catOf = (r) => cat(r.mfr, r.code) || 'Not in current catalog';
+  /* a SKU the HCPS catalog doesn't list (e.g. Golden, ordered through Golden's own system) is grouped under its line, never guessed */
+  const catOf = (r) => cat(r.mfr, r.code) || `${mName(r.mfr)} — category not listed`;
   const categories = [...new Set(all.filter((r) => inW.has(r.m) || inP.has(r.m)).map(catOf))].map((c) => {
     const x = compare(all.filter((r) => catOf(r) === c));
-    return { category: c, purchases: x.purchases, units: x.units, prior: x.prior, change_pct: x.change_pct, partial: x.partial };
-  }).sort((a, b) => b.purchases - a.purchases);
-  const declining = categories.filter((c) => c.prior != null && c.prior >= 500 && c.change_pct != null && c.change_pct <= -20)
+    return { category: c, purchases: x.purchases, units: x.units, prior: x.prior, change_pct: x.change_pct, partial: x.partial, unlisted: / — category not listed$/.test(c) };
+  }).filter((c) => c.purchases !== 0 || (c.prior || 0) !== 0).sort((a, b) => b.purchases - a.purchases);
+  const declining = categories.filter((c) => !c.unlisted && c.prior != null && c.prior >= 500 && c.change_pct != null && c.change_pct <= -20)
     .map((c) => ({ category: c.category, purchases: c.purchases, prior: c.prior, change_pct: c.change_pct }));
 
   // top products
@@ -151,13 +152,13 @@ function build(input) {
   const notes = [];
   if (S.notes.duplicates_removed) notes.push(`${S.notes.duplicates_removed} commission-statement line(s) that repeat a sales-report line were counted once.`);
   if (S.notes.rows_without_amount) notes.push(`${S.notes.rows_without_amount} reported line(s) have no amount (for example open invoices) and are not counted.`);
-  if (W.ytd) notes.push(`This year runs through ${monthLabel(W.through)}, the latest month HCPS has manufacturer reports for on these lines.`);
+  if (W.ytd && all.length) notes.push(`This year runs through ${monthLabel(W.through)}, the latest month HCPS has manufacturer reports for on these lines.`);
   const noCmp = manufacturers.filter((m) => m.prior == null).map((m) => m.name + (m.history_from ? ` (reports from ${monthLabel(m.history_from)})` : ''));
   if (noCmp.length) notes.push('No year-over-year comparison for: ' + noCmp.join(', ') + ' — HCPS has no reports for the same months last year.');
   const part = manufacturers.filter((m) => m.prior != null && m.partial).map((m) => m.name);
   if (part.length || (T.partial && T.prior != null)) notes.push('Year-over-year compares only the months HCPS has reports for in both years' + (part.length ? ' (partial for: ' + part.join(', ') + ')' : '') + '.');
-  const noCat = [...new Set(cur.map((r) => r.mfr))].filter((s) => !(input.catalog && input.catalog[s]));
-  if (noCat.length) notes.push('Categories are unavailable for: ' + noCat.map(mName).join(', ') + '.');
+  const noCat = [...new Set(cur.filter((r) => !cat(r.mfr, r.code)).map((r) => r.mfr))];
+  if (noCat.length) notes.push('Product categories are not listed in the HCPS catalog for: ' + noCat.map(mName).join(', ') + ' — shown under the line name.');
 
   return { period: { year: W.year, ytd: W.ytd, from: W.months[0], through: W.through, prior_from: W.prior[0], prior_through: W.prior[W.prior.length - 1], label: (W.ytd ? 'Year to date ' : '') + W.year + (W.ytd ? ` (Jan–${MONTHS[W.months.length - 1]})` : '') },
     scorecard, purchases: { total: totalCur, prior: T.prior, current_compared: T.current_compared, change_pct: T.change_pct, partial: T.partial, units: T.units },

@@ -140,6 +140,13 @@ const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer
     eq((await as(api(seed(), { ANTHROPIC_API_KEY: '' }), 'hq', { action: 'report_ai' })).status, 503);
     const W2 = seed({ aiText: '{}' }); const C2 = api(W2); const codes = []; for (let i = 0; i < 5; i++) codes.push((await as(C2, 'hq', { action: 'report_ai' })).status); eq(codes, [502, 502, 502, 502, 429]);
   });
+  await t('a SKU the catalog does not list is grouped under its line (never a declining "category"); a line with $0 in both years is not listed', async () => {
+    const rows = [{ dealer_id: 'a', manufacturer: 'golden', period: '2025-01-01', product_code: 'PR1', qty: 1, amount: 1000, source: 'sales_report', external_ref: 'r' },
+      { dealer_id: 'a', manufacturer: 'golden', period: '2026-01-01', product_code: 'PR1', qty: 1, amount: 100, source: 'sales_report', external_ref: 'r' },
+      { dealer_id: 'a', manufacturer: 'pf', period: '2026-01-01', product_code: 'P', qty: 0, amount: 0, source: 'sales_report', external_ref: 'r' }];
+    const R = REP.build({ year: '2026', today: '2026-02-10', locations: [{ id: 'a', name: 'A' }], scope: 'a', sales: rows, catalog: {}, mfrName: { golden: 'Golden Technologies' }, reportedMonths: { golden: ['2025-01', '2026-01'], pf: ['2026-01'] } });
+    eq(R.categories.map((c) => c.category), ['Golden Technologies — category not listed']); eq(R.declining_categories, []); eq(R.manufacturers.map((m) => m.slug), ['golden']);
+  });
   await t('one company with three branches never meets the 3-dealer network minimum alone', async () => {
     const R = (await as(api(seed()), 'hq', { action: 'report', scope: HQ, year: Y })).body.report; ok(!R.opportunities.some((o) => o.code === 'SB6'), JSON.stringify(R.opportunities));
   });
