@@ -2066,7 +2066,8 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     (head office) across quotes + brochures and fail closed when the reserve function is missing; a head office opening a
     branch's quote previews that branch's retail. Storefront inline handlers may only call names exported on `window`
     (the page script is an IIFE) — `qCust` / `rpUi` / `p360ReportYear` replaced handlers that silently did nothing.
-    Saved quotes need `supabase/c7_s4b_saved_quotes.sql` (NOT run yet — until then "Saved quotes open shortly.").
+    Saved-quotes SQL `supabase/c7_s4b_saved_quotes.sql` RUN by Angelo 2026-11-05 21:38 CT (1,true,0,0,0); public-key probe:
+    read / insert / update / delete all 401 42501 (control table 200); live quote_list 200 — never ask him to rerun it.
     Tests: admin quotes 11, account-center 23, retail-prices 11; ordering quotes-retail.browser 65, brochure-auth 24.
   · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
     (ordering) are authorized for deletion (the session's safety control refused the delete — Angelo deletes them on
