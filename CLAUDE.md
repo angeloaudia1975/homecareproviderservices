@@ -2260,6 +2260,25 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     MSRP · Dalton 330 calculated / 9 call (no standard cost) · Ovation 186 MSRP / 30 calculated · PediFix 464 MSRP / 31 call
     (7 no standard cost, 24 no MSRP and no MAP on file) · Strongback 7 calculated · Yuwell 9 MSRP. James Medical preview
     (Bowling Green, staff view-as): Golden with photos + MSRP, PediFix MSRP restored, no prices to the public API.
+    **Final pilot preparation (owner 2026-11-06 16:27 CT — RULES):** (1) Retired SKUs stay retired everywhere — the 7 ABM
+    (BK381, BK388, BC21084, BC2396, BC23966, BC23575, BC23891) and every inactive PediFix SKU (incl. the 14 reactivation
+    candidates); never reactivate them. Storefronts, default retail and coverage read a line's pages exactly as the shop
+    does: database pages when one is visible and switched on, otherwise the line's static content file (PR #106) — a SKU
+    switched off there is not an active product. Live after #106: ABM 35 active (20 MSRP / 15 calculated / 0 call), Dalton
+    330 calculated / 0 call, PediFix 488 active (464 MSRP / 24 call — no MSRP, no MAP), = the shop's counts.
+    (2) Storefronts show the shop's product content (PR #107): page description, the SKU's page name (an admin name
+    override still wins), and the photo by the shop's image rule; only /assets photos are ever public, so page photos kept
+    in Supabase storage are not shown (catalog photo kept). (3) James Medical login: the existing process is self-
+    registration on the 360 Dealer Portal (Request access, the dealer chooses its own password) → HCPS approves in Dealer
+    Manager linking it to the head office (approve_login). Platform mode is "development", so no welcome email reaches a
+    real dealer on approval. HCPS never creates the password and never invents contact addresses; the invitation is sent
+    by Angelo, to a verified contact he picks. Cloud Medical / James Medical Warehouse stays separate. (4) Bemis: Terms of
+    Agreement for Authorized Dealers / Resellers (src/assets/docs/bemis-hme-dme-dealer-application-2026-*.pdf, p.4
+    "Internet Sales"): "Dealers / Retailers that sell via a website … must notify Bemis of the website and utilize Bemis'
+    digital content" — the text does not define "sell", so whether a browse/inquiry storefront without checkout triggers it
+    is Bemis's/Angelo's call, never assumed. The MAP section (p.3) DOES cover "web site listings … websites owned by Buyer"
+    and allows "call for price" — enforced. (5) Social Media Ad Builder / scheduling: planning approved, kept separate from
+    the storefront pilot; no dependency on social API permissions.
     **Advertising-rule research (2026-11-06 ~14:40 CT, from repo documents + live catalog data; counts only):** documented
     MAP for Bemis (Terms of Agreement, dealer application 2026 — written MAP policy incl. dealer websites; "call for price"
     allowed; dealers selling online must notify Bemis and use Bemis content), Golden (eMAP per product), Strongback (Rev C
