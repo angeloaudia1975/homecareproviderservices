@@ -3,7 +3,7 @@
        visitor data exists to show);
      • purchases (monthly_sales, manufacturer-reported) and 360 Dealer Portal orders — to tell interest apart from buying.
    INTEREST IS NOT A SALE: every figure is labelled as views or requests; "not ordered" means no manufacturer-reported purchase
-   or portal order of that product by that dealer in the past 12 months — nothing more is concluded. TEST dealers are left out. */
+   or portal order of that product by that dealer's company (head office + branches) in the past 12 months — nothing more is concluded. TEST dealers are left out. */
 'use strict';
 const r1 = (n) => Math.round(n * 10) / 10;
 
@@ -29,13 +29,13 @@ function build(input) {
   const sortI = (a, b) => b.inquiries - a.inquiries || b.views - a.views;
   const top = (m, n) => [...m.values()].sort(sortI).slice(0, n);
   const net = network || new Map();
-  const products = top(byP, 50).map((p) => { const nw = net.get(p.manufacturer + '|' + p.code) || { dealers: 0, units: 0 };
+  const products = top(byP, 50).map((p) => { const nw = net.get(p.manufacturer + '|' + p.code) || { dealers: 0 };
     return { manufacturer: p.manufacturer, manufacturer_name: p.manufacturer_name, code: p.code, name: p.name, category: p.category, views: p.views, inquiries: p.inquiries,
-      storefronts: p.storefronts.size, dealers_ordering_12m: nw.dealers, units_ordered_12m: nw.units }; });
+      storefronts: p.storefronts.size, dealers_ordering_12m: nw.dealers }; });
   // interest with little ordering across the network: requested on storefronts, ordered by at most one dealer company in 12 months
   const interest_not_ordered = products.filter((p) => p.inquiries > 0 && p.dealers_ordering_12m <= 1).slice(0, 20);
   // per dealer: products its own storefront visitors looked at or asked about that the dealer hasn't bought in 12 months
-  const dealer_opportunities = [...byDP.values()].filter((x) => !(bought.get(x.dealer_id) || new Set()).has(x.manufacturer + '|' + x.code))
+  const dealer_opportunities = [...byDP.values()].filter((x) => !(bought.get(D(x.dealer_id).root) || new Set()).has(x.manufacturer + '|' + x.code))
     .sort(sortI).slice(0, 50).map((x) => Object.assign({}, x, { not_ordered_12m: true }));
   const storefronts = top(byS, 50).map((s) => { const best = [...byDP.values()].filter((x) => x.dealer_id === s.dealer_id).sort(sortI)[0];
     return Object.assign(s, { top_product: best ? best.name : null }); });

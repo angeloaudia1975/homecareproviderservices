@@ -20,6 +20,7 @@ const counts = [
   { day: today, dealer_id: A, manufacturer: 'bemis', code: 'B1', category: 'Bath Safety', views: 30, inquiries: 2 },
   { day: today, dealer_id: A, manufacturer: 'bemis', code: 'B2', category: 'Bath Safety', views: 10, inquiries: 1 },
   { day: today, dealer_id: A, manufacturer: 'bemis', code: 'B3', category: 'Bath Safety', views: 4, inquiries: 0 },
+  { day: today, dealer_id: A2, manufacturer: 'bemis', code: 'B2', category: 'Bath Safety', views: 3, inquiries: 0 },
   { day: today, dealer_id: B, manufacturer: 'bemis', code: 'B1', category: 'Bath Safety', views: 5, inquiries: 1 },
   { day: today, dealer_id: B, manufacturer: 'strongback', code: 'S1', category: 'Wheelchairs', views: 8, inquiries: 3 },
   { day: today, dealer_id: T, manufacturer: 'bemis', code: 'B1', category: 'Bath Safety', views: 999, inquiries: 99 },
@@ -35,17 +36,18 @@ function world(o) {
     storefront_daily_counts: counts,
     storefront_inquiries: [{ id: 'i1', dealer_id: A, name: 'Secret Customer', email: 'secret@x.test' }],
     dealer_storefronts: [{ dealer_id: A, slug: 'acme', enabled: true, hcps_blocked: false }],
-    monthly_sales: [{ id: 1, period: ym, dealer_id: A2, manufacturer: 'bemis', product_code: 'B2', qty: 2, amount: 100 }, { id: 2, period: ym, dealer_id: A, manufacturer: 'bemis', product_code: 'B2', qty: 1, amount: 50 },
+    monthly_sales: [{ id: 1, period: ym, dealer_id: A2, manufacturer: 'bemis', product_code: 'B3', qty: 1, amount: 10 }, { id: 6, period: ym, dealer_id: A, manufacturer: 'bemis', product_code: 'B3', qty: 1, amount: 10 }, { id: 2, period: ym, dealer_id: A, manufacturer: 'bemis', product_code: 'B2', qty: 1, amount: 50 },
       { id: 3, period: ym, dealer_id: C, manufacturer: 'bemis', product_code: 'B2', qty: 4, amount: 200 }, { id: 4, period: ym, dealer_id: T, manufacturer: 'bemis', product_code: 'B1', qty: 9, amount: 9 },
       { id: 5, period: '2000-01-01', dealer_id: B, manufacturer: 'bemis', product_code: 'B1', qty: 1, amount: 1 }],
-    orders: [{ id: 'o1', dealer_id: B, manufacturer: 'strongback', status: 'submitted', submitted_at: new Date().toISOString(), order_items: [{ code: 'S1' }] },
-      { id: 'o2', dealer_id: B, manufacturer: 'bemis', status: 'cancelled', submitted_at: new Date().toISOString(), order_items: [{ code: 'B1' }] }],
+    orders: [{ id: 'o1', dealer_id: B, manufacturer: 'strongback', status: 'submitted', env: 'live', submitted_at: new Date().toISOString(), order_items: [{ code: 'S1' }] },
+      { id: 'o3', dealer_id: A, manufacturer: 'bemis', status: 'submitted', env: 'test', submitted_at: new Date().toISOString(), order_items: [{ code: 'B1' }] },
+      { id: 'o2', dealer_id: B, manufacturer: 'bemis', status: 'cancelled', env: 'live', submitted_at: new Date().toISOString(), order_items: [{ code: 'B1' }] }],
   } });
   const inner = W.fetch; W.urls = [];
   W.fetch = async (url, opts) => { const u = String(url); W.urls.push(u); const h = (opts && opts.headers) || {};
     if (u.startsWith(M.BASE + '/auth/v1/user')) { const tok = String(h.Authorization || '').replace(/^Bearer\s+/i, ''); const map = { boss: { email: 'boss@hcps.test' }, rep: { email: 'rep@hcps.test' }, gone: { email: 'gone@hcps.test' } };
       return map[tok] ? { ok: true, status: 200, json: async () => map[tok] } : { ok: false, status: 401, json: async () => ({}) }; }
-    if (/\/rest\/v1\/orders\?/.test(u)) { const q = decodeURIComponent(u); const ids = (q.match(/dealer_id=in\.\(([^)]*)\)/) || [])[1] || ''; const rows = W.db.orders.filter((o) => ids.split(',').includes(o.dealer_id) && (!/status=neq\.cancelled/.test(q) || o.status !== 'cancelled'));
+    if (/\/rest\/v1\/orders\?/.test(u)) { const q = decodeURIComponent(u); const ids = (q.match(/dealer_id=in\.\(([^)]*)\)/) || [])[1] || ''; const rows = W.db.orders.filter((o) => ids.split(',').includes(o.dealer_id) && (!/status=neq\.cancelled/.test(q) || o.status !== 'cancelled') && (!/env=eq\.live/.test(q) || o.env === 'live'));
       return { ok: true, status: 200, text: async () => JSON.stringify(rows), json: async () => rows }; }    // the fake drops embedded selects
     return inner(url, opts); };
   return W;
@@ -61,22 +63,34 @@ const as = (C2, who, body) => M.call(C2, body, { headers: { authorization: 'Bear
   });
   await t('management: every real dealer, TEST and out-of-period rows left out; interest labelled, never sales', async () => {
     const r = await as(api(world()), 'boss', { action: 'overview', days: 30 });
-    eq(r.status, 200); eq([r.body.installed, r.body.totals.views, r.body.totals.inquiries, r.body.totals.storefronts_with_activity], [true, 57, 7, 2]);
-    eq(r.body.products.map((p) => [p.code, p.name, p.views, p.inquiries, p.storefronts]), [['B1', 'Raised seat', 35, 3, 2], ['S1', 'Excursion chair', 8, 3, 1], ['B2', 'Grab bar', 10, 1, 1], ['B3', 'B3', 4, 0, 1]], 'most requests first, then views; a code not in the catalog keeps its code');
+    eq(r.status, 200); eq([r.body.installed, r.body.totals.views, r.body.totals.inquiries, r.body.totals.storefronts_with_activity], [true, 60, 7, 3]);
+    eq(r.body.products.map((p) => [p.code, p.name, p.views, p.inquiries, p.storefronts]), [['B1', 'Raised seat', 35, 3, 2], ['S1', 'Excursion chair', 8, 3, 1], ['B2', 'Grab bar', 13, 1, 2], ['B3', 'B3', 4, 0, 1]], 'most requests first, then views; a code not in the catalog keeps its code');
     ok(!/amount|revenue|sales_total|\$/.test(JSON.stringify(r.body.totals)), 'interest never summed with money');
-    eq(r.body.by_region.map((g) => [g.state, g.storefronts]), [['TN', 1], ['OH', 1]]);
+    eq(r.body.by_region.map((g) => [g.state, g.storefronts]), [['TN', 1], ['OH', 2]]);
   });
   await t('ordering: dealer COMPANIES from purchases (branches roll up, TEST out); not-ordered uses the dealer\'s purchases and live portal orders', async () => {
     const r = await as(api(world()), 'boss', { action: 'overview' });
     const P = Object.fromEntries(r.body.products.map((p) => [p.code, p.dealers_ordering_12m]));
-    eq(P, { B1: 0, S1: 0, B2: 2, B3: 0 }, 'B2: Acme (branch + head office = one company) and Charlie; B1 only by TEST / long ago');
-    eq(r.body.dealer_opportunities.map((x) => [x.dealer, x.code]), [['Acme', 'B1'], ['Bravo', 'B1'], ['Acme', 'B3']], 'Acme bought B2 (its branch); Bravo ordered S1 on the portal; the cancelled B1 order does not count');
+    eq(P, { B1: 0, S1: 0, B2: 2, B3: 1 }, 'B2: Acme and Charlie; B3: Acme head office + branch = one company; B1 only by TEST / long ago');
+    eq(r.body.dealer_opportunities.map((x) => [x.dealer, x.code]), [['Acme', 'B1'], ['Bravo', 'B1']], 'Acme Branch looked at B2, which its head office bought (family, not location); Bravo ordered S1 on the portal; the cancelled and the test-environment B1 orders do not count');
+    ok(!('units_ordered_12m' in r.body.products[0]), 'no units added across lanes');
     eq(r.body.interest_not_ordered.map((p) => p.code), ['B1', 'S1'], 'requests > 0 (not B3, views only) and at most one company ordering (not B2, two companies)');
   });
   await t('a rep sees only the dealers in their book (never another rep\'s or TEST)', async () => {
     const r = await as(api(world()), 'rep', { action: 'overview' });
-    eq(r.status, 200); eq(r.body.storefronts.map((s) => s.name), ['Acme']); eq(r.body.totals.views, 44);
+    eq(r.status, 200); eq(r.body.storefronts.map((s) => s.name), ['Acme', 'Acme Branch']); eq(r.body.totals.views, 47);
     ok(!/Bravo|Charlie|TEST dealer/.test(JSON.stringify(r.body)), 'no other dealers');
+  });
+  await t('My Sales Workspace: the President sees only his own book', async () => {
+    const W = world(); W.db.dealers.find((d) => d.id === B).rep_email = 'boss@hcps.test';
+    const r = await M.call(api(W), { action: 'overview' }, { headers: { authorization: 'Bearer boss', 'x-hcps-workspace': 'mine' } });
+    eq(r.body.storefronts.map((s) => s.name), ['Bravo']);
+    eq((await M.call(api(W), { action: 'dealer', dealer_id: A }, { headers: { authorization: 'Bearer boss', 'x-hcps-workspace': 'mine' } })).status, 403);
+  });
+  await t('orders are read in batches of 100 dealers (the address stays short)', async () => {
+    const W = world(); for (let i = 0; i < 250; i++) { const id = 'eeeeeeee-0000-0000-0000-' + String(i).padStart(12, '0'); W.db.dealers.push({ id, parent_id: A, business_name: 'B' + i }); }
+    await as(api(W), 'boss', { action: 'overview' }); const o = W.urls.filter((u) => /\/rest\/v1\/orders\?/.test(u));
+    ok(o.length === 3 && o.every((u) => u.length < 5000), o.length + ' calls, longest ' + Math.max(...o.map((u) => u.length)));
   });
   await t('dealer action: scope-checked; storefront link and status; malformed id 404', async () => {
     const W = world(); const H = api(W);

@@ -36,35 +36,41 @@ async function catalogNames(slug) {
 }
 function chicagoDay(offsetDays) { const d = new Date(Date.now() - offsetDays * 86400000); try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(d); } catch (e) { return d.toISOString().slice(0, 10); } }
 
-async function report(me, days, onlyDealer) {
+async function report(me, days, onlyDealer, event) {
   const since = chicagoDay(days - 1);
   let counts;
   try { counts = await sbAll(`storefront_daily_counts?day=gte.${since}${onlyDealer ? `&dealer_id=eq.${enc(onlyDealer)}` : ''}&select=day,dealer_id,manufacturer,code,category,views,inquiries&order=day.asc`); }
   catch (e) { if (/PGRST205|42P01/.test(String(e.message))) return { installed: false }; throw e; }
   const dl = await sbAll('dealers?select=id,business_name,city,state,parent_id,is_test&order=id.asc');
   const dealers = new Map((dl || []).map((d) => [String(d.id), { name: d.business_name || '', city: d.city || '', state: d.state || '', root: String(d.parent_id || d.id), is_test: d.is_test === true }]));
-  const scope = await SC.dealerScope(me, (p) => sbGet(p));
+  // My Sales Workspace narrows to the President's own book (rule 16), the same resolver a rep gets
+  const scope = SC.workspaceMine(event, me) ? await SC.ownBook(me, (p) => sbGet(p)) : await SC.dealerScope(me, (p) => sbGet(p));
   const scopeIds = scope.isAll ? null : new Set([...scope.ids].map(String));
   const mfrs = [...new Set(counts.map((c) => c.manufacturer))];
   const [mrows, nameRows] = await Promise.all([sbGet('manufacturers?select=slug,name'), Promise.all(mfrs.map(async (m) => [m, await catalogNames(m)]))]);
   const mfrName = {}; for (const m of mrows || []) mfrName[m.slug] = m.name || m.slug;
   const names = {}; for (const [m, n] of nameRows) names[m] = n;
-  // ordering across the network and by each dealer with activity (12 months): purchases + portal orders, never interest
+  // ordering (12 months) — never interest. Network: how many dealer COMPANIES (families) bought each product, from
+  // manufacturer-reported purchases (either lane — a company is counted once, no amounts are added). "Not ordered" is judged
+  // for the dealer's whole family: its purchases plus its live portal orders (cancelled and test orders don't count).
   const y = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 7) + '-01';
   const network = new Map(), bought = new Map();
-  const active = [...new Set(counts.map((c) => String(c.dealer_id)))];
+  const activeRoots = new Set(counts.map((c) => (dealers.get(String(c.dealer_id)) || {}).root).filter(Boolean));
+  const addBought = (root, k) => (bought.get(root) || bought.set(root, new Set()).get(root)).add(k);
   if (mfrs.length) {
-    const sales = await sbAll(`monthly_sales?period=gte.${y}&manufacturer=in.(${mfrs.map(enc).join(',')})&select=dealer_id,manufacturer,product_code,qty&order=id.asc`);
+    const sales = await sbAll(`monthly_sales?period=gte.${y}&manufacturer=in.(${mfrs.map(enc).join(',')})&select=dealer_id,manufacturer,product_code&order=id.asc`);
     const comp = new Map();
     for (const s of sales) {
       const d = dealers.get(String(s.dealer_id)); if (!d || d.is_test || !s.product_code) continue;
-      const k = s.manufacturer + '|' + s.product_code; const x = comp.get(k) || comp.set(k, { companies: new Set(), units: 0 }).get(k); x.companies.add(d.root); x.units += Number(s.qty) || 0;
-      if (active.includes(String(s.dealer_id))) (bought.get(String(s.dealer_id)) || bought.set(String(s.dealer_id), new Set()).get(String(s.dealer_id))).add(k);
+      const k = s.manufacturer + '|' + s.product_code; (comp.get(k) || comp.set(k, new Set()).get(k)).add(d.root);
+      if (activeRoots.has(d.root)) addBought(d.root, k);
     }
-    for (const [k, x] of comp) network.set(k, { dealers: x.companies.size, units: x.units });
-    if (active.length) {
-      const orders = await sbAll(`orders?dealer_id=in.(${active.map(enc).join(',')})&submitted_at=gte.${y}&status=neq.cancelled&select=id,dealer_id,manufacturer,order_items(code)&order=id.asc`);
-      for (const o of orders) for (const i of (o.order_items || [])) (bought.get(String(o.dealer_id)) || bought.set(String(o.dealer_id), new Set()).get(String(o.dealer_id))).add(o.manufacturer + '|' + i.code);
+    for (const [k, x] of comp) network.set(k, { dealers: x.size });
+    const members = [...dealers.entries()].filter(([, d]) => activeRoots.has(d.root)).map(([id]) => id);
+    for (let i = 0; i < members.length; i += 100) {     // batches keep the address short however many storefronts there are
+      const ids = members.slice(i, i + 100);
+      const orders = await sbAll(`orders?dealer_id=in.(${ids.map(enc).join(',')})&submitted_at=gte.${y}&status=neq.cancelled&env=eq.live&select=id,dealer_id,manufacturer,order_items(code)&order=id.asc`);
+      for (const o of orders) { const d = dealers.get(String(o.dealer_id)); if (d) for (const it of (o.order_items || [])) addBought(d.root, o.manufacturer + '|' + it.code); }
     }
   }
   return Object.assign({ installed: true, days, since }, DM.build({ counts, dealers, names, mfrName, scopeIds, bought, network }));
@@ -77,13 +83,13 @@ exports.handler = async (event) => {
   let b; try { b = JSON.parse(event.body || '{}'); } catch (e) { return json(400, { ok: false, error: 'bad JSON' }); }
   const days = [7, 30, 90, 365].includes(Number(b.days)) ? Number(b.days) : 30;
   try {
-    if (b.action === 'overview') return json(200, Object.assign({ ok: true }, await report(me, days, null)));
+    if (b.action === 'overview') return json(200, Object.assign({ ok: true }, await report(me, days, null, event)));
     if (b.action === 'dealer') {
       if (!UUID.test(String(b.dealer_id || ''))) return json(404, { ok: false, error: 'Unknown dealer.' });
-      const scope = await SC.dealerScope(me, (p) => sbGet(p));
+      const scope = SC.workspaceMine(event, me) ? await SC.ownBook(me, (p) => sbGet(p)) : await SC.dealerScope(me, (p) => sbGet(p));
       if (!scope.isAll && !scope.ids.has(String(b.dealer_id))) return json(403, { ok: false, error: 'Not your dealer.' });
       let sf = null; try { const r = await sbGet(`dealer_storefronts?dealer_id=eq.${enc(b.dealer_id)}&select=slug,enabled,hcps_blocked,updated_at`); sf = (r && r[0]) || null; } catch (e) { if (!/PGRST205|42P01/.test(String(e.message))) throw e; }
-      const rep = await report(me, days, String(b.dealer_id));
+      const rep = await report(me, days, String(b.dealer_id), event);
       return json(200, Object.assign({ ok: true, storefront: sf && { link: `${ORDERING_BASE}/store/${sf.slug}`, live: !!(sf.enabled && !sf.hcps_blocked), blocked: !!sf.hcps_blocked } }, rep));
     }
     return json(400, { ok: false, error: 'unknown action' });
