@@ -2234,6 +2234,24 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     fix: clear that one preview (email_messages.snippet = null, guarded to exactly that row); the original email in the
     mailbox is Angelo's to delete. **Done 2026-11-06 15:17 CT (run by Angelo): previews_left 0, emails 1** — the preview
     is cleared; the email's metadata row stays; no other stored copy of the old credit form is known.
+  · **HCPS DEFAULT RETAIL + James Medical pilot (owner FINAL directive 2026-11-06 15:23 CT — RULES; do not reopen the
+    formula).** (1) Every product's default customer retail = the manufacturer's official MSRP on file (product_skus →
+    saved edit → added product → the private commercial catalog, never a shop-derived _msrp_suggested figure), else HCPS
+    CALCULATED RETAIL = 2 × STANDARD dealer cost (engine at qty 1, no contract, no line discount, no promotion), else Call
+    for Price — in My Retail Prices, quotes, brochures and storefronts, through ONE server rule (`_storefront_catalog
+    lineDefaults` / `build` → `_retail_price.decide`). Calculated values are labelled "Retail price" / "Price" ("HCPS
+    calculated" to the dealer), never MSRP; cost, wholesale, margin and the calculation never reach a customer. Hidden /
+    discontinued products are never priced; only the dealer's authorized lines; Golden has its own rule. The page never
+    computes the default (dealer-quotes-api `default_retail`, batched). Call for Price only when standard cost is missing
+    or a verified rule forbids a price — reported by `storefront-rules-api coverage`. (2) Advertising rules RECORDED
+    2026-11-06 ~15:35 CT under the owner's authorization: MAP for Bemis, Strongback, Climbing Steps, Access4U, AirAvant /
+    BongoRx, PediFix (evidence in each note); `open` (no restriction on file; 2× default allowed) for Ovation, ABM,
+    Corsicana, Yuwell, Dalton; Golden eMAP unchanged. (3) Pilot dealer = JAMES MEDICAL only (never the other candidates).
+    HCPS records: James Medical Equipment Corp Russell Springs, KY (head office, 5270ebcc…) + branch James Medical
+    Equipment Bowling Green, KY (c5693cd1…); a separate record "Cloud Medical / James Medical Warehouse" (Russell Springs,
+    under Cloud Medical Supply) is NOT part of the pilot unless Angelo says so. No 360 Dealer Portal login exists for
+    James Medical. Do NOT publish its storefront or send real inquiries until Angelo authorizes public activation;
+    preview through a staff view-as link only.
     **Advertising-rule research (2026-11-06 ~14:40 CT, from repo documents + live catalog data; counts only):** documented
     MAP for Bemis (Terms of Agreement, dealer application 2026 — written MAP policy incl. dealer websites; "call for price"
     allowed; dealers selling online must notify Bemis and use Bemis content), Golden (eMAP per product), Strongback (Rev C
