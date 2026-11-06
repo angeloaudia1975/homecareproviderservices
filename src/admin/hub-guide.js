@@ -197,6 +197,16 @@ window.HUB_GUIDE = {
     problems: "Turns raw manufacturer spreadsheets into clean, attributed sales the whole platform can trust.",
     intelligence: "Automatic period-dating and fuzzy customer matching to canonical dealers."
   },
+  "Storefront Advertising Rules": {
+    tagline: "Which retail prices a dealer's public storefront may show — decided per manufacturer line, never assumed.",
+    what: "A storefront price is chosen in this order: the dealer's own retail price, the manufacturer's MSRP, HCPS calculated retail (the standard cost × 2, shown as \"Price\", never as MSRP), then Call for Price. Each line's advertising rules decide which of those may be published: no restriction; at or above the MAP / eMAP; MSRP only; or no public prices. A line whose rules HCPS hasn't recorded shows only its MSRP, and dealers see why their own prices are held. Golden Technologies uses Golden's eMAP for every product. HCPS can also pause any storefront here, with a reason.",
+    features: ["Rule per manufacturer line, with where it comes from", "MAP and MSRP coverage on file per line", "Change history (who, when, from → to)", "Pause / restore a storefront"],
+    data: "app_settings advertising_policies (revision-checked); dealer_storefronts.hcps_blocked; product_skus / custom_products for coverage — read only.",
+    actions: ["Set a line's rule", "Pause or restore a storefront"],
+    reports: ["Lines needing review", "Recent changes"],
+    connects: ["Dealer public storefronts and the dealer's storefront price editor (Partner 360 → My Storefront)"],
+    problems: "Keeps every public price inside each manufacturer's advertising rules while letting storefronts show useful prices.",
+  },
   "Demand Intelligence": {
     tagline: "What retail customers look at and ask about on dealers' public storefronts — interest, never confused with sales.",
     what: "C3-07 Stage 8. Dealers' storefronts count, anonymously and per day, how often each product is opened and how many \"Request information\" messages name it. This page adds them up by product, manufacturer, category, region and storefront, and sets them beside ordering: how many dealer companies ordered each product in the past 12 months (manufacturer-reported purchases and portal orders). It lists products customers asked about that at most one dealer company orders, and per dealer the products its own storefront visitors looked at that the dealer hasn't ordered — conversation starters for reps. Reps see only their own dealers. No visitor is identified and customers' contact details stay with the dealer.",

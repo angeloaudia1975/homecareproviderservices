@@ -69,6 +69,7 @@
         { href:"/admin/featured.html",           label:"Featured Products",          icon:"⭐", group:"partner",  desc:"Curate the promoted items dealers see first" },
         { href:"/admin/home-editor.html",        label:"Portal Home Content",        icon:"🏠", group:"partner",  desc:"Hero banner, promos & the “what's new” tiles" },
         { href:"/admin/dealers.html#logins",     label:"Dealer Portal Accounts",     icon:"🔑", group:"partner", xref:true,  desc:"Registrations, approvals & which manufacturer lines each dealer can order" },
+        { href:"/admin/storefront-rules.html",   label:"Storefront Advertising Rules", icon:"🏷️", status:"new", group:"partner", desc:"Which retail prices dealers' public storefronts may show for each manufacturer line (MAP / eMAP, MSRP only, no prices) — and HCPS's pause control for any storefront" },
         { href:"https://hcpsonlineordering.netlify.app/", label:"Published Catalog", icon:"👁", group:"partner", ext:true, desc:"Open the live Partner 360 storefront exactly as a dealer sees it — the published result of everything above" }
     ]},
     { id:"website", label:"Website", icon:"🌐", accent:"#2f6bd8", dashTitle:"HCPS Website",

@@ -1,0 +1,63 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCPS Admin — Storefront Advertising Rules</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="/admin/admin-shell.css">
+<style>
+ .srn{background:#f5f8fc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--navy2);margin-bottom:12px}
+ .src{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px;min-width:0}.src h2{font-size:15px;margin:0 0 6px;color:var(--navy)}
+ .srt{width:100%;border-collapse:collapse;font-size:13px}.srt th{text-align:left;font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--line);padding:6px 4px}.srt td{border-bottom:1px solid #eef1f4;padding:7px 4px;vertical-align:top}
+ .srw{overflow-x:auto;-webkit-overflow-scrolling:touch}.srs{font-size:11.5px;color:var(--gray)}
+ .srt select,.srt input{padding:7px 8px;border:1px solid var(--line);border-radius:8px;font:inherit;min-height:40px;max-width:100%}.srt input{width:100%;min-width:180px;box-sizing:border-box}
+ .srb{min-height:40px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:#fff;font-weight:700;cursor:pointer}.srb.pri{background:var(--navy);color:#fff;border-color:var(--navy)}
+ .pill{font-size:11.5px;font-weight:800;padding:2px 8px;border-radius:999px;background:#eef1f4}.pill.on{background:#e5f4e4;color:#14532d}.pill.bad{background:#fbebeb;color:#991b1b}.pill.unk{background:#f9eeda;color:#7a4b00}
+ .msg2{font-size:12.5px;margin-left:6px}
+ @media(max-width:760px){.srt select,.srt input{font-size:16px;min-height:44px}.srb{min-height:44px}}
+</style>
+</head><body>
+<header id="ac-head"></header>
+<div class="wrap">
+  <div class="top"><div><h1 style="margin:0">Storefront Advertising Rules</h1>
+    <div class="sub">Which retail prices dealers' public storefronts may show, per manufacturer line — and HCPS's pause control for any storefront.</div></div></div>
+  <div id="body"><div class="msg">Loading…</div></div>
+</div>
+<script src="/admin/staff-session.js"></script>
+<script src="/admin/admin-chrome.js"></script>
+<script>
+/* C3-07 storefront correction (owner 2026-11-06): storefront-rules-api. A public price is the dealer's own retail → the MSRP →
+   HCPS calculated retail (standard cost × 2) → Call for Price; these rules decide which of those a line may advertise.
+   Nothing is assumed: a line without recorded rules shows only its MSRP. */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let TOKEN=HCPS.token(), D=null;
+window.addEventListener("hcps-token",e=>{try{TOKEN=e.detail;}catch(_){}});
+const LABEL={unknown:"Not recorded — MSRP only",open:"No restriction — any price",map:"MAP / eMAP — at or above the minimum advertised price",msrp_only:"MSRP only",no_price:"No public prices"};
+async function api(p){ const r=await fetch("/.netlify/functions/storefront-rules-api",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+TOKEN},body:JSON.stringify(p)}); let b={}; try{ b=await r.json(); }catch(e){} return {status:r.status,body:b}; }
+async function boot(){
+  if(!TOKEN){ $("#body").innerHTML='<div class="srn">Please sign in to Connect 360.</div>'; return; }
+  const r=await api({action:"get"}); if(r.status!==200){ $("#body").innerHTML=`<div class="srn">${esc(r.body.error||"Could not load.")}</div>`; return; }
+  D=r.body; render();
+}
+function render(){
+  const opt=v=>D.policies.map(p=>`<option value="${p}"${p===v?" selected":""}>${esc(LABEL[p]||p)}</option>`).join("");
+  $("#body").innerHTML=`<div class="srn">A storefront price is chosen in this order: <b>the dealer's own retail price</b> → <b>the manufacturer's MSRP</b> → <b>HCPS calculated retail</b> (standard cost × 2, shown as "Price", never as MSRP) → <b>Call for Price</b>. The rules below decide which of those a line may advertise. A line whose rules aren't recorded shows only its MSRP — HCPS never assumes permission. Changes reach storefronts within about 30 seconds.</div>
+  <div class="src"><h2>Manufacturer advertising rules</h2><div class="srw"><table class="srt"><thead><tr><th>Line</th><th>Rule</th><th>Where it comes from</th><th>On file</th><th></th></tr></thead><tbody>
+  ${D.lines.map(l=>`<tr data-s="${esc(l.slug)}"><td><b>${esc(l.name)}</b>${l.policy==="unknown"?' <span class="pill unk">needs review</span>':""}<div class="srs">${l.set_by?esc("set by "+l.set_by+" · "+new Date(l.set_at).toLocaleDateString()):""}</div></td>
+    <td><select aria-label="Rule for ${esc(l.name)}">${opt(l.policy)}</select></td><td><input aria-label="Evidence for ${esc(l.name)}" maxlength="500" value="${esc(l.note)}" placeholder="e.g. Bemis MAP policy, dealer agreement 2026"></td>
+    <td class="srs">MAP: ${esc(l.map_on_file)}${l.products!=null?" of "+esc(l.products):""}<br>MSRP: ${esc(l.msrp_on_file)}</td><td><button class="srb pri" type="button" onclick="savePolicy('${esc(l.slug)}',this)">Save</button><span class="msg2"></span></td></tr>`).join("")}
+  </tbody></table></div></div>
+  <div class="src"><h2>Dealer storefronts</h2><div class="srw"><table class="srt"><thead><tr><th>Dealer</th><th>Status</th><th>Link</th><th></th></tr></thead><tbody>
+  ${D.storefronts.length?D.storefronts.map(s=>`<tr><td><b>${esc(s.dealer)}</b>${s.test?' <span class="pill">TEST</span>':""}<div class="srs">${esc(s.city)}</div></td><td>${s.blocked?'<span class="pill bad">Paused by HCPS</span>':s.enabled?'<span class="pill on">Live</span>':'<span class="pill">Off</span>'}</td>
+    <td><a href="${esc(s.link)}" target="_blank" rel="noopener">${esc(s.link.replace(/^https:\/\//,""))}</a></td><td><button class="srb" type="button" onclick="blockSf('${esc(s.dealer_id)}',${s.blocked?"false":"true"},this)">${s.blocked?"Restore":"Pause"}</button><span class="msg2"></span></td></tr>`).join(""):'<tr><td colspan="4" class="srs">No dealer has set up a storefront yet.</td></tr>'}
+  </tbody></table></div></div>
+  ${D.history.length?`<div class="src"><h2>Recent changes</h2><div class="srs">${D.history.slice(0,20).map(h=>esc(new Date(h.at).toLocaleString()+" — "+h.slug+": "+(LABEL[h.from]||h.from)+" → "+(LABEL[h.to]||h.to)+" ("+h.by+")"+(h.note?" — "+h.note:""))).join("<br>")}</div></div>`:""}`;
+}
+async function savePolicy(slug,btn){ const tr=btn.closest("tr"), m=tr.querySelector(".msg2"); btn.disabled=true; m.textContent="Saving…";
+  const r=await api({action:"set_policy",slug,policy:tr.querySelector("select").value,note:tr.querySelector("input").value});
+  btn.disabled=false; if(r.status!==200){ m.textContent=r.body.error||"Could not save."; return; } m.textContent="Saved."; const x=await api({action:"get"}); if(x.status===200){ D=x.body; render(); } }
+async function blockSf(id,blocked,btn){ const m=btn.parentNode.querySelector(".msg2"); let reason="";
+  if(blocked){ reason=prompt("Why is HCPS pausing this storefront? (kept on record)")||""; if(reason.trim().length<5){ m.textContent="A reason is needed."; return; } }
+  btn.disabled=true; const r=await api({action:"block",dealer_id:id,blocked,reason}); btn.disabled=false;
+  if(r.status!==200){ m.textContent=r.body.error||"Could not change."; return; } const x=await api({action:"get"}); if(x.status===200){ D=x.body; render(); } }
+boot();
+</script>
+</body></html>
