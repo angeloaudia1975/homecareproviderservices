@@ -1,6 +1,6 @@
 # Golden Commerce API — contract v1 (golden-commerce-v1)
 
-**Contract version:** 1.7.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3; 1.4.0 the Stage 4a read-only quote, batch B4, and 4b ship-to + validate-only orders; 1.5.0 the Stage 5 order history, batch B5; 1.6.0 the Stage 4c order placement, batch B6; 1.6.1 adds retail upgrade prices to the configurator, batch B6.1; 1.7.0 adds Golden's freight to quotes, validations and placements, batch B6.2) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
+**Contract version:** 1.8.0 (1.0.0 frozen 2026-11-02, Stage 0 batch B0; 1.1.0 adds the Stage 2 read routes, batch B2; 1.2.0 the product-detail route; 1.3.0 the Stage 3 configurator, batch B3; 1.4.0 the Stage 4a read-only quote, batch B4, and 4b ship-to + validate-only orders; 1.5.0 the Stage 5 order history, batch B5; 1.6.0 the Stage 4c order placement, batch B6; 1.6.1 adds retail upgrade prices to the configurator, batch B6.1; 1.7.0 adds Golden's freight to quotes, validations and placements, batch B6.2; 1.8.0 adds account-number links and HCPS-attested ship-to addresses, batch B7) · **Blueprint:** `docs/FEDERATED_ARCHITECTURE.md` v1.3.0
 **Committed byte-identical in:** `golden-dealer-portal/docs/contracts/` and `homecareproviderservices/docs/contracts/`.
 `golden-commerce-v1.lock.json` pins the SHA-256 of this file, the schema, the signing vectors and the shared
 signing module. Each repo's tests fail on drift. Change all copies together and bump the lock.
@@ -283,6 +283,33 @@ below); `test_mode:true` (and `recipient:"test_recipient"`) when placement would
   `product.purchased`): Partner 360 placed it and already has Golden's answer.
 - Errors also: 422 `idempotency_conflict`, 503 `idempotency_unavailable` / `internal` / `pricing_unavailable` …,
   409 `duplicate_po` only where an older per-account PO constraint exists.
+
+## 4i. Account-number links and HCPS ship-to (B7, contract 1.8.0)
+
+Owner rule (2026-11-05): the Golden account number HCPS records for a location (or its head office) is the pricing
+contract; HCPS is the ship-to system of record for Partner 360. Both are OFF until Golden's switches are exactly `"true"`.
+
+**Delegation claim `acct`** (switch `P360_ACCOUNT_LINKS`). HCPS's server puts the Golden account number it holds for the
+acting location in the signed delegation (`acct`, `^[A-Za-z0-9-]{1,20}$`, else 400 `delegation_account`). The browser never
+supplies it. Golden then resolves the link from its OWN records: the active Golden dealer whose `customer_no` = `acct`, and
+the VERIFIED link of this client to that dealer. Every HCPS location carrying the same number therefore shares that
+account's link, prices and permissions; names never have to match. Fail closed: no Golden dealer with that number →
+`account_not_in_golden`; only an inactive one → `golden_account_inactive`; no verified link to it → `account_not_enabled`
+(all `state:"none"` / unlinked); two active Golden dealers with the number → 409 `account_ambiguous`; the delegated
+`sub_dealer`'s own verified link names ANOTHER Golden account → 409 `account_mismatch`. An account-number resolution is
+account level: `sub_branch` needs no branch map and the multi-location review route does not apply. Without `acct` (or with
+the switch off) §4–§4h are unchanged. `acct` is never returned or logged.
+
+**`ship_to: { hcps: { ref, name, address, address2?, city, state, zip, phone? } }`** (switch `P360_HCPS_SHIPTO`), accepted by
+`/v1/quote` and `/v1/orders` in place of `{ id }`, inside the HMAC-signed body only. HCPS's server builds it from its own
+address records for the acting dealer's account (it verifies the dealer, the account number and the address's ownership;
+a browser-typed address is never forwarded). Golden validates it (only these keys; ref 1–96 of `[A-Za-z0-9:_-]`; name 2–80, address 3–120, address2 ≤ 80,
+city 2–60, a US state / DC / PR code, ZIP 5 or 9, phone 10 digits or empty; else 400 `bad_request` "ship_to") and treats it
+like one of its own records: special terms, the S&H waiver and freight are computed on its ACTUAL city and state; its id is
+`hcps-` + 24 hex of SHA-256 over every field, so it is part of `quote_hash` (any change = a new review, 409 `prices_changed`);
+it is stored on the order (address, city, state, zip; the recipient as the attention line when the dealer gave none,
+otherwise as a notes line; the delivery phone as a notes line). Echoed ship-to objects have `kind:"hcps"` and the same
+public fields as §4e.
 
 ## 4g. Payloads (B5 order history and tracking, contract 1.5.0)
 
