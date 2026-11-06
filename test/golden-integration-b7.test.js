@@ -171,6 +171,12 @@ const proxy = async (b, o, h) => { env(); const w = world(o); const r = await lo
     eq(x.w.writes.length, 0); ok(x.w.golden.length === 1);
   });
 
+  await t("address id: pinned to Golden's value (hcps- + SHA-256 over every field, computed by Golden's own code)", async () => {
+    const GA = load("_golden_addresses.js");
+    const e = { ref: `gs:${SAVED_A}`, name: "Mrs. Patient Home", address: "42 Oak Lane", address2: "Apt 3", city: "Somerset", state: "KY", zip: "42501", phone: "606-555-0142" };
+    eq(GA.shipId(e), "hcps-8be6f92fb41ea3026f0465bd");
+    ok(GA.shipId(Object.assign({}, e, { address2: "Apt 4" })) !== GA.shipId(e) && GA.shipId(Object.assign({}, e, { phone: "" })) !== GA.shipId(e), "every field counts");
+  });
   // ---- cross-repo: HCPS and Golden agree on validation and the address id ----
   const gship = path.join(GOLDEN, "repo/functions/lib/golden-shipto.js");
   if (fs.existsSync(gship) && fs.readFileSync(gship, "utf8").includes("hcpsShipTo")) {
