@@ -130,11 +130,13 @@ begin
   perform pg_advisory_xact_lock(hashtext('sfcli:' || p_client));
   select id, dealer_id, email, enabled, hcps_blocked into sf from public.dealer_storefronts where id = p_storefront;
   if not found or not sf.enabled or sf.hcps_blocked then return jsonb_build_object('refused','unavailable'); end if;
+  if exists (select 1 from public.dealers d where d.id = sf.dealer_id and d.active is false) then return jsonb_build_object('refused','unavailable'); end if;
+  perform pg_advisory_xact_lock(hashtext('sfview:' || sf.dealer_id::text));   -- same lock as storefront_count: one order of row locks, no deadlock
   if (select coalesce(sum(inquiries),0) from public.storefront_rate where client = p_client and bucket > now() - interval '1 hour') >= 3
      or (select coalesce(sum(inquiries),0) from public.storefront_rate where client = p_client and bucket > now() - interval '24 hours') >= 8 then
     return jsonb_build_object('refused','client'); end if;
   if (v_email is not null and (select count(*) from public.storefront_inquiries where email = v_email and created_at > now() - interval '24 hours') >= 3)
-     or (v_phone is not null and (select count(*) from public.storefront_inquiries where phone = v_phone and created_at > now() - interval '24 hours') >= 3) then
+     or (v_phone is not null and (select count(*) from public.storefront_inquiries where regexp_replace(phone, '\D', '', 'g') = regexp_replace(v_phone, '\D', '', 'g') and created_at > now() - interval '24 hours') >= 3) then
     return jsonb_build_object('refused','contact'); end if;
   if (select count(*) from public.storefront_inquiries where storefront_id = p_storefront and created_at > now() - interval '24 hours') >= 200 then
     return jsonb_build_object('refused','storefront'); end if;

@@ -44,10 +44,18 @@ async function cached(key, ms, fn) {
   return v;
 }
 function clientKey(event) {
-  const h = event.headers || {}; const ip = String(h['x-nf-client-connection-ip'] || '').trim().slice(0, 64);
+  const h = event.headers || {}; let ip = String(h['x-nf-client-connection-ip'] || '').trim().slice(0, 64).toLowerCase();
   if (!ip) return 'none';
-  const day = new Date().toISOString().slice(0, 10);
-  return crypto.createHmac('sha256', String(SERVICE_ROLE)).update('storefront|' + day + '|' + ip).digest('hex').slice(0, 32);
+  // IPv6: one visitor = one /64 (a device can rotate the rest at will); IPv4: the whole address. No date in the key, so the
+  // 24-hour limits really run 24 hours; rate rows are purged after 2 days.
+  if (ip.includes(':')) { const full = expand6(ip); if (full) ip = full.slice(0, 4).join(':') + '::/64'; }
+  return crypto.createHmac('sha256', String(SERVICE_ROLE)).update('storefront|' + ip).digest('hex').slice(0, 32);
+}
+function expand6(a) {
+  const s = a.replace(/%.*$/, ''); if (s.includes('.')) return null;
+  const [l, r] = s.split('::'); const L = l ? l.split(':') : [], R = r != null && r !== '' ? r.split(':') : [];
+  if (r == null && L.length !== 8) return null; const fill = 8 - L.length - R.length; if (fill < 0) return null;
+  return L.concat(Array(r == null ? 0 : fill).fill('0'), R).map((x) => (x || '0').replace(/^0+(?=.)/, ''));
 }
 /* every row of a read, a page at a time — a full page is never taken as the whole answer */
 async function sbAll(base) { let from = 0, out = []; for (;;) { const rows = await sb('GET', `${base}&limit=1000&offset=${from}`); out = out.concat(rows || []); if (!rows || rows.length < 1000) return out; from += 1000; } }
@@ -83,7 +91,7 @@ async function storefront(slug) {
     for (const line of lines) {
       const q = `manufacturer=eq.${enc(line)}`;
       const [file, records, overrides, custom, pages] = await Promise.all([catalogFile(line),
-        sbAll(`product_skus?${q}&select=code,msrp,msrp_auto,status&order=code.asc`), sbAll(`product_overrides?${q}&select=code,patch&order=code.asc`),
+        sbAll(`product_skus?${q}&select=code,msrp,msrp_auto,status,uom,case_qty,msrp_basis&order=code.asc`), sbAll(`product_overrides?${q}&select=code,patch&order=code.asc`),
         sbAll(`custom_products?${q}&select=code,msrp,msrp_auto&order=code.asc`), sbAll(`product_content?${q}&select=page_key,status,disabled,skus&order=page_key.asc`)]);
       const facts = SF.lineFacts({ records, overrides, custom, pages, enrichedOnly: enrOnly.has(line) });
       let n = 0;
