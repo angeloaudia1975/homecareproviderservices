@@ -105,6 +105,9 @@ exports.handler = async (event) => {
         const taken = await sb('GET', `dealer_storefronts?slug=eq.${enc(v.patch.slug)}&select=dealer_id`);
         if (taken && taken.length) return json(409, { ok: false, error: 'That web address is already taken — please choose another.', taken: true });
       }
+      // the public page shows ONLY contact details entered here (never the account's own email / phone): a live storefront needs one
+      const eff = Object.assign({}, row || {}, v.patch);
+      if (eff.enabled === true && !eff.phone && !eff.email) return json(400, { ok: false, error: 'Add a phone number or an email address for customers before turning your storefront on.' });
       const now = new Date().toISOString();
       let out;
       try {
@@ -121,6 +124,7 @@ exports.handler = async (event) => {
       return json(200, { ok: true, storefront: s, link: link(s.slug), live: !!(s.enabled && !s.hcps_blocked) });
     }
     if (b.action === 'sf_inquiries') {
+      if (who.preview) return json(200, { ok: true, inquiries: [], hidden_in_preview: true });   // customers' contact details stay with the dealer
       const ids = C.visible.map((v) => String(v.id)).filter((i) => !b.location_id || i === String(b.location_id));
       if (!ids.length) return json(404, { ok: false, error: 'That location is not part of your account.' });
       const rows = await sb('GET', `storefront_inquiries?dealer_id=in.(${ids.map(enc).join(',')})&select=id,dealer_id,created_at,name,email,phone,message,manufacturer,product_code,product_name,status,handled_at,delete_after&order=created_at.desc&limit=300`);

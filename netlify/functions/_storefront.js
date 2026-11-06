@@ -40,12 +40,27 @@ function validateSettings(b, authorizedLines) {
   return { patch: p };
 }
 
-/* the commercial facts for one line → { verified MSRP by code, hidden codes } (records, then saved edits, then added products) */
-function lineFacts({ records, overrides, custom }) {
+/* the commercial facts for one line → { verified MSRP by code, hidden codes (exact and upper-case), only (null, or the codes
+   an enriched-only line may show) }. Hidden: a record that isn't active; a saved edit switched off / hidden / retired /
+   discontinued; an enrichment page discontinued, hidden or switched off (its SKUs); a SKU switched off, hidden or
+   discontinued on its page. A public storefront never shows a discontinued product (the dealer shop keeps them for
+   reference — visible ≠ sellable). Enriched-only lines show only SKUs on a published/active page. */
+function lineFacts({ records, overrides, custom, pages, enrichedOnly }) {
   const num = (v) => { const n = Number(v); return isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null; };
-  const msrp = new Map(), hidden = new Set(), rec = new Map();
+  const U = (c) => String(c == null ? '' : c).trim().toUpperCase();
+  const msrp = new Map(), hidden = new Set(), hiddenU = new Set(), rec = new Map();
   for (const r of records || []) { rec.set(String(r.code), r); if (r.status && r.status !== 'active') hidden.add(String(r.code)); }
   for (const o of overrides || []) { const p = o.patch || {}; if (p.active === false || p.hidden === true || p.retired === true || p.discontinued === true) hidden.add(String(o.code)); }
+  const only = enrichedOnly ? new Set() : null;
+  for (const pg of pages || []) {
+    const st = String(pg.status || ''), off = pg.disabled === true || st === 'discontinued' || st === 'hidden', live = !off && (st === 'published' || st === 'active');
+    for (const sx of Array.isArray(pg.skus) ? pg.skus : []) {
+      const c = U(sx && (sx.sku || sx.code)); if (!c) continue;
+      const sst = String((sx && sx.status) || '');
+      if (off || sx.disabled === true || sst === 'hidden' || sst === 'discontinued') hiddenU.add(c);
+      else if (live && only) only.add(c);
+    }
+  }
   const codes = new Set([...rec.keys(), ...(overrides || []).map((o) => String(o.code)), ...(custom || []).map((c) => String(c.code))]);
   for (const code of codes) {
     const r = rec.get(code);
@@ -54,9 +69,17 @@ function lineFacts({ records, overrides, custom }) {
     if (om) { msrp.set(code, om); continue; }
     const c = (custom || []).find((x) => String(x.code) === code); if (c && c.msrp_auto !== true && num(c.msrp)) msrp.set(code, num(c.msrp));
   }
-  return { msrp, hidden };
+  const isHidden = (code) => hidden.has(String(code)) || hiddenU.has(U(code)) || (only ? !only.has(U(code)) : false);
+  return { msrp, hidden, hiddenU, only, isHidden };
 }
 
+/* the unit an MSRP is quoted for, when it isn't a single item ("per 12-roll pack", "per Case") */
+function unitOf(p) {
+  const u = clean(p.uom, 40); const q = Number(p.case_qty);
+  if (u && !/^(each|ea|1)$/i.test(u)) return 'per ' + u + (q > 1 && !/\d/.test(u) ? ` (${q} each)` : '');
+  if (q > 1) return `per pack of ${q}`;
+  return null;
+}
 const IMG = /^(\/assets\/[A-Za-z0-9._\/%+-]{1,300}|https:\/\/[^\s"'<>`]{1,500})$/;
 /* ONE public product — a whitelist; nothing else from the catalog file ever leaves */
 function publicProduct(p, line, facts, priceMode) {
@@ -65,7 +88,8 @@ function publicProduct(p, line, facts, priceMode) {
   const price = priceMode === 'msrp' ? (facts.msrp.get(String(p.code)) || null) : null;
   return { manufacturer: line, code: String(p.code).slice(0, 80), name: clean(p.name, 200) || String(p.code), category: clean(p.category, 120) || 'Other',
     subcategory: clean(p.subcategory, 120), brand: clean(p.brand, 80), description: clean(p.description, 1200), uom: clean(p.uom, 40),
-    image: IMG.test(String(p.image || '')) ? String(p.image) : null, attributes: attrs, price, price_label: price ? 'MSRP' : 'Call for Price' };
+    image: IMG.test(String(p.image || '')) ? String(p.image) : null, attributes: attrs, price, price_label: price ? 'MSRP' : 'Call for Price',
+    price_unit: price ? unitOf(p) : null };
 }
 
 /* an inquiry from the public: what the person typed, checked; {row} or {error}. hp = honeypot field (must stay empty) */
@@ -79,14 +103,25 @@ function validateInquiry(b) {
   if (b.consent !== true) return { error: 'Please agree to the dealer contacting you about your request.' };
   const pr = b.product && typeof b.product === 'object' ? b.product : null;
   const mfr = pr && /^[a-z0-9-]{2,60}$/.test(String(pr.manufacturer || '')) ? String(pr.manufacturer) : null;
-  return { row: { name, email: email ? email.toLowerCase() : null, phone, message, manufacturer: mfr, product_code: mfr ? clean(pr.code, 80) : null, product_name: mfr ? clean(pr.name, 200) : null } };
+  // product_name is never the visitor's text: the server fills it from the catalog for a product this storefront shows
+  return { row: { name: name.replace(/[\r\n\t]+/g, ' '), email: email ? email.toLowerCase() : null, phone, message, manufacturer: mfr, product_code: mfr ? clean(pr.code, 80) : null, product_name: null } };
 }
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function inquiryEmail(row, sf, dealerName, link) {
   const lines = [['Name', row.name], ['Email', row.email], ['Phone', row.phone], ['Product', row.product_name ? `${row.product_name}${row.product_code ? ' (#' + row.product_code + ')' : ''}` : null], ['Message', row.message]].filter((x) => x[1]);
-  return { subject: `New request from your storefront${row.product_name ? ' — ' + row.product_name.slice(0, 60) : ''}`,
+  const subj = `New request from your storefront${row.product_name ? ' — ' + String(row.product_name).slice(0, 60) : ''}`.replace(/[\r\n\t]+/g, ' ');
+  return { subject: subj,
     html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#0b0d0f"><p>Someone sent a request from <b>${esc(dealerName)}</b>'s storefront (${esc(link)}).</p>
 <table style="border-collapse:collapse">${lines.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">${k}</td><td style="padding:4px 0;white-space:pre-wrap">${esc(v)}</td></tr>`).join('')}</table>
 <p style="color:#777;font-size:12px">Reply to this email to answer them. You can mark the request handled or delete it in the 360 Dealer Portal → My Storefront. Requests are kept for 24 months.</p></div>` };
 }
-module.exports = { slugify, slugProblem, validateSettings, lineFacts, publicProduct, validateInquiry, inquiryEmail, RESERVED, EMAIL_RE };
+/* a logo the public page may show: an image we host (our storage / the ordering site's /assets) or an inline image — never a
+   third-party address (it would see every visitor's network address, D4) */
+function logoOk(u, supabaseUrl) {
+  const v = String(u || '');
+  if (/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]{1,700000}$/.test(v)) return true;
+  if (/^\/assets\/[A-Za-z0-9._\/%+-]{1,300}$/.test(v)) return true;
+  const base = String(supabaseUrl || '').replace(/\/+$/, '');
+  return !!base && v.startsWith(base + '/storage/v1/object/public/') && /^[^\s"'<>`]{1,1900}$/.test(v) && !/\.\./.test(v);
+}
+module.exports = { logoOk, unitOf, slugify, slugProblem, validateSettings, lineFacts, publicProduct, validateInquiry, inquiryEmail, RESERVED, EMAIL_RE };
