@@ -2163,6 +2163,22 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     Sales Workspace to the President's book; TEST dealers excluded; portal orders read in batches of 100 dealers.
     Promotional downloads (ordering My Storefront): three canvas PNGs from the storefront's public details, download only,
     offered only while the storefront is live. Tests: demand-intel 10 + mutants 19/19 + UI; storefront.browser 41.
+  · **Storefront correction (owner 2026-11-06 13:25 CT — replaces "never Golden" and the D3 "dealer retail never public"
+    rule for storefronts).** (1) Golden Technologies IS shown on a dealer's public storefront for dealers authorized to
+    represent it (lift chairs, scooters, power chairs, beds, accessories), from the existing Golden catalog data (photos,
+    descriptions, specs, MSRP/eMAP); browsing + inquiries only — never checkout; never change the Golden ordering
+    integration, Golden account pricing or checkout/activation switches. (2) PUBLIC PRICE HIERARCHY: dealer's saved retail
+    price (location override, else company default) when it meets known MAP/eMAP and advertising rules → manufacturer MSRP on
+    file → HCPS CALCULATED RETAIL = authoritative STANDARD cost × 2 (owner-approved; never a dealer's negotiated/account
+    price; kept distinguishable from MSRP internally; shown as "Price"/"Retail Price", never called MSRP) → Call for Price
+    only when no usable price can be published safely. Never publish below a verified MAP/eMAP; manufacturer advertising rules
+    unknown → flag for review, never assume permission. No wholesale cost, discount, margin or price source in any public
+    response or browser code. (3) Dealers review, set (single + bulk by manufacturer/category, company default + branch
+    override, the EXISTING dealer_retail_prices store — no duplicate pricing database), preview exactly as customers see it,
+    save without publishing, then publish; restrictions explained in the editor; changes go live without a deploy.
+    (4) Golden brochure/quote: verified Golden MSRP, else the 2× fallback clearly labelled HCPS-calculated; quote choices
+    (MSRP · saved retail · one-time) kept; Golden wholesale, order totals, freight and ordering API unchanged. (5) Real-dealer
+    pilot: one dealer first, only with that dealer's participation; no synthetic requests against real storefronts.
   · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
     (ordering) are authorized for deletion (the session's safety control refused the delete — Angelo deletes them on
     GitHub); no real account numbers remain in either public repo's current files; the private Golden repo's baseline
