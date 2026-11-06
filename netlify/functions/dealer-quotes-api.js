@@ -101,8 +101,9 @@ async function priceLookups(owner, locationId, lines) {
     const sbGet = (p) => sb("GET", p);
     const [f, pset] = await Promise.all([readFlags(sbGet), sb("GET", "app_settings?key=eq.advertising_policies&select=value")]);
     const pol = RP.policiesFrom(pset && pset[0] && pset[0].value, { "golden-technologies": "map" })["golden-technologies"];
+    const ctx = {};   // one gate check + one catalog read for the whole quote
     for (const code of [...new Set(goldenLines.map((l) => l.code))].slice(0, 30)) {
-      try { golden.set(code, await GR.retailFor(sbGet, locationId, code, f, pol)); } catch (e) { console.error("golden retail failed", e && e.message); golden.set(code, null); }
+      try { golden.set(code, await GR.retailFor(sbGet, locationId, code, f, pol, ctx)); } catch (e) { console.error("golden retail failed", e && e.message); golden.set(code, null); }
     }
   }
   return { msrp: async (m, s) => msrp.get(m + "|" + s) ?? null, retail: async (m, c) => retail.get(m + "|" + c) ?? null, golden: async (c) => golden.get(c) || null };

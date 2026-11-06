@@ -42,7 +42,7 @@ function world(o) {
     if (u.startsWith(M.BASE + '/storage/v1/object/sign/')) return res(200, { signedURL: '/object/sign/x?token=t' });
     if (u.startsWith(M.BASE + '/storage/v1/object/list/dealer-applications')) { if (o.listFails) return res(500, 'no'); const b = JSON.parse(opts.body);
       return res(200, stored.filter((x) => !x.deleted && x.path.startsWith(b.prefix)).map((x) => ({ name: x.path.slice(b.prefix.length), id: 'f-' + x.path }))); }
-    if (u === M.BASE + '/storage/v1/object/dealer-applications' && opts.method === 'DELETE') { const b = JSON.parse(opts.body); W.deletes = (W.deletes || []).concat(b.prefixes);
+    if (u === M.BASE + '/storage/v1/object/dealer-applications' && opts.method === 'DELETE') { if (o.deleteFailsOnce && !W.delFailed) { W.delFailed = true; return res(500, 'no'); } const b = JSON.parse(opts.body); W.deletes = (W.deletes || []).concat(b.prefixes);
       for (const x of stored) if (b.prefixes.includes(x.path)) x.deleted = true; return res(200, []); }
     if (u.startsWith(M.BASE + '/storage/v1/object/dealer-applications/')) { stored.push({ path: u.split('/dealer-applications/')[1], bytes: opts.body.length, upsert: hd['x-upsert'] }); return res(200, { Key: 'k' }); }
     if (u.startsWith('https://app.documenso.com/api/v2/')) {
@@ -249,6 +249,8 @@ async function filled(W, m) { const C = api(W); const a = await started(W, 'hq',
     const b = await filled(W, 'access4u'); eq((await as(C, 'hq', { action: 'app_guarantee_page', id: b.id })).status, 400, 'no guarantee page for Access4U');
     eq((await as(C, 'hq', { action: 'app_upload_paper', id: a.id, version: a.version, kind: 'guarantee', pdf_base64: PDF64 })).status, 200);
     ok(W.stored.some((x) => /\/guarantee-[0-9a-f]{16}\.pdf$/.test(x.path)), 'stored');
+    for (let i = 0; i < 4; i++) eq((await as(C, 'hq', { action: 'app_upload_paper', id: a.id, version: a.version, kind: 'guarantee', pdf_base64: Buffer.from('%PDF-1.4\n' + i + 'z'.repeat(400)).toString('base64') })).status, 200);
+    eq((await as(C, 'hq', { action: 'app_upload_paper', id: a.id, version: a.version, kind: 'guarantee', pdf_base64: PDF64 })).status, 429, 'at most 5 guarantee pages');
     const g = await as(adm(W), 'boss', { action: 'get', id: a.id }); ok(!!g.body.files.guarantee, 'President sees the guarantee page');
     const L = await as(C, 'hq', { action: 'app_get', id: a.id }); ok(/never signed electronically/.test(L.body.notice), L.body.notice);
   });
@@ -276,6 +278,14 @@ async function filled(W, m) { const C = api(W); const a = await started(W, 'hq',
     await as(api(W2), 'hq', { action: 'app_withdraw', id: b.id }); const r2 = W2.db.dealer_applications[0]; r2.retention_until = '2020-01-01';
     eq((await as(A2, 'boss', { action: 'purge', id: b.id, version: r2.version, confirm: 'DELETE' })).status, 503, 'storage unreadable → nothing cleared');
     ok(W2.db.dealer_applications[0].answers_enc, 'answers kept when the files could not be listed');
+    const W3 = world({ deleteFailsOnce: true }); const c3 = await filled(W3, 'access4u'); const A3 = adm(W3);
+    await as(api(W3), 'hq', { action: 'app_upload_paper', id: c3.id, version: c3.version, kind: 'signed', pdf_base64: PDF64 });
+    let r3 = W3.db.dealer_applications[0]; await as(A3, 'boss', { action: 'set_status', id: c3.id, version: r3.version, status: 'declined' }); r3 = W3.db.dealer_applications[0]; r3.retention_until = '2020-01-01';
+    eq((await as(A3, 'boss', { action: 'purge', id: c3.id, version: r3.version, confirm: 'DELETE' })).status, 503, 'delete failed');
+    r3 = W3.db.dealer_applications[0]; eq([r3.answers_enc, !!r3.signed_path], [null, true], 'answers cleared first; file marker kept');
+    eq((await as(A3, 'boss', { action: 'retention' })).body.due.length, 1, 'still listed for a retry');
+    eq((await as(A3, 'boss', { action: 'purge', id: c3.id, version: r3.version, confirm: 'DELETE' })).status, 200, 'retry');
+    eq([W3.db.dealer_applications[0].signed_path, W3.stored.every((x) => x.deleted)], [null, true]);
   });
   console.log(`\napplications: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

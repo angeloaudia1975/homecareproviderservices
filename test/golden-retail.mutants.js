@@ -13,7 +13,9 @@ const M = [
   { f: P, from: 'if(!who) return json(401, { ok:false, error:"unauthorized" });', to: 'if(!who) who = { dealer_id: "11111111-1111-1111-1111-111111111111" };', why: 'no sign-in needed' },
   { f: Q, from: "unit = g && g.price != null ? g.price : null;", to: 'unit = l.unit;', why: 'page figure trusted on a quote' },
   { f: Q, from: "(l.calc ? '<div class=\"sub\">Retail price</div>' : '<div class=\"sub\">MSRP</div>')", to: "'<div class=\"sub\">MSRP</div>'", why: 'calculated price labelled MSRP on a quote' },
-  { f: A, from: 'golden.set(code, await GR.retailFor(sbGet, locationId, code, f, pol));', to: 'golden.set(code, await GR.retailFor(sbGet, locationId, code, f, "open"));', why: 'advertising rule ignored on a quote' },
+  { f: A, from: 'golden.set(code, await GR.retailFor(sbGet, locationId, code, f, pol, ctx));', to: 'golden.set(code, await GR.retailFor(sbGet, locationId, code, f, "open", ctx));', why: 'advertising rule ignored on a quote' },
+  { f: G, from: "if (hit && Date.now() - hit.at < TTL) return hit.r;", to: '', why: 'Golden catalog read for every line' },
+  { f: G, from: "const key = JSON.stringify([deleg.sub_dealer, deleg.sub_branch, deleg.acct || null]);", to: "const key = 'all';", why: 'catalog cache shared across Golden accounts' },
 ];
 const runs = ['golden-retail.test.js', 'quotes.test.js'];
 const run = () => runs.every((t) => spawnSync(process.execPath, [path.join(__dirname, t)], { encoding: 'utf8' }).status === 0);

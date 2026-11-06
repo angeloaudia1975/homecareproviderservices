@@ -3,10 +3,13 @@ const fs = require('fs'), path = require('path'), { spawnSync } = require('child
 const F = (n) => path.join(__dirname, '..', 'netlify', 'functions', n);
 const R = F('_storefront.js'), P = F('storefront-public.js'), D = F('dealer-storefront-api.js'), C = F('_storefront_catalog.js'), G = F('_golden_storefront.js'), RP = F('_retail_price.js');
 const M = [
+  { f: C, from: "const orderMap = perOrder ? m : (q > 1 ? Math.round(m * q * 100) / 100 : null)", to: "const orderMap = m", why: 'pack price compared with a per-piece MAP' },
+  { f: C, from: "const perOrder = (r.map_basis || p.map_basis) === 'order_unit';", to: "const perOrder = false;", why: 'per-case MAP multiplied again' },
+  { f: RP, from: "if (msrp && policy === 'map' && msrpMap && msrp < msrpMap)", to: 'if (false)', why: 'MSRP below MAP published' },
   { f: C, from: "s && !GOLDEN.has(s) && !off.has(s) && !RETIRED.isRetiredLine(s)", to: 's && !GOLDEN.has(s) && !RETIRED.isRetiredLine(s)', why: 'switched-off line shown' },
   { f: C, from: '      if (hiddenCats.has(pp.category.toLowerCase())) continue;', to: '', why: 'hidden category shown' },
   { f: C, from: '      if (hiddenCats.has(p.category.toLowerCase())) continue;', to: '', why: 'hidden Golden category shown' },
-  { f: C, from: "deps.sbAll(`product_skus?${q}&select=code,msrp,msrp_auto,status,uom,case_qty,msrp_basis&order=code.asc`)", to: "deps.sbAll(`product_skus?${q}&select=code,msrp,msrp_auto,status,uom,case_qty,msrp_basis&order=code.asc`).catch(() => [])", why: 'unreadable records shown as none' },
+  { f: C, from: "deps.sbAll(`product_skus?${q}&select=code,msrp,msrp_auto,status,uom,case_qty,msrp_basis,map_basis&order=code.asc`)", to: "deps.sbAll(`product_skus?${q}&select=code,msrp,msrp_auto,status,uom,case_qty,msrp_basis,map_basis&order=code.asc`).catch(() => [])", why: 'unreadable records shown as none' },
   { f: RP, from: "if (input.priceMode === 'call') return call('dealer_call_for_price');", to: '', why: 'Call for Price mode ignored' },
   { f: RP, from: "if (policy === 'open') return { ok: true };", to: 'return { ok: true };', why: 'unknown rules treated as permission' },
   { f: RP, from: 'if (price < map) return', to: 'if (false) return', why: 'below-MAP price published' },
@@ -61,7 +64,7 @@ const M = [
   { f: D, from: "if (eff.enabled === true && !eff.phone && !eff.email)", to: "if (false)", why: 'live storefront without contact' },
   { f: D, from: "if (who.preview) return json(200, { ok: true, inquiries: [], hidden_in_preview: true });", to: "", why: 'preview reads customers' },
 ];
-const run = () => spawnSync(process.execPath, [path.join(__dirname, 'storefront.test.js')], { encoding: 'utf8' });
+const run = () => { for (const t of ['storefront.test.js', 'retail-price.test.js']) { const r = spawnSync(process.execPath, [path.join(__dirname, t)], { encoding: 'utf8' }); if (r.status !== 0) return r; } return { status: 0 }; };
 if (run().status !== 0) { console.log('CONTROL FAILED'); process.exit(1); }
 let k = 0; const s = [];
 for (const m of M) { const o = fs.readFileSync(m.f, 'utf8'); if (!o.includes(m.from)) { s.push(m.why + ' (missing)'); continue; }

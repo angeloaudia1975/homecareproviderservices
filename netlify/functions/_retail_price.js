@@ -36,12 +36,14 @@ function advertisable(price, policy, map) {
   return { ok: false, flag: 'rules_unknown' };
 }
 
-/* input: { dealerPrice, msrp (verified only), cost (standard, per order unit), map, policy, priceMode }
+/* input: { dealerPrice, msrp (verified only), cost (standard, per order unit), map (per ORDER UNIT), msrpMap (MAP in the MSRP's
+   unit; defaults to map), policy, priceMode }
    → { price, label, source: 'dealer'|'msrp'|'calculated'|'call', unit_basis, calculated (the 2× value or null),
        flags: [{ on:'dealer'|'calculated'|'line', flag, map? }] } */
 function decide(input) {
   const policy = POLICIES.includes(input.policy) ? input.policy : 'unknown';
   const dealer = pos(input.dealerPrice), msrp = pos(input.msrp), cost = pos(input.cost), map = pos(input.map);
+  const msrpMap = pos(input.msrpMap === undefined ? input.map : input.msrpMap);   // the MAP in the MSRP's own unit (null = can't compare)
   const calculated = cost ? r2(cost * 2) : null;
   const flags = [];
   const call = (why) => ({ price: null, label: 'Call for Price', source: 'call', unit_basis: null, calculated, msrp, flags: why ? flags.concat([{ on: 'line', flag: why }]) : flags });
@@ -52,7 +54,9 @@ function decide(input) {
     if (a.ok) return { price: dealer, label: 'Price', source: 'dealer', unit_basis: 'order_unit', calculated, msrp, flags };
     flags.push(Object.assign({ on: 'dealer' }, a, { ok: undefined }));
   }
-  if (msrp) return { price: msrp, label: 'MSRP', source: 'msrp', unit_basis: 'msrp', calculated, msrp, flags };
+  /* review fix: under MAP rules an MSRP below the MAP (bad data) is never published either */
+  if (msrp && policy === 'map' && msrpMap && msrp < msrpMap) flags.push({ on: 'msrp', flag: 'below_map', map: msrpMap });
+  else if (msrp) return { price: msrp, label: 'MSRP', source: 'msrp', unit_basis: 'msrp', calculated, msrp, flags };
   if (calculated) {
     const a = advertisable(calculated, policy, map);
     if (a.ok) return { price: calculated, label: 'Price', source: 'calculated', unit_basis: 'order_unit', calculated, msrp, flags };

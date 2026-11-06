@@ -42,13 +42,23 @@ function configuredMsrp(c, k) {
   return Math.round(parts.reduce((t, x) => t + x, 0) * 100) / 100;
 }
 
+/* review fix: Golden's catalog is read at most once a minute per Golden account (a warm function reuses it), and a quote
+   with many Golden lines shares one gate check and one catalog read (ctx). Never shared across accounts. */
+const CACHE = new Map(), TTL = 60000;
+async function catalogFor(deleg) {
+  const key = JSON.stringify([deleg.sub_dealer, deleg.sub_branch, deleg.acct || null]); const hit = CACHE.get(key);
+  if (hit && Date.now() - hit.at < TTL) return hit.r;
+  const r = await GC.call({ method: 'GET', path: '/v1/catalog', delegation: deleg });
+  if (r && r.ok) { if (CACHE.size > 50) CACHE.delete(CACHE.keys().next().value); CACHE.set(key, { at: Date.now(), r }); }
+  return r;
+}
 /* dealerId = the HCPS location the brochure / quote is for. policy = Golden's recorded advertising rule (default eMAP). */
-async function retailFor(sbGet, dealerId, code, flags, policy) {
+async function retailFor(sbGet, dealerId, code, flags, policy, ctx) {
   const none = (reason) => ({ ok: true, price: null, label: null, source: 'none', reason });
   const k = parseCode(code); if (!k) return none('not_priced');
-  const a = await GS.access(sbGet, dealerId, flags); if (!a.ok) return none(a.reason);
+  const a = ctx && ctx.access ? ctx.access : await GS.access(sbGet, dealerId, flags); if (ctx) ctx.access = a; if (!a.ok) return none(a.reason);
   const deleg = Object.assign({ sub_dealer: a.c.sub_dealer, sub_branch: a.c.sub_branch, actor: 'retail:' + String(dealerId).slice(0, 40), role: 'hcps_staff' }, a.acct ? { acct: a.acct } : {});
-  const cat = await GC.call({ method: 'GET', path: '/v1/catalog', delegation: deleg });
+  const cat = await catalogFor(deleg);
   const j = cat && cat.json;
   if (!cat || !cat.ok || !j || j.linked !== true || !Array.isArray(j.products)) return none(cat && cat.ok && j && j.linked !== true ? 'not_linked' : 'golden_unavailable');
   const g = j.products.find((p) => p && String(p.sku).toUpperCase() === k.sku); if (!g) return none('not_found');

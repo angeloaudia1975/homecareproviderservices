@@ -180,6 +180,7 @@ const readsOf = (W, tb) => W.calls.filter((c) => c.method === 'GET' && String(c.
     eq(r.status, 200); const h = r.body.html;
     ok(h.includes('$2,499.00') && h.includes('$3,378.00') && h.includes('$1,400.00'), 'MSRP, configured sum 2499+300+450+129, 2× standard');
     ok(!/\$1\.00/.test(h), 'the page\'s figure was used');
+    eq(W.golden.filter((u) => /\/v1\/catalog/.test(u)).length, 1, 'one Golden catalog read for the whole quote');
     ok(!h.includes('$1,000.00') && !h.includes('$1,100.00') && !h.includes('$700.00'), 'an account price used as cost, or a dealer price shown');
     ok(!h.includes('$1,400.00<div class="sub">MSRP'), 'calculated price called MSRP'); ok(h.includes('$1,400.00<div class="sub">Retail price'), 'calculated labelled');
     eq((h.match(/MSRP not provided/g) || []).length, 3, 'account-priced, below eMAP, brisa without MSRP → Price on request');

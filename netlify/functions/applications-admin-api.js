@@ -135,10 +135,14 @@ exports.handler = async (event) => {
       if (Number(b.version) !== app.version) return json(409, { ok: false, error: 'This application changed — reload it.' });
       if (!['approved', 'declined', 'withdrawn'].includes(app.status) || !app.retention_until || String(app.retention_until) > S.chicagoToday())
         return json(400, { ok: false, error: `This application must be kept until ${app.retention_until || 'it is closed and its retention date passes'}.` });
+      /* review fix: the record is cleared FIRST (compare-and-set), then the files; signed_path stays as the marker until every
+         file is gone, so a failed or partial delete is recorded and the application stays on the list for a retry */
       const files = await S.listFiles(app);
+      let row = await S.update(app, { answers_enc: null, signing_token_enc: null, signer_email: null, review_notes: null }, by);
       await S.event(app.id, by, 'purge_started', { files: files.length });
-      if (files.length) await S.removeFiles(files);
-      const row = await S.update(app, { answers_enc: null, signing_token_enc: null, signer_email: null, review_notes: null, signed_path: null, certificate_path: null, audit_path: null }, by);
+      try { if (files.length) await S.removeFiles(files); }
+      catch (e) { await S.event(app.id, by, 'purge_failed', { files: files.length }).catch(() => {}); return json(503, { ok: false, error: 'The stored documents could not all be deleted just now — the answers are cleared; try Delete again.' }); }
+      row = await S.update(row, { signed_path: null, certificate_path: null, audit_path: null }, by);
       await S.event(app.id, by, 'purged', { files: files.length, note: 'Documenso Free keeps its own copy of a completed document (no delete on the free plan).' });
       return json(200, { ok: true, application: { id: row.id, status: row.status, version: row.version }, files_deleted: files.length });
     }

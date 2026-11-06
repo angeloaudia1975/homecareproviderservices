@@ -14,6 +14,8 @@ const M = [
   { f: D, from: "if (kind === 'signed' && missing(answersOf(app)).length)", to: 'if (false)', why: 'incomplete questionnaire accepted on paper' },
   { f: D, from: "if (kind === 'signed' && !OPEN.has(app.status))", to: 'if (false)', why: 'paper copy replaces a signed one' },
   { f: D, from: "if (!(form && form.guarantee)) return json(400, { ok: false, error: 'This application has no guarantee page.' });", to: "if (!form) return json(400, {});", why: 'guarantee page for a form without one' },
+  { f: D, from: "if ((prior || []).length >= 5)", to: 'if (false)', why: 'unlimited guarantee uploads' },
+  { f: A, from: "row = await S.update(row, { signed_path: null, certificate_path: null, audit_path: null }, by);", to: '', why: 'file marker left after purge' },
 ];
 const run = () => spawnSync(process.execPath, [path.join(__dirname, 'applications.test.js')], { encoding: 'utf8' });
 if (run().status !== 0) { console.log('CONTROL FAILED'); process.exit(1); }

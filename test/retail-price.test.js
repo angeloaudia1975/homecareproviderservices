@@ -25,6 +25,11 @@ t('MAP rules: a dealer or calculated price below MAP is never published; without
   eq(D({ dealerPrice: 95, cost: 50, policy: 'map' }), [null, 'Call for Price', 'call'], 'no MAP on file → nothing but MSRP');
   const f = RP.decide({ dealerPrice: 79, msrp: 120, map: 89.99, policy: 'map' }).flags; eq(f, [{ on: 'dealer', flag: 'below_map', map: 89.99 }]);
 });
+t('review fix: under MAP rules an MSRP below the MAP is not published either; msrpMap compares in the MSRP\'s own unit', () => {
+  eq(D({ msrp: 80, map: 89.99, policy: 'map' }), [null, 'Call for Price', 'call']);
+  eq(D({ msrp: 30, map: 120, msrpMap: 30, policy: 'map' }), [30, 'MSRP', 'msrp'], 'MSRP each vs MAP each on a pack');
+  eq(D({ msrp: 80, map: 89.99, policy: 'open' }), [80, 'MSRP', 'msrp']);
+});
 t('unknown rules never assume permission: MSRP only, dealer and calculated prices flagged', () => {
   eq(D({ dealerPrice: 95, cost: 50, msrp: 120 }), [120, 'MSRP', 'msrp']);
   eq(D({ dealerPrice: 95, cost: 50 }), [null, 'Call for Price', 'call']);

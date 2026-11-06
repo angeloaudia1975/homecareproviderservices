@@ -40,17 +40,30 @@ async function build(sf, deps, opts) {
   if (Array.isArray(choose)) lines = lines.filter((s) => choose.includes(s));
   const hiddenCats = new Set((sf.hidden_categories || []).map((x) => String(x).toLowerCase()));
   const products = [], lineList = [];
+  /* review fix (2026-11-06): MAP is compared in the SAME unit as the price. On a pack (case_qty > 1) the dealer's and the
+     calculated price are per ORDER UNIT while MAP is per piece (map_basis 'each', the standing rule) or per order unit
+     (map_basis 'order_unit'); a pack whose quantity isn't known can't be checked → no MAP (held under MAP rules). */
+  const mapsFor = (p, rec, map) => {
+    const m = Number(map); if (!(m > 0)) return { map: null, msrpMap: null };
+    const r = rec || {}; const u = String(r.uom || p.uom || '').trim(); const q = Number(r.case_qty || p.case_qty);
+    const pack = q > 1 || (u && !/^(each|ea|1)$/i.test(u)); if (!pack) return { map: m, msrpMap: m };
+    const perOrder = (r.map_basis || p.map_basis) === 'order_unit';
+    const orderMap = perOrder ? m : (q > 1 ? Math.round(m * q * 100) / 100 : null), pieceMap = perOrder ? (q > 1 ? Math.round(m / q * 100) / 100 : null) : m;
+    const msrpEach = r.msrp_basis === 'each' || (r.msrp_basis !== 'order_unit' && p.msrp_each === true);
+    return { map: orderMap, msrpMap: msrpEach ? pieceMap : orderMap };
+  };
   const priced = (p, line, facts, cost, map) => {
     const rec = facts && facts.unit ? facts.unit.get(String(p.code)) : null;
+    const mm = mapsFor(p, rec, map);
     const d = RP.decide({ dealerPrice: RP.dealerPriceFor(retail, sf.dealer_id, line, p.code), msrp: facts ? facts.msrp.get(String(p.code)) : p._msrp,
-      cost, map, policy: policies[line] || 'unknown', priceMode: sf.price_mode });
+      cost, map: mm.map, msrpMap: mm.msrpMap, policy: policies[line] || 'unknown', priceMode: sf.price_mode });
     const unit = d.unit_basis === 'msrp' ? SF.unitOf(p, rec) : d.unit_basis === 'order_unit' ? SF.unitOf(p, Object.assign({}, rec || {}, { msrp_basis: 'order_unit' })) : null;
     return Object.assign(RP.publicPrice(d), { price_unit: d.price != null ? unit : null }, opts.editor ? { editor: RP.editorPrice(d) } : {});
   };
   for (const line of lines) {
     const q = `manufacturer=eq.${enc(line)}`;
     const [file, records, overrides, custom, pages] = await Promise.all([deps.catalogFile(line),
-      deps.sbAll(`product_skus?${q}&select=code,msrp,msrp_auto,status,uom,case_qty,msrp_basis&order=code.asc`), deps.sbAll(`product_overrides?${q}&select=code,patch&order=code.asc`),
+      deps.sbAll(`product_skus?${q}&select=code,msrp,msrp_auto,status,uom,case_qty,msrp_basis,map_basis&order=code.asc`), deps.sbAll(`product_overrides?${q}&select=code,patch&order=code.asc`),
       deps.sbAll(`custom_products?${q}&select=code,msrp,msrp_auto&order=code.asc`), deps.sbAll(`product_content?${q}&select=page_key,status,disabled,skus&order=page_key.asc`)]);
     const facts = SF.lineFacts({ records, overrides, custom, pages, enrichedOnly: enrOnly.has(line) });
     /* standard cost and MAP: the shop's own engine (no contract price, no discount, quantity 1). A line whose commercial

@@ -245,6 +245,10 @@ exports.handler = async (event) => {
       if (kind === 'signed' && !OPEN.has(app.status)) return json(409, { ok: false, error: app.status === 'signing' ? 'It is out for e-signature — withdraw that first, or finish signing.' : 'This application is already signed.' });
       if (kind === 'guarantee' && (!(form && form.guarantee) || ['approved', 'declined', 'withdrawn'].includes(app.status))) return json(400, { ok: false, error: 'This application has no open guarantee page.' });
       if (kind === 'signed' && missing(answersOf(app)).length) return json(400, { ok: false, error: 'Complete the questionnaire first — the signed copy must match it.' });
+      if (kind === 'guarantee') {   // review fix: at most 5 guarantee pages per application (each guarantor, plus a resend)
+        const prior = await S.sb('GET', `dealer_application_events?application_id=eq.${enc(app.id)}&action=eq.guarantee_uploaded&select=id&limit=6`);
+        if ((prior || []).length >= 5) return json(429, { ok: false, error: 'Five guarantee pages are already uploaded for this application — call HCPS if one needs replacing.' });
+      }
       const pdf = S.paperPdf(b.pdf_base64); if (pdf.error) return json(400, { ok: false, error: pdf.error });
       const path = await S.putNew(`${app.dealer_id}/${app.id}/${kind === 'signed' ? 'paper-signed' : 'guarantee'}-${pdf.sha256.slice(0, 16)}.pdf`, pdf.bytes);
       if (kind === 'guarantee') { await S.event(app.id, by, 'guarantee_uploaded', { path, sha256: pdf.sha256, bytes: pdf.bytes.length }); return json(200, { ok: true, application: pub(app, names) }); }

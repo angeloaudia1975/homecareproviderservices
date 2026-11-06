@@ -142,6 +142,16 @@ const live = (x) => Object.assign({ id: 'sf-hq', dealer_id: HQ, company_id: HQ, 
     eq(await P({ bemis: { policy: 'open' } }), [['B1', 99.99, 'MSRP'], ['B2', 20, 'Price'], ['B5', 40, 'Price'], ['B6', 75, 'Price']], 'open: B2 = 2 × $10 standard cost (never the record\'s derived MSRP label), the dealer\'s own prices');
     eq(await P({ bemis: { policy: 'map' } }), [['B1', 99.99, 'MSRP'], ['B2', null, 'Call for Price'], ['B5', null, 'Call for Price'], ['B6', 61.25, 'MSRP']], 'map with no MAP on file: held for review');
     eq(await P({ bemis: { policy: 'open' } }, { storefronts: [live({ id: 'sf-br', dealer_id: BR, slug: 'acme-xenia', hidden_categories: [] })], retail: retail.concat([{ id: 3, dealer_id: HQ, location_id: BR, manufacturer: 'bemis', code: 'B6', price: 80 }]) }), [['B1', 99.99, 'MSRP'], ['B2', 20, 'Price'], ['B5', 40, 'Price'], ['B6', 80, 'Price']], 'a branch\'s own price beats the company default');
+    /* review fix: a pack's price is checked against MAP in the same unit (MAP $12 each × 4 = $48 a pack) */
+    const b5 = CAT.bemis.find((x) => x.code === 'B5'); const keep = Object.assign({}, b5); Object.assign(b5, { map: 12, case_qty: 4, uom: 'Case' });
+    try {
+      const pk = async (price, basis) => { const W = world({ storefronts: [live({ hidden_categories: [] })], policies: { bemis: { policy: 'map' } }, retail: [{ id: 2, dealer_id: HQ, location_id: null, manufacturer: 'bemis', code: 'B5', price }] });
+        W.db.product_skus.push({ manufacturer: 'bemis', code: 'B5', status: 'active', case_qty: 4, uom: 'Case', map_basis: basis, msrp: null });
+        return (await pubGet(pubApi(W), 'acme-medical')).body.products.filter((p) => p.code === 'B5').map((p) => [p.price, p.price_label])[0]; };
+      eq(await pk(40, 'each'), [null, 'Call for Price'], '$40 a case of 4 is below MAP $12 each');
+      eq(await pk(50, 'each'), [50, 'Price']);
+      eq(await pk(40, 'order_unit'), [40, 'Price'], 'MAP quoted per case');
+    } finally { for (const k of Object.keys(b5)) delete b5[k]; Object.assign(b5, keep); }
     const r = await pubGet(pubApi(world({ storefronts: [live({ hidden_categories: [] })], policies: { bemis: { policy: 'open' } }, retail })), 'acme-medical');
     ok(!/55\.5|"cost"|base_price|"map"|"source"|calculated|unit_basis|"_/.test(JSON.stringify(r.body)), 'no cost, MAP, source or internal key in the public answer');
   });
