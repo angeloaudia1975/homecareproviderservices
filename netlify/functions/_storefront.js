@@ -1,0 +1,92 @@
+/* C3-07 Stage 7 — dealer-branded public storefronts: the pure rules (no I/O), shared by dealer-storefront-api (the dealer
+   manages it) and storefront-public (what the public sees).
+   D3 PRICES: a product shows the manufacturer's VERIFIED MSRP (the commercial record's MSRP when it isn't HCPS-derived, else a
+   saved catalog edit's, else an added product's — the same order as brochures) or "Call for Price". A dealer's own retail is
+   never public until a manufacturer's advertising (MAP) policy is on record as allowing it (none is yet). Wholesale, tiers,
+   contract prices, MAP and account numbers are never part of a public answer: publicProduct() whitelists the fields.
+   D4: nothing about a visitor is kept — inquiries hold only what the person typed. */
+'use strict';
+const RESERVED = new Set(['admin', 'api', 'store', 'stores', 'hcps', 'homecare', 'login', 'signin', 'account', 'dealer', 'dealers', 'test', 'www', 'golden', 'preview', 'assets', 'data']);
+const SLUG = /^[a-z0-9](?:[a-z0-9-]{1,48}[a-z0-9])$/;
+const EMAIL_RE = /^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
+const PHONE_RE = /^[0-9+().\-\s xextEXT]{7,40}$/;
+
+function slugify(s) { return String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50).replace(/-+$/g, ''); }
+function slugProblem(s) {
+  if (!SLUG.test(String(s || ''))) return 'Use 3–50 lower-case letters, numbers and dashes (not starting or ending with a dash).';
+  if (RESERVED.has(s) || /--/.test(s)) return 'That address is not available — please choose another.';
+  return null;
+}
+const clean = (v, max) => { const s = String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim(); return s ? s.slice(0, max) : null; };
+
+/* the dealer's settings: only these fields, each checked; returns {patch} or {error} */
+function validateSettings(b, authorizedLines) {
+  const p = {};
+  if ('enabled' in b) p.enabled = b.enabled === true;
+  if ('headline' in b) p.headline = clean(b.headline, 120);
+  if ('about' in b) p.about = clean(b.about, 1500);
+  if ('hours' in b) p.hours = clean(b.hours, 300);
+  if ('show_address' in b) p.show_address = b.show_address !== false;
+  if ('phone' in b) { const v = clean(b.phone, 40); if (v && !PHONE_RE.test(v)) return { error: 'Please enter a valid phone number.' }; p.phone = v; }
+  if ('email' in b) { const v = clean(b.email, 200); if (v && !EMAIL_RE.test(v)) return { error: 'Please enter one valid email address.' }; p.email = v ? v.toLowerCase() : null; }
+  if ('price_mode' in b) { if (!['msrp', 'call'].includes(b.price_mode)) return { error: 'Choose how prices show.' }; p.price_mode = b.price_mode; }
+  if ('lines' in b) {
+    if (b.lines == null) p.lines = null;
+    else { if (!Array.isArray(b.lines) || b.lines.length > 40) return { error: 'Choose the lines to show.' };
+      const ok = new Set(authorizedLines); const L = [...new Set(b.lines.map(String))]; if (L.some((x) => !ok.has(x))) return { error: 'You can show only lines your account is authorized for.' }; p.lines = L; }
+  }
+  if ('hidden_categories' in b) { if (!Array.isArray(b.hidden_categories) || b.hidden_categories.length > 200) return { error: 'Bad category list.' }; p.hidden_categories = [...new Set(b.hidden_categories.map((x) => clean(x, 120)).filter(Boolean))]; }
+  if ('slug' in b) { const s = String(b.slug || '').toLowerCase(); const e = slugProblem(s); if (e) return { error: e }; p.slug = s; }
+  return { patch: p };
+}
+
+/* the commercial facts for one line → { verified MSRP by code, hidden codes } (records, then saved edits, then added products) */
+function lineFacts({ records, overrides, custom }) {
+  const num = (v) => { const n = Number(v); return isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null; };
+  const msrp = new Map(), hidden = new Set(), rec = new Map();
+  for (const r of records || []) { rec.set(String(r.code), r); if (r.status && r.status !== 'active') hidden.add(String(r.code)); }
+  for (const o of overrides || []) { const p = o.patch || {}; if (p.active === false || p.hidden === true || p.retired === true || p.discontinued === true) hidden.add(String(o.code)); }
+  const codes = new Set([...rec.keys(), ...(overrides || []).map((o) => String(o.code)), ...(custom || []).map((c) => String(c.code))]);
+  for (const code of codes) {
+    const r = rec.get(code);
+    if (r) { if (r.msrp_auto !== true && num(r.msrp)) msrp.set(code, num(r.msrp)); continue; }   // the record answers when it has the SKU
+    const o = (overrides || []).find((x) => String(x.code) === code); const om = o && o.patch && o.patch.msrp_auto !== true && num(o.patch.msrp);
+    if (om) { msrp.set(code, om); continue; }
+    const c = (custom || []).find((x) => String(x.code) === code); if (c && c.msrp_auto !== true && num(c.msrp)) msrp.set(code, num(c.msrp));
+  }
+  return { msrp, hidden };
+}
+
+const IMG = /^(\/assets\/[A-Za-z0-9._\/%+-]{1,300}|https:\/\/[^\s"'<>`]{1,500})$/;
+/* ONE public product — a whitelist; nothing else from the catalog file ever leaves */
+function publicProduct(p, line, facts, priceMode) {
+  const attrs = {};
+  if (p.attributes && typeof p.attributes === 'object') for (const [k, v] of Object.entries(p.attributes).slice(0, 20)) { const kk = clean(k, 60), vv = clean(v, 160); if (kk && vv) attrs[kk] = vv; }
+  const price = priceMode === 'msrp' ? (facts.msrp.get(String(p.code)) || null) : null;
+  return { manufacturer: line, code: String(p.code).slice(0, 80), name: clean(p.name, 200) || String(p.code), category: clean(p.category, 120) || 'Other',
+    subcategory: clean(p.subcategory, 120), brand: clean(p.brand, 80), description: clean(p.description, 1200), uom: clean(p.uom, 40),
+    image: IMG.test(String(p.image || '')) ? String(p.image) : null, attributes: attrs, price, price_label: price ? 'MSRP' : 'Call for Price' };
+}
+
+/* an inquiry from the public: what the person typed, checked; {row} or {error}. hp = honeypot field (must stay empty) */
+function validateInquiry(b) {
+  if (String(b.hp || '')) return { spam: true };
+  const name = clean(b.name, 120), email = clean(b.email, 200), phone = clean(b.phone, 40), message = clean(b.message, 2000);
+  if (!name) return { error: 'Please enter your name.' };
+  if (!email && !phone) return { error: 'Please enter an email address or a phone number so the dealer can reach you.' };
+  if (email && !EMAIL_RE.test(email)) return { error: 'Please enter a valid email address.' };
+  if (phone && !PHONE_RE.test(phone)) return { error: 'Please enter a valid phone number.' };
+  if (b.consent !== true) return { error: 'Please agree to the dealer contacting you about your request.' };
+  const pr = b.product && typeof b.product === 'object' ? b.product : null;
+  const mfr = pr && /^[a-z0-9-]{2,60}$/.test(String(pr.manufacturer || '')) ? String(pr.manufacturer) : null;
+  return { row: { name, email: email ? email.toLowerCase() : null, phone, message, manufacturer: mfr, product_code: mfr ? clean(pr.code, 80) : null, product_name: mfr ? clean(pr.name, 200) : null } };
+}
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function inquiryEmail(row, sf, dealerName, link) {
+  const lines = [['Name', row.name], ['Email', row.email], ['Phone', row.phone], ['Product', row.product_name ? `${row.product_name}${row.product_code ? ' (#' + row.product_code + ')' : ''}` : null], ['Message', row.message]].filter((x) => x[1]);
+  return { subject: `New request from your storefront${row.product_name ? ' — ' + row.product_name.slice(0, 60) : ''}`,
+    html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#0b0d0f"><p>Someone sent a request from <b>${esc(dealerName)}</b>'s storefront (${esc(link)}).</p>
+<table style="border-collapse:collapse">${lines.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">${k}</td><td style="padding:4px 0;white-space:pre-wrap">${esc(v)}</td></tr>`).join('')}</table>
+<p style="color:#777;font-size:12px">Reply to this email to answer them. You can mark the request handled or delete it in the 360 Dealer Portal → My Storefront. Requests are kept for 24 months.</p></div>` };
+}
+module.exports = { slugify, slugProblem, validateSettings, lineFacts, publicProduct, validateInquiry, inquiryEmail, RESERVED, EMAIL_RE };

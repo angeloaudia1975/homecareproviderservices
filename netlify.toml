@@ -151,3 +151,6 @@
 # C3-07 Stage 6: the dealer report PDF carries HCPS's original logo.
 [functions."dealer-reports-api"]
   included_files = ["src/assets/brand/hcps-logo-original.png"]
+# C3-07 Stage 7 (D4): storefront inquiries older than 24 months are deleted daily (07:10 UTC).
+[functions."storefront-retention"]
+  schedule = "10 7 * * *"
