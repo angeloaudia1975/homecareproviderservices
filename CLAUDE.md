@@ -2224,7 +2224,9 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     Golden brochure prints no price and ignores the page's figure. Applications usage card 1 of 5 (Nov). Public-key probe
     (storefront key, verified on a public table): dealer_applications, dealer_application_events, dealer_account_claims
     (read + insert), dealer_retail_prices, dealer_storefronts, storefront_inquiries 401/42501; dealer-applications bucket
-    lists nothing; `credit_applications` does not exist in the exposed schema (404 PGRST205) — the legacy action is 410.
+    lists nothing; `credit_applications` does not exist in the exposed schema (404 PGRST205) — the legacy action is 410. Angelo's
+    read-only check 2026-11-06 14:14 CT (`information_schema.tables` ilike '%credit%'): no rows — no credit-application table
+    exists in any schema, so no legacy credit-application records are stored.
     Account-number claims: only dealer_account_claims (pending); ordering, pricing and the Golden account gate read
     dealer_manufacturers only, written from a claim solely by management `claim_verify` (never turns ordering on).
   · **Golden cleanup (owner 2026-11-05 21:00 CT):** obsolete branches `golden-b7-account-shipto` (HCPS) and `golden-b7-shipto`
