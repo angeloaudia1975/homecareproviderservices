@@ -11,7 +11,7 @@ const ok = (c, w) => { if (!c) throw new Error(w); };
 const D = '11111111-1111-1111-1111-111111111111';
 function world(o) {
   o = o || {};
-  const W = M.createWorld({ tokens: {}, tables: {
+  const W = M.createWorld({ tokens: {}, catalog: { bemis: [{ code: 'B1', name: 'One', category: 'Bath', price: 40, base_price: 40, map: 79 }, { code: 'B2', name: 'Two', category: 'Bath', price: 10, base_price: 10 }, { code: 'B3', name: 'No cost', category: 'Bath' }] }, tables: {
     staff_users: [{ email: 'boss@hcps.test', role: 'president', active: true }, { email: 'rep@hcps.test', role: 'rep', active: true }],
     manufacturers: [{ slug: 'bemis', name: 'Bemis' }, { slug: 'golden-technologies', name: 'Golden Technologies' }, { slug: 'dalton', name: 'Dalton' }],
     manufacturer_meta: [{ slug: 'dalton', active: false }],
@@ -67,6 +67,13 @@ const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer
     eq([W.db.dealer_storefronts[0].hcps_blocked, W.db.dealer_storefronts[0].version, /Pricing complaint/.test(W.db.dealer_storefronts[0].updated_by)], [true, 3, true]);
     eq((await as(C, 'boss', { action: 'block', dealer_id: D, blocked: false })).status, 200); eq(W.db.dealer_storefronts[0].hcps_blocked, false);
     eq((await as(C, 'rep', { action: 'block', dealer_id: D, blocked: false })).status, 403);
+  });
+  await t('coverage: per line, active products by default price source and every Call-for-Price code with its reason — never a price', async () => {
+    const r = await as(api(world({ settings: { rev: 1, lines: { bemis: { policy: 'open', note: 'x' } } } })), 'boss', { action: 'coverage', slug: 'bemis' });
+    eq(r.status, 200); const l = r.body.lines[0];
+    eq([l.policy, l.counts.msrp, l.counts.calculated, l.counts.call, l.call], ['open', 1, 1, 1, [{ code: 'B3', reason: 'no_standard_cost' }]], 'B1 official MSRP, B2 derived MSRP → HCPS calculated, B3 no cost', JSON.stringify(l));
+    eq(/\b(40|10|79|20|80)\b/.test(JSON.stringify(r.body.lines)), false, 'a price or cost in the answer');
+    eq((await as(api(world()), 'rep', { action: 'coverage' })).status, 403);
   });
   console.log(`\nstorefront-rules: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

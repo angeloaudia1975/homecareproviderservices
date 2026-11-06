@@ -94,4 +94,16 @@ const FLAG_TEXT = {
   rules_unknown: 'HCPS hasn\'t recorded this manufacturer\'s advertising rules yet, so only its MSRP is shown publicly. HCPS reviews these.',
   dealer_call_for_price: 'Your storefront is set to "Call for Price" on everything.',
 };
-module.exports = { decide, publicPrice, editorPrice, dealerPriceFor, policiesFrom, advertisable, POLICIES, FLAG_TEXT };
+/* MAP in the same unit as the price it is compared with (review fix 2026-11-06): on a pack (case_qty > 1) the dealer's
+   and the calculated price are per ORDER UNIT; MAP is per piece unless map_basis is 'order_unit'. A pack whose quantity
+   isn't known has no comparable MAP. → { map (per order unit), msrpMap (in the MSRP's unit) } */
+function mapsFor(p, rec, map) {
+  const m = Number(map); if (!(m > 0)) return { map: null, msrpMap: null };
+  const r = rec || {}; const u = String(r.uom || p.uom || '').trim(); const q = Number(r.case_qty || p.case_qty);
+  const pack = q > 1 || (u && !/^(each|ea|1)$/i.test(u)); if (!pack) return { map: m, msrpMap: m };
+  const perOrder = (r.map_basis || p.map_basis) === 'order_unit';
+  const orderMap = perOrder ? m : (q > 1 ? Math.round(m * q * 100) / 100 : null), pieceMap = perOrder ? (q > 1 ? Math.round(m / q * 100) / 100 : null) : m;
+  const msrpEach = r.msrp_basis === 'each' || (r.msrp_basis !== 'order_unit' && p.msrp_each === true);
+  return { map: orderMap, msrpMap: msrpEach ? pieceMap : orderMap };
+}
+module.exports = { mapsFor, decide, publicPrice, editorPrice, dealerPriceFor, policiesFrom, advertisable, POLICIES, FLAG_TEXT };
