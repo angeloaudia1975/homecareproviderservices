@@ -4619,6 +4619,14 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
   · Coverage at release: 49 lift-chair sizes, 32 scooter / power-chair models, 3 bed sizes (every catalog SKU), plus their
     accessory panels. Public repos never carry a Golden price: the HCPS cross-repo test reads Golden's figures from the
     private checkout at run time.
+  · **RELEASED 2026-11-05 ~22:30 CT** (independent review GO; its two MEDIUM findings fixed first: the order-desk email and
+    the dealer confirmation now say "to be quoted", never $0 / a final total). Golden #289 → f26d141, HCPS #97 → e4ffcf4,
+    ordering #53 → 82be09a, all Published. No new switch: ordering follows the existing Golden switches. Production check
+    (staff view-as of a linked dealer, read-only, no order): 84/84 Golden SKUs orderable (49 chair, 32 mobility, 3 bed),
+    0 "Browse only" cards; scooter / power-chair / bed panels load Golden's colours, stock, accessories and prices; a mixed
+    quote prices freight + S&H; GA541D and 2 beds quote "To be quoted by Golden" with the freight box; a chair quote is
+    unchanged. Known, accepted: a tab still on the pre-B8 page may drop new-kind lines from the saved cart (re-add them);
+    a portal-placed oversized order loses its "to be quoted" status once Golden links it to an SO.
 - **No real account numbers or dealer identities in public test data (RULE, 2026-11-05).** Golden `customer_no` doubles as
   the dealer's Golden portal login, and both HCPS repos are public: tests, fixtures, PR text and commits use made-up names
   and clearly fake numbers (e.g. `T90100`), never a real dealer's name, account number or one copied from a working file.
