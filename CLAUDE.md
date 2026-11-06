@@ -2232,7 +2232,8 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     Angelo's read-only check 2026-11-06 15:16 CT: 1 old "Credit application —" email in email_messages, WITH a body preview;
     no column named like ssn/ein/bank/routing/tax_id anywhere (only product_content.card_image, a photo field). Proposed
     fix: clear that one preview (email_messages.snippet = null, guarded to exactly that row); the original email in the
-    mailbox is Angelo's to delete. Any email sync that stores previews keeps no other copy of the old credit form.
+    mailbox is Angelo's to delete. **Done 2026-11-06 15:17 CT (run by Angelo): previews_left 0, emails 1** — the preview
+    is cleared; the email's metadata row stays; no other stored copy of the old credit form is known.
     **Advertising-rule research (2026-11-06 ~14:40 CT, from repo documents + live catalog data; counts only):** documented
     MAP for Bemis (Terms of Agreement, dealer application 2026 — written MAP policy incl. dealer websites; "call for price"
     allowed; dealers selling online must notify Bemis and use Bemis content), Golden (eMAP per product), Strongback (Rev C
