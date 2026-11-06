@@ -70,6 +70,11 @@ const M = [
   { f: C, from: "r && r.disabled !== true && ['published'", to: "r && ['published'", why: 'switched-off database page blocks the content-file fallback (shop reads it with RLS)' },
   { f: C, from: "if (!pg.some((r) =>", to: "if (true || !pg.some((r) =>", why: 'content file read over a live database page' },
   { f: C, from: "pg = Object.keys(o).map((k) => Object.assign({ page_key: k }, o[k]));", to: "pg = [];", why: 'content-file pages ignored' },
+  { f: C, from: "let i = g.findIndex((x) => x.primary === true);", to: "let i = -1;", why: 'flagged primary photo ignored' },
+  { f: C, from: "image: own === 'none' ? '' : (own || primary || null)", to: "image: (own !== 'none' && own) || primary || null", why: '"none" borrows a photo' },
+  { f: C, from: "ct.image && SF.IMG.test(ct.image)", to: "ct.image", why: 'third-party photo published' },
+  { f: C, from: "if (!page || page.disabled === true ||", to: "if (!page ||", why: 'switched-off page content shown' },
+  { f: C, from: "ct.description ? { description: ct.description } : {}", to: "{}", why: 'page description dropped' },
 ];
 const run = () => { for (const t of ['storefront.test.js', 'retail-price.test.js', 'storefront-rules.test.js']) { const r = spawnSync(process.execPath, [path.join(__dirname, t)], { encoding: 'utf8' }); if (r.status !== 0) return r; } return { status: 0 }; };
 if (run().status !== 0) { console.log('CONTROL FAILED'); process.exit(1); }

@@ -73,6 +73,20 @@ const pubPost = (C, b, ip) => M.call(C, b, { headers: ip ? { 'x-nf-client-connec
 const live = (x) => Object.assign({ id: 'sf-hq', dealer_id: HQ, company_id: HQ, slug: 'acme-medical', enabled: true, hcps_blocked: false, headline: 'Welcome', about: null, phone: '555-0199', email: 'shop@acme.test', hours: null, show_address: true, lines: null, hidden_categories: ['Parts'], price_mode: 'msrp', version: 1 }, x || {});
 
 (async () => {
+  await t('the shop\'s product content reaches the storefront: page description, per-SKU name and photo (own photo → page primary; "none" = no photo; never a non-/assets photo); a switched-off page is ignored', async () => {
+    const content = { bemis: { pages: {
+      seat: { status: 'published', description: 'Page story', image: '/assets/products/bemis/page.jpg', images_gallery: [{ url: '/assets/products/bemis/primary.jpg', primary: true }],
+        skus: [{ sku: 'B2', name: 'Seat — Other', image: 'none' }, { sku: 'B6', name: 'Seat — Round' }] },
+      gal: { status: 'published', description: 'Gal', image: '/assets/products/bemis/second.jpg', images_gallery: [{ url: '/assets/products/bemis/first.jpg' }, { url: '/assets/products/bemis/second.jpg' }], skus: [{ sku: 'B5' }] },
+      off: { status: 'published', disabled: true, description: 'Off page', skus: [{ sku: 'B1' }] },
+      ext: { status: 'published', description: 'Ext', image: 'https://cdn.example.test/x.jpg', skus: [{ sku: 'B1' }] } } } };
+    const r = await pubGet(pubApi(world({ content, storefronts: [live({ hidden_categories: [] })] })), 'acme-medical'); eq(r.status, 200);
+    const by = Object.fromEntries(r.body.products.map((p) => [p.code, p]));
+    eq([by.B6.name, by.B6.description, by.B6.image], ['Seat — Round', 'Page story', '/assets/products/bemis/primary.jpg']);
+    eq([by.B2.name, by.B2.image], ['Seat — Other', null], '"none" = no photo');
+    eq([by.B1.description, by.B1.image], ['Ext', '/assets/products/bemis/B1.jpg'], 'a third-party page photo never replaces our own');
+    eq([by.B5.description, by.B5.image], ['Gal', '/assets/products/bemis/second.jpg'], 'unflagged gallery: the page image is the primary');
+  });
   await t('a SKU retired in the line\'s static content file (no live database page) never appears on the public storefront', async () => {
     const content = { bemis: { pages: { old: { status: 'published', skus: [{ sku: 'B6', status: 'hidden', disabled: true, retired: { reason: 'x' } }] } } } };
     const codes = async (o) => { const r = await pubGet(pubApi(world(Object.assign({ storefronts: [live()] }, o))), 'acme-medical'); eq(r.status, 200, JSON.stringify(r.body).slice(0, 200)); return r.body.products.map((p) => p.code); };
