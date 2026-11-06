@@ -20,7 +20,7 @@ function db(o) {
       { id: HQT, parent_id: null, business_name: "TEST shop", address: "3 Test Rd", city: "Dayton", state: "OH", zip: "45402", is_test: true, active: true },
       { id: INACT, parent_id: null, business_name: "Closed store", address: "4 Shut Rd", city: "Dayton", state: "OH", zip: "45402", is_test: false, active: false },
     ],
-    dealer_manufacturers: [
+    dealer_manufacturers: (o.prependDm || []).concat([
       { dealer_id: HQ1, manufacturer: "golden-technologies", account_ref: "T90100", active: true },
       { dealer_id: BRX, manufacturer: "golden-technologies", account_ref: "T90999", active: true },
       { dealer_id: HQ2, manufacturer: "golden-technologies", account_ref: " T90100 ", active: true },
@@ -28,7 +28,7 @@ function db(o) {
       { dealer_id: HQ4, manufacturer: "pedifix", account_ref: "T90100", active: true },
       { dealer_id: HQT, manufacturer: "golden-technologies", account_ref: "T90100", active: true },
       { dealer_id: INACT, manufacturer: "golden-technologies", account_ref: "T90100", active: true },
-    ].concat(o.extraDm || []),
+    ].concat(o.extraDm || [])),
     dealer_addresses: [{ dealer_id: BR1, addr_key: "ship-ab12", label: "London warehouse", address: "6 Dock Rd", city: "London", state: "KY", zip: "40741" },
       { dealer_id: HQ3, addr_key: "ship-zz99", label: "Atlanta dock", address: "8 Dock Rd", city: "Atlanta", state: "GA", zip: "30301" },
       { dealer_id: HQ1, addr_key: "primary", label: "Primary", address: "10 Main St", city: "Somerset", state: "KY", zip: "42501" }],
@@ -57,11 +57,11 @@ function rest(tables, writes) {
   return (u, init) => {
     const url = new URL(u); const table = url.pathname.replace(/^\/rest\/v1\//, "");
     const rows = tables[table]; if (!rows) return { ok: false, status: 404, text: async () => "no table", json: async () => ({}) };
-    const f = {}; let limit = null;
-    for (const [k, v] of url.searchParams) { if (["select", "order", "on_conflict"].includes(k)) continue; if (k === "limit") { limit = Number(v); continue; } const p = parse(v); if (p) f[k] = p; }
+    const f = {}; let limit = null, offset = 0;
+    for (const [k, v] of url.searchParams) { if (["select", "order", "on_conflict"].includes(k)) continue; if (k === "limit") { limit = Number(v); continue; } if (k === "offset") { offset = Number(v); continue; } const p = parse(v); if (p) f[k] = p; }
     const method = (init && init.method) || "GET";
     const res = (st, b) => ({ ok: st < 400, status: st, text: async () => JSON.stringify(b), json: async () => b });
-    if (method === "GET") { let out = rows.filter(r => match(r, f)); if (limit != null) out = out.slice(0, limit); return res(200, out); }
+    if (method === "GET") { let out = rows.filter(r => match(r, f)).slice(offset); out = out.slice(0, Math.min(limit == null ? 1000 : limit, 1000)); /* PostgREST max-rows */ return res(200, out); }
     const body = JSON.parse(init.body); writes.push({ method, table, f, body });
     if (method === "PATCH") { const hit = rows.filter(r => match(r, f)); hit.forEach(r => Object.assign(r, body)); return res(200, hit); }
     if (method === "POST") {

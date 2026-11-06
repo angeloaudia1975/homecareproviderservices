@@ -52,7 +52,14 @@ async function accountFor(sbGet, dealerId){
 async function locationsFor(sbGet, acct, opts){
   opts = opts || {};
   // Recorded numbers may carry stray spaces: narrow with like, then compare the trimmed value exactly.
-  const holders = await readArr(sbGet, `dealer_manufacturers?manufacturer=in.(${GOLDEN_SLUGS.join(",")})&active=eq.true&account_ref=like.*${enc(acct)}*&select=dealer_id,account_ref`);
+  // Paged (never a silently truncated page): a short number can match more rows than one response holds.
+  const holders = [];
+  for(let off = 0; ; off += 500){
+    const page = await readArr(sbGet, `dealer_manufacturers?manufacturer=in.(${GOLDEN_SLUGS.join(",")})&active=eq.true&account_ref=like.*${enc(acct)}*&select=dealer_id,account_ref&order=dealer_id.asc,manufacturer.asc&limit=500&offset=${off}`);
+    holders.push(...page);
+    if(page.length < 500) break;
+    if(off > 20000) throw new Error("too_many_rows");
+  }
   const holderIds = [...new Set(holders.filter(r => normAcct(r.account_ref) === acct).map(r => r.dealer_id).filter(x => UUID_RE.test(String(x))))];
   if(!holderIds.length) return [];
   const sel = "id,parent_id,business_name,address,city,state,zip,is_test,active";

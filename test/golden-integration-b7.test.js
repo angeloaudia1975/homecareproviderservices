@@ -79,6 +79,11 @@ const proxy = async (b, o, h) => { env(); const w = world(o); const r = await lo
     ok(!refs.includes(`gs:${SAVED_GONE}`), "removed addresses are gone");
     eq([x.b.default_ref, x.b.preselect], [null, null], "several destinations, no default → nothing pre-selected");
   });
+  await t("book: many rows matching a short number are paged, never silently cut off", async () => {
+    const many = Array.from({ length: 1200 }, (_, i) => ({ dealer_id: U(5000 + i), manufacturer: "golden-technologies", account_ref: "XT90100" + i, active: true }));
+    const x = await api({ action: "list" }, { dealerId: BR1, prependDm: many });
+    eq(x.b.entries.filter(e => e.source === "location").length, 3, "HQ1, BR1, HQ2 still found after 1,200 near-matches");
+  });
   await t("book: an unrelated account sees only its own (pricing + address isolation)", async () => {
     const x = await api({ action: "list" }, { dealerId: HQ3 });
     eq(x.b.entries.map(e => e.ref).sort(), [`da:${HQ3}:ship-zz99`, `gs:${SAVED_B}`, `loc:${HQ3}`].sort());
