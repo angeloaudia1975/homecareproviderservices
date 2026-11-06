@@ -57,6 +57,13 @@ const SHIP_ID_RE = /^(primary|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 const IDEM_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CFG_SKU_RE = /^PR\d{3}-[A-Z]{3}$/, CFG_COLOR_RE = /^[A-Z0-9]{3}$/, CFG_FABRICS = ["std","xover","brisa"], CFG_TIERS = ["standard","irheat","hvib","nirvana"];
 const FAMILY_RE = /^[A-Z]{2}\d{3}[A-Z]?(?:-[A-Z0-9]{2,4})?$/;
+// Contract 1.9.0 (§4j): a scooter / power-chair model, a Passport bed size, an accessory row. Golden decides every price.
+const MOB_SKU_RE = /^(GB|GL|GC|GA|GR|GP)\d{3}[A-Z]?(?:-[A-Z]{3})?$/, BED_SKU_RE = /^BD100A-(TB|QB|KB)$/, ACC_ID_RE = /^[A-Z0-9][A-Z0-9-]{1,40}$/;
+const BED_SIZES = ["TB","QB","KB"], BED_CONFIGS = ["set","base"], BED_DELIVERIES = ["retailer","curbside","wg"], LINE_KINDS = ["mobility","accessory","bed"];
+// The SKU Golden answers on a quote / order line of each kind (an accessory keeps the portal's own text, e.g. "MBE-BATT22 *").
+const lineSkuOk = l => !l.kind ? CFG_SKU_RE.test(String(l.sku)) : l.kind === "mobility" ? MOB_SKU_RE.test(String(l.sku))
+  : l.kind === "bed" ? BED_SKU_RE.test(String(l.sku)) : l.kind === "accessory" ? (ACC_ID_RE.test(String(l.accessory_id)) && /^[A-Z0-9][A-Z0-9 *-]{1,44}$/.test(String(l.sku))) : false;
+const FIELD_RE = /^(ship_to|po_required|po_number|attention|notes|contact\.(name|phone|email)|(reference_names|color|qty|sku|fabric|tier|footrest|kind|for|size|config|delivery|rural|line_field)@\d{1,2})$/;
 
 // Only the fields the contract defines for a catalog product reach the browser (schema catalog_product).
 const PRODUCT_KEYS = ["sku","family","family_name","name","category","subcategory","size_code","size_label","description","specs","zones",
@@ -153,27 +160,87 @@ function cleanConfig(c, pv, linked){
   return out;
 }
 
+// Golden's order panel of a scooter / power chair or a bed size (schema config_200 → `options`, contract 1.9.0).
+function cleanOptions(o, pv, linked){
+  if(!o || typeof o !== "object") return null;
+  const qty = (x, v) => { if(linked && Number.isInteger(v)) x.qty = v; return x; };
+  const acc = (Array.isArray(o.accessories) ? o.accessories : []).filter(a => a && ACC_ID_RE.test(String(a.id))).slice(0, 80).map(a => {
+    const x = { id: a.id, description: str(a.description, 200) || a.id, group: a.group === "shroud" ? "shroud" : "accessory" }; if(pv && num(a.dealer_price) != null) x.dealer_price = a.dealer_price; return x; });
+  if(o.kind === "mobility" && MOB_SKU_RE.test(String(o.sku))){
+    const out = { kind: "mobility", sku: o.sku, name: str(o.name, 120) || o.sku, category: str(o.category, 40), color_required: o.color_required === true, color_note: str(o.color_note, 60),
+      colors: (Array.isArray(o.colors) ? o.colors : []).filter(c => c && CFG_COLOR_RE.test(String(c.code))).slice(0, 12).map(c => qty({ code: c.code, name: str(c.name, 40) || c.code,
+        hex: /^#[0-9a-f]{3,6}$/i.test(String(c.hex)) ? c.hex : null, status: oneOf(c.status, STATUS) || "out" }, c.qty)),
+      stock: o.stock && typeof o.stock === "object" ? qty({ status: oneOf(o.stock.status, STATUS) || "out" }, o.stock.qty) : null,
+      accessories: acc, orderable: o.orderable === true };
+    if(out.color_required && !out.colors.length) return null;
+    if(pv && num(o.dealer_price) != null) out.dealer_price = o.dealer_price;
+    return out;
+  }
+  if(o.kind === "bed" && BED_SKU_RE.test(String(o.sku)) && BED_SIZES.includes(o.size)){
+    const configs = (Array.isArray(o.configs) ? o.configs : []).filter(c => c && BED_CONFIGS.includes(c.key)).map(c => { const x = { key: c.key, label: str(c.label, 80) || c.key }; if(pv && num(c.dealer_price) != null) x.dealer_price = c.dealer_price; return x; });
+    const deliveries = (Array.isArray(o.deliveries) ? o.deliveries : []).filter(d => d && BED_DELIVERIES.includes(d.key)).map(d => Object.assign({ key: d.key, label: str(d.label, 80) || d.key },
+      d.requires === "set" ? { requires: "set" } : {}, num(d.rural_option) != null ? { rural_option: d.rural_option } : {}));
+    if(!configs.length || !deliveries.length) return null;
+    return { kind: "bed", sku: o.sku, size: o.size, label: str(o.label, 40) || o.size, name: str(o.name, 120) || o.sku, configs, deliveries, multi_bed_note: str(o.multi_bed_note, 160), accessories: acc, orderable: o.orderable === true };
+  }
+  return null;
+}
+
 // Golden's quote answer (schema quote_200). Every field rebuilt from an allow-list; Golden decides every amount.
 // HCPS shows it and STORES NOTHING. quote_hash is kept so Stage 4b can refuse an order whose prices changed.
 const GROUPS = ["all","in_stock","build"];
 function cleanQuote(g){
   const q = g && g.quote;
   if(!q || typeof q !== "object" || !Array.isArray(q.lines) || !q.totals || !/^[0-9a-f]{64}$/.test(String(q.quote_hash))) return null;
-  const lines = q.lines.slice(0, QUOTE_MAX_LINES).filter(l => l && CFG_SKU_RE.test(String(l.sku)) && Number.isInteger(l.qty) && num(l.unit_price) != null && num(l.line_total) != null).map(l => ({
-    line: Number.isInteger(l.line) ? l.line : null, sku: l.sku, qty: l.qty, fabric: oneOf(l.fabric, CFG_FABRICS) || "std",
-    color: CFG_COLOR_RE.test(String(l.color)) ? l.color : null, color_name: str(l.color_name, 60), tier: oneOf(l.tier, CFG_TIERS) || "standard", footrest: l.footrest === true,
-    unit_price: l.unit_price, line_total: l.line_total, details: str(l.details, 400), upgrades: strs(l.upgrades, 120, 8), breakdown: str(l.breakdown, 300), lead_note: str(l.lead_note, 200),
-    in_stock: l.in_stock === true, custom: l.custom === true, item_no: /^[A-Z0-9-]{3,40}$/.test(String(l.item_no)) ? l.item_no : l.sku, item_no_resolved: l.item_no_resolved === true }));
+  const lines = q.lines.slice(0, QUOTE_MAX_LINES).filter(l => l && (l.kind == null || LINE_KINDS.includes(l.kind)) && lineSkuOk(l) && Number.isInteger(l.qty) && num(l.unit_price) != null && num(l.line_total) != null).map(l => {
+    const base = { line: Number.isInteger(l.line) ? l.line : null, sku: l.sku, qty: l.qty,
+      color: CFG_COLOR_RE.test(String(l.color)) ? l.color : null, color_name: str(l.color_name, 60),
+      unit_price: l.unit_price, line_total: l.line_total, details: str(l.details, 400), upgrades: strs(l.upgrades, 120, 8),
+      in_stock: l.in_stock === true, custom: l.custom === true, item_no: /^[A-Z0-9-]{3,40}$/.test(String(l.item_no)) ? l.item_no : l.sku, item_no_resolved: l.item_no_resolved === true };
+    if(!l.kind) return Object.assign(base, { fabric: oneOf(l.fabric, CFG_FABRICS) || "std", tier: oneOf(l.tier, CFG_TIERS) || "standard", footrest: l.footrest === true,
+      breakdown: str(l.breakdown, 300), lead_note: str(l.lead_note, 200) });
+    const x = Object.assign({ kind: l.kind, name: str(l.name, 120) || l.sku }, base);
+    if(l.kind === "accessory") Object.assign(x, { accessory_id: l.accessory_id, for: (MOB_SKU_RE.test(String(l.for)) || BED_SKU_RE.test(String(l.for))) ? l.for : null });
+    if(l.kind === "bed") Object.assign(x, { size: oneOf(l.size, BED_SIZES), config: oneOf(l.config, BED_CONFIGS), delivery: oneOf(l.delivery, BED_DELIVERIES), rural: l.rural === true });
+    return x;
+  }).filter(l => !(l.kind === "bed" && (!l.size || !l.config || !l.delivery)) && !(l.kind === "accessory" && !l.for));
   if(lines.length !== q.lines.length) return null;   // a line we cannot show faithfully = no quote, never a partial one
   const t = q.totals;
   // Golden's freight (contract 1.7.0) is its own amount: a quote without it is never shown — a total the dealer could not
   // break down, or one that silently left freight out, is no quote at all.
   for(const k of ["subtotal","freight_total","sh_total","grand_total","sh_rate"]) if(num(t[k]) == null) return null;
-  if(!(t.freight_total >= 0) || !q.freight || q.freight.included !== true) return null;
+  // 1.9.0: when Golden must quote part of the freight, the quote says so (freight_quote_required) and freight.included is
+  // false — the page shows "freight quoted by Golden", never $0. Any other "not included" is no quote at all.
+  const fq = t.freight_quote_required === true;
+  if(!(t.freight_total >= 0) || !q.freight || q.freight.included !== !fq) return null;
   const totals = { subtotal: t.subtotal, freight_total: t.freight_total, sh_total: t.sh_total, grand_total: t.grand_total, sh_rate: t.sh_rate, sh_waived: t.sh_waived === true, split: t.split === true,
     free_freight_units: Number.isInteger(t.free_freight_units) && t.free_freight_units >= 1 ? t.free_freight_units : null,
-    shipments: (Array.isArray(t.shipments) ? t.shipments : []).filter(s => s && GROUPS.includes(s.group) && num(s.subtotal) != null && num(s.sh) != null && num(s.freight) != null).slice(0, 3).map(s => ({ group: s.group, subtotal: s.subtotal, sh: s.sh, freight: s.freight })) };
-  return { lines, totals, freight: { included: true, note: str(q.freight.note, 300) }, quote_hash: q.quote_hash };
+    shipments: (Array.isArray(t.shipments) ? t.shipments : []).filter(s => s && GROUPS.includes(s.group) && num(s.subtotal) != null && num(s.sh) != null && num(s.freight) != null).slice(0, 3).map(s => Object.assign({ group: s.group, subtotal: s.subtotal, sh: s.sh, freight: s.freight }, fq && s.freight_quote === true ? { freight_quote: true } : {})) };
+  if(fq){ totals.freight_quote_required = true; if(!totals.shipments.some(s => s.freight_quote)) return null; }
+  return { lines, totals, freight: { included: !fq, note: str(q.freight.note, 300) }, quote_hash: q.quote_hash };
+}
+// One scooter / power-chair, accessory or bed line (§4j): only its own fields, each checked; never a price.
+function readExtraLine(l){
+  const up = v => String(v == null ? "" : v).trim().toUpperCase();
+  const qty = Number(l.qty);
+  if(!Number.isInteger(qty) || qty < 1 || qty > QUOTE_MAX_QTY) return null;
+  if(l.kind === "mobility"){
+    const sku = up(l.sku), color = l.color == null || l.color === "" ? null : up(l.color);
+    if(!MOB_SKU_RE.test(sku) || (color !== null && !CFG_COLOR_RE.test(color))) return null;
+    const o = { kind: "mobility", sku, qty }; if(color) o.color = color; return o;
+  }
+  if(l.kind === "accessory"){
+    const sku = up(l.sku), forSku = up(l.for);
+    if(!ACC_ID_RE.test(sku) || !(MOB_SKU_RE.test(forSku) || BED_SKU_RE.test(forSku))) return null;
+    return { kind: "accessory", sku, for: forSku, qty };
+  }
+  if(l.kind === "bed"){
+    const size = up(l.size), config = String(l.config || "").trim().toLowerCase(), delivery = String(l.delivery || "").trim().toLowerCase();
+    if(!BED_SIZES.includes(size) || !BED_CONFIGS.includes(config) || !BED_DELIVERIES.includes(delivery) || (l.rural != null && typeof l.rural !== "boolean")) return null;
+    if((delivery === "wg" && config !== "set") || (l.rural === true && delivery !== "wg")) return null;
+    const o = { kind: "bed", size, config, delivery, qty }; if(l.rural === true) o.rural = true; return o;
+  }
+  return null;
 }
 function readQuoteBody(b){
   const ls = Array.isArray(b.lines) ? b.lines : null;
@@ -181,6 +248,7 @@ function readQuoteBody(b){
   const lines = [];
   for(const l of ls){
     if(!l || typeof l !== "object") return null;
+    if(l.kind != null){ const x = readExtraLine(l); if(!x) return null; lines.push(x); continue; }
     const sku = String(l.sku || "").trim().toUpperCase(), color = String(l.color || "").trim().toUpperCase();
     const fabric = String(l.fabric || "std").trim().toLowerCase(), tier = l.tier == null || l.tier === "" ? null : String(l.tier).trim().toLowerCase();
     const qty = Number(l.qty);
@@ -248,6 +316,8 @@ function readValidateBody(b){
   if(po) out.po_number = po;
   if(attention) out.attention = attention;
   if(notes) out.notes = notes;
+  if(b.freight_quote_ack != null && typeof b.freight_quote_ack !== "boolean") return null;
+  if(b.freight_quote_ack === true) out.freight_quote_ack = true;   // the dealer read "freight quoted by Golden" (§4j)
   return out;
 }
 const cleanShip = x => (x && typeof x === "object" && SHIP_ID_RE.test(String(x.id))) ? { id: x.id, kind: oneOf(x.kind, ["primary","ship_location","hcps"]) || "ship_location",
@@ -270,6 +340,7 @@ function cleanHistoryOrder(o, pv){
       tracking_number: (typeof x.tracking_number === "string" && /^[A-Za-z0-9 -]{0,80}$/.test(x.tracking_number)) ? x.tracking_number : "", ship_date: day(x.ship_date) })),
     lifecycle: (Array.isArray(o.lifecycle) ? o.lifecycle : []).slice(0, 50).filter(e => e && HEVENTS.includes(e.type)).map(e => ({ type: e.type, at: day(e.at), so_number: str(e.so_number, 40) || null, label: str(e.label, 160) || "" })) };
   if(pv && o.totals && typeof o.totals === "object") out.totals = { subtotal: num(o.totals.subtotal), freight: num(o.totals.freight), sh: num(o.totals.sh), total: num(o.totals.total) };
+  if(o.freight_status === "to_be_quoted" || o.freight_status === "charged_by_golden") out.freight_status = o.freight_status;
   return out;
 }
 // The order + quote Golden answered for THIS request (validate or placement): allow-listed, all-or-nothing.
@@ -280,13 +351,14 @@ function cleanOrderView(g, sentHash){
   const ship = cleanShip(o.ship_to);
   if(!ship) return null;
   const raw = Array.isArray(o.lines) ? o.lines : [];
-  if(raw.length > QUOTE_MAX_LINES || raw.length !== q.lines.length || raw.some(l => !l || !CFG_SKU_RE.test(String(l.sku)))) return null;   // all-or-nothing, as the quote
+  if(raw.length > QUOTE_MAX_LINES || raw.length !== q.lines.length || raw.some(l => !l || !lineSkuOk(l))) return null;   // all-or-nothing, as the quote
   if(String(q.quote_hash) !== String(sentHash)) return null;   // an answer for another quote is not this order
   const lines = raw.map(l => ({ sku: l.sku, reference_names: strs(l.reference_names, 40, QUOTE_MAX_QTY) }));
   return {
     order: { po_number: str(o.po_number, 30) || "", po_auto: o.po_auto === true, ship_to: ship,
       contact: { name: str(o.contact && o.contact.name, 80) || "", phone: str(o.contact && o.contact.phone, 30) || "", email: str(o.contact && o.contact.email, 190) || "" },
-      attention: str(o.attention, 60) || "", notes: str(o.notes, 500) || "", delivery_type: "business", split_order: o.split_order === true, lines },
+      attention: str(o.attention, 60) || "", notes: str(o.notes, 500) || "", delivery_type: "business", split_order: o.split_order === true, lines,
+      ...(o.freight_quote_required === true && q.totals.freight_quote_required === true ? { freight_quote_required: true } : {}) },
     quote: q,
   };
 }
@@ -366,11 +438,14 @@ exports.handler = async (event) => {
     if(action === "config"){
       const sku = String(b.sku || "").trim().toUpperCase(), color = String(b.color || "").trim().toUpperCase();
       const fabric = String(b.fabric || "std").trim().toLowerCase(), tier = String(b.tier || "").trim().toLowerCase();
-      if(!CFG_SKU_RE.test(sku) || (color && !CFG_COLOR_RE.test(color)) || !CFG_FABRICS.includes(fabric) || (tier && !CFG_TIERS.includes(tier))) return json(400, { ok:false, error:"bad configuration" });
-      cfgQuery = { sku, fabric };
-      if(color) cfgQuery.color = color;
-      if(tier) cfgQuery.tier = tier;
-      if(b.footrest === true) cfgQuery.footrest = "1";
+      if(MOB_SKU_RE.test(sku) || BED_SKU_RE.test(sku)) cfgQuery = { sku };   // §4j: the order panel of a scooter / bed size
+      else if(!CFG_SKU_RE.test(sku) || (color && !CFG_COLOR_RE.test(color)) || !CFG_FABRICS.includes(fabric) || (tier && !CFG_TIERS.includes(tier))) return json(400, { ok:false, error:"bad configuration" });
+      else cfgQuery = { sku, fabric };
+      if(cfgQuery.fabric){
+        if(color) cfgQuery.color = color;
+        if(tier) cfgQuery.tier = tier;
+        if(b.footrest === true) cfgQuery.footrest = "1";
+      }
     }
     let histQuery = null, histRef = null;
     if(action === "history"){
@@ -476,10 +551,10 @@ exports.handler = async (event) => {
         const q = cleanQuote(g0);
         return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"prices_changed", idempotent_replay: g0.idempotent_replay === true, quote: q, request_id: reqId(g0.request_id) }, extra));
       }
-      const map = { freight_quote_required:"freight_quote_required", internal:"temporarily_unavailable", prices_not_visible:"prices_not_visible", idempotency_conflict:"idempotency_conflict", idempotency_in_progress:"idempotency_in_progress", pricing_unavailable:"pricing_unavailable", ordering_disabled:"ordering_disabled" };
+      const map = { freight_quote_required:"freight_quote_required", freight_quote_ack_required:"freight_quote_ack_required", internal:"temporarily_unavailable", prices_not_visible:"prices_not_visible", idempotency_conflict:"idempotency_conflict", idempotency_in_progress:"idempotency_in_progress", pricing_unavailable:"pricing_unavailable", ordering_disabled:"ordering_disabled" };
       const msg = g0.error && typeof g0.error.message === "string" ? g0.error.message : "";
       if(r.status === 400 && code === "bad_request"){
-        const field = /^(ship_to|po_required|po_number|attention|notes|contact\.(name|phone|email)|(reference_names|color|qty|sku|fabric|tier|footrest)@\d{1,2})$/.test(msg) ? msg : "order";
+        const field = FIELD_RE.test(msg) ? msg : "order";
         return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"invalid", field }, extra));
       }
       if(r.status === 404) return json(200, Object.assign({ ok:true, enabled:true, available:true, valid:false, reason:"not_found" }, extra));
@@ -498,13 +573,14 @@ exports.handler = async (event) => {
         order_scope:"ordering_unavailable", prices_not_visible:"ordering_unavailable", not_linked:"ordering_unavailable", branch_not_permitted:"ordering_unavailable", link_ambiguous:"ordering_unavailable" };
       if(r.status === 400 && code === "bad_request"){
         const msg = g0.error && typeof g0.error.message === "string" ? g0.error.message : "";
-        const field = /^(ship_to|po_required|po_number|attention|notes|contact\.(name|phone|email)|(reference_names|color|qty|sku|fabric|tier|footrest)@\d{1,2})$/.test(msg) ? msg : "order";
+        const field = FIELD_RE.test(msg) ? msg : "order";
         return json(200, Object.assign(base, { reason:"invalid", field, new_attempt:true }, extra));
       }
       if(r.status >= 400 && r.status < 500 && definite[code]) return json(200, Object.assign(base, { reason: definite[code], new_attempt: definite[code] !== "ordering_unavailable" }, extra));
       if(r.status === 404 && code === "not_found") return json(200, Object.assign(base, { reason:"not_found", new_attempt:true }, extra));
       if(r.status === 409 && code === "pricing_unavailable") return json(200, Object.assign(base, { reason:"pricing_unavailable", new_attempt:true }, extra));
       if(r.status === 409 && code === "freight_quote_required") return json(200, Object.assign(base, { reason:"freight_quote_required", new_attempt:false }, extra));
+      if(r.status === 409 && code === "freight_quote_ack_required") return json(200, Object.assign(base, { reason:"freight_quote_ack_required", new_attempt:true }, extra));
       // The key is held by another request content or another dealer: Golden refused to replay it here, but an order may
       // exist under it — never "not placed"; the dealer checks My Orders / HCPS.
       if(code === "idempotency_conflict" || code === "attempt_other_dealer") return json(200, Object.assign({ ok:true, enabled:true, available:true, placed:null, reason:"unconfirmed", retry:false }, extra));
@@ -561,6 +637,12 @@ exports.handler = async (event) => {
       if(!fam) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
       return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, linked: g.linked === true,
         enrichment_as_of: str(g.enrichment_as_of, 30), etag: typeof g.etag === "string" ? g.etag : null, family: fam, request_id: reqId(g.request_id) }, extra));
+    }
+    if(action === "config" && g.options){
+      const pv = g.prices_visible === true;
+      const opt = cleanOptions(g.options, pv, g.linked === true);
+      if(!opt) return json(200, Object.assign({ ok:true, enabled:true, available:false, reason:"golden_unavailable" }, extra));
+      return json(200, Object.assign({ ok:true, enabled:true, available:true, prices_visible: pv, linked: g.linked === true, etag: typeof g.etag === "string" ? g.etag : null, options: opt, request_id: reqId(g.request_id) }, extra));
     }
     if(action === "config"){
       const pv = g.prices_visible === true;

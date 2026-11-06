@@ -4598,6 +4598,24 @@ Integration — Stage 0/1 Work Package". Runbook: `docs/golden-integration/B1-RU
     (both head offices) → account_not_enabled until `config/p360-link-230482-mobility-works.sql` (Golden) is run; a staff
     preview can list but never save an address or validate. No order placed. Real-dealer add-address / validate / place
     are proven by the real-chain browser test (ordering test/golden-b7.browser.js), not live.
+- **B8 — the WHOLE Golden line is orderable in Partner 360 (owner directive 2026-11-05 21:05 CT — RULES; no pilot, no
+  browse-only family).** Contract 1.9.0 §4j. Golden PR #289, HCPS PR #97, ordering PR #53 (merge in that order).
+  · **Source of truth = Golden's own dealer portal page.** `repo/scripts/extract-golden-mobility.js` copies the scooter /
+    power-chair cards (colour swatches, accessory + shroud panels), Passport BED_INFO and the portal's stock functions into
+    `golden-mobility-data.json` (test fails on drift). Dealer price = PROMO_PRICE → the dealer's own Golden row → card price;
+    accessories at their panel price; beds base (+ mattress for a set). Item # = the portal's `configuredItemNo`. Nothing is
+    invented: a model with no price anywhere is `not_priced`, never quoted.
+  · **Line kinds** `mobility` {sku, color?}, `accessory` {sku, for = its model / bed size}, `bed` {size, set|base,
+    retailer|curbside|wg, rural?}. White-glove only with a complete set; rural only with white-glove. Another model's
+    accessory is refused. A chairs-only cart is priced, hashed and stored exactly as before 1.9.0 (tested byte for byte).
+  · **Freight Golden quotes by hand** (oversized GA541 / GR595 / GC540 in a shipment, or 2+ beds in one shipment): the quote
+    says `freight_quote_required` (never a 409, never $0); HCPS shows "To be quoted by Golden"; the dealer ticks a freight box
+    before Golden verifies; validate + submit need `freight_quote_ack:true`; the stored order's notes start "FREIGHT TO BE
+    QUOTED BY GOLDEN" for the order desk; My Orders shows "+ freight to be quoted" (history `freight_status`) until Golden
+    ships / invoices it. Golden confirms the charge with the dealer — no new back-office tool, no SQL.
+  · Coverage at release: 49 lift-chair sizes, 32 scooter / power-chair models, 3 bed sizes (every catalog SKU), plus their
+    accessory panels. Public repos never carry a Golden price: the HCPS cross-repo test reads Golden's figures from the
+    private checkout at run time.
 - **No real account numbers or dealer identities in public test data (RULE, 2026-11-05).** Golden `customer_no` doubles as
   the dealer's Golden portal login, and both HCPS repos are public: tests, fixtures, PR text and commits use made-up names
   and clearly fake numbers (e.g. `T90100`), never a real dealer's name, account number or one copied from a working file.

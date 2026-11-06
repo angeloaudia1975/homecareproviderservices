@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "golden-commerce-v1.schema.json",
-  "title": "Golden Commerce API v1 — wire schemas (routes built through batch B5 (quote, ship-to, validate-only orders — 1.4.0; order history — 1.5.0; order placement — 1.6.0; retail upgrade prices — 1.6.1; freight — 1.7.0; account-number links + HCPS ship-to — 1.8.0))",
-  "contract_version": "1.8.0",
+  "title": "Golden Commerce API v1 — wire schemas (routes built through batch B5 (quote, ship-to, validate-only orders — 1.4.0; order history — 1.5.0; order placement — 1.6.0; retail upgrade prices — 1.6.1; freight — 1.7.0; account-number links + HCPS ship-to — 1.8.0; every Golden family — 1.9.0))",
+  "contract_version": "1.9.0",
   "$defs": {
     "uuid": {
       "type": "string",
@@ -27,7 +27,8 @@
             "1.6.0",
             "1.6.1",
             "1.7.0",
-            "1.8.0"
+            "1.8.0",
+            "1.9.0"
           ]
         },
         "tenant": {
@@ -914,8 +915,7 @@
         "etag",
         "engine",
         "prices_visible",
-        "linked",
-        "config"
+        "linked"
       ],
       "properties": {
         "as_of": {
@@ -1254,8 +1254,80 @@
               }
             }
           }
+        },
+        "data": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        },
+        "options": {
+          "type": "object",
+          "required": [
+            "kind",
+            "sku",
+            "name",
+            "accessories",
+            "orderable"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "mobility",
+                "bed"
+              ]
+            },
+            "sku": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "accessories": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "description",
+                  "group"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "group": {
+                    "enum": [
+                      "accessory",
+                      "shroud"
+                    ]
+                  },
+                  "dealer_price": {
+                    "type": "number"
+                  }
+                }
+              }
+            },
+            "orderable": {
+              "type": "boolean"
+            }
+          }
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "config"
+          ]
+        },
+        {
+          "required": [
+            "options"
+          ]
+        }
+      ]
     },
     "quote_200": {
       "allOf": [
@@ -1328,10 +1400,16 @@
                     ]
                   },
                   "color": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "color_name": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "tier": {
                     "type": "string"
@@ -1376,6 +1454,56 @@
                     "type": "string"
                   },
                   "item_no_resolved": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "enum": [
+                      "mobility",
+                      "accessory",
+                      "bed"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "accessory_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "for": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "size": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "mattress_sku": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "config": {
+                    "enum": [
+                      "set",
+                      "base"
+                    ]
+                  },
+                  "delivery": {
+                    "enum": [
+                      "retailer",
+                      "curbside",
+                      "wg"
+                    ]
+                  },
+                  "rural": {
                     "type": "boolean"
                   }
                 }
@@ -1446,6 +1574,9 @@
                       "freight": {
                         "type": "number",
                         "minimum": 0
+                      },
+                      "freight_quote": {
+                        "const": true
                       }
                     }
                   }
@@ -1453,6 +1584,9 @@
                 "free_freight_units": {
                   "type": "integer",
                   "minimum": 1
+                },
+                "freight_quote_required": {
+                  "const": true
                 }
               }
             },
@@ -1465,7 +1599,7 @@
               ],
               "properties": {
                 "included": {
-                  "const": true
+                  "type": "boolean"
                 },
                 "note": {
                   "type": "string"
@@ -1642,6 +1776,9 @@
             },
             "lines": {
               "type": "array"
+            },
+            "freight_quote_required": {
+              "const": true
             }
           }
         },
@@ -1688,10 +1825,16 @@
                     ]
                   },
                   "color": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "color_name": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "tier": {
                     "type": "string"
@@ -1736,6 +1879,56 @@
                     "type": "string"
                   },
                   "item_no_resolved": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "enum": [
+                      "mobility",
+                      "accessory",
+                      "bed"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "accessory_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "for": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "size": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "mattress_sku": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "config": {
+                    "enum": [
+                      "set",
+                      "base"
+                    ]
+                  },
+                  "delivery": {
+                    "enum": [
+                      "retailer",
+                      "curbside",
+                      "wg"
+                    ]
+                  },
+                  "rural": {
                     "type": "boolean"
                   }
                 }
@@ -1806,6 +1999,9 @@
                       "freight": {
                         "type": "number",
                         "minimum": 0
+                      },
+                      "freight_quote": {
+                        "const": true
                       }
                     }
                   }
@@ -1813,6 +2009,9 @@
                 "free_freight_units": {
                   "type": "integer",
                   "minimum": 1
+                },
+                "freight_quote_required": {
+                  "const": true
                 }
               }
             },
@@ -1825,7 +2024,7 @@
               ],
               "properties": {
                 "included": {
-                  "const": true
+                  "type": "boolean"
                 },
                 "note": {
                   "type": "string"
@@ -2004,6 +2203,9 @@
             },
             "lines": {
               "type": "array"
+            },
+            "freight_quote_required": {
+              "const": true
             }
           }
         },
@@ -2050,10 +2252,16 @@
                     ]
                   },
                   "color": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "color_name": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "tier": {
                     "type": "string"
@@ -2098,6 +2306,56 @@
                     "type": "string"
                   },
                   "item_no_resolved": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "enum": [
+                      "mobility",
+                      "accessory",
+                      "bed"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "accessory_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "for": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "size": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "mattress_sku": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "config": {
+                    "enum": [
+                      "set",
+                      "base"
+                    ]
+                  },
+                  "delivery": {
+                    "enum": [
+                      "retailer",
+                      "curbside",
+                      "wg"
+                    ]
+                  },
+                  "rural": {
                     "type": "boolean"
                   }
                 }
@@ -2168,6 +2426,9 @@
                       "freight": {
                         "type": "number",
                         "minimum": 0
+                      },
+                      "freight_quote": {
+                        "const": true
                       }
                     }
                   }
@@ -2175,6 +2436,9 @@
                 "free_freight_units": {
                   "type": "integer",
                   "minimum": 1
+                },
+                "freight_quote_required": {
+                  "const": true
                 }
               }
             },
@@ -2187,7 +2451,7 @@
               ],
               "properties": {
                 "included": {
-                  "const": true
+                  "type": "boolean"
                 },
                 "note": {
                   "type": "string"
@@ -2478,6 +2742,12 @@
               ]
             }
           }
+        },
+        "freight_status": {
+          "enum": [
+            "to_be_quoted",
+            "charged_by_golden"
+          ]
         }
       }
     },

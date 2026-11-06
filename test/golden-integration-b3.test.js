@@ -68,7 +68,7 @@ const J = r => JSON.parse(r.body);
   });
 
   await t("config: bad selections refused before Golden is called", async () => {
-    for (const b of [{ sku: "GB107B" }, { sku: "PR511-LAR", color: "T;P" }, { sku: "PR511-LAR", fabric: "silk" }, { sku: "PR511-LAR", tier: "turbo" }, { sku: "PR511-LAR'" }]) {
+    for (const b of [{ sku: "XX107B" }, { sku: "BD100A-XX" }, { sku: "PR511-LAR", color: "T;P" }, { sku: "PR511-LAR", fabric: "silk" }, { sku: "PR511-LAR", tier: "turbo" }, { sku: "PR511-LAR'" }]) {
       env(); const w = world();
       const r = await load("golden-proxy.js").handler(post(Object.assign({ action: "config" }, b)));
       eq(r.statusCode, 400, JSON.stringify(b)); eq(w.golden.length, 0);

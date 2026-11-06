@@ -40,7 +40,7 @@ const CATALOG = (pv) => ({ contract_version: "1.1.0", tenant: "hcps", request_id
       pv ? { dealer_price: 900, price_source: "account" } : { dealer_price: 123 }),
     { sku: "GB107B", family: "GB107B", family_name: "BuzzAround LT™", name: "BuzzAround LT™ 3-Wheel", category: "Scooters", subcategory: "BuzzAround",
       size_code: null, size_label: null, description: null, specs: [], zones: null, class_ii: true, ribbon: null, color_note: "Red", badges: {}, brochure_url: null,
-      action: "add", image: "javascript:alert(1)", msrp: 1588, emap: 1266, sort: 50 },
+      action: "add", image: "javascript:alert(1)", msrp: 1500, emap: 1200, sort: 50 },
   ] });
 
 function world(o) {
