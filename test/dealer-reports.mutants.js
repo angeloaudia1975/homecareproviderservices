@@ -22,6 +22,8 @@ const M = [
   { f: A, from: "!(new Date(t.expires_at).getTime() > Date.now())", to: 'false', why: 'expired preview token accepted' },
   { f: A, from: "if (b.action === 'report_ai' && who.preview)", to: 'if (false)', why: 'AI in read-only preview' },
   { f: A, from: "if (hist.length >= 4)", to: 'if (false)', why: 'no AI limit' },
+  { f: R, from: "categories.filter((c) => !c.unlisted && c.prior != null", to: "categories.filter((c) => c.prior != null", why: 'unlisted bucket flagged declining' },
+  { f: R, from: ".filter((m) => m.purchases !== 0 || (m.prior || 0) !== 0)", to: '', why: 'empty line listed' },
 ];
 const run = () => spawnSync(process.execPath, [path.join(__dirname, 'dealer-reports.test.js')], { encoding: 'utf8' });
 if (run().status !== 0) { console.log('CONTROL FAILED'); process.exit(1); }
