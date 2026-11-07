@@ -2388,8 +2388,14 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     META_APP_ID/SECRET or LINKEDIN_CLIENT_ID/SECRET + SOCIAL_TOKEN_KEY (32-byte base64) + SOCIAL_STATE_SECRET AND the dealer's
     own connection AND the dealer's own approval of that post (an edit drops it; preview never approves). Tokens sealed
     AES-256-GCM, never returned or logged; one target per post per platform; an interrupted target is never re-posted; a post
-    >24 h past its time is never published late. SQL `supabase/c8_social_ads.sql` (sha256 98d4c37b…) — Angelo runs it; saving
-    ads answers 503 until then (designing / downloading work).
+    >24 h past its time is never published late. Review #115 publishing rules: the sign-in is a single-use begin link
+    (`dealer_social_oauth_states`, 15 min, the dealer user who started it) bound to the browser by an HttpOnly `__Host-` cookie;
+    the platform's accounts arrive PENDING and the dealer chooses the Page / account (the rest are dropped); a post stores each
+    product's advertised price and the ad version when scheduled — a different price or an edited ad stops it; a server error /
+    rate limit / no answer on the posting call itself is never retried ("check the page"); an edit restarts failed platforms;
+    a paused post past its time never resumes. Merged admin #115 dcc4a94 / ordering #69 7fe9e2a. SQL
+    `supabase/c8_social_ads.sql` (sha256 d31eedf1…, re-runnable over the first draft) — Angelo runs it; saving ads answers
+    503 until then (designing / downloading work).
     **Advertising-rule research (2026-11-06 ~14:40 CT, from repo documents + live catalog data; counts only):** documented
     MAP for Bemis (Terms of Agreement, dealer application 2026 — written MAP policy incl. dealer websites; "call for price"
     allowed; dealers selling online must notify Bemis and use Bemis content), Golden (eMAP per product), Strongback (Rev C
