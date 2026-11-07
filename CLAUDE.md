@@ -2314,6 +2314,30 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     (7) Social Media Ad Builder + scheduling continue (official APIs, dealer authorization; no subscriptions, paid campaigns
     or external publishing without approval) and never block the portal corrections. Routine safe code merges/deploys
     proceed through review; backfills, real entitlement changes, paid services and manufacturer transactions need approval.
+    **How it is built (2026-11-06, admin #108 → f60c914, ordering #63 → 0619af7; independent review NO-GO → fixed → GO):**
+    held order status `pending_account_setup` ("Pending Manufacturer Account Setup", `_account_setup.js`); decided at
+    create from the ordering location + its head office (any recorded identifier counts; Golden never held); an unreadable
+    identifier read HOLDS the order too (fail closed, flagged `account_unchecked`). A held order only moves to cancelled or
+    through `orders-admin release_account_hold` (President / Relations): identifier now on file, every line re-priced by the
+    server and freight re-worked by the shop rule; a line sold in two price families or offering an upgrade (order_items keep
+    neither) keeps its checkout price and needs a by-hand check + note; a discontinued / rule-breaking line is unavailable;
+    any price or freight change needs the dealer's confirmation of EXACTLY the proposed figures (sent back and matched);
+    writes = status-guarded note → line prices → status-guarded release (a partial failure leaves it held with the change
+    noted). HCPS-entered identifiers: `_accountorg.saveVerifiedAccountRef` (verified at once; new rows `active:false` — saving a
+    number never grants ordering; a failed branch fill reports "saved, branches not all updated"). Dry run of the 630:
+    `dealers-api verification_dry_run` (read-only; CSV on Dealers page) — the backfill itself waits for Angelo.
+    **Reports (admin #109 / ordering #64):** `_report_catalog.js` is the one category + retail-reference resolver;
+    `_dealer_report.valuate` the one valuation (screen, PDF, `report_excel`). Marketing words apply ONLY to items the Shop does
+    not list; marketing amounts are listed (valued + not valued = purchases). A Golden purchase matched only to its base model
+    is valued only when it cost no more than the base standard price — a paid upgrade is never valued at base MSRP. A return
+    removes units only when the report prints a negative quantity; amount-only credits are listed. A catalog that can't be
+    read is never cached and its purchases say "catalog unavailable"; Golden gets 3 s inside a report.
+    **Staff preview of the Account Center (#110):** the dealer preview token reads account_center / favorites / branding /
+    showroom / account_get; every other dealer-tools action answers 403 in preview.
+    **Known gaps recorded for Angelo (not changed):** a dealer with NO Dealer Manager grid still sees territory-rule lines
+    (browse only — checkout refuses them); and the commission importer (`reconcileAccountRef` / `propagateAccountRef`,
+    RULE 13) still marks a line active from a report — both contradict point (1) and are real entitlement changes, so each
+    waits for Angelo's decision.
     **Advertising-rule research (2026-11-06 ~14:40 CT, from repo documents + live catalog data; counts only):** documented
     MAP for Bemis (Terms of Agreement, dealer application 2026 — written MAP policy incl. dealer websites; "call for price"
     allowed; dealers selling online must notify Bemis and use Bemis content), Golden (eMAP per product), Strongback (Rev C
