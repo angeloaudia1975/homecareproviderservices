@@ -220,18 +220,18 @@ function renderPreview(){
   const p=PREVIEW;
   // Account-number maintenance from the report (dry-run on preview; applied on import).
   const ac=p.accounts||{};
-  const acctKpi=(ac.updated||ac.confirmed||ac.conflicts||ac.active_marked)
+  const acctKpi=(ac.updated||ac.confirmed||ac.conflicts||(ac.access_suggestions||[]).length)
     ? `<div class="kpi ${ac.conflicts?'w':'g'}"><div class="l">Account #s</div><div class="v">${ac.updated||0}<span style="font-size:12px;font-weight:400"> new</span>${ac.conflicts?` · ${ac.conflicts} ⚑`:""}</div></div>` : "";
   const acctPanel=(()=>{
     const upd=(ac.updated_list||[]); const con=(ac.conflict_list||[]);
-    if(!upd.length && !con.length && !ac.confirmed && !ac.active_marked) return "";
+    if(!upd.length && !con.length && !ac.confirmed && !(ac.access_suggestions||[]).length) return "";
     const line=`<div class="hint" style="margin-bottom:6px">Account numbers are read from the report and kept current on each dealer. On preview nothing is written yet — this is what will change on import.</div>`;
     const updT=upd.length?`<h3 style="margin-top:6px">Account numbers to set (${upd.length})</h3>
       <table><thead><tr><th>Dealer</th><th>New account #</th></tr></thead><tbody>${upd.map(u=>`<tr><td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(u.dealer_id)}">${esc(u.name)}</a></td><td>${esc(u.account_ref)}</td></tr>`).join("")}</tbody></table>`:"";
     const conT=con.length?`<h3 class="warn" style="margin-top:10px">Conflicts to review (${con.length}) — NOT changed automatically</h3>
       <div class="hint" style="margin-bottom:6px">The report's number differs from what's on file (or the report lists more than one for the same dealer). Left as-is so you can decide.</div>
       <table><thead><tr><th>Dealer</th><th>On file</th><th>In report</th></tr></thead><tbody>${con.map(c=>`<tr><td><a class="link" href="/admin/dealer.html?id=${encodeURIComponent(c.dealer_id)}">${esc(c.name)}</a></td><td>${esc(c.existing||(c.values?"(multiple)":"—"))}</td><td>${esc(c.incoming||(c.values?c.values.join(", "):"—"))}</td></tr>`).join("")}</tbody></table>`:"";
-    const conf=(ac.confirmed||ac.active_marked)?`<div class="hint" style="margin-top:6px">${ac.confirmed||0} already correct · ${ac.active_marked||0} marked active from current sales.</div>`:"";
+    const sug=(ac.access_suggestions||[]); const conf=(ac.confirmed||sug.length)?`<div class="hint" style="margin-top:6px">${ac.confirmed||0} already correct${sug.length?` · ${sug.length} dealer${sug.length===1?"":"s"} bought this line but are not on for ordering — review in Dealer Manager (a report never turns ordering on): ${sug.slice(0,12).map(x=>esc(x.name||"")).join(", ")}${sug.length>12?"…":""}`:""}.</div>`:"";
     return `<div class="step">${line}${updT}${conT}${conf}</div>`;
   })();
   const kpis=`<div class="kpis">

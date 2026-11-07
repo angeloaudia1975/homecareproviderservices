@@ -148,10 +148,11 @@ async function computeDealerAccess(dealer_id){
   try{ const q=qkey(gov); if(q){ const gc=await sbGet(`geocache?q=eq.${encodeURIComponent(q)}&ok=eq.true&select=lat&limit=1`).catch(()=>[]); if(gc&&gc[0]) lat=gc[0].lat; } }catch(e){}
   const dm=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(dealer_id)}&active=eq.true&select=manufacturer,account_ref`).catch(()=>[]);
   const ownedWithAccount=(dm||[]).filter(x=>x.account_ref&&String(x.account_ref).trim()).map(x=>x.manufacturer);
+  let gridOnly=false; try{ gridOnly=await require("./_flags.js").flagOn(sbGet,"grid_only_access"); }catch(e){ gridOnly=false; }
   const access=computeAccess({
     state: gov.state||self.state, business_name: gov.business_name||self.business_name, lat,
     golden_status: self.golden_status||"None", ovation_access: !!self.ovation_access,
-  }, ownedWithAccount, (dm||[]).map(x=>x.manufacturer));   // granted grid lines override territory
+  }, ownedWithAccount, (dm||[]).map(x=>x.manufacturer), {gridOnly});   // grid-only once the switch is on (owner 2026-11-06 §2)
   return { access, gridLines:(dm||[]).map(x=>x.manufacturer).sort(), governedBy, lat_known: lat!=null };
 }
 
@@ -566,7 +567,7 @@ exports.handler = async (event)=>{
         const ownAcct=new Set();
         if(Array.isArray(b.accounts)&&b.accounts.length){
           const rows=b.accounts.filter(a=>a&&a.manufacturer&&clean(a.account_ref))
-            .map(a=>{ ownAcct.add(String(a.manufacturer).trim()); return {dealer_id,manufacturer:String(a.manufacturer).trim(),account_ref:clean(a.account_ref),active:true}; });
+            .map(a=>{ ownAcct.add(String(a.manufacturer).trim()); return {dealer_id,manufacturer:String(a.manufacturer).trim(),account_ref:clean(a.account_ref),active:false}; });   /* an account number never opens ordering — Dealer Manager does (owner 2026-11-06 §2/§3) */
           if(rows.length) try{ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",rows,{Prefer:"resolution=merge-duplicates,return=minimal"}); }catch(e){}
         }
         // A branch inherits its parent organization's manufacturer account numbers (they are org-level).
@@ -575,7 +576,7 @@ exports.handler = async (event)=>{
           try{
             const pdm=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(parent_id)}&select=manufacturer,account_ref`).catch(()=>[]);
             const inherit=(pdm||[]).filter(x=>x&&x.account_ref&&String(x.account_ref).trim()&&!ownAcct.has(x.manufacturer))
-              .map(x=>({dealer_id,manufacturer:x.manufacturer,account_ref:x.account_ref,active:true}));
+              .map(x=>({dealer_id,manufacturer:x.manufacturer,account_ref:x.account_ref,active:false}));   /* the org's numbers, ordering off until Dealer Manager */
             if(inherit.length) await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",inherit,{Prefer:"resolution=merge-duplicates,return=minimal"});
           }catch(e){}
         }
@@ -586,7 +587,9 @@ exports.handler = async (event)=>{
         if(!b.dealer_id||!Array.isArray(b.manufacturers)) return json(400,{error:"dealer_id + manufacturers[] required"});
         // preserve existing manufacturer account numbers (account_ref) so re-saving access
         // never wipes the dealer's account #s. Merge in any aliased slugs' refs too.
-        const existing=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref`,"dealer_id,manufacturer").catch(()=>[]);
+        /* strict: a grid save that could not read the current rows would erase identifiers — refuse instead */
+        let existing; try{ existing=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref,active`); if(!Array.isArray(existing)) throw new Error("unreadable"); }
+        catch(e){ return json(503,{error:"The dealer's current manufacturer lines could not be read — nothing was changed."}); }
         const refBy={}; for(const r of (existing||[])){ if(r.account_ref) refBy[r.manufacturer]=r.account_ref; }
         /* C3-07 Stage 3: HCPS verifications survive an ordering-grid save (only while the number is unchanged). Before the
            Stage 3 SQL the columns don't exist and nothing is carried. */
@@ -595,12 +598,20 @@ exports.handler = async (event)=>{
         // b.refCarry: {canonicalSlug: account_ref} the UI passes when it merged duplicate rows
         if(b.refCarry&&typeof b.refCarry==="object"){ for(const k in b.refCarry){ if(b.refCarry[k]&&!refBy[k]) refBy[k]=b.refCarry[k]; } }
         await sbSend("DELETE",`dealer_manufacturers?dealer_id=eq.${b.dealer_id}`,null,{Prefer:"return=minimal"});
-        if(b.manufacturers.length) await sbSend("POST","dealer_manufacturers",b.manufacturers.map(m=>{ const row={dealer_id:b.dealer_id,manufacturer:m,active:true,account_ref:refBy[m]||null};
+        /* A line taken OFF the grid keeps its account identifier on file with ordering off (owner 2026-11-06: an identifier
+           on file is the dealer's verified account; Dealer Manager decides ordering) — it is never erased by a grid save. */
+        const sel=new Set(b.manufacturers.map(String));
+        /* Every line the save leaves unticked stays as a row with ordering OFF (its identifier kept, if any): unticking never
+           erases an identifier, and an HQ save can only fill a branch's number, never re-grant a line the branch turned off
+           (fillHeadquartersBlanks patches existing rows' numbers only). Review of #113 (findings 1 and 3). */
+        const keepOff=[...new Set((existing||[]).map(r=>String(r.manufacturer)))].filter(m=>!sel.has(m));
+        const gridRows=b.manufacturers.map(m=>({m,active:true})).concat(keepOff.map(m=>({m,active:false})));
+        if(gridRows.length) await sbSend("POST","dealer_manufacturers",gridRows.map(({m,active})=>{ const row={dealer_id:b.dealer_id,manufacturer:m,active,account_ref:refBy[m]||null};
           if(verBy){ const v=verBy[m]; const keep=v&&String(v.verified_ref||"").toUpperCase()===String(row.account_ref||"").toUpperCase()&&row.account_ref;
             row.verified_at=keep?(v.verified_at||null):null; row.verified_by=keep?(v.verified_by||null):null; row.verified_ref=keep?(v.verified_ref||null):null; }
           return row; }),{Prefer:"return=minimal"});
         // #2 Manufacturer Activated: fire for lines that weren't in the grid before this save.
-        const hadBefore=new Set((existing||[]).map(r=>r.manufacturer));
+        const hadBefore=new Set((existing||[]).filter(r=>r.active!==false).map(r=>r.manufacturer));
         const newlyGranted=b.manufacturers.filter(m=>!hadBefore.has(m));
         if(newlyGranted.length) await enqueueActivation(b.dealer_id,newlyGranted);
         // Sync known HQ manufacturer refs to blank branch rows. Independent branch
@@ -641,42 +652,19 @@ exports.handler = async (event)=>{
         if(!r) return json(404,{error:"dealer not found"});
         return json(200,{ok:true,...r});
       }
-      // President-only: materialize the rule-eligible lines into this dealer's editable grid
-      // (dealer_manufacturers), preserving any account numbers already on file.
+      /* Territory SUGGESTIONS only (owner directive 2026-11-06 20:55 CT, §2): territory rules never grant ordering. This
+         lists the lines the old territory rules would have given a dealer, for staff to tick in Dealer Manager and Save —
+         nothing is written. The bulk "pre-fill every dealer" action is retired. */
       if(act==="prefill_access"){
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});
-        const r=await computeDealerAccess(b.dealer_id);
-        if(!r) return json(404,{error:"dealer not found"});
-        const eligible=[...new Set([...(r.access.your_accounts||[]),...(r.access.available||[])])];
-        const existing=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref`).catch(()=>[]);
-        const refBy={}; for(const x of (existing||[])){ if(x.account_ref) refBy[x.manufacturer]=x.account_ref; }
-        if(eligible.length){
-          const rows=eligible.map(m=>({dealer_id:b.dealer_id,manufacturer:m,active:true,account_ref:refBy[m]||null}));
-          await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",rows,{Prefer:"resolution=merge-duplicates,return=minimal"});
-        }
-        return json(200,{ok:true,added:eligible.sort()});
+        const d=await sbGet(`dealers?id=eq.${encodeURIComponent(b.dealer_id)}&select=id,business_name,address,city,state,zip,parent_id,golden_status,ovation_access`).catch(()=>null);
+        const self=d&&d[0]; if(!self) return json(404,{error:"dealer not found"});
+        let gov=self; if(self.parent_id){ const p=await sbGet(`dealers?id=eq.${self.parent_id}&select=business_name,address,city,state,zip`).catch(()=>[]); if(p&&p[0]) gov=p[0]; }
+        let lat=null; try{ const q=qkey(gov); if(q){ const gc=await sbGet(`geocache?q=eq.${encodeURIComponent(q)}&ok=eq.true&select=lat&limit=1`); if(gc&&gc[0]) lat=gc[0].lat; } }catch(e){}
+        const t=computeAccess({state:gov.state||self.state,business_name:gov.business_name||self.business_name,lat,golden_status:self.golden_status||"None",ovation_access:!!self.ovation_access},[],[]);
+        return json(200,{ok:true,written:0,suggested:[...new Set([...(t.your_accounts||[]),...(t.available||[])])].sort()});
       }
-      // President-only: same, for EVERY dealer at once (bulk-load, compute in memory, batch upsert).
-      if(act==="prefill_access_all"){
-        const dealers=await sbGetAll("dealers?select=id,business_name,address,city,state,zip,parent_id,golden_status,ovation_access");
-        const dmAll=await sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,account_ref","dealer_id,manufacturer");
-        const gcAll=await sbGetAll("geocache?ok=eq.true&select=q,lat","q").catch(()=>[]);
-        const latByQ={}; for(const g of (gcAll||[])) latByQ[g.q]=g.lat;
-        const byId={}; for(const d of dealers) byId[d.id]=d;
-        const refByDealer=new Map();
-        for(const x of dmAll){ if(x.account_ref){ (refByDealer.get(x.dealer_id)||refByDealer.set(x.dealer_id,{}).get(x.dealer_id))[x.manufacturer]=x.account_ref; } }
-        const rows=[];
-        for(const d of dealers){
-          const gov = (d.parent_id&&byId[d.parent_id]) ? byId[d.parent_id] : d;
-          const q=qkey(gov); const lat=(q in latByQ)?latByQ[q]:null;
-          const acc=computeAccess({state:gov.state||d.state,business_name:gov.business_name||d.business_name,lat,golden_status:d.golden_status||"None",ovation_access:!!d.ovation_access},[]);
-          const eligible=[...new Set([...(acc.your_accounts||[]),...(acc.available||[])])];
-          const refs=refByDealer.get(d.id)||{};
-          for(const m of eligible) rows.push({dealer_id:d.id,manufacturer:m,active:true,account_ref:refs[m]||null});
-        }
-        let n=0; for(let i=0;i<rows.length;i+=500){ const part=rows.slice(i,i+500); await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",part,{Prefer:"resolution=merge-duplicates,return=minimal"}); n+=part.length; }
-        return json(200,{ok:true,dealers:dealers.length,lines:n});
-      }
+      if(act==="prefill_access_all") return json(410,{error:"retired",message:"Territory rules no longer set ordering access (owner directive 2026-11-06). Approve lines per dealer in Dealer Manager."});
       // ---- Per-product contract pricing (dealer_contract_prices) ----
       if(act==="list_contract_prices"){
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});
@@ -822,7 +810,7 @@ exports.handler = async (event)=>{
             const lbl=String(a.label||""); const pri=/HQ/i.test(lbl)?3:(/\b(CORP|CORPORATE|HEADQUARTERS|MAIN|FLAGSHIP)\b/i.test(lbl)?2:1);
             const prev=addrMap.get(key); if(!prev||pri>prev.pri) addrMap.set(key,{dealer_id:id,addr_key:ak,address:ad,city:a.city||null,state:a.state||null,zip:a.zip||null,label:lbl||null,pri}); }
           for(const l of (r.lines||[])){ if(!l||!l.slug)continue; const key=id+"|"+l.slug;
-            if(!lineMap.has(key)) lineMap.set(key,{dealer_id:id,manufacturer:l.slug,active:true,account_ref:(l.account||null)}); }
+            if(!lineMap.has(key)) lineMap.set(key,{dealer_id:id,manufacturer:l.slug,account_ref:(l.account||null)}); }
         }
 
         const contactsArr=[...contactMap.values()], addrArr=[...addrMap.values()], lineArr=[...lineMap.values()];
@@ -831,7 +819,14 @@ exports.handler = async (event)=>{
         // account number (see _upsert.js).
         { const r=await UP.upsertKeepingValues(sbSend,"dealer_contacts?on_conflict=dealer_id,email",contactsArr); contactsStored=r.written; r.errors.forEach(m=>errors.push("contacts: "+m)); }
         { const r=await UP.upsertKeepingValues(sbSend,"dealer_addresses?on_conflict=dealer_id,addr_key",addrArr); addressesStored=r.written; r.errors.forEach(m=>errors.push("addresses: "+m)); }
-        { const r=await UP.upsertKeepingValues(sbSend,"dealer_manufacturers?on_conflict=dealer_id,manufacturer",lineArr); ents=r.written; r.errors.forEach(m=>errors.push("lines: "+m)); }
+        /* An import never grants ordering (owner 2026-11-06 §3): an existing row keeps its ordering state (only the number is
+           written); a line with no row is recorded with ordering OFF (the column defaults to on, so it is always written). */
+        { let have=null; try{ have=new Set((await sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer","dealer_id,manufacturer")).map(x=>x.dealer_id+"|"+x.manufacturer)); }catch(e){ errors.push("lines: could not read the current access grid — no lines written"); }
+          if(have){ const upd=lineArr.filter(x=>have.has(x.dealer_id+"|"+x.manufacturer)), add=lineArr.filter(x=>!have.has(x.dealer_id+"|"+x.manufacturer)).map(x=>Object.assign({},x,{active:false}));
+            /* existing rows: PATCH the number only — an upsert could re-insert a row deleted meanwhile with the column's
+               default active=true (review of #113, finding 6) */
+            for(const x of upd){ if(!String(x.account_ref||"").trim()) continue; try{ await sbSend("PATCH",`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(x.dealer_id)}&manufacturer=eq.${encodeURIComponent(x.manufacturer)}`,{account_ref:x.account_ref},{Prefer:"return=minimal"}); ents++; }catch(e){ errors.push("lines: "+e.message); } }
+            for(let i=0;i<add.length;i+=500){ try{ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",add.slice(i,i+500),{Prefer:"resolution=ignore-duplicates,return=minimal"}); ents+=Math.min(500,add.length-i); }catch(e){ errors.push("lines: "+e.message); } } } }
 
         // per-dealer: set contact/email/phone + promote the top-ranked (HQ) address
         const primaryByDealer=new Map();
@@ -989,6 +984,23 @@ exports.handler = async (event)=>{
         const r=DR.build({dms:(dms||[]).filter(x=>!test.has(String(x.dealer_id))),dealers:dl,claims:cl});
         return json(200,Object.assign({ok:true,dry_run:true,written:0},r));
       }
+      /* TERRITORY REMOVAL IMPACT (owner 2026-11-06 20:55 CT, §2): read-only — what each real dealer would lose when the
+         Dealer Manager grid becomes the only source of ordering eligibility. Writes nothing. */
+      if(act==="entitlement_impact"){
+        const EI=require("./_entitlement_impact.js");
+        const since=new Date(Date.now()-365*864e5).toISOString();
+        let dl,dms,us,os,gc;
+        try{ [dl,dms,us,os,gc]=await Promise.all([
+          sbGetAll("dealers?select=id,business_name,address,city,state,zip,parent_id,golden_status,ovation_access,is_test,active"),
+          sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,active,account_ref","dealer_id,manufacturer"),
+          sbGetAll("dealer_users?select=dealer_id,status","dealer_id"),
+          sbGetAll(`orders?submitted_at=gte.${encodeURIComponent(since)}&select=dealer_id,manufacturer,submitted_at`,"id"),
+          sbGetAll("geocache?ok=eq.true&select=q,lat","q") ]); }
+        catch(e){ return json(503,{error:"The dealer records could not be read — nothing was changed.",detail:String(e&&e.message||e).slice(0,200)}); }
+        const lat={}; for(const g of (gc||[])) lat[g.q]=g.lat;
+        const r=EI.build({dealers:dl,dms,users:us,orders:os,sinceIso:since,latByDealer:(gov)=>{ const q=qkey(gov); return (q in lat)?lat[q]:null; }});
+        return json(200,Object.assign({ok:true,read_only:true,written:0},r));
+      }
       if(act==="dm_accounts"){
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});
         let rows; try{ rows=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref,active,verified_at,verified_by,verified_ref&order=manufacturer.asc`); }
@@ -1144,7 +1156,9 @@ exports.handler = async (event)=>{
         const patched=await sbSend("PATCH",filt,{dealer_id:to},{Prefer:"return=representation"}).catch(()=>null);
         const moved=Array.isArray(patched)?patched.length:0;
         if(b.move_account_ref && ref){
-          await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",{dealer_id:to,manufacturer:slug,account_ref:ref,active:true},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(()=>{});
+          /* moving an account number never opens ordering on the receiving dealer (owner 2026-11-06 §3) */
+          await sbSend("PATCH",`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(to)}&manufacturer=eq.${encodeURIComponent(slug)}`,{account_ref:ref},{Prefer:"return=minimal"}).catch(()=>{});
+          await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",{dealer_id:to,manufacturer:slug,account_ref:ref,active:false},{Prefer:"resolution=ignore-duplicates,return=minimal"}).catch(()=>{});
           await sbSend("PATCH",`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&account_ref=eq.${encodeURIComponent(ref)}&dealer_id=neq.${encodeURIComponent(to)}`,{account_ref:null},{Prefer:"return=minimal"}).catch(()=>{});
         }
         return json(200,{ok:true,moved});

@@ -155,7 +155,7 @@ function render(){
     <button class="tab ${TAB==='activity'?'on':''}" onclick="setTab('activity')">Activity &amp; carts${(DATA.openCarts&&DATA.openCarts.length)?` (${DATA.openCarts.length})`:""}</button>
     <button class="tab ${TAB==='import'?'on':''}" onclick="setTab('import')">Import contacts</button>
     <button class="go sm orange" style="margin-left:auto" onclick="openAddDealer()" title="Create a new dealer or branch location">＋ Add dealer</button>
-    <button class="go sm" style="background:#2B4071" onclick="prefillAll()" title="Check each dealer's territory-rule lines into their access grid (account numbers preserved)">Apply access rules to all</button>`:""}
+    `:""}
     </div>`;
   $("#body").innerHTML=kpis+tabs+mergeBar()+`<div id="app"></div>`;
   ({all:renderAll,review:renderReview,dupes:renderDupes,logins:renderLogins,changes:renderChanges,activity:renderActivity,import:renderImport}[TAB])();
@@ -406,7 +406,7 @@ function renderDetail(){
        <div class="hint">Tick the manufacturers this dealer is allowed to order on the portal. Default is none until you grant them. “buys” marks lines they already have sales with.</div>
        <div class="accgrid" id="accgrid">${acc}</div>
        <div style="margin-top:12px">${ro?"":`<button class="go" onclick="saveAccess('${d.id}')">Save access</button>`}
-         ${isPres()?`<button class="go blue sm" style="margin-left:8px" onclick="prefillAccess('${d.id}')" title="Check every line this dealer is eligible for under your territory rules (account numbers preserved)">Fill from territory rules</button>`:""}
+         ${isPres()?`<button class="go blue sm" style="margin-left:8px" onclick="prefillAccess('${d.id}')" title="Show the lines the old territory rules would suggest — nothing is applied">Territory suggestion</button>`:""}
          <span id="stA" class="st"></span></div>
        <h2 style="margin-top:18px">Portal access <span class="hint" style="text-transform:none">— what this dealer actually sees on the portal. The lines you tick above override the territory rules; territory rules apply only when the grid is left empty.</span></h2>
        <div id="paccess" class="hint" style="margin-top:4px">Computing…</div>
@@ -476,7 +476,7 @@ async function loadPortalAccess(id){
       <div style="margin:4px 0"><b>Available to order</b> <span class="hint" style="text-transform:none">(eligible, no account yet)</span>: ${avail.length?avail.map(s=>chip(s,"al")).join(" "):'<span class="dim">none</span>'}</div>
       ${(gold||ov)?`<div style="margin:6px 0">${gold} ${ov}</div>`:""}
       ${r.governedBy?`<div class="hint" style="text-transform:none">Access inherited from HQ: <b>${esc(r.governedBy)}</b></div>`:""}
-      <div class="hint" style="text-transform:none">This is exactly what the dealer sees on the portal. When you've ticked lines above, those are authoritative; if the grid is empty it falls back to territory rules by state.${r.lat_known===false?" (Strongback's Indiana cutoff can't be checked — no map location for this account yet.)":""}</div>`;
+      <div class="hint" style="text-transform:none">This is exactly what the dealer sees on the portal. The lines ticked above are the dealer's ordering access (Dealer Manager is the only source; territory rules only suggest).${r.lat_known===false?" (Strongback's Indiana cutoff can't be checked — no map location for this account yet.)":""}</div>`;
   };
   if(PACCESS[id]){ draw(PACCESS[id]); return; }
   const h=host(); if(h)h.textContent="Computing…";
@@ -484,16 +484,12 @@ async function loadPortalAccess(id){
   catch(e){ const hh=host(); if(hh)hh.innerHTML=`<span class="warn">Couldn't compute: ${esc(e.message||e)}</span>`; }
 }
 async function prefillAccess(id){
-  if(!confirm("Fill this dealer's grid with every line they're eligible for under your territory rules? Account numbers already on file are kept."))return;
-  await post({action:"prefill_access",dealer_id:id},"Filling…","#stA");
-  delete PACCESS[id];
-  await load(); DETAIL=id; render();
+  /* Territory rules never grant ordering (owner 2026-11-06): this only shows what they would suggest — tick the lines in
+     the grid above and Save to approve them. Nothing is written. */
+  let r; try{ r=await post({action:"prefill_access",dealer_id:id},"Checking…","#stA"); }catch(e){ return; }
+  alertDlg((r.suggested||[]).length?`Territory suggestion (not applied): ${r.suggested.map(mfrLabel).join(", ")}.\n\nTick the lines you approve in the grid and Save — Dealer Manager is the only source of ordering access.`:"The territory rules suggest no lines for this dealer.");
 }
-async function prefillAll(){
-  if(!confirm("Pre-fill EVERY dealer's ordering-access grid from your territory rules?\n\nFor each dealer this ticks the lines they're eligible for under the rules (account numbers preserved). The grid is authoritative, so this sets what each dealer can order on the portal — after it runs you can still hand-tick or untick any dealer's lines to override."))return;
-  try{ const r=await post({action:"prefill_access_all"}); for(const k in PACCESS) delete PACCESS[k]; alertDlg(`Applied territory rules to ${r.dealers} dealers (${r.lines} line grants).`); await load(); render(); }
-  catch(e){ alertDlg("Error: "+(e.message||e)); }
-}
+async function prefillAll(){ alertDlg("Retired: territory rules no longer set ordering access. Approve lines per dealer in Dealer Manager."); }
 // ---- Contract pricing panel ----
 let CP={dealerId:null,slug:"",products:[],over:{}};
 function mfrNameBySlug(slug){ const m=(DATA.manufacturers||[]).find(x=>x.slug===slug); return m?m.name:slug; }

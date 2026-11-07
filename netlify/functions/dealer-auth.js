@@ -24,6 +24,7 @@ async function sb(method,path,body,extra){
 const rpc=(fn,args)=>sb("POST",`rpc/${fn}`,args);
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const { computeAccess } = require("./_access.js");
+const FL = require("./_flags.js");
 const LD=require("./_line_discounts.js");
 
 // ---- Email via Resend (same service the ordering portal uses for order emails) ----
@@ -86,6 +87,8 @@ async function loadDealerPayload(dealer_id, fallbackEmail){
       if(self.parent_id){ const p=await sb("GET",`dealers?id=eq.${self.parent_id}&select=business_name,address,city,state,zip`); if(p&&p[0]) gov=p[0]; }
       let lat=null;
       try{ const q=qkey(gov); if(q){ const gc=await sb("GET",`geocache?q=eq.${encodeURIComponent(q)}&ok=eq.true&select=lat&limit=1`); if(gc&&gc[0]) lat=gc[0].lat; } }catch(e){}
+      /* grid-only switch (owner 2026-11-06 §2): read strictly enough to fail SAFE — an unreadable switch keeps today's rule */
+      let gridOnly=false; try{ gridOnly=await FL.flagOn((pp)=>sb("GET",pp),"grid_only_access"); }catch(e){ gridOnly=false; }
       access=computeAccess(
         {state:gov.state||self.state, business_name:gov.business_name||self.business_name, lat,
          golden_status:self.golden_status||"None", ovation_access:!!self.ovation_access},
@@ -95,7 +98,7 @@ async function loadDealerPayload(dealer_id, fallbackEmail){
            the same rule the order server uses to hold an order for account setup — _account_setup.missingIdentifiers) */
         [...(dm||[]).filter(x=>x.account_ref&&String(x.account_ref).trim()).map(x=>x.manufacturer),...hqRefs],
         // Granted lines (everything ticked in the admin grid) — authoritative over territory.
-        (dm||[]).map(x=>x.manufacturer));
+        (dm||[]).map(x=>x.manufacturer), {gridOnly});
       if(access) access.golden_url = self.golden_url || "";   // this dealer's specific Golden portal path
       /* Browse-only lines (C3-06 closeout): eligible to browse by territory but with no active dealer_manufacturers row
          of the dealer's own — the order server (orders-api linesNotCarried) will not price or record them. The storefront

@@ -526,10 +526,17 @@ exports.handler = async (event)=>{
       // Only write lines whose value actually changed (keeps writes + activity minimal).
       const existing=await sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer,account_ref","dealer_id,manufacturer");
       const curr=new Map(); for(const x of (existing||[])) curr.set(x.dealer_id+"|"+x.manufacturer, x.account_ref==null?"":String(x.account_ref));
-      const rows=[]; for(const [key,ref] of want){ if((curr.get(key)||"")===ref) continue; const i=key.indexOf("|"); rows.push({dealer_id:key.slice(0,i),manufacturer:key.slice(i+1),account_ref:ref,active:true}); }
-      for(let i=0;i<rows.length;i+=500){ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",rows.slice(i,i+500),{Prefer:"resolution=merge-duplicates,return=minimal"}); }
-      // Fan org-level numbers out to satellites (fills blanks, never overwrites a branch's own number).
-      let propagated=true; try{ await rpc("propagate_org_account_numbers",{}); }catch(e){ propagated=String(e.message||e); }
+      /* Zoho NEVER grants ordering (owner directive 2026-11-06 §3): an existing row gets only its number; a line with no row is
+         recorded with ordering OFF; org numbers are filled into branch blanks by propagate_org_account_numbers_v2 (v1 set active=true and is
+         no longer called). */
+      const have=new Set((existing||[]).map(x=>x.dealer_id+"|"+x.manufacturer));
+      const upd=[], add=[]; for(const [key,ref] of want){ if((curr.get(key)||"")===ref) continue; const i=key.indexOf("|"); const row={dealer_id:key.slice(0,i),manufacturer:key.slice(i+1),account_ref:ref}; (have.has(key)?upd:add).push(row); }
+      for(const r of upd) await sbSend("PATCH",`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(r.dealer_id)}&manufacturer=eq.${encodeURIComponent(r.manufacturer)}`,{account_ref:r.account_ref},{Prefer:"return=minimal"});
+      for(let i=0;i<add.length;i+=500){ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",add.slice(i,i+500).map(r=>Object.assign({},r,{active:false})),{Prefer:"resolution=ignore-duplicates,return=minimal"}); }
+      const rows=upd.concat(add);
+      /* branch blanks: ONE call to the v2 SQL function (numbers only, new rows off, not callable with the public key —
+         supabase/propagate_org_account_numbers_v2.sql). Not installed yet → reported, nothing filled, nothing granted. */
+      let propagated=true; try{ await rpc("propagate_org_account_numbers_v2",{}); }catch(e){ propagated="branch fill skipped: "+String(e.message||e).slice(0,160); }
       await stampSync("account_numbers_pulled_at");
       return json(200,{ ok:!READ_GAPS.length, zoho_read_incomplete:READ_GAPS, accounts:(accts||[]).length, fields_found:map.map(m=>m.label), fields_missing:missing,
         numbers_seen:cells, lines_updated:rows.length, unmatched_accounts:unmatched.length, unmatched_sample:unmatched.slice(0,25), propagated });
