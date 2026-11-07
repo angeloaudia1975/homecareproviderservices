@@ -44,6 +44,13 @@ async function sb(method, path, body, extra) {
 async function dealerFromToken(event) {
   const auth = event.headers["authorization"] || event.headers["Authorization"] || "";
   const tok = auth.replace(/^Bearer\s+/i, ""); if (!tok) return null;
+  /* HCPS staff's read-only dealer preview (the same token My Orders and Reports accept): READ actions only (PREVIEW_READS) */
+  if (/^preview:/i.test(tok)) {
+    const token = tok.replace(/^preview:/i, "").trim(); if (!token) return null;
+    const rows = await sb("GET", `dealer_preview_tokens?token=eq.${encodeURIComponent(token)}&select=dealer_id,expires_at`); const t = rows && rows[0];
+    if (!t || !t.dealer_id || !t.expires_at || !(new Date(t.expires_at).getTime() > Date.now())) return null;   // no expiry = refused
+    return { dealer_id: t.dealer_id, email: null, dealer: null, uid: null, preview: true };
+  }
   const ur = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${tok}` } });
   if (!ur.ok) return null;
   const u = await ur.json();
@@ -57,6 +64,7 @@ async function dealerFromToken(event) {
 
 // A read that may name a column/table this stage's SQL adds: before the SQL runs, answer with the fallback read
 // (never an empty result that looks like data). Any other failure throws (strict).
+const PREVIEW_READS = new Set(["account_center", "favorites_list", "branding_get", "showroom_get", "account_get"]);
 const MISSING = (e) => /42P01|42703|PGRST20[45]|does not exist|Could not find/i.test(String(e && e.message));
 async function sbOpt(path, fallbackPath) {
   try { return await sb("GET", path); }
@@ -87,6 +95,7 @@ exports.handler = async (event) => {
 
     const who = await dealerFromToken(event);
     if (!who) return json(200, { ok: false, status: "unauthorized" });
+    if (who.preview && !PREVIEW_READS.has(String(b.action))) return json(403, { ok: false, error: "This is HCPS's read-only preview — nothing can be changed here." });
     const did = who.dealer_id;
 
     // ---- favorites ----
@@ -142,7 +151,7 @@ exports.handler = async (event) => {
         const fq = `dealers?or=(id.eq.${encodeURIComponent(root)},parent_id.eq.${encodeURIComponent(root)})&select=id,business_name,contact_name,phone,email,address,city,state,zip,parent_id,golden_status`;
         family = await sbOpt(fq + ",active&limit=200", fq + "&limit=200");
         family = (family || []).filter((x) => x.active !== false || String(x.id) === String(did));   // closed locations are not listed (the login's own always is)
-        scopeRow = await sbOpt(`dealer_user_scope?uid=eq.${encodeURIComponent(who.uid)}&select=scope,locations`, null);
+        scopeRow = who.uid ? await sbOpt(`dealer_user_scope?uid=eq.${encodeURIComponent(who.uid)}&select=scope,locations`, null) : null;
         scopeRow = (scopeRow && scopeRow[0]) || null;
       } catch (e) { console.error("account center read failed", e && e.message); return json(503, { ok: false, error: "Your account details could not be loaded just now — please try again." }); }
       const visible = AC.visibleLocations(did, family, scopeRow);
