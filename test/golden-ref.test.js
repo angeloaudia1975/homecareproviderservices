@@ -42,8 +42,8 @@ const slow = (ms) => () => new Promise((r) => setTimeout(() => r({ ok: true, jso
     const none = await G.goldenReference({ sbGet: S.sbGet, sbSend: S.sbSend, fetchCatalog: async () => ({ reason: 'no_access' }) });
     assert.deepEqual([none.catalog, none.reason], [null, 'golden_not_connected']);
     await G.goldenReference({ sbGet: S.sbGet, sbSend: S.sbSend, fetchCatalog: ok(PRODUCTS) });
-    const G2 = fresh(); const r = await G2.goldenReference({ sbGet: S.sbGet, sbSend: S.sbSend, fetchCatalog: async () => ({ ok: true, json: { linked: false } }) });
-    assert.equal(r.source, 'stored');
+    const G2 = fresh(); const r = await G2.goldenReference({ sbGet: S.sbGet, sbSend: S.sbSend, fetchCatalog: async () => ({ ok: true, json: { linked: false, products: [] } }) });
+    assert.deepEqual([r.source, r.live_reason], ['stored', 'not_linked'], 'an unlinked account is not a live (empty) catalog');
   });
   await t('a stored reference older than 7 days is not used; failures are counted for monitoring', async () => {
     const G = fresh(), S = store();

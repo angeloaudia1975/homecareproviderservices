@@ -22,6 +22,8 @@ const CATS = {
   'strongback-mobility': cat('strongback-mobility', [{ code: '1010AB', name: 'Comfort 24" with AB', category: 'Wheelchairs', ref: 900, ref_source: 'msrp' },
     { code: 'ES0001', name: 'ErgoSteel', category: 'Wheelchairs', ref: 440, ref_source: 'calculated' }]),
   'golden-technologies': cat('golden-technologies', [{ code: 'GB108B', name: 'Buzzaround', category: 'Scooters', ref: 1500, ref_source: 'msrp', cost: 800 }, { code: 'PR510', name: 'Lift chair', category: 'Lift Chairs', ref: 2000, ref_source: 'msrp', cost: 1000 }]),
+  bemis: cat('bemis', [{ code: 'SEAT4', name: 'Seat (case of 4)', category: 'Bath', ref: 200, ref_source: 'msrp', cost: 100, pack: 4 }, { code: 'NOCOST2', name: 'Case of 2', category: 'Bath', ref: 90, ref_source: 'msrp', cost: null, pack: 2 },
+    { code: 'PAIR2', name: 'Pair', category: 'Bath', ref: 200, ref_source: 'msrp', cost: 100, pack: 2 }]),
   dalton: cat('dalton', [{ code: 'EX201-1', name: 'Pedal Exerciser Led Display', category: 'Exercise', ref: 60, ref_source: 'msrp' }]),
 };
 const resolve = (s, c) => { const m = RC.lookup(CATS[s], s, c); return m ? Object.assign({}, m.entry, { matched_by: m.matched_by }) : null; };
@@ -84,6 +86,17 @@ const build = (sales, o) => REP.build(Object.assign({ year: Y, today: `${Y}-12-1
     const sales = [mk(BR, 'golden-technologies', 1, 'GB108B-ST', 'Buzzaround ST', 1, 800)];
     const r = build(sales, { today: `${Y}-03-15`, network: [{ manufacturer: 'golden-technologies', code: 'PR510', dealers: 4, units: 9 }, { manufacturer: 'strongback-mobility', code: 'WOB-1', dealers: 5, units: 9 }] });
     eq(r.opportunities.map((o) => [o.code, o.name]), [['PR510', 'Lift chair']]);
+  });
+  await t('§6 pack / case units: the report price per unit decides order units vs pieces (documented conversion); unclear = needs review', async () => {
+    const mfrName = { bemis: 'Bemis' };
+    const V = build([mk(BR, 'bemis', 2, 'SEAT4', 'Seat', 2, 200), mk(BR, 'bemis', 3, 'SEAT4', 'Seat', 8, 200), mk(BR, 'bemis', 4, 'SEAT4', 'Seat', 2, 900), mk(BR, 'bemis', 5, 'NOCOST2', 'Case', 3, 120)], { mfrName }).valuation;
+    const p = V.by_product.find((x) => x.code === 'SEAT4'); eq([p.units, p.source_units, p.retail], [4, 10, 800], '2 cases + 8 pieces (= 2 cases); the source quantity is kept');
+    eq(V.uom.converted.map((c) => [c.source_qty, c.pack, c.order_units]), [[8, 4, 2]]); ok(/per piece/.test(V.uom.converted[0].evidence), 'evidence');
+    eq(V.gaps.map((g) => [g.code, g.reason]).sort(), [['NOCOST2', 'uom_review'], ['SEAT4', 'uom_review']]);
+    eq(V.uom.review_lines, 2);
+    /* pack of 2 at 0.72× standard: "an order unit at a discount" and "a piece at a premium" both fit → review, never guessed */
+    const W = build([mk(BR, 'bemis', 2, 'PAIR2', 'Pair', 1, 72), mk(BR, 'bemis', 2, 'PAIR2', 'Pair', 1, 100)], { mfrName }).valuation;
+    eq(W.gaps.map((g) => [g.reason, g.amount]), [['uom_review', 72]]); eq(W.by_product.find((x) => x.code === 'PAIR2').units, 1);
   });
   await t('P6 dealer custom comparison: company default + branch override, shown apart; the Shop benchmark is unchanged', async () => {
     const rows = [{ manufacturer: 'strongback-mobility', code: '1010AB', location_id: null, price: 1000 }, { manufacturer: 'strongback-mobility', code: '1010AB', location_id: BR, price: 1100 }];

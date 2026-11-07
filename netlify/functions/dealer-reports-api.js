@@ -147,7 +147,7 @@ async function loadAll(who, b) {
         if (!gr.catalog) refcat[s2] = { unavailableReason: gr.reason }; }
       else refcat[s2] = await keep('rcat:' + s2, 600000, () => RC.lineCatalog(reportDeps(), s2), (v) => !!(v && v.readable));
     } catch (e) { refcat[s2] = null; console.error('report catalog failed', s2, e && String(e.message).slice(0, 120)); }
-    if (!refcat[s2] || refcat[s2].readable === false || refcat[s2].unavailableReason) rcNotes.push(s2);
+    if (!refcat[s2] || refcat[s2].readable === false || (refcat[s2].unavailableReason && refcat[s2].unavailableReason !== 'golden_not_connected')) rcNotes.push(s2);
   }));
   const resolve = (slug, code, name) => { const cat0 = refcat[slug]; if (!cat0) return { unavailable: true }; if (cat0.unavailableReason) return { unavailable: true, reason: cat0.unavailableReason };
     const m = RC.lookup(cat0, slug, code); if (!m) return null; return Object.assign({}, m.entry, { matched_by: m.matched_by }); };
@@ -157,7 +157,9 @@ async function loadAll(who, b) {
   const report = REP.build({ year, today, locations, scope, sales: sales || [], orders: (orders || []).map((o) => Object.assign(o, { items: o.order_items || [] })),
     quotes: quotesRaw || [], catalog, mfrName, firstReport, reportedMonths, network, isRetired: RETIRED.isRetiredLine,
     resolve, isMarketing: RC.isMarketing, marketingLabel: RC.MARKETING, customPrice, companyView: headOffice });
-  if (goldenInfo && goldenInfo.source === 'stored') report.notes.push(`Golden retail prices come from HCPS's stored copy of Golden's catalog as of ${String(goldenInfo.as_of).slice(0, 10)} — Golden did not answer in time just now.`);
+  if (goldenInfo && goldenInfo.source === 'stored') report.notes.push(`Golden retail prices come from HCPS's stored copy of Golden's catalog (MSRP and standard prices) as of ${String(goldenInfo.as_of).slice(0, 10)} — ` +
+    (goldenInfo.live_reason === 'no_access' || goldenInfo.live_reason === 'not_linked' ? 'this account has no live Golden catalog connection.' : 'Golden did not answer in time just now.'));
+  if (goldenInfo && !goldenInfo.catalog && goldenInfo.reason === 'golden_not_connected') report.notes.push('Golden purchases are not valued: this account has no Golden catalog connection and HCPS has no recent stored copy of Golden\'s retail prices.');
   if (report.valuation) report.valuation.sources = Object.assign({}, report.valuation.sources || {}, goldenInfo ? { golden: { source: goldenInfo.source || 'unavailable', as_of: goldenInfo.as_of || null, reason: goldenInfo.reason || goldenInfo.live_reason || null } } : {});
   if (goldenInfo) GREF.recordMonitor((m, pp, body, h) => sb(m, pp, body, h), { last_report_coverage_pct: report.valuation ? report.valuation.coverage_pct : null }).catch(() => {});
   if (rcNotes.length) report.notes.push('The Shop catalog could not be read just now for: ' + rcNotes.map((x) => mfrName[x] || x).join(', ') + ' — their purchases are listed as not valued (never estimated); try again shortly.');
