@@ -124,6 +124,13 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
     eq(self.accounts.map(a => [a.slug, a.status]).sort(), [['golden-technologies', 'verified'], ['yuwell', 'pending']], 'access4u (not approved) hidden');
     eq(r.body.company.hcps_account_label, 'Golden account #');
     const r2 = await as(tools(world()), 'hq', { action: 'account_center' }); eq(r2.body.company.hcps_account_label, 'HCPS account');
+    /* a Golden prospect stays listed (the shop shows its Golden tile too); no Golden status at all = not listed */
+    const W3 = world({ dm }); W3.db.dealers.find(d => d.id === HQ).golden_status = 'Prospect';
+    const s3 = (await as(tools(W3), 'hq', { action: 'account_center' })).body.locations.find(l => l.is_self);
+    ok(s3.accounts.some(a => a.slug === 'golden-technologies'), 'Golden prospect listed');
+    const W4 = world({ dm: [dm[0]] }); W4.db.dealers.find(d => d.id === HQ).golden_status = 'None';
+    const s4 = (await as(tools(W4), 'hq', { action: 'account_center' })).body.locations.find(l => l.is_self);
+    ok(!s4.accounts.some(a => a.slug === 'golden-technologies'), 'no Golden status → not listed');
   });
   await t('branch login: only its own location (D2), its own accounts', async () => {
     const W = world(); const r = await as(tools(W), 'br', { action: 'account_center' });

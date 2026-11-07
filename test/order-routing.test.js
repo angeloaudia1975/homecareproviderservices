@@ -118,15 +118,15 @@ await t('Order Review: "New Yuwell Manufacturer Account Required" on open Yuwell
 });
 /* ---- owner 2026-11-06: releasing an order held for manufacturer account setup ---- */
 function holdWorld(o){
-  const W=M.createWorld({ tokens:{staff:'p@x.com'}, tables:{ staff_users:[{email:'p@x.com',role:'president',active:true}],
+  const W=M.createWorld({ tokens:{staff:'p@x.com'}, failWrite:o.failWrite, tables:{ staff_users:[{email:'p@x.com',role:'president',active:true}],
     dealers:[{id:'d1',business_name:'D One',parent_id:null}], manufacturers:[{slug:'acme',name:'Acme'}], manufacturer_meta:[{slug:'acme'}],
     dealer_manufacturers:[{dealer_id:'d1',manufacturer:'acme',active:true,account_ref:o.acct||null}],
     dealer_contract_prices:o.contract||[], product_overrides:[], product_images:[], product_links:[], product_media:[], product_content:[], product_skus:[],
-    custom_products:[{manufacturer:'acme',active:true,code:'A1',name:'Widget',category:'X',base_price:10}],
-    orders:[{id:'h1',dealer_id:'d1',manufacturer:'acme',status:'pending_account_setup',subtotal:20,submitted_at:'2026-11-06T01:00:00Z'}],
+    custom_products:o.products||[{manufacturer:'acme',active:true,code:'A1',name:'Widget',category:'X',base_price:10}],
+    orders:[{id:'h1',dealer_id:'d1',manufacturer:'acme',status:'pending_account_setup',subtotal:20,submitted_at:'2026-11-06T01:00:00Z',...(o.order||{})}],
     order_items:[{id:'i1',order_id:'h1',code:'A1',name:'Widget',qty:2,unit_price:10,line_total:20}] }});
   const inner=W.fetch; W.fetch=async(u,x)=>{ u=String(u); if(u.startsWith(M.BASE+'/auth/v1/user')) return {ok:true,status:200,json:async()=>({id:'s',email:'p@x.com'})};
-    if(u===OB+'/data/manufacturers.json') return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(mfrs))};
+    if(u===OB+'/data/manufacturers.json') return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(o.mfrs||mfrs))};
     if(u.startsWith(OB+'/data/')) return {ok:false,status:404,json:async()=>null,text:async()=>''}; return inner(u,x); };
   W.C=M.load('orders-admin.js',W,{ORDERING_BASE:OB},ROOT); return W;
 }
@@ -136,7 +136,7 @@ await t('a held order is released only once the account is on file; same prices 
   const s=await M.call(W.C,{action:'set_status',id:'h1',status:'placed'},{headers:{authorization:'Bearer staff'}}); eq(s.status,409,'cannot be placed while held');
   const W0=holdWorld({acct:'AC-7'}); W0.db.order_items=[]; const r0=await rel(W0); eq([r0.status,r0.body.error],[409,'no_items'],'no lines read → never released'); eq(W0.db.orders[0].status,'pending_account_setup');
   const W2=holdWorld({acct:'AC-7'}); const r2=await rel(W2); eq([r2.status,r2.body.status,r2.body.changed,r2.body.subtotal],[200,'submitted',0,20],JSON.stringify(r2.body));
-  eq([W2.db.orders[0].status,W2.db.orders.length],['submitted',1]); ok(/Released from Pending Manufacturer Account Setup/.test(W2.db.orders[0].admin_notes),'audit note');
+  eq([W2.db.orders[0].status,W2.db.orders.length],['submitted',1]); ok(/Release from Pending Manufacturer Account Setup started/.test(W2.db.orders[0].admin_notes)&&/Released by p@x\.com/.test(W2.db.orders[0].admin_notes),'audit note');
   const l=await M.call(W2.C,{action:'list'},{headers:{authorization:'Bearer staff'}}); eq(l.status,200);
 });
 await t('a price that changed since the dealer ordered needs the dealer\'s confirmation (noted) before release; then the new prices are stored',async()=>{
@@ -144,8 +144,39 @@ await t('a price that changed since the dealer ordered needs the dealer\'s confi
   const r=await rel(W); eq([r.status,r.body.error],[409,'prices_changed'],JSON.stringify(r.body)); eq(r.body.lines[0].new_unit,8);
   eq(W.db.orders[0].status,'pending_account_setup','unchanged');
   const r2=await rel(W,{dealer_confirmed:true}); eq(r2.status,409,'a confirmation needs a note');
-  const r3=await rel(W,{dealer_confirmed:true,note:'Jim confirmed by phone 11/6'}); eq([r3.status,r3.body.subtotal],[200,16],JSON.stringify(r3.body));
-  eq([W.db.order_items[0].unit_price,W.db.order_items[0].line_total,W.db.orders[0].subtotal],[8,16,16]); ok(/dealer confirmed: Jim confirmed/.test(W.db.orders[0].admin_notes),'confirmation recorded');
+  const r2b=await rel(W,{dealer_confirmed:true,note:'Jim confirmed by phone 11/6'}); eq([r2b.status,r2b.body.error],[409,'prices_changed'],'a confirmation must name the figures shown');
+  const r2n=await rel(W,{dealer_confirmed:true,confirmed:r.body.proposal}); eq(r2n.status,409,'the figures without a note are refused');
+  const r2c=await rel(W,{dealer_confirmed:true,note:'x',confirmed:{lines:[{id:'i1',unit:9}],freight:null}}); eq(r2c.status,409,'other figures than the ones now proposed are refused');
+  eq(W.db.orders[0].status,'pending_account_setup','still held');
+  const r3=await rel(W,{dealer_confirmed:true,note:'Jim confirmed by phone 11/6',confirmed:r.body.proposal}); eq([r3.status,r3.body.subtotal],[200,16],JSON.stringify(r3.body));
+  eq([W.db.order_items[0].unit_price,W.db.order_items[0].line_total,W.db.orders[0].subtotal],[8,16,16]);
+  ok(/A1 \$10\.00 → \$8\.00/.test(W.db.orders[0].admin_notes)&&/dealer confirmation \/ check: Jim confirmed/.test(W.db.orders[0].admin_notes),'every change + confirmation recorded');
+});
+await t('release: a line sold in two price families (the order record keeps no family) keeps its checkout price and needs a by-hand check',async()=>{
+  const W=holdWorld({acct:'AC-7',products:[{manufacturer:'acme',active:true,code:'A1',name:'Widget S',category:'X',base_price:10,family:'S'},{manufacturer:'acme',active:true,code:'A1',name:'Widget L',category:'X',base_price:14,family:'L'}]});
+  const r=await rel(W); eq([r.status,r.body.error],[409,'manual_price_check'],JSON.stringify(r.body).slice(0,300)); eq(r.body.lines[0].kept,true);
+  const r2=await rel(W,{kept_prices_checked:true,note:'checked family S on the dealer PO'}); eq([r2.status,r2.body.kept,r2.body.subtotal],[200,1,20],JSON.stringify(r2.body));
+  eq(W.db.order_items[0].unit_price,10,'recorded price kept'); ok(/A1 kept at \$10\.00/.test(W.db.orders[0].admin_notes),'noted');
+});
+await t('release: freight is re-worked by the shop rule; a freight change needs the same confirmation',async()=>{
+  const fm=[{slug:'acme',name:'Acme',hasData:true,freight:{summary:'$15',groups:[{label:'Acme S&H',brandKeywords:['*'],flatFee:15}],elseActual:false}}];
+  const W=holdWorld({acct:'AC-7',mfrs:fm,order:{freight_fee:0,estimated_total:20}});
+  const r=await rel(W); eq([r.status,r.body.error,r.body.freight.new],[409,'prices_changed',15],JSON.stringify(r.body).slice(0,300));
+  const r2=await rel(W,{dealer_confirmed:true,note:'ok by email',confirmed:r.body.proposal}); eq([r2.status,r2.body.freight_fee],[200,15],JSON.stringify(r2.body));
+  eq([W.db.orders[0].freight_fee,W.db.orders[0].estimated_total],[15,35]);
+});
+await t('release: a cancelled order is never touched, and a failed line write leaves the order HELD with the change noted',async()=>{
+  const W=holdWorld({acct:'AC-7',order:{status:'cancelled'}}); const r=await rel(W); eq(r.status,409); eq(W.db.order_items[0].unit_price,10);
+  /* cancelled by someone else while the release was being worked out → nothing is written */
+  const W3=holdWorld({acct:'AC-7',contract:[{dealer_id:'d1',manufacturer:'acme',code:'A1',price:8,active:true}]});
+  const p3=(await rel(W3)).body.proposal; const f3=W3.fetch; W3.fetch=async(u,x)=>{ if(/\/order_items\?/.test(String(u))&&(!x||!x.method||x.method==='GET')) W3.db.orders[0].status='cancelled'; return f3(u,x); };
+  W3.C=M.load('orders-admin.js',W3,{ORDERING_BASE:OB},ROOT);
+  const r3=await rel(W3,{dealer_confirmed:true,note:'ok',confirmed:p3}); eq([r3.status,r3.body.error],[409,'changed'],JSON.stringify(r3.body));
+  eq([W3.db.orders[0].status,W3.db.order_items[0].unit_price,!!W3.db.orders[0].admin_notes],['cancelled',10,false],'untouched');
+  const W2=holdWorld({acct:'AC-7',contract:[{dealer_id:'d1',manufacturer:'acme',code:'A1',price:8,active:true}],failWrite:(m,t)=>t==='order_items'&&m==='PATCH'?500:0});
+  const p=(await rel(W2)).body.proposal; const r2=await rel(W2,{dealer_confirmed:true,note:'Jim ok',confirmed:p});
+  eq([r2.status,r2.body.error],[502,'release_incomplete'],JSON.stringify(r2.body)); eq(W2.db.orders[0].status,'pending_account_setup','still held');
+  ok(/A1 \$10\.00 → \$8\.00/.test(W2.db.orders[0].admin_notes),'the confirmed change is on record');
 });
 await t('Order Review: unreadable account numbers → the notice says "verify", never hidden',async()=>{
   const r=await listOf(adminWorld({failAcct:true}));

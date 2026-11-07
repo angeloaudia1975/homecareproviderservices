@@ -402,10 +402,10 @@ await t('a Yuwell order from a dealer WITH an account number is not held and car
   eq(E.W.db.orders.length,2,'both recorded'); ok(E.W.db.orders.every(o=>o.status==='submitted'),'none held');
   ok(E.allMail.every(m=>!/Manufacturer Account Required|ACCOUNT SETUP/i.test((m.html||'')+(m.text||'')+(m.subject||''))),'no notice anywhere');
 });
-await t('if the account rows cannot be read, the order still stands (not held) and HCPS is asked to verify',async()=>{
+await t('if the account rows cannot be read, the order is recorded and HELD (fail closed) and HCPS is told why',async()=>{
   const E=env({failAcct:true}); addY(E,1); await E.page.submitOrder();
-  eq([E.W.db.orders.length,E.W.db.orders[0].status],[1,'submitted'],'recorded');
-  ok(/account status could not be checked — verify/.test(E.emails[0].html),'HCPS asked to verify');
+  eq([E.W.db.orders.length,E.W.db.orders[0].status],[1,'pending_account_setup'],'recorded and held');
+  ok(/could not be checked when this order came in/.test(E.emails[0].html)&&!/no Yuwell account is on file/.test(E.emails[0].html),'HCPS told it could not be checked — not that there is none');
 });
 await t('checkout shows the account-setup notice and the application link for an approved line with no account — and nothing for a line with one',async()=>{
   const E=env(); E.AUTH.access={your_accounts:['other'],available:['yuwell'],account_setup_needed:['yuwell']};

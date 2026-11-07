@@ -5,8 +5,7 @@
    "pending_account_setup": HCPS reviews the dealer's application and opens the account, then releases the same order (no
    re-entry). It is never sent to a manufacturer before that. Any recorded identifier (number, name, username) counts —
    whether or not HCPS has marked it verified, and whether or not a manufacturer report has confirmed it. Golden orders are
-   placed with Golden and never held here. Strict: a read that fails throws — the caller decides (order still recorded,
-   flagged for HCPS to check by hand). */
+   placed with Golden and never held here. Strict: a read that fails throws — the caller holds the order (fail closed). */
 'use strict';
 const GOLDEN = new Set(['golden', 'golden-technologies']);
 const STATUS = 'pending_account_setup';
@@ -27,4 +26,8 @@ async function missingIdentifiers(sb, dealerId, slugs) {
 function holdMessage(name) {
   return `${LABEL}: HCPS needs a ${name || 'manufacturer'} account for your business before this order can be placed. Your order is saved — complete the ${name || 'manufacturer'} application in the Account Setup Center and HCPS will release it once the account is open. Prices are pending confirmation until then.`;
 }
-module.exports = { STATUS, LABEL, missingIdentifiers, holdMessage, GOLDEN };
+/* the identifiers could not be read: the order is held all the same (fail closed) and says why */
+function uncheckedMessage(name) {
+  return `${LABEL}: HCPS could not confirm your ${name || 'manufacturer'} account just now, so this order is saved and held until HCPS checks it. Nothing else is needed from you unless HCPS asks for an application. Prices are pending confirmation until then.`;
+}
+module.exports = { STATUS, LABEL, missingIdentifiers, holdMessage, uncheckedMessage, GOLDEN };

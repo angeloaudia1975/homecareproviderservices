@@ -185,8 +185,18 @@ module.exports = function (sbGet, sbSend) {
     if (cur && cur[0]) await sbSend("PATCH", q(dealerId), Object.assign({ account_ref: ref || null }, ver), { Prefer: "return=minimal" });
     else if (ref) await sbSend("POST", "dealer_manufacturers", Object.assign({ dealer_id: dealerId, manufacturer: slug, account_ref: ref, active: false }, ver), { Prefer: "return=minimal" });
     if (!ref) return { saved: true, verified: false, family_filled: 0 };
-    const { ids } = await family(dealerId);
-    let filled = 0;
+    /* The dealer's own identifier is saved from here on: a later failure must say "saved, branches not filled", never
+       "nothing was changed". The family is read strictly (a failed read is reported, not treated as "no branches"). */
+    let ids, filled = 0;
+    try {
+      const self = await sbGet(`dealers?id=eq.${encodeURIComponent(dealerId)}&select=id,parent_id`);
+      if (!Array.isArray(self)) throw new Error("dealer read failed");
+      const root = self[0] ? (self[0].parent_id || self[0].id) : dealerId;
+      const fam = await sbGet(`dealers?or=(id.eq.${encodeURIComponent(root)},parent_id.eq.${encodeURIComponent(root)})&select=id`);
+      if (!Array.isArray(fam)) throw new Error("family read failed");
+      ids = fam.length ? fam.map((d) => d.id) : [dealerId];
+    } catch (e) { return { saved: true, verified: true, verified_at: at, verified_by: who, family_filled: 0, family_incomplete: true }; }
+    try {
     if (ids.length > 1) {
       const others = ids.filter((id) => String(id) !== String(dealerId));
       const rows = await sbGet(`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&dealer_id=in.(${others.map(encodeURIComponent).join(",")})&select=dealer_id,account_ref`);
@@ -200,6 +210,7 @@ module.exports = function (sbGet, sbSend) {
       const add = others.filter((id) => !have.has(String(id))).map((id) => Object.assign({ dealer_id: id, manufacturer: slug, account_ref: ref, active: false }, ver));
       if (add.length) { await sbSend("POST", "dealer_manufacturers", add, { Prefer: "return=minimal" }); filled += add.length; }
     }
+    } catch (e) { return { saved: true, verified: true, verified_at: at, verified_by: who, family_filled: filled, family_incomplete: true }; }
     return { saved: true, verified: true, verified_at: at, verified_by: who, family_filled: filled };
   }
 

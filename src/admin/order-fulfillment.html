@@ -105,16 +105,23 @@ function actions(o){
   if(o.status==="shipped")   return btn("Complete","completed","");
   return `<span class="hint" style="margin:0">${esc(o.tracking||"—")}</span>`;
 }
-/* Release a held order once the dealer's manufacturer account is recorded in Dealer 360. Prices are re-checked on the server;
-   a change needs the dealer's confirmation (noted) before the order moves on. Nothing goes to the manufacturer here. */
-async function releaseHold(id,confirmNote){
-  const payload={action:"release_account_hold",id}; if(confirmNote){ payload.dealer_confirmed=true; payload.note=confirmNote; }
+/* Release a held order once the dealer's manufacturer account is recorded in Dealer 360. Prices and freight are re-checked on the
+   server; a change needs the dealer's confirmation of exactly the figures shown (sent back, so anything that moves again is
+   refused), and a line the order record can't re-price (price family / upgrade) needs a by-hand check. Nothing goes to the
+   manufacturer here. */
+async function releaseHold(id,extra){
+  const payload=Object.assign({action:"release_account_hold",id},extra||{});
   const r=await api(payload); const j=r&&r.body;
   if(j&&j.ok) return load();
+  if(j&&j.error==="manual_price_check"){
+    const kept=(j.lines||[]).filter(l=>l.kept).map(l=>`${l.code}: ${money(l.old_unit)} (recorded at checkout)`).join("\n");
+    const note=window.prompt("These lines were ordered with a price family or upgrade the order record doesn't keep, so their price can't be re-checked automatically:\n"+kept+"\n\nCheck them by hand. What did you check? (leave empty to stop)","");
+    if(note&&note.trim()) return releaseHold(id,Object.assign({},extra,{kept_prices_checked:true,note:[extra&&extra.note,note.trim()].filter(Boolean).join(" · ")})); return; }
   if(j&&j.error==="prices_changed"){
-    const lines=(j.lines||[]).filter(l=>l.new_unit!=null&&Math.abs(l.new_unit-l.old_unit)>=0.005).map(l=>`${l.code}: ${money(l.old_unit)} → ${money(l.new_unit)}`).join("\n");
-    const note=window.prompt("Prices changed since the dealer ordered:\n"+lines+"\n\nConfirm the new prices with the dealer first. Who confirmed, and how? (leave empty to stop)","");
-    if(note&&note.trim()) return releaseHold(id,note.trim()); return; }
+    const lines=(j.lines||[]).filter(l=>!l.kept&&l.new_unit!=null&&Math.abs(l.new_unit-l.old_unit)>=0.005).map(l=>`${l.code}: ${money(l.old_unit)} → ${money(l.new_unit)}`);
+    const fr=j.freight&&j.proposal&&j.proposal.freight!=null?[`Freight: ${money(j.freight.old)} → ${money(j.freight.new)}`]:[];
+    const note=window.prompt("Prices changed since the dealer ordered:\n"+lines.concat(fr).join("\n")+"\n\nConfirm exactly these figures with the dealer first. Who confirmed, and how? (leave empty to stop)","");
+    if(note&&note.trim()) return releaseHold(id,Object.assign({},extra,{dealer_confirmed:true,confirmed:j.proposal,note:[extra&&extra.note,note.trim()].filter(Boolean).join(" · ")})); return; }
   alert((j&&(j.message||j.error))||"Could not release this order.");
 }
 function toggle(id){ if(OPEN.has(id))OPEN.delete(id); else OPEN.add(id); render(); }

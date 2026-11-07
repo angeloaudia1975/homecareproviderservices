@@ -326,10 +326,13 @@ exports.handler = async (event)=>{
          order that did not persist. */
       /* Owner directive 2026-11-06: an approved line with no HCPS account identifier on file is recorded and HELD as
          "Pending Manufacturer Account Setup" — never blocked, never sent on before HCPS opens the account. A failed read
-         holds nothing (the order is recorded as usual and HCPS is told to check the account by hand). */
-      let acctMissing=null;
-      try{ acctMissing=new Set(await AS.missingIdentifiers(sb,who.dealer_id,orders.map(o=>o.manufacturer_slug||o.manufacturer).filter(s=>s&&known.has(s)))); }
-      catch(e){ console.error("account identifier read failed",e&&e.message); acctMissing=null; }
+         holds the order as well (fail closed). */
+      /* FAIL CLOSED (review of #108): if the identifiers cannot be read, every non-Golden order is held too — holding costs
+         nothing (release re-checks the account) and an order is never sent on before the account is known to exist. */
+      let acctMissing=null, acctUnchecked=false;
+      const acctSlugs=orders.map(o=>o.manufacturer_slug||o.manufacturer).filter(s=>s&&known.has(s));
+      try{ acctMissing=new Set(await AS.missingIdentifiers(sb,who.dealer_id,acctSlugs)); }
+      catch(e){ console.error("account identifier read failed",e&&e.message); acctUnchecked=true; acctMissing=new Set(acctSlugs.filter(s=>!AS.GOLDEN.has(String(s)))); }
       let saved=0; const summaries=[]; const slugs=new Set(); const failed=[];
       for(const o of orders){
         const slug=o.manufacturer_slug||o.manufacturer||null;
@@ -387,10 +390,9 @@ exports.handler = async (event)=>{
         if(cleanSlug) slugs.add(cleanSlug);
         saved++;
       }
-      for(const su of summaries) if(su.slug && acctMissing && acctMissing.has(su.slug)){ su.account_hold=true; su.account_notice=AS.holdMessage(mfrName[su.slug]); }
-      if(acctMissing===null) for(const su of summaries) if(su.slug) su.account_notice=(mfrName[su.slug]||su.slug)+" account status could not be checked — verify the manufacturer account before placing this order";
+      for(const su of summaries) if(su.slug && acctMissing && acctMissing.has(su.slug)){ su.account_hold=true; su.account_notice=acctUnchecked?AS.uncheckedMessage(mfrName[su.slug]):AS.holdMessage(mfrName[su.slug]); if(acctUnchecked) su.account_unchecked=true; }
       /* New manufacturer account notice (C3-06): never blocks — tells the dealer and HCPS. (A held order already says so.) */
-      if(acctMissing!==null) try{
+      if(!acctUnchecked) try{
         const rows=await AN.readRows(sb,[who.dealer_id]);
         const missing=new Set(AN.missingAccounts(rows,who.dealer_id,summaries.map(su=>su.slug).filter(Boolean)));
         for(const su of summaries) if(su.slug && missing.has(su.slug) && !su.account_hold) su.account_notice=AN.noticeFor(su.slug,mfrName[su.slug]);
@@ -433,7 +435,7 @@ exports.handler = async (event)=>{
       }
       const recorded=summaries.map(su=>({order_id:su.order_id,manufacturer_slug:su.request_slug,subtotal:su.subtotal,
         freight_fee:su.freight_fee, estimated_total:su.estimated_total, freight_lines:su.freight_lines,
-        ...(su.account_notice?{account_notice:su.account_notice}:{}), ...(su.account_hold?{status:AS.STATUS,status_label:AS.LABEL,account_hold:true}:{status:"submitted"}),
+        ...(su.account_notice?{account_notice:su.account_notice}:{}), ...(su.account_hold?{status:AS.STATUS,status_label:AS.LABEL,account_hold:true,...(su.account_unchecked?{account_unchecked:true}:{})}:{status:"submitted"}),
         items:su.items.map(it=>({code:it.code,name:it.name,qty:it.qty,unit:it.unit_price,line_total:it.line_total}))}));
       if(already.length) await noteResubmission(already, who);
       if(!saved && !already.length) return json(503,{ok:false,status:"record_failed",saved:0,failed,orders:[]});

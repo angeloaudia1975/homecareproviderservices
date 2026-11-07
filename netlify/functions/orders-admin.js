@@ -131,44 +131,77 @@ exports.handler = async (event)=>{
     }
 
     /* RELEASE A HELD ORDER (owner 2026-11-06): the same order the dealer submitted moves on once HCPS has the dealer's
-       manufacturer account on file — nothing is re-entered. Its prices are re-checked with the server's pricing as it is now
-       (the dealer's account may carry different prices): any change needs the dealer's confirmation first, recorded as
-       dealer_confirmed + a note; the new prices are then stored. Nothing is sent to the manufacturer here — the order
-       becomes "submitted" and HCPS places it as usual. */
+       manufacturer account on file — nothing is re-entered. Its prices AND freight are re-checked with the server's pricing as
+       it is now. Rules (review of #108):
+       · a line that can't be re-priced from its code alone (sold in two families, or offering an upgrade — order_items keep
+         neither) keeps its recorded checkout price; releasing it needs kept_prices_checked + a note;
+       · any change (a price or the freight) needs the dealer's confirmation of EXACTLY the new figures shown: the request
+         sends them back (confirmed: {lines:[{id,unit}], freight}) and anything that moved again is refused;
+       · writes: first a status-guarded note on the held order (proves it is still held and records every change), then the
+         line prices, then the status-guarded release — a failure part-way leaves the order HELD with the note, and a retry
+         finishes it. Nothing is sent to the manufacturer here — the order becomes "submitted" and HCPS places it as usual. */
     if(b.action==="release_account_hold"){
       if(!manage) return json(403,{error:"Not permitted"});
       if(!b.id) return json(400,{error:"id required"});
       const cur=(await sbGet(`orders?id=eq.${encodeURIComponent(b.id)}&select=id,dealer_id,manufacturer,status,subtotal,freight_fee,estimated_total,admin_notes`))[0];
       if(!cur) return json(404,{error:"order not found"});
-      cur.order_items=await sbGet(`order_items?order_id=eq.${encodeURIComponent(b.id)}&select=id,code,name,qty,unit_price,line_total&order=id.asc`);
-      if(!Array.isArray(cur.order_items)||!cur.order_items.length) return json(409,{error:"no_items",message:"This order has no line items on record — check it before releasing."});
       if(cur.status!==AS.STATUS) return json(409,{error:"not_held",message:"This order is not waiting for manufacturer account setup."});
+      const its=await sbGet(`order_items?order_id=eq.${encodeURIComponent(b.id)}&select=id,code,name,qty,unit_price,line_total&order=id.asc`);
+      if(!Array.isArray(its)||!its.length) return json(409,{error:"no_items",message:"This order has no line items on record — check it before releasing."});
       let missing; try{ missing=await AS.missingIdentifiers((m,pth)=>sbGet(pth),cur.dealer_id,[cur.manufacturer]); }
       catch(e){ return json(503,{error:"account_unreadable",message:"The dealer's manufacturer accounts could not be read — nothing was changed."}); }
       if(missing.length) return json(409,{error:"account_not_set_up",message:"No manufacturer account is on file for this dealer yet — record it in Dealer 360 first."});
-      const items=(cur.order_items||[]).map(i=>({code:i.code,qty:i.qty,unit:num(i.unit_price)}));
+      const items=its.map(i=>({code:i.code,qty:i.qty,unit:num(i.unit_price)}));
       let priced;
       try{ const F=PRICING.remoteFiles(ORDERING_BASE);
         priced=await PRICING.priceOrders({orders:[{manufacturer_slug:cur.manufacturer,items}],dealerId:cur.dealer_id,sb:(m,pth)=>sbGet(pth),catalogFile:F.catalogFile,contentFile:F.contentFile,manufacturersFile:F.manufacturersFile}); }
       catch(e){ console.error("release pricing failed",e&&e.message); return json(503,{error:"pricing_unavailable",message:"Prices could not be checked right now — nothing was changed."}); }
       const po=(priced.orders||[])[0]||{items:[]};
-      const lines=(cur.order_items||[]).map((i,k)=>{ const n=(po.items||[])[k]||{}; return {id:i.id,code:i.code,name:i.name,qty:i.qty,old_unit:num(i.unit_price),new_unit:n.available===false?null:(n.unit==null?null:num(n.unit))}; });
+      const lines=its.map((i,k)=>{ const n=(po.items||[])[k]||{}; const old=num(i.unit_price);
+        if(n.configurable) return {id:i.id,code:i.code,name:i.name,qty:i.qty,old_unit:old,new_unit:old,kept:true};
+        return {id:i.id,code:i.code,name:i.name,qty:i.qty,old_unit:old,new_unit:n.available===false?null:(n.unit==null?null:num(n.unit))}; });
       const unavailable=lines.filter(l=>l.new_unit==null);
       if(unavailable.length) return json(409,{error:"items_unavailable",message:"Some items can no longer be priced as ordered — contact the dealer before releasing.",lines});
-      const changed=lines.filter(l=>Math.abs(l.new_unit-l.old_unit)>=0.005);
+      const kept=lines.filter(l=>l.kept);
       const note=clean(b.note,500);
-      if(changed.length && !(b.dealer_confirmed===true && note)) return json(409,{error:"prices_changed",message:"Prices changed since the dealer ordered. Confirm the new prices with the dealer, then release with their confirmation noted.",lines});
-      const at=new Date().toISOString();
-      if(changed.length){
-        for(const l of changed) await sbSend("PATCH",`order_items?id=eq.${encodeURIComponent(l.id)}`,{unit_price:l.new_unit,line_total:r2(l.new_unit*num(l.qty))},{Prefer:"return=minimal"});
-      }
+      if(kept.length && !(b.kept_prices_checked===true && note)) return json(409,{error:"manual_price_check",message:"Some lines were ordered with a configuration (price family or upgrade) the order record does not keep, so their price can't be re-checked automatically. Check those prices by hand, then release with a note.",lines});
+      const changed=lines.filter(l=>!l.kept && Math.abs(l.new_unit-l.old_unit)>=0.005);
       const sub=r2(lines.reduce((t,l)=>t+l.new_unit*num(l.qty),0));
-      const patch={status:"submitted",updated_at:at,subtotal:sub};
-      if(cur.estimated_total!=null) patch.estimated_total=r2(sub+num(cur.freight_fee));
-      patch.admin_notes=String([cur.admin_notes||"",`Released from ${AS.LABEL} by ${me.email||me.name} ${at.slice(0,16).replace("T"," ")} UTC`+(changed.length?` — ${changed.length} price(s) changed, dealer confirmed: ${note}`:"")].filter(Boolean).join("\n")).slice(-4000);
+      /* Freight by the shop's rule from the re-priced lines — unless a kept line is on the order (its configuration is unknown here):
+         then the recorded freight stands. */
+      const oldFr=cur.freight_fee==null?null:num(cur.freight_fee);
+      const newFr=(kept.length||po.freight_fee==null)?oldFr:r2(num(po.freight_fee));
+      const frChanged=oldFr!=null&&newFr!=null&&Math.abs(newFr-oldFr)>=0.005;
+      const proposal={lines:changed.map(l=>({id:l.id,unit:l.new_unit})),freight:frChanged?newFr:null};
+      if(changed.length||frChanged){
+        const c=b.confirmed&&typeof b.confirmed==="object"?b.confirmed:null;
+        const same=c&&b.dealer_confirmed===true&&note
+          &&Array.isArray(c.lines)&&c.lines.length===proposal.lines.length
+          &&proposal.lines.every(x=>c.lines.some(y=>String(y&&y.id)===String(x.id)&&Math.abs(num(y.unit)-x.unit)<0.005))
+          &&((proposal.freight==null&&(c.freight==null))||(proposal.freight!=null&&c.freight!=null&&Math.abs(num(c.freight)-proposal.freight)<0.005));
+        if(!same) return json(409,{error:"prices_changed",message:"Prices or freight changed since the dealer ordered. Confirm exactly these figures with the dealer, then release with their confirmation noted.",lines,freight:{old:oldFr,new:newFr},proposal});
+      }
+      const at=new Date().toISOString(), stamp=at.slice(0,16).replace("T"," ");
+      const who=me.email||me.name;
+      const detail=[...changed.map(l=>`${l.code} $${l.old_unit.toFixed(2)} → $${l.new_unit.toFixed(2)}`),...(frChanged?[`freight $${oldFr.toFixed(2)} → $${newFr.toFixed(2)}`]:[]),...kept.map(l=>`${l.code} kept at $${l.old_unit.toFixed(2)} (checked by hand)`)];
+      const startNote=`Release from ${AS.LABEL} started by ${who} ${stamp} UTC`+(detail.length?` — ${detail.join("; ")}`+(note?` — dealer confirmation / check: ${note}`:""):"");
+      const notes1=String([cur.admin_notes||"",startNote].filter(Boolean).join("\n")).slice(-4000);
+      /* 1 — still held? record what is about to change (status-guarded; a cancelled or released order is left alone) */
+      const g=await sbSend("PATCH",`orders?id=eq.${encodeURIComponent(b.id)}&status=eq.${encodeURIComponent(AS.STATUS)}`,{admin_notes:notes1,updated_at:at},{Prefer:"return=representation"});
+      if(!g||!g.length) return json(409,{error:"changed",message:"This order was updated by someone else — reload."});
+      /* 2 — line prices */
+      for(const l of changed){
+        try{ await sbSend("PATCH",`order_items?id=eq.${encodeURIComponent(l.id)}&order_id=eq.${encodeURIComponent(b.id)}`,{unit_price:l.new_unit,line_total:r2(l.new_unit*num(l.qty))},{Prefer:"return=minimal"}); }
+        catch(e){ console.error("release line update failed",l.id,e&&e.message);
+          return json(502,{error:"release_incomplete",message:"Some line prices could not be saved. The order is still held and the change is noted on it — release it again to finish."}); }
+      }
+      /* 3 — release (status-guarded) */
+      const patch={status:"submitted",updated_at:at,subtotal:sub,admin_notes:String([notes1,`Released by ${who} ${stamp} UTC`].join("\n")).slice(-4000)};
+      if(newFr!=null) patch.freight_fee=newFr;
+      if(cur.estimated_total!=null||newFr!=null) patch.estimated_total=r2(sub+num(newFr));
       const upd=await sbSend("PATCH",`orders?id=eq.${encodeURIComponent(b.id)}&status=eq.${encodeURIComponent(AS.STATUS)}`,patch,{Prefer:"return=representation"});
       if(!upd||!upd.length) return json(409,{error:"changed",message:"This order was updated by someone else — reload."});
-      return json(200,{ok:true,status:"submitted",subtotal:sub,changed:changed.length});
+      return json(200,{ok:true,status:"submitted",subtotal:sub,freight_fee:newFr,changed:changed.length,kept:kept.length});
     }
 
     return json(400,{error:"unknown action"});

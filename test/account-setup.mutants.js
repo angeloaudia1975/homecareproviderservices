@@ -8,18 +8,28 @@ const M = [
   { f: AS, from: "(r) => String(r.account_ref == null ? '' : r.account_ref).trim()", to: "(r) => true", why: 'blank identifier counted as an account' },
   { f: AS, from: "(s) => s && !GOLDEN.has(s)", to: "(s) => s", why: 'Golden held' },
   { f: OA, from: "if(missing.length) return json(409,{error:\"account_not_set_up\"", to: "if(false) return json(409,{error:\"account_not_set_up\"", why: 'released without an account' },
-  { f: OA, from: "if(changed.length && !(b.dealer_confirmed===true && note))", to: "if(false)", why: 'changed price released without the dealer' },
-  { f: OA, from: "&& note))", to: "))", why: 'confirmation without a note' },
-  { f: OA, from: "for(const l of changed) await sbSend(\"PATCH\"", to: "for(const l of []) await sbSend(\"PATCH\"", why: 'new prices not stored' },
+  { f: OA, from: "if(!same) return json(409,{error:\"prices_changed\"", to: "if(false) return json(409,{error:\"prices_changed\"", why: 'changed price released without the dealer' },
+  { f: OA, from: "const same=c&&b.dealer_confirmed===true&&note", to: "const same=c&&b.dealer_confirmed===true", why: 'confirmation without a note' },
+  { f: OA, from: "proposal.lines.every(x=>c.lines.some(y=>String(y&&y.id)===String(x.id)&&Math.abs(num(y.unit)-x.unit)<0.005))", to: "true", why: 'confirmation not tied to the figures shown' },
+  { f: OA, from: "if(kept.length && !(b.kept_prices_checked===true && note))", to: "if(false)", why: 'configured line released without a by-hand check' },
+  { f: OA, from: "if(n.configurable) return", to: "if(false) return", why: 'configured line re-priced from its code alone' },
+  { f: OA, from: "const newFr=(kept.length||po.freight_fee==null)?oldFr:r2(num(po.freight_fee));", to: "const newFr=oldFr;", why: 'freight not re-worked' },
+  { f: OA, from: "for(const l of changed){\n        try{ await sbSend(\"PATCH\"", to: "for(const l of []){\n        try{ await sbSend(\"PATCH\"", why: 'new prices not stored' },
+  { f: OA, from: "return json(502,{error:\"release_incomplete\"", to: "continue; return json(502,{error:\"release_incomplete\"", why: 'failed line write still released' },
+  { f: OA, from: "const g=await sbSend(\"PATCH\",`orders?id=eq.${encodeURIComponent(b.id)}&status=eq.${encodeURIComponent(AS.STATUS)}`", to: "const g=await sbSend(\"PATCH\",`orders?id=eq.${encodeURIComponent(b.id)}`", why: 'cancelled order touched' },
   { f: OA, from: "const NEXT={pending_account_setup:[\"cancelled\"],", to: "const NEXT={pending_account_setup:[\"placed\",\"cancelled\"],", why: 'held order placed directly' },
-  { f: OA, from: "if(!Array.isArray(cur.order_items)||!cur.order_items.length) return json(409", to: "if(false) return json(409", why: 'released with no lines read' },
+  { f: OA, from: "if(!Array.isArray(its)||!its.length) return json(409", to: "if(false) return json(409", why: 'released with no lines read' },
+  { f: F('orders-api.js'), from: "acctUnchecked=true; acctMissing=new Set(acctSlugs.filter(s=>!AS.GOLDEN.has(String(s))));", to: "acctUnchecked=true; acctMissing=new Set();", why: 'unreadable account → not held (fail open)' },
+  { f: F('_pricing.js'), from: "const configurable = same.length > 1 ||", to: "const configurable = false &&", why: 'two-family code not flagged' },
+  { f: AO, from: "} catch (e) { return { saved: true, verified: true, verified_at: at, verified_by: who, family_filled: 0, family_incomplete: true }; }", to: "} catch (e) { throw e; }", why: 'family read failure hides the saved number' },
   { f: AO, from: "const ver = ref ? { verified_at: at, verified_by: who, verified_ref: ref }", to: "const ver = ref ? { verified_at: null, verified_by: null, verified_ref: null }", why: 'HCPS entry not verified' },
   { f: AO, from: "Object.assign({ dealer_id: dealerId, manufacturer: slug, account_ref: ref, active: false }, ver)", to: "Object.assign({ dealer_id: dealerId, manufacturer: slug, account_ref: ref, active: true }, ver)", why: 'identifier opens ordering' },
   { f: AO, from: "account_ref: ref, active: false }, ver));", to: "account_ref: ref, active: true }, ver));", why: 'branch identifier opens ordering' },
-  { f: DT, from: ".filter((x) => x.status !== \"none\"),", to: ",", why: 'unapproved lines listed' },
+  { f: DT, from: ".filter((x) => x.status !== \"none\" ||", to: ".filter((x) => true ||", why: 'unapproved lines listed' },
+  { f: DT, from: "&& String(loc.golden_status || \"None\") !== \"None\")", to: "&& false)", why: 'Golden prospect hidden' },
   { f: DT, from: "return g ? \"Golden account #\" : \"HCPS account\";", to: "return \"HCPS account\";", why: 'Golden number labelled HCPS account' },
 ];
-const SUITES = ['order-routing.test.js', 'dealer-hq-inheritance.test.js', 'account-center.test.js'];
+const SUITES = ['order-routing.test.js', 'dealer-hq-inheritance.test.js', 'account-center.test.js', 'shopcart.test.js'];
 const run = () => { for (const t of SUITES) { const r = spawnSync(process.execPath, [path.join(__dirname, t)], { encoding: 'utf8', env: process.env }); if (r.status !== 0) return r; } return { status: 0 }; };
 if (run().status !== 0) { console.log('CONTROL FAILED'); process.exit(1); }
 let k = 0; const s = [], bad = [];

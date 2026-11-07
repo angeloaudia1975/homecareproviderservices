@@ -604,8 +604,8 @@ exports.handler = async (event)=>{
       return json(200,{ok:true});
     }
     if(b.action==="save_account_ref"){
-      // A manufacturer account number is ordering-access configuration: saving one marks the line
-      // active for the dealer and its family (dealer_manufacturers). Management only (Oct 2).
+      // A manufacturer account identifier (owner 2026-11-06): saved here it is VERIFIED at once, and it never grants
+      // ordering — Dealer Manager decides that (a new row is active=false). Management only.
       if(!isAdmin(me)) return json(403,{error:"Account numbers are changed by management."});
       if(!b.dealer_id||!b.manufacturer) return json(400,{error:"dealer_id + manufacturer required"});
       // Account numbers are organization-level: set it here and fill it across the dealer's family
@@ -613,6 +613,7 @@ exports.handler = async (event)=>{
       /* Owner directive 2026-11-06: an identifier HCPS enters here is verified at once (who + when) and never changes
          ordering access (Dealer Manager decides that). Strict: a failed save is an error, never a silent ok. */
       try{ const r=await orgAccounts.saveVerifiedAccountRef(String(b.manufacturer), b.dealer_id, clean(b.account_ref,60), me.email||me.name);
+        if(r&&r.family_incomplete) r.warning="Saved and verified for this location, but its branches could not all be updated — save again to finish.";
         return json(200,Object.assign({ok:true},r)); }
       catch(e){ console.error("save_account_ref failed",e&&e.message); return json(502,{ok:false,error:"The account number could not be saved — nothing was changed. Please try again."}); }
     }

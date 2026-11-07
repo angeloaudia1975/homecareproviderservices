@@ -175,7 +175,7 @@ exports.handler = async (event) => {
           claim: clBy.get(loc.id + "|" + m.slug) || null, verifiedClaim: vcBy.get(loc.id + "|" + m.slug) || null, accessOpen: acBy.has(loc.id + "|" + m.slug), goldenStatus: loc.golden_status })))
           /* owner directive 2026-11-06: a line HCPS has not approved for this dealer (no ordering row, no account on file, nothing
              requested) stays out of the dealer's portal — ABM / Ovation no longer show as "No account". */
-          .filter((x) => x.status !== "none"),
+          .filter((x) => x.status !== "none" || ((x.slug === "golden-technologies" || x.slug === "golden") && String(loc.golden_status || "None") !== "None")),
       }));
       const addresses = [{ key: "main", label: "Business address", address: self.address || "", city: self.city || "", state: self.state || "", zip: self.zip || "" }]
         .concat((addrs || []).map((a) => ({ key: a.addr_key, label: a.label || "", address: a.address || "", city: a.city || "", state: a.state || "", zip: a.zip || "" })));

@@ -978,7 +978,7 @@ async function saveContact(){
 function editContact(id){ CEDIT=id; renderContacts(); const f=$("#c_name"); if(f)f.focus(); }
 async function delContact(id){ const c=((CDATA&&CDATA.contacts)||[]).find(x=>String(x.id)===String(id)); if(!confirm("Remove contact "+((c&&(c.name||c.email))||"this contact")+"?")) return; await crm({action:"delete_contact",dealer_id:CUR,id}); loadContacts(); }
 async function makePrimary(email,name,phone){ await crm({action:"set_primary_contact",dealer_id:CUR,email,name,phone}); loadContacts(); }
-async function saveAcct(slug){ const v=(($("#acct_"+slug)||{}).value||"").trim(); const r=await crm({action:"save_account_ref",dealer_id:CUR,manufacturer:slug,account_ref:v}); if(!r||r.ok===false||r.error){ alert((r&&r.error)||"The account number could not be saved."); return; } loadContacts(); }
+async function saveAcct(slug){ const v=(($("#acct_"+slug)||{}).value||"").trim(); const r=await crm({action:"save_account_ref",dealer_id:CUR,manufacturer:slug,account_ref:v}); if(!r||r.ok===false||r.error){ alert((r&&r.error)||"The account number could not be saved."); return; } if(r.warning) alert(r.warning); loadContacts(); }
 
 /* ===== Dealer 360 — monthly sales & product drill-down ===== */
 var SALES=null, SSEL=null, SCHART=null;

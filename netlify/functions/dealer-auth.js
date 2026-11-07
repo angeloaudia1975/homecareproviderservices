@@ -81,8 +81,8 @@ async function loadDealerPayload(dealer_id, fallbackEmail){
     // company-level access decision (a branch inherits its HQ's territory)
     try{
       const self=d[0];
-      let gov=self; let hqRefs=[];
-      if(self.parent_id){ try{ const hr=await sb("GET",`dealer_manufacturers?dealer_id=eq.${self.parent_id}&select=manufacturer,account_ref`); hqRefs=(hr||[]).filter(x=>x.account_ref&&String(x.account_ref).trim()).map(x=>x.manufacturer); }catch(e){ hqRefs=[]; } }
+      let gov=self; let hqRefs=[]; let hqUnread=false;
+      if(self.parent_id){ try{ const hr=await sb("GET",`dealer_manufacturers?dealer_id=eq.${self.parent_id}&select=manufacturer,account_ref`); hqRefs=(hr||[]).filter(x=>x.account_ref&&String(x.account_ref).trim()).map(x=>x.manufacturer); }catch(e){ hqRefs=[]; hqUnread=true; } }
       if(self.parent_id){ const p=await sb("GET",`dealers?id=eq.${self.parent_id}&select=business_name,address,city,state,zip`); if(p&&p[0]) gov=p[0]; }
       let lat=null;
       try{ const q=qkey(gov); if(q){ const gc=await sb("GET",`geocache?q=eq.${encodeURIComponent(q)}&ok=eq.true&select=lat&limit=1`); if(gc&&gc[0]) lat=gc[0].lat; } }catch(e){}
@@ -104,7 +104,7 @@ async function loadDealerPayload(dealer_id, fallbackEmail){
         access.request_access=[...new Set([...(access.your_accounts||[]),...(access.available||[])])].filter(s=>!carried.has(String(s))).sort();
         /* approved lines with no manufacturer account on file: shoppable and orderable — checkout records the order as
            "Pending Manufacturer Account Setup" and offers the application (owner 2026-11-06) */
-        access.account_setup_needed=(access.available||[]).filter(s=>carried.has(String(s))).sort(); }
+        access.account_setup_needed=hqUnread?[]:(access.available||[]).filter(s=>carried.has(String(s))).sort(); }  /* head office unread: no notice rather than a wrong one (the server decides the hold) */
     }catch(e){}
     // Per-product contract prices (company-level): the governing/master account's prices apply to
     // all its branches; a branch's own rows override. Keyed "slug::code" for the portal's unitPrice().
