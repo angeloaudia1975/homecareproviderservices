@@ -87,20 +87,23 @@ function validatePost(b, now) {
 }
 
 /* ---- providers (official APIs). deps: { fetch, env, mediaUrl, mediaBytes } ---- */
-async function call(f, url, opts) { const r = await f(url, opts); const t = await r.text(); let j = null; try { j = t ? JSON.parse(t) : null; } catch (e) { j = null; }
+async function call(f, url, opts) { let r; try { r = await f(url, opts); } catch (e) { const x = new Error('no answer from the platform'); x.retry = true; throw x; } const t = await r.text(); let j = null; try { j = t ? JSON.parse(t) : null; } catch (e) { j = null; }
   if (!r.ok) { const m = (j && j.error && (j.error.message || j.error.type)) || (j && j.message) || ('HTTP ' + r.status); const e = new Error(String(m).slice(0, 200)); e.status = r.status; e.retry = r.status >= 500 || r.status === 429; throw e; }
   return { j, headers: r.headers }; }
+/* the call that actually posts: a server error / rate limit / no answer there is AMBIGUOUS (the platform may have posted) —
+   marked final so the worker never retries it automatically (review #115 S1) */
+const finalCall = async (f, url, opts) => { try { return await call(f, url, opts); } catch (e) { e.final = true; throw e; } };
 const PROVIDERS = {
   async facebook(d, conn, token, post) {
     const body = new URLSearchParams({ url: d.mediaUrl, caption: post.caption || '', access_token: token, published: 'true' });
-    const { j } = await call(d.fetch, `${GRAPH}/${encodeURIComponent(conn.external_id)}/photos`, { method: 'POST', body });
+    const { j } = await finalCall(d.fetch, `${GRAPH}/${encodeURIComponent(conn.external_id)}/photos`, { method: 'POST', body });
     return String(j.post_id || j.id);
   },
   async instagram(d, conn, token, post) {
     const ig = encodeURIComponent(conn.external_id);
     const p = { image_url: d.mediaUrl, access_token: token }; if (post.format === 'story') p.media_type = 'STORIES'; else p.caption = post.caption || '';
     const { j } = await call(d.fetch, `${GRAPH}/${ig}/media`, { method: 'POST', body: new URLSearchParams(p) });
-    const { j: k } = await call(d.fetch, `${GRAPH}/${ig}/media_publish`, { method: 'POST', body: new URLSearchParams({ creation_id: j.id, access_token: token }) });
+    const { j: k } = await finalCall(d.fetch, `${GRAPH}/${ig}/media_publish`, { method: 'POST', body: new URLSearchParams({ creation_id: j.id, access_token: token }) });
     return String(k.id);
   },
   async linkedin(d, conn, token, post) {
@@ -110,7 +113,7 @@ const PROVIDERS = {
     const up = j && j.value; if (!up || !up.uploadUrl || !up.image) throw new Error('LinkedIn upload not offered');
     const bytes = await d.mediaBytes();
     const u = await d.fetch(up.uploadUrl, { method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: bytes }); if (!u.ok) { const e = new Error('LinkedIn upload ' + u.status); e.retry = u.status >= 500; throw e; }
-    const { headers } = await call(d.fetch, `${LI}/rest/posts`, { method: 'POST', headers: H, body: JSON.stringify({ author: owner, commentary: post.caption || '', visibility: 'PUBLIC',
+    const { headers } = await finalCall(d.fetch, `${LI}/rest/posts`, { method: 'POST', headers: H, body: JSON.stringify({ author: owner, commentary: post.caption || '', visibility: 'PUBLIC',
       distribution: { feedDistribution: 'MAIN_FEED', targetEntities: [], thirdPartyDistributionChannels: [] }, content: { media: { id: up.image } }, lifecycleState: 'PUBLISHED', isReshareDisabledByAuthor: false }) });
     return String((headers && headers.get && (headers.get('x-restli-id') || headers.get('x-linkedin-id'))) || 'posted');
   },

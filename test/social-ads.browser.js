@@ -111,7 +111,7 @@ const SIZES = [['desktop', 1280, 900], ['tablet', 768, 1024], ['iphone', 390, 84
       await page.click('[data-fmt="square"]');
       await page.waitForSelector('#adbSched'); ok(!(await page.$('[data-plat="instagram"]')), 'only connected platforms'); await page.check('[data-plat="facebook"]');
       await page.fill('#adbWhen', '2031-01-15T10:30'); await page.click('#adbSched'); await page.waitForSelector('[data-pa="post_approve"]');
-      ok(await page.evaluate(() => /^data:image\/png;base64,/.test(window.POSTED.media) && window.POSTED.platforms.join() === 'facebook'), 'rendered image sent');
+      ok(await page.evaluate(() => /^data:image\/jpeg;base64,/.test(window.POSTED.media) && window.POSTED.platforms.join() === 'facebook'), 'rendered image sent');
       await page.click('[data-pa="post_approve"]'); await page.waitForFunction(() => /Approved/.test(document.getElementById('adbPub').textContent));
     });
     await t(`${name}: the main actions are real buttons a keyboard reaches`, async () => {

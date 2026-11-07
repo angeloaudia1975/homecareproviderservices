@@ -36,7 +36,7 @@ const OWN_IMG = /^\/assets\/[A-Za-z0-9._\/%+-]{1,300}$/;
 const IMG_MAX = 4 * 1024 * 1024;
 const SP = require('./_social_publish.js');
 const crypto = require('crypto');
-const POST_ROW = 'id,company_id,dealer_id,ad_id,caption,format,media_path,media_sha256,platforms,scheduled_at,status,approved_by,approved_at,version,attempts,next_attempt_at,last_error,updated_at';
+const POST_ROW = 'id,company_id,dealer_id,ad_id,caption,format,media_path,media_sha256,ad_version,products_snapshot,platforms,scheduled_at,status,approved_by,approved_at,version,attempts,next_attempt_at,last_error,updated_at';
 const CONN_ROW = 'id,dealer_id,platform,external_id,account_name,status,token_expires_at,authorized_by,authorized_at,revoked_at,last_error';
 const envNow = () => process.env;
 const SELF_BASE = (process.env.URL || 'https://homecareproviderservices.netlify.app').replace(/\/+$/, '');
@@ -128,7 +128,7 @@ exports.handler = async (event) => {
   let C; try { C = await context(who); } catch (e) { console.error('ads scope failed', e && e.message); return json(503, { ok: false, error: 'The ad builder could not be loaded just now — please try again.' }); }
   if (!C) return json(404, { ok: false, error: 'Account not found.' });
   const by = who.preview ? 'hcps-preview' : (who.email || 'dealer');
-  const WRITES = new Set(['ads_save', 'ads_duplicate', 'ads_archive', 'social_connect', 'social_disconnect', 'post_save', 'post_approve', 'post_pause', 'post_resume', 'post_cancel']);
+  const WRITES = new Set(['ads_save', 'ads_duplicate', 'ads_archive', 'social_connect', 'social_connect_choose', 'social_disconnect', 'post_save', 'post_approve', 'post_pause', 'post_resume', 'post_cancel']);
   if (who.preview && WRITES.has(b.action)) return json(403, { ok: false, error: "This is HCPS's read-only preview — nothing can be changed here." });
   const locOf = (v) => { const l = String(v || ''); return UUID.test(l) && C.mayRead(l) ? l : null; };
   try {
@@ -235,7 +235,7 @@ exports.handler = async (event) => {
       const loc = locOf(b.location_id || C.did); if (!loc) return json(404, { ok: false, error: 'That location is not part of your account.' });
       const f = await getFlags().catch(() => ({})); const env = envNow();
       const [conns, posts] = await Promise.all([
-        sb('GET', `dealer_social_connections?dealer_id=eq.${enc(loc)}&select=${CONN_ROW}&order=authorized_at.desc`),
+        sb('GET', `dealer_social_connections?dealer_id=eq.${enc(loc)}&or=(status.neq.pending,authorized_at.gte.${enc(new Date(Date.now() - 3600e3).toISOString())})&select=${CONN_ROW}&order=authorized_at.desc`),
         sb('GET', `dealer_social_posts?dealer_id=eq.${enc(loc)}&scheduled_at=gte.${enc(new Date(Date.now() - 60 * 864e5).toISOString())}&select=${POST_ROW}&order=scheduled_at.asc&limit=300`)]);
       return json(200, { ok: true, platforms: SP.PLATFORMS.map((p) => Object.assign({ platform: p }, SP.platformOpen(f, env, p))), connections: conns || [], posts: posts || [], can_edit: C.mayWrite(loc) });
     }
@@ -244,8 +244,21 @@ exports.handler = async (event) => {
       const platform = String(b.platform || ''); if (!SP.PLATFORMS.includes(platform)) return json(400, { ok: false, error: 'Choose Facebook, Instagram or LinkedIn.' });
       const gate = SP.platformOpen(await getFlags(), envNow(), platform);
       if (!gate.ok) return json(409, { ok: false, error: 'Connecting social accounts opens once the platforms approve HCPS\'s apps.', reason: gate.reason });
-      const state = SP.signState(envNow(), { loc, root: C.root, platform, by, uid: who.uid || null });
-      return json(200, { ok: true, url: SP.authorizeUrl(envNow(), platform, state, `${SELF_BASE}/.netlify/functions/social-oauth-callback`) });
+      if (!who.uid) return json(403, { ok: false, error: 'Only a signed-in dealer user can connect an account.' });
+      const nonce = crypto.randomBytes(16).toString('hex');   // single use, 15 minutes, this dealer user (review #115 B1)
+      await sb('POST', 'dealer_social_oauth_states', { nonce, company_id: C.root, dealer_id: loc, platform, uid: who.uid, created_by: by }, { Prefer: 'return=minimal' });
+      return json(200, { ok: true, url: `${SELF_BASE}/.netlify/functions/social-oauth-callback?begin=${nonce}` });
+    }
+    if (b.action === 'social_connect_choose') {
+      if (!UUID.test(String(b.id || ''))) return json(404, { ok: false, error: 'That account is not available.' });
+      const r = await sb('GET', `dealer_social_connections?id=eq.${enc(b.id)}&select=id,dealer_id,platform,status,authorized_at`); const c = r && r[0];
+      if (!c || !C.mayWrite(c.dealer_id) || c.status !== 'pending' || Date.parse(c.authorized_at) < Date.now() - 3600e3) return json(404, { ok: false, error: 'That account is not available — connect again.' });
+      const now = new Date().toISOString();
+      const out = await sb('PATCH', `dealer_social_connections?id=eq.${enc(c.id)}&status=eq.pending`, { status: 'connected', updated_at: now }, { Prefer: 'return=representation' });
+      if (!(out && out.length)) return json(409, { ok: false, error: 'That account changed — connect again.' });
+      // the accounts the dealer did NOT choose from this sign-in are dropped (tokens erased)
+      await sb('PATCH', `dealer_social_connections?dealer_id=eq.${enc(c.dealer_id)}&platform=eq.${c.platform}&status=eq.pending`, { status: 'revoked', revoked_at: now, token_ciphertext: null, updated_at: now }, { Prefer: 'return=minimal' });
+      return json(200, { ok: true });
     }
     const getPost = async (id) => { if (!UUID.test(String(id || ''))) return null; const r = await sb('GET', `dealer_social_posts?id=eq.${enc(id)}&select=${POST_ROW}`); const x = r && r[0]; return x && C.mayRead(x.dealer_id) ? x : null; };
     if (b.action === 'social_disconnect') {
@@ -273,7 +286,9 @@ exports.handler = async (event) => {
       const up = await fetch(`${SUPABASE_URL}/storage/v1/object/social-media/${path}`, { method: 'POST', headers: { ...H(), 'content-type': 'image/' + m[1], 'x-upsert': 'true' }, body: bytes });
       if (!up.ok) return json(503, { ok: false, error: 'The image could not be stored just now — please try again.' });
       const now = new Date().toISOString();
-      const fields = { caption: vp.post.caption, format: ad.ad.format, media_path: path, media_sha256: sha, platforms: vp.post.platforms, scheduled_at: vp.post.scheduled_at,
+      /* review #115 B2: each product's advertised price NOW; the worker stops the post if it differs at publish time */
+      const snapshot = va.ad.products.map((r) => { const x = ADS.renderProduct(P.map.get(`${r.manufacturer}|${String(r.code).toUpperCase()}`), r.show_price); return { manufacturer: x.manufacturer, code: x.code, price: x.price, price_label: x.price_label }; });
+      const fields = { caption: vp.post.caption, format: ad.ad.format, media_path: path, media_sha256: sha, platforms: vp.post.platforms, scheduled_at: vp.post.scheduled_at, ad_version: ad.version, products_snapshot: snapshot,
         status: 'awaiting_approval', approved_by: null, approved_at: null, attempts: 0, next_attempt_at: null, last_error: null, updated_by: by, updated_at: now };   // any edit needs a fresh approval
       if (!b.id) { const out = await sb('POST', 'dealer_social_posts', Object.assign({ company_id: C.root, dealer_id: loc, ad_id: ad.id, created_by: by }, fields), { Prefer: 'return=representation' }); return json(200, { ok: true, post: out[0] }); }
       const cur = await getPost(b.id); if (!cur || String(cur.ad_id) !== String(ad.id)) return json(404, { ok: false, error: 'That post is not available.' });
@@ -281,6 +296,8 @@ exports.handler = async (event) => {
       if (Number(b.version) !== cur.version) return json(409, { ok: false, error: 'This post was changed somewhere else — reopen it.' });
       const out = await sb('PATCH', `dealer_social_posts?id=eq.${enc(cur.id)}&version=eq.${cur.version}&status=eq.${enc(cur.status)}`, Object.assign({ version: cur.version + 1 }, fields), { Prefer: 'return=representation' });
       if (!(out && out.length)) return json(409, { ok: false, error: 'This post was changed somewhere else — reopen it.' });
+      // review #115 S2: platforms that failed before start over with this new version (published ones are never re-posted)
+      await sb('PATCH', `dealer_social_post_targets?post_id=eq.${enc(cur.id)}&status=in.(failed,cancelled)`, { status: 'pending', attempts: 0, last_error: null, claimed_at: null }, { Prefer: 'return=minimal' });
       return json(200, { ok: true, post: out[0] });
     }
     if (['post_approve', 'post_pause', 'post_resume', 'post_cancel'].includes(b.action)) {
@@ -289,6 +306,7 @@ exports.handler = async (event) => {
       if (Number(b.version) !== cur.version) return json(409, { ok: false, error: 'This post was changed somewhere else — reopen it.' });
       const to = { post_approve: 'approved', post_pause: 'paused', post_resume: 'approved', post_cancel: 'cancelled' }[b.action];
       if (b.action === 'post_resume' && cur.status !== 'paused') return json(409, { ok: false, error: 'Only a paused post can be resumed.' });
+      if (b.action === 'post_resume' && Date.parse(cur.scheduled_at) < Date.now() + 5 * 60e3) return json(409, { ok: false, error: 'The scheduled time has passed — edit the post and choose a new time.' });   // S6: never published late
       if (b.action === 'post_approve' && cur.status !== 'awaiting_approval') return json(409, { ok: false, error: 'Only a post waiting for approval can be approved.' });
       if (!SP.canMove(cur.status, to)) return json(409, { ok: false, error: `A ${cur.status.replace('_', ' ')} post can't be ${to}.` });
       const patch = { status: to, version: cur.version + 1, updated_by: by, updated_at: new Date().toISOString() };

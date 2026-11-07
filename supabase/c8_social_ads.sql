@@ -1,6 +1,6 @@
 -- ============================================================================
 -- CATALOG 4 §8 — SOCIAL MEDIA AD BUILDER + (DISABLED) SCHEDULING / PUBLISHING (owner directive 2026-11-06 20:55 CT)
--- Additive only: four new tables + one private storage bucket. Nothing existing is read or changed.
+-- Additive only: five new tables + one private storage bucket. Nothing existing is read or changed.
 --
 -- dealer_social_ads            a dealer's saved ad designs (draft documents). One row per design; reopen / duplicate /
 --                              archive. The ad keeps product REFERENCES only — the price shown is resolved again from the
@@ -18,7 +18,7 @@
 -- Publishing stays OFF: phase2_flags.social_publishing must be exactly true AND the platform's own app approval switch
 -- (social_meta_approved / social_linkedin_approved). No flag is set here.
 -- RULE 19: RLS on, no policies, nothing for anon / authenticated / public; service_role only.
--- Rollback (only while empty): drop table dealer_social_post_targets; drop table dealer_social_posts;
+-- Rollback (only while empty): drop table dealer_social_post_targets; drop table dealer_social_posts; drop table dealer_social_oauth_states;
 --   drop table dealer_social_connections; drop table dealer_social_ads;
 --   set local storage.allow_delete_query = 'true'; delete from storage.buckets where id = 'social-media';
 -- ============================================================================
@@ -45,7 +45,7 @@ create table if not exists public.dealer_social_connections (
   platform         text         not null check (platform in ('facebook','instagram','linkedin')),
   external_id      text         not null check (char_length(external_id) between 1 and 120),   -- Page / IG user / org id
   account_name     text         check (account_name is null or char_length(account_name) <= 200),
-  status           text         not null default 'connected' check (status in ('connected','revoked','error','expired')),
+  status           text         not null default 'pending' check (status in ('pending','connected','revoked','error','expired')),   -- pending = returned by the platform, not yet chosen by the dealer
   token_ciphertext text,                                                  -- AES-256-GCM, never returned to a browser
   token_expires_at timestamptz,
   scopes           text[]       not null default '{}',
@@ -57,6 +57,20 @@ create table if not exists public.dealer_social_connections (
   unique (dealer_id, platform, external_id)
 );
 
+-- one sign-in attempt: single use, 15 minutes, bound to the dealer user who started it and (by an HttpOnly cookie) to the
+-- browser that started it
+create table if not exists public.dealer_social_oauth_states (
+  nonce          text         primary key check (nonce ~ '^[0-9a-f]{32}$'),
+  company_id     uuid         not null references public.dealers(id),
+  dealer_id      uuid         not null references public.dealers(id),
+  platform       text         not null check (platform in ('facebook','instagram','linkedin')),
+  uid            uuid,
+  created_by     text         not null,
+  created_at     timestamptz  not null default now(),
+  begun_at       timestamptz,
+  used_at        timestamptz
+);
+
 create table if not exists public.dealer_social_posts (
   id               uuid         primary key default gen_random_uuid(),
   company_id       uuid         not null references public.dealers(id),
@@ -66,6 +80,8 @@ create table if not exists public.dealer_social_posts (
   format           text         not null check (format in ('square','portrait','story','landscape')),
   media_path       text,                                                  -- social-media bucket
   media_sha256     text         check (media_sha256 is null or media_sha256 ~ '^[0-9a-f]{64}$'),
+  ad_version       int,                                                   -- the ad as scheduled; an edited ad never publishes the old image
+  products_snapshot jsonb       not null default '[]',                    -- each product's advertised price when scheduled; a change stops the post
   platforms        text[]       not null check (cardinality(platforms) between 1 and 3 and platforms <@ array['facebook','instagram','linkedin']),
   scheduled_at     timestamptz  not null,
   status           text         not null default 'draft' check (status in ('draft','awaiting_approval','approved','paused','publishing','published','partially_published','failed','cancelled')),
@@ -98,16 +114,25 @@ create table if not exists public.dealer_social_post_targets (
   unique (post_id, platform)
 );
 
+-- safe to re-run over the first draft of this file (review #115): bring an earlier install to this shape
+alter table public.dealer_social_posts add column if not exists ad_version int;
+alter table public.dealer_social_posts add column if not exists products_snapshot jsonb not null default '[]';
+alter table public.dealer_social_connections drop constraint if exists dealer_social_connections_status_check;
+alter table public.dealer_social_connections add constraint dealer_social_connections_status_check check (status in ('pending','connected','revoked','error','expired'));
+alter table public.dealer_social_connections alter column status set default 'pending';
+
 alter table public.dealer_social_ads enable row level security;
 alter table public.dealer_social_connections enable row level security;
 alter table public.dealer_social_posts enable row level security;
 alter table public.dealer_social_post_targets enable row level security;
-revoke all on public.dealer_social_ads, public.dealer_social_connections, public.dealer_social_posts, public.dealer_social_post_targets from public, anon, authenticated;
-revoke all on public.dealer_social_ads, public.dealer_social_connections, public.dealer_social_posts, public.dealer_social_post_targets from service_role;
+alter table public.dealer_social_oauth_states enable row level security;
+revoke all on public.dealer_social_ads, public.dealer_social_connections, public.dealer_social_posts, public.dealer_social_post_targets, public.dealer_social_oauth_states from public, anon, authenticated;
+revoke all on public.dealer_social_ads, public.dealer_social_connections, public.dealer_social_posts, public.dealer_social_post_targets, public.dealer_social_oauth_states from service_role;
 grant select, insert, update on public.dealer_social_ads to service_role;            -- archive, never delete
 grant select, insert, update on public.dealer_social_connections to service_role;    -- revoke, never delete
 grant select, insert, update on public.dealer_social_posts to service_role;          -- cancel, never delete
 grant select, insert, update on public.dealer_social_post_targets to service_role;
+grant select, insert, update on public.dealer_social_oauth_states to service_role;
 
 -- private bucket for the rendered image of a scheduled post (no storage policies = service role only)
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -116,7 +141,7 @@ on conflict (id) do nothing;
 
 -- install check: one row, every column true
 select
-  (select count(*) = 4 from pg_tables where schemaname = 'public' and tablename in ('dealer_social_ads','dealer_social_connections','dealer_social_posts','dealer_social_post_targets') and rowsecurity) as rls_on,
+  (select count(*) = 5 from pg_tables where schemaname = 'public' and tablename in ('dealer_social_ads','dealer_social_connections','dealer_social_posts','dealer_social_post_targets','dealer_social_oauth_states') and rowsecurity) as rls_on,
   (select count(*) = 0 from pg_policies where schemaname = 'public' and tablename like 'dealer_social_%') as no_policies,
   (select count(*) = 0 from information_schema.role_table_grants where table_schema = 'public' and table_name like 'dealer_social_%' and grantee in ('anon','authenticated','PUBLIC')) as no_public_grants,
   (select count(*) = 0 from information_schema.role_table_grants where table_schema = 'public' and table_name like 'dealer_social_%' and grantee = 'service_role' and privilege_type in ('DELETE','TRUNCATE')) as no_deletes,

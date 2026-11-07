@@ -26,7 +26,7 @@ async function signed(path) {
   const r = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/social-media/${path}`, { method: 'POST', headers: { ...H(), 'content-type': 'application/json' }, body: JSON.stringify({ expiresIn: 3600 }) });
   if (!r.ok) return null; const j = await r.json(); const u = j && (j.signedURL || j.signedUrl); return u ? `${SUPABASE_URL}/storage/v1${u.startsWith('/') ? '' : '/'}${u}` : null;
 }
-const errText = (e) => String((e && e.message) || e || 'error').replace(/access_token=[^&\s]+/gi, 'access_token=…').slice(0, 300);
+const errText = (e) => String((e && e.message) || e || 'error').replace(/access_token=[^&\s"]+/gi, 'access_token=…').replace(/Bearer\s+\S+/gi, 'Bearer …').slice(0, 300);
 
 async function run(now) {
   now = now || Date.now(); const env = process.env;
@@ -53,11 +53,17 @@ async function run(now) {
     const finish = async (status, extra) => sb('PATCH', `dealer_social_posts?id=eq.${enc(P0.id)}&status=eq.publishing&version=eq.${P0.version}`, Object.assign({ status, version: P0.version + 1, updated_at: new Date().toISOString(), updated_by: 'system' }, extra || {}), { Prefer: 'return=minimal' });
     try {
       /* the ad is checked again now: authorized products, clean words */
-      const ad = (await sb('GET', `dealer_social_ads?id=eq.${enc(P0.ad_id)}&select=dealer_id,ad,archived_at`) || [])[0];
+      const ad = (await sb('GET', `dealer_social_ads?id=eq.${enc(P0.ad_id)}&select=dealer_id,ad,version,archived_at`) || [])[0];
       if (!ad || ad.archived_at || String(ad.dealer_id) !== String(P0.dealer_id)) { await finish('failed', { last_error: 'The ad was archived or moved.' }); out.failed++; continue; }
+      if (P0.ad_version == null || Number(ad.version) !== Number(P0.ad_version)) { await finish('failed', { last_error: 'The ad was edited after this post was scheduled — schedule it again.' }); out.failed++; continue; }
       const prods = await SH.productsFor({ root: P0.company_id }, String(P0.dealer_id));
       if (prods.storefront && prods.storefront.hcps_blocked) { await finish('failed', { last_error: 'HCPS has paused public marketing for this location.' }); out.failed++; continue; }
-      const v = ADS.validate(ad.ad, prods.map, {}); if (v.error) { await finish('failed', { last_error: 'The ad needs attention: ' + v.error }); out.failed++; continue; }
+      const card = await SH.dealerCard(String(P0.dealer_id), prods.storefront);
+      const v = ADS.validate(ad.ad, prods.map, { allow: [card.name, card.city] }); if (v.error) { await finish('failed', { last_error: 'The ad needs attention: ' + v.error }); out.failed++; continue; }
+      /* review #115 B2: the image carries the price as scheduled — if any advertised price is different now, stop */
+      const nowPrices = v.ad.products.map((r) => { const x = ADS.renderProduct(prods.map.get(`${r.manufacturer}|${String(r.code).toUpperCase()}`), r.show_price); return `${x.manufacturer}|${x.code}|${x.price}|${x.price_label}`; }).join(';');
+      const thenPrices = (P0.products_snapshot || []).map((x) => `${x.manufacturer}|${x.code}|${x.price}|${x.price_label}`).join(';');
+      if (nowPrices !== thenPrices) { await finish('failed', { last_error: 'A price changed since this post was scheduled — schedule it again so the image shows today\'s price.' }); out.failed++; continue; }
       const url = await signed(P0.media_path); if (!url) throw Object.assign(new Error('The image could not be read.'), { retry: true });
       const bytes = async () => { const r = await fetch(url); if (!r.ok) throw Object.assign(new Error('image ' + r.status), { retry: true }); return Buffer.from(await r.arrayBuffer()); };
       for (const platform of P0.platforms) {
@@ -74,8 +80,9 @@ async function run(now) {
           const ext = await SP.PROVIDERS[platform]({ fetch, env, mediaUrl: url, mediaBytes: bytes }, conn, SP.open(env, conn.token_ciphertext), { caption: [P0.caption].filter(Boolean).join(''), format: P0.format });
           await sb('PATCH', `dealer_social_post_targets?id=eq.${enc(tg.id)}&status=eq.publishing`, { status: 'published', external_post_id: ext, published_at: new Date().toISOString(), last_error: null }, { Prefer: 'return=minimal' }); out.published++;
         } catch (e) {
-          const again = !!(e && e.retry) && tg.attempts + 1 < SP.MAX_ATTEMPTS; if (again) retryable = true;
-          await sb('PATCH', `dealer_social_post_targets?id=eq.${enc(tg.id)}&status=eq.publishing`, { status: 'failed', last_error: errText(e), attempts: again ? tg.attempts + 1 : SP.MAX_ATTEMPTS }, { Prefer: 'return=minimal' });
+          const ambiguous = !!(e && e.final && e.retry);   // the posting call itself got no clear answer — it may be posted
+          const again = !ambiguous && !!(e && e.retry) && tg.attempts + 1 < SP.MAX_ATTEMPTS; if (again) retryable = true;
+          await sb('PATCH', `dealer_social_post_targets?id=eq.${enc(tg.id)}&status=eq.publishing`, { status: 'failed', last_error: ambiguous ? 'The platform did not confirm — check the page before retrying (it may already be posted).' : errText(e), attempts: again ? tg.attempts + 1 : SP.MAX_ATTEMPTS }, { Prefer: 'return=minimal' });
           if (e && e.status === 401) await sb('PATCH', `dealer_social_connections?id=eq.${enc(conn.id)}`, { status: 'expired', last_error: 'Sign-in expired — reconnect.', updated_at: new Date().toISOString() }, { Prefer: 'return=minimal' });
           lastError = errText(e);
         }

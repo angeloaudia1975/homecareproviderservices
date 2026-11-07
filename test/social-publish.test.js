@@ -34,7 +34,7 @@ function world(o) {
     dealer_storefronts: [], dealer_retail_prices: [],
     dealer_social_ads: [{ id: 'aaaaaaaa-0000-4000-8000-000000000001', company_id: HQ, dealer_id: HQ, title: 'Seat', version: 1, archived_at: null,
       ad: { template: 'spotlight', format: o.format || 'square', font: 'Inter', colors: {}, show: {}, headline: 'Feel steadier at home', body: '', cta: 'Visit us today', caption: '', hashtags: [], products: [{ manufacturer: 'bemis', code: 'B1', show_price: true }] } }],
-    dealer_social_connections: o.conns || [], dealer_social_posts: o.posts || [], dealer_social_post_targets: o.targets || [],
+    dealer_social_connections: o.conns || [], dealer_social_posts: o.posts || [], dealer_social_post_targets: o.targets || [], dealer_social_oauth_states: [],
     app_settings: [{ key: 'phase2_flags', value: o.flags || {} }] } });
   const inner = W.fetch; W.calls = []; W.store = {};
   W.fetch = async (url, opts) => { const u = String(url); const h = (opts && opts.headers) || {}; const m = (opts && opts.method) || 'GET';
@@ -56,6 +56,7 @@ function world(o) {
       return { ok: false, status: 404, text: async () => '{}' }; }
     if (/\/assets\/products\//.test(u)) return { ok: true, status: 200, headers: { get: () => 'image/png' }, arrayBuffer: async () => new ArrayBuffer(8) };
     if (/\/data\/content\//.test(u)) return { ok: false, status: 404, json: async () => null };
+    if (m === 'POST' && /\/rest\/v1\/dealer_social_oauth_states/.test(u)) { const b = JSON.parse(opts.body); b.created_at = new Date().toISOString(); b.begun_at = null; b.used_at = null; opts = Object.assign({}, opts, { body: JSON.stringify(b) }); }
     if (m === 'POST' && /\/rest\/v1\/dealer_social_(posts|connections|post_targets)/.test(u) && opts.body) { const b = JSON.parse(opts.body); const rows = Array.isArray(b) ? b : [b];
       for (const r of rows) { if (!r.id) r.id = uuid(); if (/posts\b/.test(u) && r.version == null) r.version = 1; if (/post_targets/.test(u)) { if (r.status == null) r.status = 'pending'; if (r.attempts == null) r.attempts = 0; } if (/dealer_social_posts/.test(u) && r.attempts == null) r.attempts = 0; }
       opts = Object.assign({}, opts, { body: JSON.stringify(Array.isArray(b) ? rows : rows[0]) }); }
@@ -69,16 +70,18 @@ const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer
 const AD = 'aaaaaaaa-0000-4000-8000-000000000001';
 const later = (min) => new Date(Date.now() + min * 60e3).toISOString();
 const conn = (platform, ext) => ({ id: uuid(), company_id: HQ, dealer_id: HQ, platform, external_id: ext, status: 'connected', token_ciphertext: SP.seal(ENV, 'TOKEN-' + platform), authorized_by: 'hq@acme.test', authorized_at: new Date().toISOString() });
-const due = (x) => Object.assign({ id: uuid(), company_id: HQ, dealer_id: HQ, ad_id: AD, caption: 'Now at Acme Medical.', format: 'square', media_path: `${HQ}/${HQ}/x.png`, platforms: ['facebook'],
+const SNAP = [{ manufacturer: 'bemis', code: 'B1', price: 99.99, price_label: 'MSRP' }];
+const due = (x) => Object.assign({ id: uuid(), company_id: HQ, dealer_id: HQ, ad_id: AD, caption: 'Now at Acme Medical.', format: 'square', media_path: `${HQ}/${HQ}/x.png`, platforms: ['facebook'], ad_version: 1, products_snapshot: SNAP,
   scheduled_at: new Date(Date.now() - 60e3).toISOString(), status: 'approved', approved_by: 'hq@acme.test', approved_at: new Date().toISOString(), version: 3, attempts: 0, next_attempt_at: null, updated_at: new Date().toISOString() }, x || {});
 
 (async () => {
   await t('tokens are sealed (AES-256-GCM): round trip, a wrong key or a changed byte fails; OAuth state is signed and expires', async () => {
     const s = SP.seal(ENV, 'abc'); ok(!s.includes('abc'), 'sealed'); eq(SP.open(ENV, s), 'abc');
     let threw = false; try { SP.open(Object.assign({}, ENV, { SOCIAL_TOKEN_KEY: crypto.randomBytes(32).toString('base64') }), s); } catch (e) { threw = true; } ok(threw, 'wrong key');
-    threw = false; try { const p = s.split('.'); p[3] = p[3].slice(0, -2) + (p[3].slice(-2) === 'AA' ? 'AB' : 'AA'); SP.open(ENV, p.join('.')); } catch (e) { threw = true; } ok(threw, 'tamper');
+    threw = false; try { const p = s.split('.'); p[3] = (p[3][0] === 'A' ? 'B' : 'A') + p[3].slice(1); SP.open(ENV, p.join('.')); } catch (e) { threw = true; } ok(threw, 'tamper');   // first char: every bit counts
     const st = SP.signState(ENV, { loc: HQ, platform: 'facebook' }); eq(SP.readState(ENV, st).loc, HQ);
-    eq(SP.readState(ENV, st.replace(/.$/, st.slice(-1) === 'A' ? 'B' : 'A')), null, 'tampered state');
+    const [sb0, sm0] = st.split('.'); eq(SP.readState(ENV, sb0 + '.' + (sm0[0] === 'A' ? 'B' : 'A') + sm0.slice(1)), null, 'tampered signature');
+    eq(SP.readState(ENV, (sb0[0] === 'e' ? 'f' : 'e') + sb0.slice(1) + '.' + sm0), null, 'tampered body');
     eq(SP.readState(Object.assign({}, ENV, { SOCIAL_STATE_SECRET: 'x'.repeat(40) }), st), null, 'other secret');
   });
   await t('gates: nothing opens unless the master switch, the platform approval and the credentials are all present', async () => {
@@ -89,15 +92,24 @@ const due = (x) => Object.assign({ id: uuid(), company_id: HQ, dealer_id: HQ, ad
     eq(SP.platformOpen(ON, ENV, 'instagram').ok, true);
     const W = world(); const r = await as(api(W), 'hq', { action: 'social_connect', location_id: HQ, platform: 'facebook' }); eq(r.status, 409, 'off → refused');
   });
-  await t('connect (switch on): the official sign-in URL carries a signed state; the callback stores SEALED page tokens, never returned', async () => {
+  await t('connect (switch on): single-use begin link bound to this browser by a cookie; the callback stores SEALED tokens as PENDING until the dealer chooses', async () => {
     const W = world({ flags: ON }); const r = await as(api(W), 'hq', { action: 'social_connect', location_id: HQ, platform: 'instagram' }); eq(r.status, 200);
-    const u = new URL(r.body.url); eq(u.host, 'www.facebook.com'); ok(/instagram_content_publish/.test(u.searchParams.get('scope')), 'scope'); const state = u.searchParams.get('state');
+    const begin = new URL(r.body.url); eq(begin.pathname, '/.netlify/functions/social-oauth-callback'); const nonce = begin.searchParams.get('begin');
     eq((await as(api(W), 'preview:pv', { action: 'social_connect', location_id: HQ, platform: 'facebook' })).status, 403, 'preview');
-    const bad = await cb(W).handler({ httpMethod: 'GET', headers: {}, queryStringParameters: { code: 'c', state: state + 'x' } }); ok(/social=refused/.test(bad.headers.location), 'bad state');
-    const good = await cb(W).handler({ httpMethod: 'GET', headers: {}, queryStringParameters: { code: 'c', state } }); ok(/social=connected/.test(good.headers.location), good.headers.location);
-    const c = W.db.dealer_social_connections; eq(c.map((x) => [x.platform, x.external_id, x.dealer_id]), [['instagram', 'ig1', HQ]]);
+    const CB = cb(W); const get = (qs, cookie) => CB.handler({ httpMethod: 'GET', headers: cookie ? { cookie } : {}, queryStringParameters: qs });
+    const b1 = await get({ begin: nonce }); eq(b1.statusCode, 302); ok(/^https:\/\/www\.facebook\.com\//.test(b1.headers.location), b1.headers.location);
+    const ck = /__Host-hcps_social=([0-9a-f]{32})/.exec(b1.headers['set-cookie'])[1]; eq(ck, nonce); ok(/HttpOnly/.test(b1.headers['set-cookie']) && /Secure/.test(b1.headers['set-cookie']), 'cookie flags');
+    ok(/social=refused/.test((await get({ begin: nonce })).headers.location), 'begin link single use');
+    const state = new URL(b1.headers.location).searchParams.get('state');
+    ok(/social=refused/.test((await get({ code: 'c', state })).headers.location), 'another browser (no cookie) connects nothing');
+    ok(/social=refused/.test((await get({ code: 'c', state: state + 'x' }, '__Host-hcps_social=' + nonce)).headers.location), 'bad state');
+    const good = await get({ code: 'c', state }, '__Host-hcps_social=' + nonce); ok(/social=choose/.test(good.headers.location), good.headers.location);
+    ok(/social=refused/.test((await get({ code: 'c', state }, '__Host-hcps_social=' + nonce)).headers.location), 'replay refused');
+    const c = W.db.dealer_social_connections; eq(c.map((x) => [x.platform, x.external_id, x.dealer_id, x.status, x.authorized_by]), [['instagram', 'ig1', HQ, 'pending', 'hq@acme.test']]);
     ok(!JSON.stringify(c).includes('PAGE-SECRET-TOKEN'), 'token sealed'); eq(SP.open(ENV, c[0].token_ciphertext), 'PAGE-SECRET-TOKEN');
     const st = await as(api(W), 'hq', { action: 'social_status', location_id: HQ }); ok(!/PAGE-SECRET|token_ciphertext|"v1\./.test(JSON.stringify(st.body)), 'no token in the status answer');
+    eq((await as(api(W), 'br', { action: 'social_connect_choose', id: c[0].id })).status, 404, 'branch cannot choose for HQ');
+    eq((await as(api(W), 'hq', { action: 'social_connect_choose', id: c[0].id })).status, 200); eq(W.db.dealer_social_connections[0].status, 'connected');
   });
   await t('schedule: stored image + caption; awaiting the dealer\'s approval; claims refused; Instagram never landscape', async () => {
     const W = world(); const C = api(W);
@@ -112,6 +124,7 @@ const due = (x) => Object.assign({ id: uuid(), company_id: HQ, dealer_id: HQ, ad
   await t('approval: needs the dealer\'s own connection for every platform; a signed-in dealer only; an edit drops it; pause / resume / cancel', async () => {
     const W = world(); const C = api(W);
     const p = (await as(C, 'hq', { action: 'post_save', ad_id: AD, platforms: ['facebook'], scheduled_at: later(60), caption: '', media: PNG })).body.post;
+    eq([p.ad_version, p.products_snapshot.map((x) => [x.manufacturer, x.code, x.price, x.price_label])], [1, [['bemis', 'B1', 99.99, 'MSRP']]], 'the price as scheduled is kept');
     eq((await as(C, 'hq', { action: 'post_approve', id: p.id, version: p.version })).status, 409, 'no connection');
     W.db.dealer_social_connections.push(conn('facebook', 'page1'));
     eq((await as(C, 'preview:pv', { action: 'post_approve', id: p.id, version: p.version })).status, 403, 'preview never approves');
@@ -121,7 +134,13 @@ const due = (x) => Object.assign({ id: uuid(), company_id: HQ, dealer_id: HQ, ad
     const a2 = (await as(C, 'hq', { action: 'post_approve', id: p.id, version: e.body.post.version })).body.post;
     const ps = (await as(C, 'hq', { action: 'post_pause', id: p.id, version: a2.version })).body.post; eq(ps.status, 'paused');
     const rs = (await as(C, 'hq', { action: 'post_resume', id: p.id, version: ps.version })).body.post; eq(rs.status, 'approved');
-    const cx = (await as(C, 'hq', { action: 'post_cancel', id: p.id, version: rs.version })).body.post; eq(cx.status, 'cancelled');
+    W.db.dealer_social_post_targets.push({ id: uuid(), post_id: p.id, platform: 'facebook', status: 'failed', attempts: 3, last_error: 'x' });
+    const ed = (await as(C, 'hq', { action: 'post_save', id: p.id, version: rs.version, ad_id: AD, platforms: ['facebook'], scheduled_at: later(120), caption: '', media: PNG })).body.post;
+    eq([W.db.dealer_social_post_targets[0].status, W.db.dealer_social_post_targets[0].attempts], ['pending', 0], 'an edited post starts failed platforms over');
+    const a3 = (await as(C, 'hq', { action: 'post_approve', id: p.id, version: ed.version })).body.post; const p3 = (await as(C, 'hq', { action: 'post_pause', id: p.id, version: a3.version })).body.post;
+    W.db.dealer_social_posts.find((x) => x.id === p.id).scheduled_at = new Date(Date.now() - 3600e3).toISOString();
+    eq((await as(C, 'hq', { action: 'post_resume', id: p.id, version: p3.version })).status, 409, 'a paused post past its time never resumes into a late post');
+    const cx = (await as(C, 'hq', { action: 'post_cancel', id: p.id, version: p3.version })).body.post; eq(cx.status, 'cancelled');
     eq((await as(C, 'hq', { action: 'post_resume', id: p.id, version: cx.version })).status, 409);
   });
   await t('worker: switch off → nothing; on → an approved due post is published once per platform, never twice', async () => {
@@ -139,9 +158,11 @@ const due = (x) => Object.assign({ id: uuid(), company_id: HQ, dealer_id: HQ, ad
   });
   await t('worker: a temporary error is retried later; a refusal fails; an interrupted target is never re-posted', async () => {
     let first = true;
-    const W = world({ flags: ON, posts: [due()], conns: [conn('facebook', 'page1')], platform: (u) => (/\/photos$/.test(u) && first ? (first = false, { ok: false, status: 503, text: async () => '{"error":{"message":"busy"}}' }) : null) });
+    const W = world({ flags: ON, posts: [due({ platforms: ['instagram'] })], conns: [conn('instagram', 'ig1')], platform: (u) => (/\/media$/.test(u) && first ? (first = false, { ok: false, status: 503, text: async () => '{"error":{"message":"busy"}}' }) : null) });
     const r1 = await cron(W).run(); eq(r1.retry, 1); const p = W.db.dealer_social_posts[0]; eq([p.status, p.attempts], ['approved', 1]); ok(Date.parse(p.next_attempt_at) > Date.now(), 'later');
     p.next_attempt_at = new Date(Date.now() - 1000).toISOString(); const r2 = await cron(W).run(); eq(r2.published, 1); eq(W.db.dealer_social_posts[0].status, 'published');
+    const WA = world({ flags: ON, posts: [due()], conns: [conn('facebook', 'page1')], platform: (u) => (/\/photos$/.test(u) ? { ok: false, status: 503, text: async () => '{}' } : null) });
+    await cron(WA).run(); eq(WA.db.dealer_social_posts[0].status, 'failed', 'a 5xx on the posting call is not retried'); ok(/check the page/.test(WA.db.dealer_social_post_targets[0].last_error), 'ambiguous');
     const W2 = world({ flags: ON, posts: [due()], conns: [conn('facebook', 'page1')], platform: (u) => (/\/photos$/.test(u) ? { ok: false, status: 400, text: async () => '{"error":{"message":"Invalid parameter access_token=SECRET"}}' } : null) });
     await cron(W2).run(); eq(W2.db.dealer_social_posts[0].status, 'failed'); ok(!/SECRET/.test(W2.db.dealer_social_post_targets[0].last_error), 'token never kept in an error');
     const pid = uuid(); const W3 = world({ flags: ON, posts: [due({ id: pid, status: 'publishing', updated_at: new Date(Date.now() - 3600e3).toISOString() })], conns: [conn('facebook', 'page1')],
@@ -155,6 +176,9 @@ const due = (x) => Object.assign({ id: uuid(), company_id: HQ, dealer_id: HQ, ad
     await cron(W2).run(); eq(W2.calls.length, 0); ok(/needs attention/.test(W2.db.dealer_social_posts[0].last_error), W2.db.dealer_social_posts[0].last_error);
     const W3 = world({ flags: ON, posts: [due({ status: 'paused' })], conns: [conn('facebook', 'page1')] }); await cron(W3).run(); eq(W3.calls.length, 0);
     const W4 = world({ flags: ON, posts: [due({ approved_by: null, approved_at: null })], conns: [conn('facebook', 'page1')] }); await cron(W4).run(); eq(W4.calls.length, 0, 'no approval → never');
+    const W5 = world({ flags: ON, posts: [due({ products_snapshot: [{ manufacturer: 'bemis', code: 'B1', price: 89.99, price_label: 'MSRP' }] })], conns: [conn('facebook', 'page1')] });
+    await cron(W5).run(); eq(W5.calls.length, 0, 'price changed → never posted'); ok(/price changed/.test(W5.db.dealer_social_posts[0].last_error), W5.db.dealer_social_posts[0].last_error);
+    const W6 = world({ flags: ON, posts: [due({ ad_version: 0 })], conns: [conn('facebook', 'page1')] }); await cron(W6).run(); eq(W6.calls.length, 0, 'edited ad'); ok(/edited/.test(W6.db.dealer_social_posts[0].last_error), 'reason');
   });
   console.log(`\nsocial publish: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();
