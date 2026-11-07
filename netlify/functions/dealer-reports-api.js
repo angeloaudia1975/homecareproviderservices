@@ -16,6 +16,10 @@ const AC = require('./_account_center.js');
 const REP = require('./_dealer_report.js');
 const RETIRED = require('./_retired_lines.js');
 const STYLE = require('./_ai_style.js');
+const RC = require('./_report_catalog.js');
+const RP = require('./_retail_price.js');
+const PR = require('./_pricing.js');
+const { flags: readFlags } = require('./_flags.js');
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const ORDERING_BASE = process.env.ORDERING_BASE || 'https://hcpsonlineordering.netlify.app';
@@ -80,6 +84,8 @@ async function companyOf() { return cached('roots', 600000, async () => new Map(
 async function testDealers() { return cached('test', 600000, async () => new Set(((await sb('GET', 'dealers?is_test=eq.true&select=id')) || []).map((d) => String(d.id)))); }
 function addMonthsYm(m, k) { let [y, mo] = m.split('-').map(Number); mo += k; while (mo < 1) { mo += 12; y--; } while (mo > 12) { mo -= 12; y++; } return y + '-' + String(mo).padStart(2, '0'); }
 
+const reportDeps = () => { const F = PR.remoteFiles(ORDERING_BASE);
+  return { sb, sbAll: (q) => sbAll(q), catalogFile: (slug) => F.catalogFile(CATALOG_FILE[slug] || slug), contentFile: F.contentFile }; };
 async function loadAll(who, b) {
   const did = String(who.dealer_id);
   const d = await sb('GET', `dealers?id=eq.${enc(did)}&select=id,parent_id,business_name`); const self = d && d[0];
@@ -96,7 +102,7 @@ async function loadAll(who, b) {
   let scope = String(b.scope || (headOffice ? 'company' : did));
   if (scope === 'company' && !headOffice) scope = did;
   if (scope !== 'company' && !locations.some((l) => l.id === scope)) return { status: 403, error: 'That location is not part of your account.' };
-  const ids = scope === 'company' ? locations.map((l) => l.id) : [scope];
+  const ids = (scope === 'company' || headOffice) ? locations.map((l) => l.id) : [scope];   // a head office viewing one location also gets the company totals (same rows, same period)
   const scopeName = scope === 'company' ? `${self.business_name || 'Company'} — all locations` : (locations.find((l) => l.id === scope) || {}).name || '';
   const today = chicagoToday();
   const year = /^\d{4}$/.test(String(b.year || '')) && Number(b.year) >= 2015 && Number(b.year) <= Number(today.slice(0, 4)) ? String(b.year) : today.slice(0, 4);
@@ -123,8 +129,30 @@ async function loadAll(who, b) {
   const slugs = [...new Set((sales || []).map((r) => r.manufacturer).filter(Boolean))];
   const [firstReport, reportedMonths, cats] = await Promise.all([coverageFor(slugs), reportedMonthsFor(slugs, Number(year) - 1), Promise.all(slugs.map(async (s) => [s, await catalogFor(s)]))]);
   const catalog = {}; for (const [s, c] of cats) if (c) catalog[s] = c;
+  /* Shop categories + retail reference (owner 2026-11-06, _report_catalog): one catalog per line bought, cached 10 minutes;
+     Golden from the dealer's own Golden catalog. A line that can't be read gives no reference (a gap), never a guess. */
+  const refcat = {}; const rcNotes = [];
+  /* review #109: a failed or unavailable catalog is never cached (the next report tries again) and Golden gets 3 seconds —
+     past that its purchases are listed as "catalog unavailable", never guessed and never failing the whole report */
+  const keep = async (key, ms, fn, good) => { const c = CACHE.get(key); if (c && Date.now() - c.at < ms) return c.v; const v = await fn(); if (good(v)) CACHE.set(key, { at: Date.now(), v }); return v; };
+  const within = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
+  await Promise.all(slugs.map(async (s2) => {
+    try {
+      if (RC.GOLDEN.has(s2)) { const fl = await cached('flags', 60000, () => readFlags((pp) => sb('GET', pp)));
+        refcat[s2] = await keep('gcat:' + root, 600000, () => within(RC.goldenCatalog((pp) => sb('GET', pp), String(root), fl), 3000), (v) => !!v); }
+      else refcat[s2] = await keep('rcat:' + s2, 600000, () => RC.lineCatalog(reportDeps(), s2), (v) => !!(v && v.readable));
+    } catch (e) { refcat[s2] = null; console.error('report catalog failed', s2, e && String(e.message).slice(0, 120)); }
+    if (!refcat[s2] || refcat[s2].readable === false) rcNotes.push(s2);
+  }));
+  const resolve = (slug, code, name) => { const cat0 = refcat[slug]; if (!cat0) return { unavailable: true };
+    const m = RC.lookup(cat0, slug, code); if (!m) return null; return Object.assign({}, m.entry, { matched_by: m.matched_by }); };
+  let retailRows = [];
+  try { retailRows = await sbAll(`dealer_retail_prices?dealer_id=eq.${enc(root)}&select=manufacturer,code,location_id,price&order=id.asc`); } catch (e) { if (!/PGRST205|42P01/.test(String(e.message))) throw e; }
+  const customPrice = (loc, slug, code) => RP.dealerPriceFor(retailRows, loc, slug, code);
   const report = REP.build({ year, today, locations, scope, sales: sales || [], orders: (orders || []).map((o) => Object.assign(o, { items: o.order_items || [] })),
-    quotes: quotesRaw || [], catalog, mfrName, firstReport, reportedMonths, network, isRetired: RETIRED.isRetiredLine });
+    quotes: quotesRaw || [], catalog, mfrName, firstReport, reportedMonths, network, isRetired: RETIRED.isRetiredLine,
+    resolve, isMarketing: RC.isMarketing, marketingLabel: RC.MARKETING, customPrice, companyView: headOffice });
+  if (rcNotes.length) report.notes.push('The Shop catalog could not be read just now for: ' + rcNotes.map((x) => mfrName[x] || x).join(', ') + ' — their purchases are listed as not valued (never estimated); try again shortly.');
   if (quotesRaw == null) report.notes.push('Saved quotes are not available yet.');
   let brand = { business_name: self.business_name || '', logo_url: null };
   for (const id of [did, String(root)]) { try { const r = await sb('GET', `dealers?id=eq.${enc(id)}&select=logo_url`); if (r && r[0] && r[0].logo_url) { brand.logo_url = r[0].logo_url; break; } } catch (e) { /* no logo column yet */ } }
@@ -165,7 +193,7 @@ exports.handler = async (event) => {
   if (b.scope != null && b.scope !== 'company' && !UUID.test(String(b.scope))) return json(400, { ok: false, error: 'Unknown location.' });
   let who; try { who = await dealerFromToken(event); } catch (e) { return json(503, { ok: false, error: 'Please try again in a moment.' }); }
   if (!who) return json(401, { ok: false, error: 'Please sign in again.' });
-  if (!['report', 'report_pdf', 'report_ai'].includes(b.action)) return json(400, { ok: false, error: 'unknown action' });
+  if (!['report', 'report_pdf', 'report_excel', 'report_ai'].includes(b.action)) return json(400, { ok: false, error: 'unknown action' });
   if (b.action === 'report_ai' && who.preview) return json(403, { ok: false, error: 'AI suggestions are not available in preview.' });
   let L;
   try { L = await loadAll(who, b); } catch (e) { console.error('report read failed', e && e.message); return json(503, { ok: false, error: 'Your report could not be loaded just now — please try again.' }); }
@@ -177,6 +205,13 @@ exports.handler = async (event) => {
       const generated = new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric' });
       const bytes = await PDF.render({ report: L.report, dealer: L.brand, scopeName: L.scopeName, generated });
       return json(200, { ok: true, pdf_base64: bytes.toString('base64'), file: `hcps-dealer-report-${L.report.period.year}.pdf` });
+    }
+    if (b.action === 'report_excel') {
+      /* the SAME report object as the screen and the PDF (owner 2026-11-06: one calculation for all three) */
+      const XL = require('./_report_xlsx.js');
+      const generated = new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric' });
+      const buf = XL.build({ report: L.report, scopeName: L.scopeName, dealerName: L.brand.business_name, generated });
+      return json(200, { ok: true, xlsx_base64: Buffer.from(buf).toString('base64'), file: `hcps-total-sales-${L.report.period.year}.xlsx` });
     }
     const r = await aiRecommendations(L, String(who.dealer_id));
     if (r.error) return json(r.status, { ok: false, error: r.error });

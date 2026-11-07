@@ -75,4 +75,4 @@ async function retailFor(sbGet, dealerId, code, flags, policy, ctx) {
   if (d.source === 'call') return none(d.flags.length ? d.flags[d.flags.length - 1].flag : 'no_price');
   return { ok: true, price: d.price, label: d.label, source: d.source };
 }
-module.exports = { retailFor, parseCode, configuredMsrp };
+module.exports = { retailFor, parseCode, configuredMsrp, catalogFor };

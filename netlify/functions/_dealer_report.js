@@ -9,7 +9,8 @@
                     lines this company already buys, that this scope hasn't bought in 12 months. A suggestion, not a forecast.
    Year-over-year is shown only where HCPS's history for that line reaches back over the whole comparison window
    (coverageStart = the first month HCPS holds any report for the line); otherwise it says so instead of comparing to zero.
-   Nothing here estimates costs, margins or customer traffic. */
+   POTENTIAL RETAIL VALUATION (owner 2026-11-06): purchased quantity × the Shop retail reference, per product, with coverage
+   and gaps — always labelled potential, never a sale. Nothing here estimates customer traffic. */
 'use strict';
 const MIN_DEALERS = 3;
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -46,6 +47,55 @@ function cleanSales(rows) {
   return { rows: out, notes };
 }
 
+/* POTENTIAL RETAIL VALUATION (owner 2026-11-06, Priorities 6–8) of purchase rows: per product, verified purchased quantity ×
+   the Shop retail reference for ONE order unit (never 2× a purchase total). Only rows with a quantity, an amount and a
+   reference are valued; the rest are listed as gaps with the reason. Potential gross profit = matched retail − the matched
+   rows' wholesale cost; margin = profit ÷ matched retail. The dealer-custom view uses the dealer's saved retail price
+   (location override → company default) where one exists and the Shop reference otherwise — it never replaces the benchmark.
+   Marketing materials (signs, brochures) are not valued. */
+function valuate(rows, o) {
+  const pct1 = (a, b) => (b > 0 ? Math.round(a / b * 1000) / 10 : null);
+  let total = 0, cost = 0, retail = 0, custom = 0; const customSet = new Set();
+  const gaps = new Map(), byM = new Map(), byC = new Map(), byP = new Map(), byMonth = new Map();
+  const add = (map, k, init, f) => { const x = map.get(k) || init(); f(x); map.set(k, x); };
+  for (const r of rows) {
+    total += r.amt;
+    if (o.isMkt(r.code, r.name, r.mfr)) { if (r.amt !== 0) add(gaps, r.mfr + '|' + r.code + '|marketing', () => ({ manufacturer: r.mfr, manufacturer_name: o.mName(r.mfr), code: r.code, name: r.name, amount: 0, units: 0, reason: 'marketing' }), (x) => { x.amount = r2(x.amount + r.amt); x.units += r.qty; }); continue; }
+    const res = o.resolve(r.mfr, r.code, r.name);
+    /* a credit / return (negative amount) of a matched product takes its units back out at the same reference, so a returned
+       chair never stays in potential retail; its quantity sign follows the amount */
+    /* review #109: a credit takes units back out only when the report prints a negative quantity (a return); an amount-only
+       credit (price credit, rebate) is not a returned unit — it is listed, never valued. A Golden purchase matched only to its
+       base model is valued only when it cost no more than the base model's standard price (a priced upgrade is never valued at
+       the base MSRP — no invented upgrade pricing). A line whose catalog could not be read says so. */
+    const q = r.qty;
+    const unitCost = r.qty ? r.amt / r.qty : null;
+    const reason = res && res.unavailable ? 'catalog_unavailable' : !(Math.abs(r.qty) > 0) ? 'no_quantity' : !(r.amt !== 0) ? 'no_amount' : (r.amt < 0 && !(r.qty < 0)) ? 'credit_without_units' : !res ? 'not_in_catalog' : !(res.ref > 0) ? 'no_retail_reference'
+      : (res.matched_by === 'golden_base' && !(res.cost > 0 && unitCost != null && Math.abs(unitCost) <= res.cost * 1.02 + 0.01)) ? 'configuration_not_priced' : null;
+    if (reason) { if (r.amt !== 0) add(gaps, r.mfr + '|' + r.code + '|' + reason, () => ({ manufacturer: r.mfr, manufacturer_name: o.mName(r.mfr), code: r.code, name: r.name, amount: 0, units: 0, reason }), (x) => { x.amount = r2(x.amount + r.amt); x.units += q; }); continue; }
+    const ret = r2(q * res.ref);
+    const cp = typeof o.custom === 'function' ? o.custom(r.loc, r.mfr, res.code || r.code) : null;
+    const cRet = cp > 0 ? r2(q * cp) : ret; if (cp > 0) customSet.add(r.mfr + '|' + r.code);
+    cost += r.amt; retail += ret; custom += cRet;
+    const upd = (x) => { x.cost = r2(x.cost + r.amt); x.retail = r2(x.retail + ret); x.custom_retail = r2(x.custom_retail + cRet); x.units += q; };
+    const init = () => ({ cost: 0, retail: 0, custom_retail: 0, units: 0 });
+    add(byM, r.mfr, () => Object.assign({ slug: r.mfr, name: o.mName(r.mfr) }, init()), upd);
+    add(byC, o.catOf(r), () => Object.assign({ category: o.catOf(r) }, init()), upd);
+    add(byP, r.mfr + '|' + r.code, () => Object.assign({ manufacturer: r.mfr, manufacturer_name: o.mName(r.mfr), code: r.code, name: res.name || r.name, reference: res.ref, reference_source: res.ref_source, matched_by: res.matched_by || 'exact' }, init()), upd);
+    add(byMonth, r.m, () => Object.assign({ month: r.m }, init()), upd);
+  }
+  const fin = (x) => Object.assign(x, { profit: r2(x.retail - x.cost), margin_pct: pct1(x.retail - x.cost, x.retail), custom_profit: r2(x.custom_retail - x.cost), custom_margin_pct: pct1(x.custom_retail - x.cost, x.custom_retail) });
+  const list = (m) => [...m.values()].map(fin).sort((a, b) => b.retail - a.retail);
+  total = r2(total); cost = r2(cost); retail = r2(retail); custom = r2(custom);
+  return { purchases_total: total, matched_cost: cost, coverage_pct: pct1(cost, total),
+    benchmark: { retail, profit: r2(retail - cost), margin_pct: pct1(retail - cost, retail) },
+    custom: { retail: custom, profit: r2(custom - cost), margin_pct: pct1(custom - cost, custom), products_with_custom_price: customSet.size },
+    difference: r2(custom - retail),
+    by_manufacturer: list(byM), by_category: list(byC), by_product: list(byP).slice(0, 100),
+    monthly: (o.months || []).map((m) => fin(byMonth.get(m) || { month: m, cost: 0, retail: 0, custom_retail: 0, units: 0 })),
+    gaps: [...gaps.values()].sort((a, b) => b.amount - a.amount), gap_amount: r2([...gaps.values()].reduce((t, g) => t + g.amount, 0)) };
+}
+
 /* input.reportedMonths: {line: ['YYYY-MM', …]} — the months HCPS holds ANY report for that line (all dealers). A month is
    compared with last year only when both that month and the same month last year were reported for the line — so a
    reporting lag, a line that started reporting recently or a gap in a line's reports is never compared as $0. */
@@ -53,7 +103,17 @@ function build(input) {
   const { year, today, locations, scope } = input;
   const ids = new Set(scope === 'company' ? locations.map((l) => String(l.id)) : [String(scope)]);
   const mName = (s) => (input.mfrName && input.mfrName[s]) || s || '—';
-  const cat = (s, c) => { const f = input.catalog && input.catalog[s]; const p = f && f[c]; return p ? p.category || 'Uncategorized' : null; };
+  /* category: the injected Shop resolver (_report_catalog: shop merge → catalog file → Golden catalog → verified legacy
+     mapping) first; signs / brochures / displays → Marketing & Displays; otherwise the old catalog-file lookup */
+  const resolve = typeof input.resolve === 'function' ? input.resolve : () => null;
+  /* marketing (signs, brochures, displays): only an item the Shop does NOT list — a Shop product whose name says "display"
+     (a pedal exerciser with an LED display, a product-filled display pack) keeps its Shop category and is valued (review #109) */
+  const mktWords = typeof input.isMarketing === 'function' ? input.isMarketing : () => false;
+  const listed = (s, c, nm) => { const x = s ? resolve(s, c, nm) : null; return !!(x && !x.unavailable); };
+  const isMkt = (c, nm, s) => mktWords(c, nm) && !listed(s, c, nm);
+  const MKT = input.marketingLabel || 'Marketing & Displays';
+  const catFile = (s, c) => { const f = input.catalog && input.catalog[s]; const p = f && f[c]; return p ? p.category || 'Uncategorized' : null; };
+  const cat = (s, c, nm) => { const r = resolve(s, c, nm); if (r && r.category) return r.category; if (isMkt(c, nm, s)) return MKT; return catFile(s, c); };
   const REPM = {}; for (const [k, v] of Object.entries(input.reportedMonths || {})) REPM[k] = new Set(v || []);
   const reported = (s, m) => !!(REPM[s] && REPM[s].has(m));
   const S = cleanSales(input.sales || []);
@@ -74,7 +134,7 @@ function build(input) {
     const cmpMonths = W.months.filter((m) => lines.some((s) => comparable(s, m)));
     const partial = lines.some((s) => W.months.some((m) => reported(s, m) && !comparable(s, m))) || (lines.length > 0 && !cmpMonths.length);
     const curCmp = sum(cc), priCmp = cmpMonths.length ? sum(pc) : null;
-    return { purchases: sum(c), units: c.reduce((x, r) => x + r.qty, 0), prior: priCmp, current_compared: curCmp, change_pct: priCmp == null ? null : pct(curCmp, priCmp), partial, compared_months: cmpMonths.length };
+    return { purchases: sum(c), units: c.filter((r) => !isMkt(r.code, r.name, r.mfr)).reduce((x, r) => x + r.qty, 0), marketing_units: c.filter((r) => isMkt(r.code, r.name, r.mfr)).reduce((x, r) => x + r.qty, 0), prior: priCmp, current_compared: curCmp, change_pct: priCmp == null ? null : pct(curCmp, priCmp), partial, compared_months: cmpMonths.length };
   };
 
   const T = compare(all);
@@ -84,24 +144,24 @@ function build(input) {
   const manufacturers = [...new Set(all.filter((r) => inW.has(r.m) || inP.has(r.m)).map((r) => r.mfr))].map((slug) => {
     const x = compare(all.filter((r) => r.mfr === slug));
     const firstReport = [...(REPM[slug] || [])].sort()[0] || null;
-    return { slug, name: mName(slug), purchases: x.purchases, units: x.units, prior: x.prior, change_pct: x.change_pct, partial: x.partial, compared_months: x.compared_months,
+    return { slug, name: mName(slug), purchases: x.purchases, units: x.units, marketing_units: x.marketing_units, prior: x.prior, change_pct: x.change_pct, partial: x.partial, compared_months: x.compared_months,
       share_pct: totalCur > 0 ? Math.round(x.purchases / totalCur * 1000) / 10 : 0, history_from: x.prior == null ? ((input.firstReport && input.firstReport[slug]) || firstReport) : null };
   }).filter((m) => m.purchases !== 0 || (m.prior || 0) !== 0).sort((a, b) => b.purchases - a.purchases || (b.prior || 0) - (a.prior || 0));
 
   // by category (catalog category of each SKU; a SKU no current catalog lists is shown as such)
   /* a SKU the HCPS catalog doesn't list (e.g. Golden, ordered through Golden's own system) is grouped under its line, never guessed */
-  const catOf = (r) => cat(r.mfr, r.code) || `${mName(r.mfr)} — category not listed`;
+  const catOf = (r) => cat(r.mfr, r.code, r.name) || `${mName(r.mfr)} — category not listed`;
   const categories = [...new Set(all.filter((r) => inW.has(r.m) || inP.has(r.m)).map(catOf))].map((c) => {
     const x = compare(all.filter((r) => catOf(r) === c));
-    return { category: c, purchases: x.purchases, units: x.units, prior: x.prior, change_pct: x.change_pct, partial: x.partial, unlisted: / — category not listed$/.test(c) };
-  }).filter((c) => c.purchases !== 0 || (c.prior || 0) !== 0).sort((a, b) => b.purchases - a.purchases);
+    return { category: c, purchases: x.purchases, units: c === MKT ? x.marketing_units : x.units, prior: x.prior, change_pct: x.change_pct, partial: x.partial, unlisted: / — category not listed$/.test(c) };
+  }).filter((c) => c.purchases !== 0 || (c.prior || 0) !== 0 || (c.category === MKT && c.units > 0)).sort((a, b) => b.purchases - a.purchases);
   const declining = categories.filter((c) => !c.unlisted && c.prior != null && c.prior >= 500 && c.change_pct != null && c.change_pct <= -20)
     .map((c) => ({ category: c.category, purchases: c.purchases, prior: c.prior, change_pct: c.change_pct }));
 
   // top products
   const cur = all.filter((r) => inW.has(r.m));
   const byP = new Map();
-  for (const r of cur) { const k = r.mfr + '|' + r.code; const x = byP.get(k) || { manufacturer: r.mfr, manufacturer_name: mName(r.mfr), code: r.code, name: (input.catalog && input.catalog[r.mfr] && input.catalog[r.mfr][r.code] && input.catalog[r.mfr][r.code].name) || r.name, qty: 0, purchases: 0, category: catOf(r) }; x.qty += r.qty; x.purchases = r2(x.purchases + r.amt); byP.set(k, x); }
+  for (const r of cur) { const k = r.mfr + '|' + r.code; const x = byP.get(k) || { manufacturer: r.mfr, manufacturer_name: mName(r.mfr), code: r.code, name: ((resolve(r.mfr, r.code, r.name) || {}).name) || (input.catalog && input.catalog[r.mfr] && input.catalog[r.mfr][r.code] && input.catalog[r.mfr][r.code].name) || r.name, qty: 0, purchases: 0, category: catOf(r) }; x.qty += r.qty; x.purchases = r2(x.purchases + r.amt); byP.set(k, x); }
   const top_products = [...byP.values()].sort((a, b) => b.purchases - a.purchases).slice(0, 15);
 
   // monthly series: this year; last year only for the lines comparable in that month
@@ -144,12 +204,29 @@ function build(input) {
   for (const o of orders) if (o.status !== 'cancelled' && twelve.has(ym(o.submitted_at))) for (const i of (o.items || [])) recent.add(o.manufacturer + '|' + i.code);
   const retired = input.isRetired || (() => false);
   const opportunities = (input.network || [])
-    .filter((n) => n.dealers >= MIN_DEALERS && boughtLines.has(n.manufacturer) && !retired(n.manufacturer) && !recent.has(n.manufacturer + '|' + n.code) && cat(n.manufacturer, n.code))
+    .filter((n) => n.dealers >= MIN_DEALERS && boughtLines.has(n.manufacturer) && !retired(n.manufacturer) && !recent.has(n.manufacturer + '|' + n.code) && cat(n.manufacturer, n.code) && cat(n.manufacturer, n.code) !== MKT)
     .sort((a, b) => b.dealers - a.dealers || b.units - a.units).slice(0, 10)
-    .map((n) => ({ manufacturer: n.manufacturer, manufacturer_name: mName(n.manufacturer), code: n.code, name: (input.catalog[n.manufacturer][n.code] || {}).name || n.code,
+    .map((n) => ({ manufacturer: n.manufacturer, manufacturer_name: mName(n.manufacturer), code: n.code,
+      /* a line with no public catalog file (Golden) names it from the Shop resolver (review #109: never read an absent file) */
+      name: ((input.catalog && input.catalog[n.manufacturer]) || {})[n.code] ? input.catalog[n.manufacturer][n.code].name || n.code : ((resolve(n.manufacturer, n.code) || {}).name || n.code),
       category: cat(n.manufacturer, n.code), dealers: n.dealers }));
 
+  const valuation = valuate(cur, { resolve, isMkt, mName, catOf, custom: input.customPrice, months: W.months });
+  /* branch vs company (owner 2026-11-06, Priority 8): when a head office views ONE location, the same period's company totals
+     and the location's share — computed from the same rows (no head office / branch double counting: each row belongs to one
+     location). Only for a viewer who can see the company. */
+  let company = null;
+  if (scope !== 'company' && input.companyView === true && locations.length > 1) {
+    const allIds = new Set(locations.map((l) => String(l.id)));
+    const crow = S.rows.filter((r) => allIds.has(r.loc) && inW.has(r.m));
+    const cv = valuate(crow, { resolve, isMkt, mName, catOf, custom: input.customPrice, months: W.months });
+    const cp = sum(crow), cu = crow.filter((r) => !isMkt(r.code, r.name, r.mfr)).reduce((x, r) => x + r.qty, 0);
+    company = { purchases: cp, units: cu, branch_share_pct: cp > 0 ? Math.round(totalCur / cp * 1000) / 10 : null,
+      retail_benchmark: cv.benchmark.retail, profit: cv.benchmark.profit, margin_pct: cv.benchmark.margin_pct, coverage_pct: cv.coverage_pct,
+      custom_retail: cv.custom.retail, locations: locations.length };
+  }
   const notes = [];
+  if (valuation.matched_cost > 0) notes.push('Retail values are POTENTIAL retail of the inventory purchased, at today\'s Shop retail reference prices (official MSRP, else HCPS calculated retail at 2× standard dealer cost) — not sales made. Historical purchases are valued at current prices.');
   if (S.notes.duplicates_removed) notes.push(`${S.notes.duplicates_removed} commission-statement line(s) that repeat a sales-report line were counted once.`);
   if (S.notes.rows_without_amount) notes.push(`${S.notes.rows_without_amount} reported line(s) have no amount (for example open invoices) and are not counted.`);
   if (W.ytd && all.length) notes.push(`This year runs through ${monthLabel(W.through)}, the latest month HCPS has manufacturer reports for on these lines.`);
@@ -157,12 +234,12 @@ function build(input) {
   if (noCmp.length) notes.push('No year-over-year comparison for: ' + noCmp.join(', ') + ' — HCPS has no reports for the same months last year.');
   const part = manufacturers.filter((m) => m.prior != null && m.partial).map((m) => m.name);
   if (part.length || (T.partial && T.prior != null)) notes.push('Year-over-year compares only the months HCPS has reports for in both years' + (part.length ? ' (partial for: ' + part.join(', ') + ')' : '') + '.');
-  const noCat = [...new Set(cur.filter((r) => !cat(r.mfr, r.code)).map((r) => r.mfr))];
+  const noCat = [...new Set(cur.filter((r) => !cat(r.mfr, r.code, r.name)).map((r) => r.mfr))];
   if (noCat.length) notes.push('Product categories are not listed in the HCPS catalog for: ' + noCat.map(mName).join(', ') + ' — shown under the line name.');
 
   return { period: { year: W.year, ytd: W.ytd, from: W.months[0], through: W.through, prior_from: W.prior[0], prior_through: W.prior[W.prior.length - 1], label: (W.ytd ? 'Year to date ' : '') + W.year + (W.ytd ? ` (Jan–${MONTHS[W.months.length - 1]})` : '') },
     scorecard, purchases: { total: totalCur, prior: T.prior, current_compared: T.current_compared, change_pct: T.change_pct, partial: T.partial, units: T.units },
-    monthly, manufacturers, categories, declining_categories: declining, top_products, branches, portal, quotes, opportunities, notes,
+    monthly, manufacturers, categories, declining_categories: declining, top_products, branches, portal, quotes, opportunities, notes, valuation, company,
     years: [...new Set(all.map((r) => r.m.slice(0, 4)))].filter(Boolean).sort().reverse() };
 }
 
@@ -194,4 +271,4 @@ function checkRecommendations(list, F) {
     .slice(0, 5).map((r) => ({ title: r.title.trim(), detail: r.detail.trim(), refs: r.refs }));
 }
 
-module.exports = { build, cleanSales, windowFor, facts, numbersOk, checkRecommendations, lane, MIN_DEALERS, monthLabel };
+module.exports = { valuate, build, cleanSales, windowFor, facts, numbersOk, checkRecommendations, lane, MIN_DEALERS, monthLabel };
