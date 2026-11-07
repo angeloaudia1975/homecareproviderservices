@@ -60,12 +60,18 @@ function valuate(rows, o) {
   const add = (map, k, init, f) => { const x = map.get(k) || init(); f(x); map.set(k, x); };
   for (const r of rows) {
     total += r.amt;
-    if (o.isMkt(r.code, r.name)) continue;
+    if (o.isMkt(r.code, r.name, r.mfr)) { if (r.amt !== 0) add(gaps, r.mfr + '|' + r.code + '|marketing', () => ({ manufacturer: r.mfr, manufacturer_name: o.mName(r.mfr), code: r.code, name: r.name, amount: 0, units: 0, reason: 'marketing' }), (x) => { x.amount = r2(x.amount + r.amt); x.units += r.qty; }); continue; }
     const res = o.resolve(r.mfr, r.code, r.name);
     /* a credit / return (negative amount) of a matched product takes its units back out at the same reference, so a returned
        chair never stays in potential retail; its quantity sign follows the amount */
-    const q = r.amt < 0 ? -Math.abs(r.qty) : r.qty;
-    const reason = !(Math.abs(r.qty) > 0) ? 'no_quantity' : !(r.amt !== 0) ? 'no_amount' : !res ? 'not_in_catalog' : !(res.ref > 0) ? 'no_retail_reference' : null;
+    /* review #109: a credit takes units back out only when the report prints a negative quantity (a return); an amount-only
+       credit (price credit, rebate) is not a returned unit — it is listed, never valued. A Golden purchase matched only to its
+       base model is valued only when it cost no more than the base model's standard price (a priced upgrade is never valued at
+       the base MSRP — no invented upgrade pricing). A line whose catalog could not be read says so. */
+    const q = r.qty;
+    const unitCost = r.qty ? r.amt / r.qty : null;
+    const reason = res && res.unavailable ? 'catalog_unavailable' : !(Math.abs(r.qty) > 0) ? 'no_quantity' : !(r.amt !== 0) ? 'no_amount' : (r.amt < 0 && !(r.qty < 0)) ? 'credit_without_units' : !res ? 'not_in_catalog' : !(res.ref > 0) ? 'no_retail_reference'
+      : (res.matched_by === 'golden_base' && !(res.cost > 0 && unitCost != null && Math.abs(unitCost) <= res.cost * 1.02 + 0.01)) ? 'configuration_not_priced' : null;
     if (reason) { if (r.amt !== 0) add(gaps, r.mfr + '|' + r.code + '|' + reason, () => ({ manufacturer: r.mfr, manufacturer_name: o.mName(r.mfr), code: r.code, name: r.name, amount: 0, units: 0, reason }), (x) => { x.amount = r2(x.amount + r.amt); x.units += q; }); continue; }
     const ret = r2(q * res.ref);
     const cp = typeof o.custom === 'function' ? o.custom(r.loc, r.mfr, res.code || r.code) : null;
@@ -100,10 +106,14 @@ function build(input) {
   /* category: the injected Shop resolver (_report_catalog: shop merge → catalog file → Golden catalog → verified legacy
      mapping) first; signs / brochures / displays → Marketing & Displays; otherwise the old catalog-file lookup */
   const resolve = typeof input.resolve === 'function' ? input.resolve : () => null;
-  const isMkt = typeof input.isMarketing === 'function' ? input.isMarketing : () => false;
+  /* marketing (signs, brochures, displays): only an item the Shop does NOT list — a Shop product whose name says "display"
+     (a pedal exerciser with an LED display, a product-filled display pack) keeps its Shop category and is valued (review #109) */
+  const mktWords = typeof input.isMarketing === 'function' ? input.isMarketing : () => false;
+  const listed = (s, c, nm) => { const x = s ? resolve(s, c, nm) : null; return !!(x && !x.unavailable); };
+  const isMkt = (c, nm, s) => mktWords(c, nm) && !listed(s, c, nm);
   const MKT = input.marketingLabel || 'Marketing & Displays';
   const catFile = (s, c) => { const f = input.catalog && input.catalog[s]; const p = f && f[c]; return p ? p.category || 'Uncategorized' : null; };
-  const cat = (s, c, nm) => { if (isMkt(c, nm)) return MKT; const r = resolve(s, c, nm); return (r && r.category) || catFile(s, c); };
+  const cat = (s, c, nm) => { const r = resolve(s, c, nm); if (r && r.category) return r.category; if (isMkt(c, nm, s)) return MKT; return catFile(s, c); };
   const REPM = {}; for (const [k, v] of Object.entries(input.reportedMonths || {})) REPM[k] = new Set(v || []);
   const reported = (s, m) => !!(REPM[s] && REPM[s].has(m));
   const S = cleanSales(input.sales || []);
@@ -124,7 +134,7 @@ function build(input) {
     const cmpMonths = W.months.filter((m) => lines.some((s) => comparable(s, m)));
     const partial = lines.some((s) => W.months.some((m) => reported(s, m) && !comparable(s, m))) || (lines.length > 0 && !cmpMonths.length);
     const curCmp = sum(cc), priCmp = cmpMonths.length ? sum(pc) : null;
-    return { purchases: sum(c), units: c.filter((r) => !isMkt(r.code, r.name)).reduce((x, r) => x + r.qty, 0), marketing_units: c.filter((r) => isMkt(r.code, r.name)).reduce((x, r) => x + r.qty, 0), prior: priCmp, current_compared: curCmp, change_pct: priCmp == null ? null : pct(curCmp, priCmp), partial, compared_months: cmpMonths.length };
+    return { purchases: sum(c), units: c.filter((r) => !isMkt(r.code, r.name, r.mfr)).reduce((x, r) => x + r.qty, 0), marketing_units: c.filter((r) => isMkt(r.code, r.name, r.mfr)).reduce((x, r) => x + r.qty, 0), prior: priCmp, current_compared: curCmp, change_pct: priCmp == null ? null : pct(curCmp, priCmp), partial, compared_months: cmpMonths.length };
   };
 
   const T = compare(all);
@@ -194,9 +204,11 @@ function build(input) {
   for (const o of orders) if (o.status !== 'cancelled' && twelve.has(ym(o.submitted_at))) for (const i of (o.items || [])) recent.add(o.manufacturer + '|' + i.code);
   const retired = input.isRetired || (() => false);
   const opportunities = (input.network || [])
-    .filter((n) => n.dealers >= MIN_DEALERS && boughtLines.has(n.manufacturer) && !retired(n.manufacturer) && !recent.has(n.manufacturer + '|' + n.code) && cat(n.manufacturer, n.code))
+    .filter((n) => n.dealers >= MIN_DEALERS && boughtLines.has(n.manufacturer) && !retired(n.manufacturer) && !recent.has(n.manufacturer + '|' + n.code) && cat(n.manufacturer, n.code) && cat(n.manufacturer, n.code) !== MKT)
     .sort((a, b) => b.dealers - a.dealers || b.units - a.units).slice(0, 10)
-    .map((n) => ({ manufacturer: n.manufacturer, manufacturer_name: mName(n.manufacturer), code: n.code, name: (input.catalog[n.manufacturer][n.code] || {}).name || n.code,
+    .map((n) => ({ manufacturer: n.manufacturer, manufacturer_name: mName(n.manufacturer), code: n.code,
+      /* a line with no public catalog file (Golden) names it from the Shop resolver (review #109: never read an absent file) */
+      name: ((input.catalog && input.catalog[n.manufacturer]) || {})[n.code] ? input.catalog[n.manufacturer][n.code].name || n.code : ((resolve(n.manufacturer, n.code) || {}).name || n.code),
       category: cat(n.manufacturer, n.code), dealers: n.dealers }));
 
   const valuation = valuate(cur, { resolve, isMkt, mName, catOf, custom: input.customPrice, months: W.months });
@@ -208,7 +220,7 @@ function build(input) {
     const allIds = new Set(locations.map((l) => String(l.id)));
     const crow = S.rows.filter((r) => allIds.has(r.loc) && inW.has(r.m));
     const cv = valuate(crow, { resolve, isMkt, mName, catOf, custom: input.customPrice, months: W.months });
-    const cp = sum(crow), cu = crow.filter((r) => !isMkt(r.code, r.name)).reduce((x, r) => x + r.qty, 0);
+    const cp = sum(crow), cu = crow.filter((r) => !isMkt(r.code, r.name, r.mfr)).reduce((x, r) => x + r.qty, 0);
     company = { purchases: cp, units: cu, branch_share_pct: cp > 0 ? Math.round(totalCur / cp * 1000) / 10 : null,
       retail_benchmark: cv.benchmark.retail, profit: cv.benchmark.profit, margin_pct: cv.benchmark.margin_pct, coverage_pct: cv.coverage_pct,
       custom_retail: cv.custom.retail, locations: locations.length };

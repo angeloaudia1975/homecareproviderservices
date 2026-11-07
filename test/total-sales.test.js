@@ -21,7 +21,8 @@ const cat = (slug, rows) => ({ byCode: new Map(rows.map((r) => [r.code.toUpperCa
 const CATS = {
   'strongback-mobility': cat('strongback-mobility', [{ code: '1010AB', name: 'Comfort 24" with AB', category: 'Wheelchairs', ref: 900, ref_source: 'msrp' },
     { code: 'ES0001', name: 'ErgoSteel', category: 'Wheelchairs', ref: 440, ref_source: 'calculated' }]),
-  'golden-technologies': cat('golden-technologies', [{ code: 'GB108B', name: 'Buzzaround', category: 'Scooters', ref: 1500, ref_source: 'msrp' }]),
+  'golden-technologies': cat('golden-technologies', [{ code: 'GB108B', name: 'Buzzaround', category: 'Scooters', ref: 1500, ref_source: 'msrp', cost: 800 }, { code: 'PR510', name: 'Lift chair', category: 'Lift Chairs', ref: 2000, ref_source: 'msrp', cost: 1000 }]),
+  dalton: cat('dalton', [{ code: 'EX201-1', name: 'Pedal Exerciser Led Display', category: 'Exercise', ref: 60, ref_source: 'msrp' }]),
 };
 const resolve = (s, c) => { const m = RC.lookup(CATS[s], s, c); return m ? Object.assign({}, m.entry, { matched_by: m.matched_by }) : null; };
 const mk = (loc_, mfr, m, code, name, qty, amount) => ({ dealer_id: loc_, manufacturer: mfr, period: `${Y}-${String(m).padStart(2, '0')}-01`, product_code: code, product_name: name, qty, amount, source: 'sales_report', external_ref: 'x' });
@@ -56,13 +57,29 @@ const build = (sales, o) => REP.build(Object.assign({ year: Y, today: `${Y}-12-1
     eq([V.purchases_total, V.matched_cost, V.coverage_pct], [901, 776, 86.1], 'a paid display counts in purchases, never valued');
     eq([V.benchmark.retail, V.benchmark.profit, V.benchmark.margin_pct], [1340, 564, 42.1], '1×900 + 1×440; profit 1340−776; margin ÷ retail');
     ok(V.benchmark.retail !== 2 * V.matched_cost, 'not 2× purchases');
-    eq(V.gaps.map((g) => [g.code, g.reason, g.amount]), [['UNKNOWN-1', 'not_in_catalog', 100]]);
+    eq(V.gaps.map((g) => [g.code, g.reason, g.amount]), [['UNKNOWN-1', 'not_in_catalog', 100], ['POP-9', 'marketing', 25]], 'valued + not valued = purchases');
+    eq(V.matched_cost + V.gap_amount, V.purchases_total);
     eq(V.by_product.map((p) => [p.code, p.reference_source]).sort(), [['1010+AB-2025', 'msrp'], ['ES0001', 'calculated']]);
     eq([V.by_manufacturer[0].profit, V.by_manufacturer[0].margin_pct], [564, 42.1], 'margin = profit ÷ retail, per manufacturer too');
   });
-  await t('P6 a credit / return takes its units back out at the same reference', async () => {
-    const V = build(STRONGBACK.concat([mk(BR, 'strongback-mobility', 7, 'ES0001', 'ErgoSteel', 1, -220)])).valuation;
+  await t('P6 a return (negative quantity) takes its units back out; an amount-only credit is listed, never valued', async () => {
+    const V = build(STRONGBACK.concat([mk(BR, 'strongback-mobility', 7, 'ES0001', 'ErgoSteel', -1, -220)])).valuation;
     eq([V.matched_cost, V.benchmark.retail], [556, 900]);
+    const V2 = build(STRONGBACK.concat([mk(BR, 'strongback-mobility', 7, 'ES0001', 'ErgoSteel price credit', 1, -20)])).valuation;
+    eq([V2.matched_cost, V2.benchmark.retail, V2.gaps[0].reason], [776, 1340, 'credit_without_units'], 'an amount-only credit removes no unit');
+  });
+  await t('review #109: a Shop product named "display" stays a product; Golden base matches valued only when no upgrade was paid; an unreadable catalog is listed', async () => {
+    const sales = [mk(BR, 'dalton', 3, 'EX201-1', 'Pedal Exerciser Led Display', 2, 60), mk(BR, 'golden-technologies', 3, 'GB108B-ST', 'Buzzaround ST', 1, 800), mk(BR, 'golden-technologies', 3, 'PR510-MED-IRH', 'Lift chair heat', 1, 1400)];
+    const r = build(sales, { mfrName: { dalton: 'Dalton', 'golden-technologies': 'Golden' } }); const V = r.valuation;
+    eq(r.categories.map((c) => c.category).sort(), ['Exercise', 'Lift Chairs', 'Scooters']);
+    eq(V.by_product.map((p) => p.code).sort(), ['EX201-1', 'GB108B-ST']); eq(V.gaps.map((g) => [g.code, g.reason]), [['PR510-MED-IRH', 'configuration_not_priced']]);
+    const r2 = build(sales, { resolve: (sl, c) => (sl === 'golden-technologies' ? { unavailable: true } : resolve(sl, c)) });
+    ok(r2.valuation.gaps.filter((g) => g.reason === 'catalog_unavailable').length === 2, 'unavailable');
+  });
+  await t('review #109 P0: network opportunities on a line with no public catalog file (Golden) never break the report', async () => {
+    const sales = [mk(BR, 'golden-technologies', 1, 'GB108B-ST', 'Buzzaround ST', 1, 800)];
+    const r = build(sales, { today: `${Y}-03-15`, network: [{ manufacturer: 'golden-technologies', code: 'PR510', dealers: 4, units: 9 }, { manufacturer: 'strongback-mobility', code: 'WOB-1', dealers: 5, units: 9 }] });
+    eq(r.opportunities.map((o) => [o.code, o.name]), [['PR510', 'Lift chair']]);
   });
   await t('P6 dealer custom comparison: company default + branch override, shown apart; the Shop benchmark is unchanged', async () => {
     const rows = [{ manufacturer: 'strongback-mobility', code: '1010AB', location_id: null, price: 1000 }, { manufacturer: 'strongback-mobility', code: '1010AB', location_id: BR, price: 1100 }];

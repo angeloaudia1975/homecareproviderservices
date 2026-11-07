@@ -132,21 +132,27 @@ async function loadAll(who, b) {
   /* Shop categories + retail reference (owner 2026-11-06, _report_catalog): one catalog per line bought, cached 10 minutes;
      Golden from the dealer's own Golden catalog. A line that can't be read gives no reference (a gap), never a guess. */
   const refcat = {}; const rcNotes = [];
+  /* review #109: a failed or unavailable catalog is never cached (the next report tries again) and Golden gets 3 seconds —
+     past that its purchases are listed as "catalog unavailable", never guessed and never failing the whole report */
+  const keep = async (key, ms, fn, good) => { const c = CACHE.get(key); if (c && Date.now() - c.at < ms) return c.v; const v = await fn(); if (good(v)) CACHE.set(key, { at: Date.now(), v }); return v; };
+  const within = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
   await Promise.all(slugs.map(async (s2) => {
     try {
       if (RC.GOLDEN.has(s2)) { const fl = await cached('flags', 60000, () => readFlags((pp) => sb('GET', pp)));
-        refcat[s2] = await cached('gcat:' + root, 600000, () => RC.goldenCatalog((pp) => sb('GET', pp), String(root), fl)); }
-      else refcat[s2] = await cached('rcat:' + s2, 600000, () => RC.lineCatalog(reportDeps(), s2));
-    } catch (e) { refcat[s2] = null; rcNotes.push(s2); console.error('report catalog failed', s2, e && String(e.message).slice(0, 120)); }
+        refcat[s2] = await keep('gcat:' + root, 600000, () => within(RC.goldenCatalog((pp) => sb('GET', pp), String(root), fl), 3000), (v) => !!v); }
+      else refcat[s2] = await keep('rcat:' + s2, 600000, () => RC.lineCatalog(reportDeps(), s2), (v) => !!(v && v.readable));
+    } catch (e) { refcat[s2] = null; console.error('report catalog failed', s2, e && String(e.message).slice(0, 120)); }
+    if (!refcat[s2] || refcat[s2].readable === false) rcNotes.push(s2);
   }));
-  const resolve = (slug, code, name) => { const m = RC.lookup(refcat[slug], slug, code); if (!m) return null; return Object.assign({}, m.entry, { matched_by: m.matched_by }); };
+  const resolve = (slug, code, name) => { const cat0 = refcat[slug]; if (!cat0) return { unavailable: true };
+    const m = RC.lookup(cat0, slug, code); if (!m) return null; return Object.assign({}, m.entry, { matched_by: m.matched_by }); };
   let retailRows = [];
   try { retailRows = await sbAll(`dealer_retail_prices?dealer_id=eq.${enc(root)}&select=manufacturer,code,location_id,price&order=id.asc`); } catch (e) { if (!/PGRST205|42P01/.test(String(e.message))) throw e; }
   const customPrice = (loc, slug, code) => RP.dealerPriceFor(retailRows, loc, slug, code);
   const report = REP.build({ year, today, locations, scope, sales: sales || [], orders: (orders || []).map((o) => Object.assign(o, { items: o.order_items || [] })),
     quotes: quotesRaw || [], catalog, mfrName, firstReport, reportedMonths, network, isRetired: RETIRED.isRetiredLine,
     resolve, isMarketing: RC.isMarketing, marketingLabel: RC.MARKETING, customPrice, companyView: headOffice });
-  if (rcNotes.length) report.notes.push('Retail values could not be worked out for: ' + rcNotes.map((x) => mfrName[x] || x).join(', ') + ' — shown as gaps, never estimated.');
+  if (rcNotes.length) report.notes.push('The Shop catalog could not be read just now for: ' + rcNotes.map((x) => mfrName[x] || x).join(', ') + ' — their purchases are listed as not valued (never estimated); try again shortly.');
   if (quotesRaw == null) report.notes.push('Saved quotes are not available yet.');
   let brand = { business_name: self.business_name || '', logo_url: null };
   for (const id of [did, String(root)]) { try { const r = await sb('GET', `dealers?id=eq.${enc(id)}&select=logo_url`); if (r && r[0] && r[0].logo_url) { brand.logo_url = r[0].logo_url; break; } } catch (e) { /* no logo column yet */ } }

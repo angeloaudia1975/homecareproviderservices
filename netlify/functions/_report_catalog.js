@@ -43,7 +43,7 @@ async function lineCatalog(deps, slug) {
     if (msrp) { const unit = SF.unitOf(p, rec); const q = Number((rec && rec.case_qty) || p.case_qty) || 1;
       ref = unit === 'each' && q > 1 ? r2(msrp * q) : r2(msrp); src = 'msrp'; }
     else if (c && pos(c.cost)) { ref = r2(2 * c.cost); src = 'calculated'; }
-    out.set(C, { code: String(p.code), name: (m && m.name) || (f && f.name) || '', category: (m && m.category) || (f && f.category) || null, ref, ref_source: src });
+    out.set(C, { code: String(p.code), name: (m && m.name) || (f && f.name) || '', category: (m && m.category) || (f && f.category) || null, ref, ref_source: src, cost: c && pos(c.cost) ? pos(c.cost) : null });
   }
   return { byCode: out, readable: !!L.costs };
 }
@@ -58,7 +58,7 @@ async function goldenCatalog(sbGet, dealerId, flags) {
     if (!g || !g.sku) continue;
     const msrp = pos(g.msrp), std = g.price_source === 'standard' ? pos(g.dealer_price) : null;
     out.set(String(g.sku).toUpperCase(), { code: String(g.sku), name: String(g.name || g.title || ''), category: g.category ? String(g.category) : null,
-      ref: msrp || (std ? r2(2 * std) : null), ref_source: msrp ? 'msrp' : std ? 'calculated' : 'none' });
+      ref: msrp || (std ? r2(2 * std) : null), ref_source: msrp ? 'msrp' : std ? 'calculated' : 'none', cost: std });
   }
   return { byCode: out, readable: true };
 }

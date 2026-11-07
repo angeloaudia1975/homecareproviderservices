@@ -5,6 +5,9 @@
 'use strict';
 const XLSX = require('xlsx');
 
+const WHY = { no_quantity: 'No quantity reported', no_amount: 'No amount', not_in_catalog: 'Not matched to a Shop product', no_retail_reference: 'No MSRP or standard cost in the Shop',
+  marketing: 'Marketing / display item (not resold)', credit_without_units: 'Credit with no returned units', configuration_not_priced: 'Golden configuration with upgrades — base model price not used',
+  catalog_unavailable: 'Shop catalog could not be read — try again' };
 const n = (v) => (v == null || v === '' ? null : Number(v));
 const pctCell = (v) => (v == null ? null : Number(v) / 100);
 
@@ -57,15 +60,23 @@ function build({ report, scopeName, dealerName, generated }) {
   XLSX.utils.book_append_sheet(wb, sheet([['Product', 'Item #', 'Manufacturer', 'Retail reference', 'Reference source', ...VCOLS],
     ...(V.by_product || []).map((x) => [x.name, x.code, x.manufacturer_name, n(x.reference), x.reference_source === 'msrp' ? 'Manufacturer MSRP' : 'HCPS calculated (2× standard cost)', ...vrow(x)])],
   [36, 14, 22, 14, 26, 18, 8, 20, 18, 12, 20, 18, 12], [3, 5, 7, 8, 10, 11], [9, 12]), 'By product');
+  if ((V.by_product || []).length >= 100) XLSX.utils.sheet_add_aoa(wb.Sheets['By product'], [['Top 100 products by potential retail; totals on the Summary sheet include every product.']], { origin: -1 });
   XLSX.utils.book_append_sheet(wb, sheet([['Month', 'All purchases', ...VCOLS],
     ...(V.monthly || []).map((x) => { const mo = (R.monthly || []).find((m) => m.month === x.month); return [x.month, n(mo ? mo.purchases : null), ...vrow(x)]; })],
   [10, 16, 18, 8, 20, 18, 12, 20, 18, 12], [1, 2, 4, 5, 7, 8], [6, 9]), 'Monthly');
   if ((R.branches || []).length > 1) XLSX.utils.book_append_sheet(wb, sheet([['Location', 'City', 'Purchases', 'Last year', 'Change', 'Last purchase month'],
     ...R.branches.map((b) => [b.name, b.city || '', n(b.purchases), n(b.prior), pctCell(b.change_pct), b.last_purchase_month || ''])], [30, 16, 16, 16, 10, 16], [2, 3], [4]), 'Locations');
-  const why = { no_quantity: 'No quantity reported', no_amount: 'No amount', not_in_catalog: 'Not matched to a Shop product', no_retail_reference: 'No MSRP or standard cost in the Shop' };
+  const why = WHY;
   XLSX.utils.book_append_sheet(wb, sheet([['Manufacturer', 'Item #', 'Product', 'Units', 'Purchases', 'Why not valued'],
     ...(V.gaps || []).map((g) => [g.manufacturer_name, g.code, g.name, n(g.units), n(g.amount), why[g.reason] || g.reason])], [22, 14, 40, 8, 14, 32], [4], []), 'Not valued');
+  /* the Overview tab's tables (purchases, year over year) — the same report */
+  XLSX.utils.book_append_sheet(wb, sheet([['Manufacturer', 'Purchases', 'Last year (same months)', 'Change', 'Share', 'Product units', 'Marketing items'],
+    ...(R.manufacturers || []).map((m) => [m.name, n(m.purchases), n(m.prior), pctCell(m.change_pct), pctCell(m.share_pct), n(m.units), n(m.marketing_units)])], [28, 16, 20, 10, 10, 12, 14], [1, 2], [3, 4]), 'Purchases by manufacturer');
+  XLSX.utils.book_append_sheet(wb, sheet([['Category', 'Units', 'Purchases', 'Last year (same months)', 'Change'],
+    ...(R.categories || []).map((c) => [c.category, n(c.units), n(c.purchases), n(c.prior), pctCell(c.change_pct)])], [32, 8, 16, 20, 10], [2, 3], [4]), 'Purchases by category');
+  XLSX.utils.book_append_sheet(wb, sheet([['Product', 'Item #', 'Manufacturer', 'Category', 'Units', 'Purchases'],
+    ...(R.top_products || []).map((p) => [p.name, p.code, p.manufacturer_name, p.category, n(p.qty), n(p.purchases)])], [36, 14, 22, 22, 8, 14], [5], []), 'Top products');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Notes'], ...(R.notes || []).map((t) => [t])]), 'Notes');
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
-module.exports = { build };
+module.exports = { build, WHY };
