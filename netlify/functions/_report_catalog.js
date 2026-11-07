@@ -58,7 +58,10 @@ async function goldenCatalog(sbGet, dealerId, flags) {
     if (!g || !g.sku) continue;
     const msrp = pos(g.msrp), std = g.price_source === 'standard' ? pos(g.dealer_price) : null;
     out.set(String(g.sku).toUpperCase(), { code: String(g.sku), name: String(g.name || g.title || ''), category: g.category ? String(g.category) : null,
-      ref: msrp || (std ? r2(2 * std) : null), ref_source: msrp ? 'msrp' : std ? 'calculated' : 'none', cost: std });
+      ref: msrp || (std ? r2(2 * std) : null), ref_source: msrp ? 'msrp' : std ? 'calculated' : 'none', cost: std,
+      /* the dealer's own Golden price for the base model (any price source) — used ONLY to tell whether a configured purchase
+         cost more than the base model (a paid upgrade), never as a retail reference */
+      base_price: pos(g.dealer_price) });
   }
   return { byCode: out, readable: true };
 }
