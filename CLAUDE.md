@@ -2361,10 +2361,35 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     escalate only real dealer-access impact, historical bulk writes, production SQL, external account authorization or costs.
     **Staff preview of the Account Center (#110):** the dealer preview token reads account_center / favorites / branding /
     showroom / account_get; every other dealer-tools action answers 403 in preview.
-    **Known gaps recorded for Angelo (not changed):** a dealer with NO Dealer Manager grid still sees territory-rule lines
-    (browse only — checkout refuses them); and the commission importer (`reconcileAccountRef` / `propagateAccountRef`,
-    RULE 13) still marks a line active from a report — both contradict point (1) and are real entitlement changes, so each
-    waits for Angelo's decision.
+    **Known gaps — RESOLVED 2026-11-06 (#113, ordering #67):** territory rules no longer grant (switch
+    `phase2_flags.grid_only_access`, turned ON by Angelo ~21:25 CT after the live impact report: 448 real dealers, 441 with a
+    grid, 7 territory-only, 0 material — no portal login and no order in 12 months; verified live: Sharpworks / WSR show no
+    territory lines; James Medical HQ + Bowling Green show only their grid lines — no ABM, no Ovation). Importers, Zoho sync,
+    dealer import, account moves and `propagate_org_account_numbers_v2` (sha256 ae0cfa29…, run by Angelo — all 5 checks true;
+    v1 closed) record identifiers on rows with `active:false` and SUGGEST access only; the Dealer Manager grid save is the
+    only grant (HQ→branch inheritance included). Read-only `dealers-api entitlement_impact` is the impact report.
+    **Batch B (#114, ordering #68, merged 2026-11-06):** `_golden_ref.js` — live Golden (3 s + one quick retry, none on
+    no-access) → ONE shared server-side reference (`app_settings golden_retail_ref`: MSRP + Golden STANDARD price per SKU,
+    never an account price; MERGED per SKU, an item leaves after 30 days unconfirmed; rewritten at most every 6 h) usable up to
+    7 days and labelled with its date → else "Golden catalog unavailable" / "not connected" gaps, never $0. Monitor row
+    `golden_ref_monitor` (per instance). UOM: for a pack/case product the report price per unit decides — about the standard
+    ORDER-unit cost (60–150%) → order units; about one piece's → converted (q / pack, evidence recorded without any cost figure);
+    both or neither → `uom_review` gap. Pack size only from the commercial record's case_qty, never a name. Units in retail
+    tables = order units (noted in the report, Excel "Unit conversions" sheet). One Golden call per report.
+    **Social Ads (Batch C+D, admin #115 / ordering #69):** `dealer-ads-api` + `_social_ads.js` + `_ads_shared.js`; portal view
+    "Social Ads" (`public/assets/ad-builder.js`). Rules: products = the location's public storefront set (active grid lines,
+    discontinued / hidden never, official photo + description); the price is never typed — the storefront's advertised price
+    (MAP rules) or Call for Price, re-resolved by the server check (`ads_check`) before EVERY download / copy / schedule; the
+    dealer's words refuse prices, discounts, offers, guarantees, medical / insurance / financing / ranking claims (NFKC, hidden
+    characters stripped, joined hashtags checked; official product / store names allowed); copies re-validated for their
+    location; an HCPS-blocked storefront pauses ads (423); images only through the server (authorized product photos; the
+    account's own logo only if its host resolves to public addresses; 6 s, 4 MB). Scheduling / publishing (Batch D) is OFF:
+    it needs `phase2_flags.social_publishing` === true AND `social_meta_approved` / `social_linkedin_approved` AND env
+    META_APP_ID/SECRET or LINKEDIN_CLIENT_ID/SECRET + SOCIAL_TOKEN_KEY (32-byte base64) + SOCIAL_STATE_SECRET AND the dealer's
+    own connection AND the dealer's own approval of that post (an edit drops it; preview never approves). Tokens sealed
+    AES-256-GCM, never returned or logged; one target per post per platform; an interrupted target is never re-posted; a post
+    >24 h past its time is never published late. SQL `supabase/c8_social_ads.sql` (sha256 98d4c37b…) — Angelo runs it; saving
+    ads answers 503 until then (designing / downloading work).
     **Advertising-rule research (2026-11-06 ~14:40 CT, from repo documents + live catalog data; counts only):** documented
     MAP for Bemis (Terms of Agreement, dealer application 2026 — written MAP policy incl. dealer websites; "call for price"
     allowed; dealers selling online must notify Bemis and use Bemis content), Golden (eMAP per product), Strongback (Rev C
