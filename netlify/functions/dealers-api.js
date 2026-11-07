@@ -992,6 +992,7 @@ exports.handler = async (event)=>{
         let rows; try{ rows=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref,active,verified_at,verified_by,verified_ref&order=manufacturer.asc`); }
         catch(e){ if(!/42703|does not exist/.test(String(e&&e.message))) throw e;
           rows=((await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref,active&order=manufacturer.asc`))||[]).map(r=>Object.assign(r,{verified_at:null})); }
+        (rows||[]).forEach(r=>{ r.verified=!!String(r.account_ref||"").trim(); });   /* owner rule 2026-11-06: on file = verified */
         (rows||[]).forEach(r=>{ if(r.verified_at&&String(r.verified_ref||"").trim().toUpperCase()!==String(r.account_ref||"").trim().toUpperCase()) r.verified_at=null; });   // the number changed since it was verified
         return json(200,{ok:true,rows:rows||[]});
       }

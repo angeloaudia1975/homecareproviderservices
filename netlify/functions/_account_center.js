@@ -47,12 +47,14 @@ function accountStatus({ slug, dm, claim, verifiedClaim, accessOpen, goldenStatu
   }
   const ref = dm && dm.account_ref ? String(dm.account_ref) : "";
   const same = (a, b) => String(a || "").trim().toUpperCase() === String(b || "").trim().toUpperCase();
-  /* Green only while the number on file is the number HCPS verified (a changed number is no longer verified). */
-  if (dm && dm.verified_at && ref && same(dm.verified_ref, ref)) return { status: "verified", label: "Verified by HCPS", account_ref: ref, ordering: dm.active !== false };
+  /* OWNER RULE (2026-11-06 20:57 CT, final): an identifier on file in HCPS's record IS verified — by its presence, for every
+     existing and future entry; removing it clears the status. Verified never means ordering (that is Dealer Manager). A
+     different number the dealer submitted stays a separate pending claim until HCPS saves it. */
+  if (ref.trim()) return Object.assign({ status: "verified", label: "Verified by HCPS", account_ref: ref.trim(), ordering: !!(dm && dm.active !== false) },
+    claim && !same(claim.account_ref, ref) ? { pending_claim: String(claim.account_ref || "") } : {});
   /* A verified claim counts only when no different number is on file. */
   if (verifiedClaim && !claim && (!ref || same(verifiedClaim.account_ref, ref))) return { status: "verified", label: "Verified by HCPS", account_ref: String(verifiedClaim.account_ref || ""), ordering: !!(dm && dm.active !== false) };
   if (claim) return { status: "pending", label: "Submitted — HCPS is verifying", account_ref: String(claim.account_ref || ""), ordering: !!(dm && dm.active !== false) };
-  if (dm && ref) return { status: "pending", label: "On file — HCPS verification pending", account_ref: ref, ordering: dm.active !== false };
   if (dm && dm.active !== false) return { status: "pending", label: "Ordering set up — account number not on file", account_ref: null, ordering: true };
   if (accessOpen) return { status: "pending", label: "Access requested — HCPS is reviewing", account_ref: null, ordering: false };
   return { status: "none", label: "No account on file", account_ref: null, ordering: false };

@@ -553,7 +553,7 @@ exports.handler = async (event)=>{
       ]);
       const mfrName={}; (mfrs||[]).forEach(m=>mfrName[m.slug]=m.name||m.slug);
       /* verified = HCPS verified THIS identifier (the same rule as the dealer's Account Center, _account_center.accountStatus) */
-      const vOk=l=>!!(l.verified_at&&String(l.account_ref||"").trim()&&String(l.verified_ref||"").trim().toUpperCase()===String(l.account_ref||"").trim().toUpperCase());
+      const vOk=l=>!!String(l.account_ref||"").trim()||!!(l.verified_at&&String(l.account_ref||"").trim()&&String(l.verified_ref||"").trim().toUpperCase()===String(l.account_ref||"").trim().toUpperCase());
       const accounts=(lines||[]).map(l=>({slug:l.manufacturer,name:mfrName[l.manufacturer]||l.manufacturer,account_ref:l.account_ref||"",active:l.active!==false,
           verified:vOk(l),verified_at:vOk(l)?l.verified_at:null,verified_by:vOk(l)?(l.verified_by||null):null}))
         .sort((a,b)=>a.name.localeCompare(b.name));

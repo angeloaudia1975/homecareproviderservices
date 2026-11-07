@@ -79,9 +79,13 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
   });
   await t('status: verified / pending (on file, submitted, access asked, ordering only) / none; Golden from its status', async () => {
     eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y1', verified_at: 'x', verified_ref: 'y1', active: true } }).status, 'verified');
-    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y2', verified_at: 'x', verified_ref: 'Y1', active: true } }).status, 'pending', 'number changed since verified');
-    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y2', active: true }, verifiedClaim: { account_ref: 'Y1' } }).status, 'pending', 'a stale verified claim never beats a different number');
-    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y1', active: true } }).status, 'pending');
+    /* owner rule 2026-11-06 20:57 CT: an identifier on file in HCPS's record IS verified, whatever its history */
+    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y2', verified_at: 'x', verified_ref: 'Y1', active: true } }).status, 'verified', 'on file = verified');
+    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y2', active: true }, verifiedClaim: { account_ref: 'Y1' } }).account_ref, 'Y2', 'the number on file is the one shown');
+    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y1', active: false } }).status, 'verified', 'an identifier with ordering off is still verified');
+    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y1', active: false } }).ordering, false, 'verified never means ordering');
+    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: '  ', active: true } }).status, 'pending', 'a blank identifier is not verified');
+    eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y1', active: true }, claim: { account_ref: 'Y9' } }).pending_claim, 'Y9', 'a different dealer-entered number stays a pending claim');
     eq(AC.accountStatus({ slug: 'y', dm: null, claim: { account_ref: 'Z' } }).label, 'Submitted — HCPS is verifying');
     eq(AC.accountStatus({ slug: 'y', dm: null, verifiedClaim: { account_ref: 'Z' } }).status, 'verified');
     eq(AC.accountStatus({ slug: 'y', dm: null, accessOpen: true }).status, 'pending');
@@ -120,7 +124,7 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
     eq(r.body.addresses.map(a => a.key), ['main', 'bill', 'ship-wh']);
     eq(r.body.locations.map(l => l.name), ['Acme HQ', 'Acme Branch', 'Acme Branch Two']); eq(r.body.scope, 'company');
     const self = r.body.locations.find(l => l.is_self), st = s => self.accounts.find(a => a.slug === s);
-    eq([st('yuwell').status, st('access4u').status, st('golden-technologies').status], ['verified', 'pending', 'verified']);
+    eq([st('yuwell').status, st('access4u').status, st('golden-technologies').status], ['verified', 'verified', 'verified']);
     ok(!self.accounts.some(a => a.slug === 'ohio-medical'), 'retired line hidden'); ok(!self.accounts.some(a => a.slug === 'dalton'), 'switched-off line hidden');
     ok(!JSON.stringify(r.body).includes('SECRET-1') && !JSON.stringify(r.body).includes('Someone Else') && !JSON.stringify(r.body).includes('Other Person'), 'no other dealer');
   });
@@ -159,7 +163,7 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
       dealers: ['id', 'business_name', 'hcps_account', 'contact_name', 'email', 'phone', 'address', 'city', 'state', 'zip', 'parent_id', 'golden_status', 'rep_email'] } });   // as production: no website / logo_url / active
     const r = await as(tools(W), 'hq', { action: 'account_center' });
     eq([r.status, r.body.ok], [200, true], JSON.stringify(r.body).slice(0, 200));
-    eq(r.body.locations[0].accounts.find(a => a.slug === 'yuwell').status, 'pending', 'unverified until the column exists');
+    eq(r.body.locations[0].accounts.find(a => a.slug === 'yuwell').status, 'verified', 'on file = verified, with or without the verification columns');
     eq((await as(tools(W), 'hq', { action: 'account_claim', manufacturer: 'yuwell', account_ref: 'Y-2' })).status, 503);
     eq((await as(tools(W), 'hq', { action: 'default_ship_set', key: 'main' })).status, 503);
   });
