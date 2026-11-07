@@ -34,15 +34,18 @@ const CTAS = ['Visit us today', 'Call for details', 'Shop now', 'Learn more', 'S
 const HEX = /^#[0-9a-f]{6}$/i;
 const LIMITS = { title: 80, headline: 90, body: 260, cta: 40, caption: 2200, hashtags: 15, hashtag: 40 };
 
-const clean = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').replace(/\s+\n/g, '\n').trim().slice(0, max);
+/* review #115: NFKC (full-width "＄", ligatures) and no invisible format characters (zero-width spaces etc.) — so a hidden
+   character can't split a word past the check */
+const norm = (v) => String(v == null ? '' : v).normalize('NFKC').replace(/[\p{Cf}\u00ad]/gu, '');
+const clean = (v, max) => norm(v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').replace(/\s+\n/g, '\n').trim().slice(0, max);
 
 /* the words an ad may not carry. Each entry: [pattern, plain reason]. Price figures are never typed — the product's own
    advertised price is placed by the template. */
 const CLAIMS = [
-  [/\$\s*\d[\d,.]*|\d[\d,.]*\s*(?:dollars?|usd)\b/i, 'a price or dollar amount (prices are placed automatically from the catalog)'],
+  [/[$€£¢]\s*\d[\d,.]*|\d[\d,.]*\s*(?:dollars?|usd|bucks)\b|\b\d{1,6}\.\d{2}\b|\b(?:was|now|only|just|from|starting at|under|less than)\s+\d[\d,.]*|\b\d{2,6}\s+(?:each|ea)\b/i, 'a price or dollar amount (prices are placed automatically from the catalog)'],
   [/\d+(?:\.\d+)?\s*%|\bpercent\b/i, 'a percentage'],
-  [/\b(?:discount(?:s|ed)?|sale|sales event|clearance|markdowns?|mark-downs?|save|savings|rebates?|coupons?|promo|promos|promotion(?:s|al)?|promo code|deal|deals|bogo|buy one get|half[- ]off|bucks off|dollars off)\b/i, 'a discount or promotion'],
-  [/\bfree\b/i, '"free" (an offer)'],
+  [/\b(?:discount(?:s|ed)?|sale|sales event|clearance|markdowns?|mark-downs?|save|savings|rebates?|coupons?|promo|promos|promotion(?:s|al)?|promo code|deal|deals|bogo|buy one get|half[- ]off|half[- ]price|bucks off|dollars off|two for one|2 for 1|\d+ for \d+|reduced|markdown|low prices?|cheap\w*|bargains?|specials?|giveaways?|giving away|win a|contest)\b/i, 'a discount or promotion'],
+  [/\bfree\b|\bcomplimentary\b|\bno charge\b|\bat no cost\b|\bon us\b/i, '"free" (an offer)'],
   [/\b(?:lowest|cheapest|best)\s+price\w*|\bprice match\w*|\bbeat any\b/i, 'a price comparison'],
   [/\blimited[- ]time\b|\bwhile supplies last\b|\btoday only\b|\bends (?:soon|today|tomorrow)\b/i, 'a time-limited offer'],
   [/\bguarantee\w*|\bwarrant(?:y|ies|ied)\b/i, 'a guarantee or warranty claim'],
@@ -54,12 +57,14 @@ const CLAIMS = [
 /* allow: phrases on record that may appear verbatim (official product names, categories, line and dealer names) — e.g. a
    product officially named "Heat Therapy Pad" or a store called "Free State Medical" is a name, not a claim */
 function claimProblem(text, allow) {
-  let s = String(text || '');
+  let s = norm(text);
   for (const a of allow || []) { const t = String(a || '').trim(); if (t.length >= 3) s = s.split(new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')).join(' '); }
   for (const [re, why] of CLAIMS) { const m = s.match(re); if (m) return { phrase: m[0].trim(), reason: why }; }
   return null;
 }
 
+/* a hashtag is one joined word ("#freeshipping"), so it is checked as a whole for these pieces (names on record allowed) */
+const TAG_BAD = /free|sale|discount|deals?(?!er)|\d+off|halfoff|halfprice|price|promo|coupon|rebate|clearance|cheap|bogo|save|saving|bargain|giveaway|medicare|insurance|financ|cure|guarantee|warrant/;
 const tagify = (s) => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/&/g, 'and').replace(/[^A-Za-z0-9]+/g, ' ').trim()
   .split(' ').filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join('').slice(0, LIMITS.hashtag);
 
@@ -79,8 +84,9 @@ function validate(input, products, opts) {
   const allow = [].concat(opts && opts.allow || []);
   for (const p of Array.isArray(b.products) ? b.products : []) { const r = products && products.get(`${String((p && p.manufacturer) || '')}|${String((p && p.code) || '').toUpperCase()}`); if (r) allow.push(r.name, r.category, r.brand); }
   for (const f of ['headline', 'body', 'cta', 'caption']) { const c = claimProblem(out[f], allow); if (c) return { error: `The ${f === 'cta' ? 'call to action' : f} contains ${c.reason} ("${c.phrase}") — ads may not carry prices, discounts, promotions or claims.`, field: f, phrase: c.phrase }; }
+  const allowTags = new Set(allow.map((x) => tagify(x).toLowerCase()).filter(Boolean));
   const tags = Array.isArray(b.hashtags) ? b.hashtags : String(b.hashtags || '').split(/[\s,]+/);
-  for (const t of tags) { const v = tagify(String(t || '').replace(/^#/, '')); if (!v) continue; if (claimProblem(v.replace(/([a-z])([A-Z])/g, '$1 $2'), allow.map(tagify).map((x) => x.replace(/([a-z])([A-Z])/g, '$1 $2')))) return { error: `The hashtag #${v} is a promotion or claim.`, field: 'hashtags' };
+  for (const t of tags) { const v = tagify(String(t || '').replace(/^#/, '')); if (!v) continue; if (!allowTags.has(v.toLowerCase()) && (TAG_BAD.test(v.toLowerCase()) || claimProblem(v.replace(/([a-z])([A-Z])/g, '$1 $2')))) return { error: `The hashtag #${v} is a promotion or claim.`, field: 'hashtags' };
     if (!out.hashtags.includes(v)) out.hashtags.push(v); if (out.hashtags.length >= LIMITS.hashtags) break; }
   const ps = Array.isArray(b.products) ? b.products : [];
   const seen = new Set();
@@ -131,4 +137,4 @@ function suggest({ products, dealer, cta }) {
   return { captions: captions.map((c) => c.replace(/\s+/g, ' ').replace(/\.\./g, '.').trim().slice(0, LIMITS.caption)).filter((c) => !claimProblem(c, allow)), hashtags: tags.slice(0, 8) };
 }
 
-module.exports = { FORMATS, TEMPLATES, FONTS, CTAS, LIMITS, validate, claimProblem, renderProduct, suggest, tagify };
+module.exports = { norm, TAG_BAD, FORMATS, TEMPLATES, FONTS, CTAS, LIMITS, validate, claimProblem, renderProduct, suggest, tagify };

@@ -51,6 +51,8 @@ function world(o) {
     return inner(url, opts); };
   return W;
 }
+const DNS = { 'cdn.acme.test': '93.184.216.34', 'evil.test': '10.0.0.5', 'meta.test': '169.254.169.254' };
+require('dns').promises.lookup = async (h) => { if (!DNS[h]) throw new Error('ENOTFOUND'); return [{ address: DNS[h], family: 4 }]; };
 const api = (W) => M.load('dealer-ads-api.js', W, {}, ROOT);
 const as = (C, who, body) => M.call(C, body, { headers: { authorization: 'Bearer ' + who } });
 const AD = (x) => Object.assign({ template: 'spotlight', format: 'square', font: 'Inter', colors: { bg: '#0b1f33', accent: '#ef6325', text: '#ffffff' }, title: 'Seat ad',
@@ -93,6 +95,11 @@ const AD = (x) => Object.assign({ template: 'spotlight', format: 'square', font:
     const okName = await as(C, 'hq', { action: 'ads_save', location_id: HQ, ad: AD({ products: [{ manufacturer: 'bemis', code: 'B8' }], headline: 'Free-Standing Toilet Rail now in stock' }) });
     eq(okName.status, 200, 'official product name allowed');
     eq((await as(C, 'hq', { action: 'ads_save', location_id: HQ, ad: AD({ hashtags: ['SaleToday'] }) })).status, 400, 'promo hashtag');
+    for (const v of ['Only 199.99', 'Was 499 now 399', 'Half price seats', 'Two for one', 'Complimentary fitting', 'No charge delivery', 'Reduced prices', '＄99 seat', 'Fr\u200bee delivery', 'Fr\u00adee delivery'])
+      eq((await as(C, 'hq', { action: 'ads_save', location_id: HQ, ad: AD({ body: v }) })).status, 400, v);
+    for (const h of ['freeshipping', 'onsale', '50off', 'lowprices', 'medicarecovered'])
+      eq((await as(C, 'hq', { action: 'ads_save', location_id: HQ, ad: AD({ hashtags: [h] }) })).status, 400, '#' + h);
+    eq((await as(C, 'hq', { action: 'ads_save', location_id: HQ, ad: AD({ hashtags: ['Dayton', 'AcmeMedical', 'BathSafety', 'HomeMedicalDealer'] }) })).status, 200, 'names on record');
     eq((await as(C, 'preview:pv', { action: 'ads_check', location_id: HQ, ad: AD({ body: 'Save 20%' }) })).status, 400, 'download gate refuses');
     const ck = await as(C, 'preview:pv', { action: 'ads_check', location_id: HQ, ad: AD() }); eq([ck.status, ck.body.products[0].code], [200, 'B1'], 'download gate passes clean words');
   });
@@ -133,6 +140,8 @@ const AD = (x) => Object.assign({ template: 'spotlight', format: 'square', font:
     eq(typed.status, 200); ok(W.images.every((u) => !/evil/.test(u)) && W.images[W.images.length - 1].endsWith('/B1.jpg'), 'a typed URL is never fetched');
     eq((await as(C, 'hq', { action: 'ad_image', location_id: HQ, logo: true })).status, 200);
     eq((await as(api(world({ logo: 'http://169.254.169.254/x' })), 'hq', { action: 'ad_image', location_id: HQ, logo: true })).status, 404, 'no plain-http / internal fetch');
+    for (const bad of ['https://evil.test/x.png', 'https://meta.test/x.png', 'https://localhost./x.png', 'https://cdn.acme.test:8443/x.png', 'https://unknown.test/x.png']) {
+      const W2 = world({ logo: bad }); eq((await as(api(W2), 'hq', { action: 'ad_image', location_id: HQ, logo: true })).status, 404, bad); ok(!W2.images.length, 'never fetched: ' + bad); }
     eq((await as(C, 'hq', { action: 'ad_image', location_id: OTHER, logo: true })).status, 404);
   });
   await t('suggestions use names on record only and never carry a claim', async () => {
@@ -140,6 +149,15 @@ const AD = (x) => Object.assign({ template: 'spotlight', format: 'square', font:
     eq(r.status, 200); ok(r.body.captions.length === 3, 'three captions'); ok(r.body.captions.every((c) => /Heat Therapy Pad/.test(c)), 'product names');
     for (const c of r.body.captions) ok(!ADS.claimProblem(c, ['Heat Therapy Pad', 'Acme Medical', 'Dayton']), c);
     ok(r.body.hashtags.includes('Wheelchairs') && r.body.hashtags.includes('Dayton'), JSON.stringify(r.body.hashtags));
+  });
+  await t('review #115: a copy is checked for its own location; an HCPS-blocked storefront pauses ads', async () => {
+    const W = world(); const C = api(W);
+    const s = await as(C, 'hq', { action: 'ads_save', location_id: HQ, ad: AD({ products: [{ manufacturer: 'strongback', code: 'S1' }], headline: 'Comfort at Acme Medical' }) });
+    const d = await as(C, 'hq', { action: 'ads_duplicate', id: s.body.row.id, location_id: BR }); eq(d.status, 400, 'branch has no Strongback: a one-product ad with no product is refused');
+    const W2 = world(); W2.db.dealer_storefronts.push({ id: 'sf1', dealer_id: HQ, company_id: HQ, slug: 'acme', enabled: true, hcps_blocked: true, lines: null, hidden_categories: [], price_mode: 'msrp' });
+    const C2 = api(W2); const cx = await as(C2, 'hq', { action: 'ads_context' }); eq([cx.body.blocked, cx.body.can_edit], [true, false]);
+    eq((await as(C2, 'hq', { action: 'ads_check', location_id: HQ, ad: AD() })).status, 423);
+    eq((await as(C2, 'hq', { action: 'ads_save', location_id: HQ, ad: AD() })).status, 423);
   });
   await t('the table not yet installed: saving says so, designing still works', async () => {
     const W = world({ missingTables: ['dealer_social_ads'] }); const C = api(W);

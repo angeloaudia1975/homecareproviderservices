@@ -32,9 +32,12 @@ async function api(b){ CALLS.push(JSON.parse(JSON.stringify(b)));
   if(b.action==='ad_image') return {ok:true,data_url:png(b.logo?'#22aa55':'#3366cc')};
   if(b.action==='ads_suggest') return {ok:true,captions:['Now at Acme Medical in Dayton, OH: Raised Toilet Seat. Visit us today.'],hashtags:['BathSafety','Dayton']};
   if(b.action==='ads_check'||b.action==='ads_save'){ for(const f of ['headline','body','cta','caption']){ const m=String(b.ad[f]||'').match(CLAIM); if(m) return {ok:false,error:'The '+f+' contains a promotion ("'+m[0]+'")',field:f}; }
-    if(b.action==='ads_check') return {ok:true,products:[]};
+    if(b.action==='ads_check') return {ok:true,products:(b.ad.products||[]).map(r=>Object.assign({},CTX.products.find(p=>p.code===r.code),window.NEWPRICE&&r.code==='B1'?{price:window.NEWPRICE}:{}))};
     const id=b.id||('ad'+(Object.keys(SAVED).length+1)); const v=(SAVED[id]?SAVED[id].row.version:0)+1;
     SAVED[id]={row:{id,dealer_id:b.location_id,title:b.ad.title,template:b.ad.template,format:b.ad.format,headline:b.ad.headline,version:v,updated_at:new Date().toISOString()},ad:b.ad}; return {ok:true,row:SAVED[id].row}; }
+  if(b.action==='social_status') return window.SOCIAL||{ok:true,platforms:[{platform:'facebook',ok:false,reason:'publishing_off'}],connections:[],posts:[]};
+  if(b.action==='post_save'){ window.POSTED=b; const p={id:'p1',ad_id:b.ad_id,platforms:b.platforms,scheduled_at:b.scheduled_at,status:'awaiting_approval',version:1}; (window.SOCIAL.posts=[p]); return {ok:true,post:p}; }
+  if(b.action==='post_approve'){ window.SOCIAL.posts[0].status='approved'; window.SOCIAL.posts[0].version=2; return {ok:true,post:window.SOCIAL.posts[0]}; }
   if(b.action==='ads_get'){ const r=SAVED[b.id]; return r?{ok:true,row:r.row,ad:r.ad,products:[],problems:[]}:{ok:false,error:'gone'}; }
   if(b.action==='ads_duplicate'){ const r=SAVED[b.id]; const id='ad'+(Object.keys(SAVED).length+1); SAVED[id]={row:Object.assign({},r.row,{id,title:(r.row.title||'')+' (copy)',version:1}),ad:r.ad}; return {ok:true,row:SAVED[id].row,dropped:0}; }
   return {ok:false,error:'unknown'}; }
@@ -78,6 +81,9 @@ const SIZES = [['desktop', 1280, 900], ['tablet', 768, 1024], ['iphone', 390, 84
         if (ext === 'png') { ok(buf.readUInt32BE(16) === 1080 && buf.readUInt32BE(20) === 1920, 'png size'); } else ok(buf[0] === 0xff && buf[1] === 0xd8, 'jpeg');
       }
       ok(await page.evaluate(() => CALLS.filter((c) => c.action === 'ads_check').length >= 3), 'every download checked by the server');
+      await page.evaluate(() => { window.NEWPRICE = 123.45; }); const [d2] = await Promise.all([page.waitForEvent('download'), page.click('#adbPng')]); await d2.path();
+      ok(await page.evaluate(() => window.HCPSAdBuilder._state.ctx.products.find((p) => p.code === 'B1').price === 123.45), 'the export uses the price the server just confirmed');
+      await page.evaluate(() => { window.NEWPRICE = null; });
     });
     await t(`${name}: grid template takes 2–4 products; general ad takes none`, async () => {
       await page.click('[data-tpl="grid"]'); await page.click('[data-pk="strongback|S1"]'); await page.click('[data-pk="bemis|B7"]'); await page.waitForTimeout(200);
@@ -96,8 +102,24 @@ const SIZES = [['desktop', 1280, 900], ['tablet', 768, 1024], ['iphone', 390, 84
       const saved = await page.evaluate(() => CALLS.find((c) => c.action === 'ads_save'));
       ok(!JSON.stringify(saved.ad).includes('99.99'), 'no typed price stored');
     });
+    await t(`${name}: while publishing is off the schedule section only explains; once on, a saved ad is scheduled and waits for the dealer's approval`, async () => {
+      ok(/approve/.test(await page.textContent('#adbPub')), 'off note');
+      ok(!(await page.$('#adbSched')), 'no schedule button while off');
+      await page.evaluate(() => { window.SOCIAL = { ok: true, platforms: [{ platform: 'facebook', ok: true }, { platform: 'instagram', ok: true }, { platform: 'linkedin', ok: false }], connections: [{ id: 'c1', platform: 'facebook', external_id: 'page1', account_name: 'Acme Page', status: 'connected' }], posts: [] }; });
+      await page.click('[data-tpl="spotlight"]'); await page.evaluate(() => window.HCPSAdBuilder._state && true);
+      await page.evaluate(async () => { const S = window.HCPSAdBuilder._state; S.social = window.SOCIAL; });
+      await page.click('[data-fmt="square"]');
+      await page.waitForSelector('#adbSched'); ok(!(await page.$('[data-plat="instagram"]')), 'only connected platforms'); await page.check('[data-plat="facebook"]');
+      await page.fill('#adbWhen', '2031-01-15T10:30'); await page.click('#adbSched'); await page.waitForSelector('[data-pa="post_approve"]');
+      ok(await page.evaluate(() => /^data:image\/png;base64,/.test(window.POSTED.media) && window.POSTED.platforms.join() === 'facebook'), 'rendered image sent');
+      await page.click('[data-pa="post_approve"]'); await page.waitForFunction(() => /Approved/.test(document.getElementById('adbPub').textContent));
+    });
+    await t(`${name}: the main actions are real buttons a keyboard reaches`, async () => {
+      ok(await page.evaluate(() => ['adbSave', 'adbPng', 'adbJpg', 'adbCopy', 'adbNew'].every((id) => document.getElementById(id).tagName === 'BUTTON')), 'buttons');
+      ok(await page.evaluate(() => document.querySelector('[data-pk="bemis|B1"]').getAttribute('aria-selected') === 'true'), 'aria-selected');
+    });
     await t(`${name}: controls are at least 44px tall`, async () => {
-      const small = await page.evaluate(() => [...document.querySelectorAll('.adb-opt,.adb-acts .btn,.adb-p,.adb-sw button')].filter((el) => el.offsetParent && el.getBoundingClientRect().height < 43.5).map((el) => el.textContent.trim().slice(0, 20)));
+      const small = await page.evaluate(() => [...document.querySelectorAll('.adb-opt,.adb-acts .btn,.adb-p,.adb-sw button,.adb-card .btn,.adb-colors input')].filter((el) => el.offsetParent && el.getBoundingClientRect().height < 43.5).map((el) => el.textContent.trim().slice(0, 20)));
       ok(!small.length, small.join(' | '));
       if (w < 800) { const fs16 = await page.evaluate(() => [...document.querySelectorAll('.adb input[type=text],.adb textarea,.adb select')].every((el) => parseFloat(getComputedStyle(el).fontSize) >= 16)); ok(fs16, 'inputs 16px on phones'); }
     });
