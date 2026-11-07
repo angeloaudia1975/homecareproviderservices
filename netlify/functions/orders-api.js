@@ -21,6 +21,7 @@ const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 const P = require("./_platform.js");
 const PRICING = require("./_pricing.js");
 const AN = require("./_account_notice.js");
+const AS = require("./_account_setup.js");
 
 async function sb(method,path,body,extra){
   const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,
@@ -123,7 +124,7 @@ function freightLineText(s){
 function orderConfirmation(to,d,summaries){
   const blocks=summaries.map(s=>{
     const rows=(s.items||[]).map(it=>`<tr><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px">${esc(it.name||it.code||"Item")}${it.code?` <span style="color:#9aa4ae">(${esc(it.code)})</span>`:""}${it.unit_label?` <span style="color:#10263f;font-weight:700">&middot; ${esc(it.unit_label)}</span>`:""}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:center">${num(it.qty)}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:right">${money(it.unit_price)}</td><td style="padding:5px 10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:right">${money(it.line_total)}</td></tr>`).join("");
-    const notice=s.account_notice?`<div style="margin:0 0 8px;padding:8px 10px;background:#fff7e6;border:1px solid #f1d9a6;border-radius:6px;font-size:13px;color:#8a5a00"><b>${esc(s.account_notice)}</b> — HCPS will help you open this manufacturer account (dealer application). Your order is recorded and is not held for it.</div>`:"";
+    const notice=s.account_notice?`<div style="margin:0 0 8px;padding:8px 10px;background:#fff7e6;border:1px solid #f1d9a6;border-radius:6px;font-size:13px;color:#8a5a00"><b>${esc(s.account_hold?AS.LABEL:s.account_notice)}</b> — ${s.account_hold?esc(s.account_notice):"HCPS will help you open this manufacturer account (dealer application). Your order is recorded and is not held for it."}</div>`:"";
     return `<div style="margin:0 0 16px"><div style="font-weight:700;color:#2B4071;font-size:14px;margin:0 0 6px">${esc(s.line)}${s.po?` &middot; PO ${esc(s.po)}`:""}</div>${notice}<table style="border-collapse:collapse;width:100%"><thead><tr><th style="text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#8a96a3;padding:0 10px 4px">Item</th><th style="font-size:10px;color:#8a96a3;padding:0 10px 4px">Qty</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Unit</th><th style="text-align:right;font-size:10px;color:#8a96a3;padding:0 10px 4px">Total</th></tr></thead><tbody>${rows}</tbody></table><div style="text-align:right;font-size:13px;font-weight:700;color:#1b2733;margin:6px 10px 0">Subtotal: ${money(s.subtotal)}</div>${freightLineHtml(s)}</div>`;
   }).join("");
   const html=`<div style="font-family:Arial,sans-serif;color:#1b2733;max-width:600px">
@@ -134,7 +135,7 @@ function orderConfirmation(to,d,summaries){
     <p style="font-size:12.5px;line-height:1.6;color:#6b7280;margin:16px 0 0">Pricing shown is your contract pricing; the manufacturer's invoice is the final billing document. Questions about this order? Reply to this email or reach your HCPS rep.</p>
     <p style="font-size:12px;color:#9aa4ae;margin:14px 0 0">HomeCare Provider Services &middot; Your partner in mobility &amp; home medical equipment.</p></div>`;
   const text=`Order received${d.business?", "+d.business:""}\n\nThanks for ordering through the HomeCare Provider Services portal. This is an order-received acknowledgment, not a manufacturer confirmation. HCPS reviews your order, places it with the manufacturer, and sends you the order confirmation.\n\n`
-    +summaries.map(s=>`${s.line}${s.po?" (PO "+s.po+")":""}\n`+(s.account_notice?`  ${s.account_notice} — HCPS will help you open this manufacturer account. Your order is recorded and is not held for it.\n`:"")+(s.items||[]).map(it=>`  ${num(it.qty)} x ${it.name||it.code||"Item"}${it.unit_label?" ("+it.unit_label+")":""} @ ${money(it.unit_price)} = ${money(it.line_total)}`).join("\n")+`\n  Subtotal: ${money(s.subtotal)}`+freightLineText(s)).join("\n\n")
+    +summaries.map(s=>`${s.line}${s.po?" (PO "+s.po+")":""}\n`+(s.account_notice?(s.account_hold?`  ${s.account_notice}\n`:`  ${s.account_notice} — HCPS will help you open this manufacturer account. Your order is recorded and is not held for it.\n`):"")+(s.items||[]).map(it=>`  ${num(it.qty)} x ${it.name||it.code||"Item"}${it.unit_label?" ("+it.unit_label+")":""} @ ${money(it.unit_price)} = ${money(it.line_total)}`).join("\n")+`\n  Subtotal: ${money(s.subtotal)}`+freightLineText(s)).join("\n\n")
     +`\n\nView your order history: ${PORTAL_URL}`;
   return {to,subject:"HCPS received your order",html,text};
 }
@@ -323,6 +324,15 @@ exports.handler = async (event)=>{
          or not at all: if its lines cannot be written, the order row is removed again and the
          order is reported as failed. Nothing downstream (emails, tracking requests) ever sees an
          order that did not persist. */
+      /* Owner directive 2026-11-06: an approved line with no HCPS account identifier on file is recorded and HELD as
+         "Pending Manufacturer Account Setup" — never blocked, never sent on before HCPS opens the account. A failed read
+         holds the order as well (fail closed). */
+      /* FAIL CLOSED (review of #108): if the identifiers cannot be read, every non-Golden order is held too — holding costs
+         nothing (release re-checks the account) and an order is never sent on before the account is known to exist. */
+      let acctMissing=null, acctUnchecked=false;
+      const acctSlugs=orders.map(o=>o.manufacturer_slug||o.manufacturer).filter(s=>s&&known.has(s));
+      try{ acctMissing=new Set(await AS.missingIdentifiers(sb,who.dealer_id,acctSlugs)); }
+      catch(e){ console.error("account identifier read failed",e&&e.message); acctUnchecked=true; acctMissing=new Set(acctSlugs.filter(s=>!AS.GOLDEN.has(String(s)))); }
       let saved=0; const summaries=[]; const slugs=new Set(); const failed=[];
       for(const o of orders){
         const slug=o.manufacturer_slug||o.manufacturer||null;
@@ -331,7 +341,7 @@ exports.handler = async (event)=>{
           dealer_id:who.dealer_id,
           hcps_account:d.account||null,
           manufacturer:cleanSlug,
-          status:"submitted",
+          status:(cleanSlug&&acctMissing&&acctMissing.has(cleanSlug))?AS.STATUS:"submitted",
           po_number:o.po||null,
           notes:o.notes||null,
           ship_name:d.business||null, ship_address:d.address||null, ship_city:d.city||null,
@@ -380,14 +390,15 @@ exports.handler = async (event)=>{
         if(cleanSlug) slugs.add(cleanSlug);
         saved++;
       }
-      /* New manufacturer account notice (C3-06): never blocks — tells the dealer and HCPS. */
-      try{
+      for(const su of summaries) if(su.slug && acctMissing && acctMissing.has(su.slug)){ su.account_hold=true; su.account_notice=acctUnchecked?AS.uncheckedMessage(mfrName[su.slug]):AS.holdMessage(mfrName[su.slug]); if(acctUnchecked) su.account_unchecked=true; }
+      /* New manufacturer account notice (C3-06): never blocks — tells the dealer and HCPS. (A held order already says so.) */
+      if(!acctUnchecked) try{
         const rows=await AN.readRows(sb,[who.dealer_id]);
         const missing=new Set(AN.missingAccounts(rows,who.dealer_id,summaries.map(su=>su.slug).filter(Boolean)));
-        for(const su of summaries) if(su.slug && missing.has(su.slug)) su.account_notice=AN.noticeFor(su.slug,mfrName[su.slug]);
+        for(const su of summaries) if(su.slug && missing.has(su.slug) && !su.account_hold) su.account_notice=AN.noticeFor(su.slug,mfrName[su.slug]);
       }catch(e){
         console.error("account notice read failed",e&&e.message);
-        for(const su of summaries) if(su.slug && AN.noticeFor(su.slug)) su.account_notice=AN.noticeFor(su.slug,mfrName[su.slug])+" (account status could not be checked — verify)";
+        for(const su of summaries) if(su.slug && AN.noticeFor(su.slug) && !su.account_hold) su.account_notice=AN.noticeFor(su.slug,mfrName[su.slug])+" (account status could not be checked — verify)";
       }
       if(saved>0){
         // Dealer-facing order confirmation — TRANSACTIONAL: always sends, never counts
@@ -424,7 +435,7 @@ exports.handler = async (event)=>{
       }
       const recorded=summaries.map(su=>({order_id:su.order_id,manufacturer_slug:su.request_slug,subtotal:su.subtotal,
         freight_fee:su.freight_fee, estimated_total:su.estimated_total, freight_lines:su.freight_lines,
-        ...(su.account_notice?{account_notice:su.account_notice}:{}),
+        ...(su.account_notice?{account_notice:su.account_notice}:{}), ...(su.account_hold?{status:AS.STATUS,status_label:AS.LABEL,account_hold:true,...(su.account_unchecked?{account_unchecked:true}:{})}:{status:"submitted"}),
         items:su.items.map(it=>({code:it.code,name:it.name,qty:it.qty,unit:it.unit_price,line_total:it.line_total}))}));
       if(already.length) await noteResubmission(already, who);
       if(!saved && !already.length) return json(503,{ok:false,status:"record_failed",saved:0,failed,orders:[]});

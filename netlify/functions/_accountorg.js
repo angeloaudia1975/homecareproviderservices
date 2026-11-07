@@ -168,5 +168,51 @@ module.exports = function (sbGet, sbSend) {
     return { status: "conflict", existing, incoming: incomingRef };
   }
 
-  return { family, propagateAccountRef, fillHeadquartersBlanks, markActive, reconcileAccountRef };
+  /* HCPS-ENTERED ACCOUNT IDENTIFIER (owner directive 2026-11-06 17:40 CT): an identifier HCPS staff type in Dealer 360 is saved
+     to the authoritative dealer_manufacturers row and is VERIFIED at once (who + when + the exact identifier) — no second
+     button, no waiting for manufacturer reports. Numbers, letters or manufacturer usernames are all valid identifiers.
+     Verification is NOT ordering authorization: an existing row keeps its `active` (Dealer Manager decides ordering); a line
+     with no row gets one with active=false, so typing a number never opens ordering. Branches of the family with the line
+     and no identifier of their own inherit it (verified with it); a branch with its own identifier is left alone. An empty
+     identifier clears the number and its verification. Strict: a failed write throws (never a silent "saved"). */
+  async function saveVerifiedAccountRef(slug, dealerId, ref, by) {
+    slug = String(slug || "").trim(); ref = String(ref == null ? "" : ref).trim();
+    if (!slug || !dealerId) throw new Error("dealer and manufacturer required");
+    const at = new Date().toISOString(), who = String(by || "hcps").slice(0, 200);
+    const ver = ref ? { verified_at: at, verified_by: who, verified_ref: ref } : { verified_at: null, verified_by: null, verified_ref: null };
+    const q = (id) => `dealer_manufacturers?dealer_id=eq.${encodeURIComponent(id)}&manufacturer=eq.${encodeURIComponent(slug)}`;
+    const cur = await sbGet(q(dealerId) + "&select=dealer_id,account_ref,active");
+    if (cur && cur[0]) await sbSend("PATCH", q(dealerId), Object.assign({ account_ref: ref || null }, ver), { Prefer: "return=minimal" });
+    else if (ref) await sbSend("POST", "dealer_manufacturers", Object.assign({ dealer_id: dealerId, manufacturer: slug, account_ref: ref, active: false }, ver), { Prefer: "return=minimal" });
+    if (!ref) return { saved: true, verified: false, family_filled: 0 };
+    /* The dealer's own identifier is saved from here on: a later failure must say "saved, branches not filled", never
+       "nothing was changed". The family is read strictly (a failed read is reported, not treated as "no branches"). */
+    let ids, filled = 0;
+    try {
+      const self = await sbGet(`dealers?id=eq.${encodeURIComponent(dealerId)}&select=id,parent_id`);
+      if (!Array.isArray(self)) throw new Error("dealer read failed");
+      const root = self[0] ? (self[0].parent_id || self[0].id) : dealerId;
+      const fam = await sbGet(`dealers?or=(id.eq.${encodeURIComponent(root)},parent_id.eq.${encodeURIComponent(root)})&select=id`);
+      if (!Array.isArray(fam)) throw new Error("family read failed");
+      ids = fam.length ? fam.map((d) => d.id) : [dealerId];
+    } catch (e) { return { saved: true, verified: true, verified_at: at, verified_by: who, family_filled: 0, family_incomplete: true }; }
+    try {
+    if (ids.length > 1) {
+      const others = ids.filter((id) => String(id) !== String(dealerId));
+      const rows = await sbGet(`dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&dealer_id=in.(${others.map(encodeURIComponent).join(",")})&select=dealer_id,account_ref`);
+      const have = new Set((rows || []).map((r) => String(r.dealer_id)));
+      for (const r of rows || []) {
+        if (String(r.account_ref || "").trim()) continue;
+        await sbSend("PATCH", q(r.dealer_id) + "&or=(account_ref.is.null,account_ref.eq.)", Object.assign({ account_ref: ref }, ver), { Prefer: "return=minimal" });
+        filled++;
+      }
+      /* a branch without the line gets the org's identifier on a row that does NOT open ordering (active=false) */
+      const add = others.filter((id) => !have.has(String(id))).map((id) => Object.assign({ dealer_id: id, manufacturer: slug, account_ref: ref, active: false }, ver));
+      if (add.length) { await sbSend("POST", "dealer_manufacturers", add, { Prefer: "return=minimal" }); filled += add.length; }
+    }
+    } catch (e) { return { saved: true, verified: true, verified_at: at, verified_by: who, family_filled: filled, family_incomplete: true }; }
+    return { saved: true, verified: true, verified_at: at, verified_by: who, family_filled: filled };
+  }
+
+  return { family, propagateAccountRef, fillHeadquartersBlanks, markActive, reconcileAccountRef, saveVerifiedAccountRef };
 };

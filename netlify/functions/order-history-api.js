@@ -120,7 +120,8 @@ async function consolidate(dealerId, mfrName) {
       id: o.id, date: o.submitted_at || null, ym: ym(o.submitted_at).ym, source,
       status: o.status || "submitted", manufacturer: slug, manufacturerName: mfrName[slug] || slug || "—",
       po: o.po_number || "", tracking: o.tracking_number || "",
-      account_notice: (o.status !== "cancelled" && AN.noticeFor(slug) && acct && AN.missingAccounts(acct, dealerId, [slug]).length) ? AN.noticeFor(slug, mfrName[slug]) : "",
+      account_notice: o.status === "pending_account_setup" ? "Pending Manufacturer Account Setup" : (o.status !== "cancelled" && AN.noticeFor(slug) && acct && AN.missingAccounts(acct, dealerId, [slug]).length) ? AN.noticeFor(slug, mfrName[slug]) : "",
+      ...(o.status === "pending_account_setup" ? { account_hold: true } : {}),
       lines: items, cost: round2(o.subtotal != null ? o.subtotal : items.reduce((s, i) => s + i.line, 0)),
       units: items.reduce((s, i) => s + i.qty, 0),
     });

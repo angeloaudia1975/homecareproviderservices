@@ -7,7 +7,7 @@
  .seg button{background:none;border:0;border-radius:7px;padding:7px 12px;font-weight:700;font-size:12.5px;color:#41576b;cursor:pointer;font-family:inherit}
  .seg button.on{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(16,38,63,.12)}
  .st{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:6px;padding:2px 8px;white-space:nowrap}
- .st.submitted{background:#eaf3fb;color:#12466e}.st.placed{background:#fff7e6;color:#8a5a00}.st.confirmed{background:#f3eef9;color:#5b3fa0}.st.shipped{background:#fdeee0;color:#b45309}.st.completed{background:#e7f6ec;color:#1f7a44}.st.cancelled{background:#eef2f6;color:#8a94a1}
+ .st.pending_account_setup{background:#fdecea;color:#9b1c1c}.st.submitted{background:#eaf3fb;color:#12466e}.st.placed{background:#fff7e6;color:#8a5a00}.st.confirmed{background:#f3eef9;color:#5b3fa0}.st.shipped{background:#fdeee0;color:#b45309}.st.completed{background:#e7f6ec;color:#1f7a44}.st.cancelled{background:#eef2f6;color:#8a94a1}
  .exp{background:#f7fafd;border-top:1px solid #eef2f6}
  .exp td{padding:12px 14px}
  .itbl{width:100%;font-size:12.5px;margin-top:4px}
@@ -31,8 +31,8 @@ const TKEY="hcps_staff_token", PKEY="hcps_staff_profile";
 window.addEventListener("hcps-token",function(e){try{TOKEN=e.detail;}catch(_){}});
 let ME=null; try{ME=HCPS.profile()}catch(e){ME=null;}
 let TOKEN=HCPS.token(), ORDERS=[], STATS={}, MANAGE=false, FILT="open", OPEN=new Set();
-const ST=["submitted","placed","confirmed","shipped","completed","cancelled"];
-const LBL={submitted:"Received by HCPS",placed:"Placed with manufacturer",confirmed:"Confirmed by manufacturer",shipped:"Shipped",completed:"Completed",cancelled:"Cancelled"};
+const ST=["pending_account_setup","submitted","placed","confirmed","shipped","completed","cancelled"];
+const LBL={pending_account_setup:"Pending Manufacturer Account Setup",submitted:"Received by HCPS",placed:"Placed with manufacturer",confirmed:"Confirmed by manufacturer",shipped:"Shipped",completed:"Completed",cancelled:"Cancelled"};
 
 function gate(msg){$("#body").innerHTML=`<div class="gate"><h2>Staff sign-in</h2><p class="hint" style="margin:2px 0 10px">Sign in with your work email and password.</p><input id="lemail" type="email" placeholder="Email" autocomplete="username"><input id="lpass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitTok()"><button class="go" onclick="submitTok()">Sign in</button><div class="er" id="lerr" style="color:#b42323;margin-top:8px">${msg||""}</div></div>`;setTimeout(()=>{const t=$("#lemail");if(t)t.focus();},50);}
 async function submitTok(){
@@ -58,14 +58,14 @@ async function load(){
 }
 
 function render(){
-  const openStatuses=new Set(["submitted","placed","confirmed","shipped"]);
+  const openStatuses=new Set(["pending_account_setup","submitted","placed","confirmed","shipped"]);
   let rows = FILT==="open" ? ORDERS.filter(o=>openStatuses.has(o.status)) : (FILT==="all"?ORDERS:ORDERS.filter(o=>o.status===FILT));
   const kpi=(l,v,cls)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
   const kpis=`<div class="kpis" style="margin-bottom:14px">
-    ${kpi("Received",STATS.submitted||0,"blue")}${kpi("Placed",STATS.placed||0,"")}${kpi("Confirmed",STATS.confirmed||0,"")}${kpi("Shipped",STATS.shipped||0,"orange")}${kpi("Completed",STATS.completed||0,"")}${kpi("Cancelled",STATS.cancelled||0,"")}
+    ${kpi("Account setup",STATS.pending_account_setup||0,"orange")}${kpi("Received",STATS.submitted||0,"blue")}${kpi("Placed",STATS.placed||0,"")}${kpi("Confirmed",STATS.confirmed||0,"")}${kpi("Shipped",STATS.shipped||0,"orange")}${kpi("Completed",STATS.completed||0,"")}${kpi("Cancelled",STATS.cancelled||0,"")}
   </div>`;
   const seg=(v,l)=>`<button class="${FILT===v?'on':''}" onclick="setFilt('${v}')">${l}</button>`;
-  const filt=`<div class="filt"><div class="seg">${seg("open","Open")}${seg("submitted","Received")}${seg("placed","Placed")}${seg("confirmed","Confirmed")}${seg("shipped","Shipped")}${seg("completed","Completed")}${seg("cancelled","Cancelled")}${seg("all","All")}</div><span class="hint" style="margin:0">${rows.length} order${rows.length===1?"":"s"}</span></div>`;
+  const filt=`<div class="filt"><div class="seg">${seg("open","Open")}${seg("pending_account_setup","Account setup")}${seg("submitted","Received")}${seg("placed","Placed")}${seg("confirmed","Confirmed")}${seg("shipped","Shipped")}${seg("completed","Completed")}${seg("cancelled","Cancelled")}${seg("all","All")}</div><span class="hint" style="margin:0">${rows.length} order${rows.length===1?"":"s"}</span></div>`;
   let body;
   if(!rows.length){ body=`<div class="msg">No orders in this view${ORDERS.length?"":" yet — the queue fills as dealers submit orders on the portal"}.</div>`; }
   else{
@@ -98,11 +98,31 @@ function render(){
 }
 function actions(o){
   const btn=(l,s,cls)=>`<button class="btn sm ${cls||''}" onclick="setStatus('${o.id}','${s}')">${l}</button>`;
+  if(o.status==="pending_account_setup") return `<button class="btn sm blue" onclick="releaseHold('${o.id}')">Release — account is set up</button>`+btn("Cancel","cancelled","ghost");
   if(o.status==="submitted") return btn("Mark placed with manufacturer","placed","blue")+btn("Cancel","cancelled","ghost")+`<button class="btn sm ghost" onclick="printOrder('${o.id}')">Print</button>`;
   if(o.status==="placed") return btn("Record manufacturer confirmation","confirmed","blue")+btn("Cancel","cancelled","ghost")+`<button class="btn sm ghost" onclick="printOrder('${o.id}')">Print</button>`;
   if(o.status==="confirmed") return btn("Ship","shipped","orange")+btn("Cancel","cancelled","ghost");
   if(o.status==="shipped")   return btn("Complete","completed","");
   return `<span class="hint" style="margin:0">${esc(o.tracking||"—")}</span>`;
+}
+/* Release a held order once the dealer's manufacturer account is recorded in Dealer 360. Prices and freight are re-checked on the
+   server; a change needs the dealer's confirmation of exactly the figures shown (sent back, so anything that moves again is
+   refused), and a line the order record can't re-price (price family / upgrade) needs a by-hand check. Nothing goes to the
+   manufacturer here. */
+async function releaseHold(id,extra){
+  const payload=Object.assign({action:"release_account_hold",id},extra||{});
+  const r=await api(payload); const j=r&&r.body;
+  if(j&&j.ok) return load();
+  if(j&&j.error==="manual_price_check"){
+    const kept=(j.lines||[]).filter(l=>l.kept).map(l=>`${l.code}: ${money(l.old_unit)} (recorded at checkout)`).join("\n");
+    const note=window.prompt("These lines were ordered with a price family or upgrade the order record doesn't keep, so their price can't be re-checked automatically:\n"+kept+"\n\nCheck them by hand. What did you check? (leave empty to stop)","");
+    if(note&&note.trim()) return releaseHold(id,Object.assign({},extra,{kept_prices_checked:true,note:[extra&&extra.note,note.trim()].filter(Boolean).join(" · ")})); return; }
+  if(j&&j.error==="prices_changed"){
+    const lines=(j.lines||[]).filter(l=>!l.kept&&l.new_unit!=null&&Math.abs(l.new_unit-l.old_unit)>=0.005).map(l=>`${l.code}: ${money(l.old_unit)} → ${money(l.new_unit)}`);
+    const fr=j.freight&&j.proposal&&j.proposal.freight!=null?[`Freight: ${money(j.freight.old)} → ${money(j.freight.new)}`]:[];
+    const note=window.prompt("Prices changed since the dealer ordered:\n"+lines.concat(fr).join("\n")+"\n\nConfirm exactly these figures with the dealer first. Who confirmed, and how? (leave empty to stop)","");
+    if(note&&note.trim()) return releaseHold(id,Object.assign({},extra,{dealer_confirmed:true,confirmed:j.proposal,note:[extra&&extra.note,note.trim()].filter(Boolean).join(" · ")})); return; }
+  alert((j&&(j.message||j.error))||"Could not release this order.");
 }
 function toggle(id){ if(OPEN.has(id))OPEN.delete(id); else OPEN.add(id); render(); }
 function setFilt(v){ FILT=v; render(); }

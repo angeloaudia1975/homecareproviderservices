@@ -268,7 +268,10 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
       const up = it.upgrade == null || it.upgrade === "" ? null : String(it.upgrade);
       const p = p0 && up ? (L.engine.withUpgrade(p0, up) || null) : p0;
       if (p) cart.set(slug + "::" + p.code + "::" + oi + "::" + ii, { p, qty });
-      lines.push({ oi, ii, slug, code: String(it.code), family: fam, upgrade: up, qty, p, client: it.unit == null ? null : Number(it.unit) });
+      /* "configurable": the code is sold in more than one family, or offers upgrades — a stored order line that lost its
+         family / upgrade cannot be re-priced from its code alone (orders-admin release keeps its recorded price). */
+      const configurable = same.length > 1 || !!(p0 && Array.isArray(p0.upgrades) && p0.upgrades.length);
+      lines.push({ oi, ii, slug, code: String(it.code), family: fam, upgrade: up, qty, p, configurable, client: it.unit == null ? null : Number(it.unit) });
     });
   });
   /* ORDER RULES PRINTED ON A MANUFACTURER'S LIST (ABM 2026, owner 2026-10-27) — the shop's cartRuleProblems, on the
@@ -291,7 +294,7 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
     /* Visible is not sellable: a discontinued product is shown for reference only. */
     if (!l.p || l.p._discontinued || l.rule) {
       changed = true;
-      o.items.push(Object.assign({ code: l.code, qty: l.qty, available: false, unit: null, line_total: null, client_unit: l.client, changed: true }, l.family != null ? { family: l.family } : {}, l.upgrade ? { upgrade: l.upgrade } : {},
+      o.items.push(Object.assign({ code: l.code, qty: l.qty, available: false, unit: null, line_total: null, client_unit: l.client, changed: true }, l.configurable ? { configurable: true } : {}, (l.p && l.p._discontinued) ? { discontinued: true } : {}, l.family != null ? { family: l.family } : {}, l.upgrade ? { upgrade: l.upgrade } : {},
         l.rule ? { rule: l.rule } : {}, l.min_order_qty ? { min_order_qty: l.min_order_qty } : {}, l.requires ? { requires: l.requires } : {}));
       continue;
     }
@@ -309,7 +312,7 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
     o.items.push({ code: l.code, ...(l.family != null ? { family: l.family } : {}), ...(l.upgrade ? { upgrade: l.upgrade } : {}), name: l.p.name, qty: l.qty, available: true, unit, ...unitBits,
       contract: contract[k] != null ? contract[k] : null,
       rate: rates[l.slug] != null ? rates[l.slug] : null,
-      line_total: Math.round(unit * l.qty * 100) / 100, client_unit: l.client, changed: diff,
+      line_total: Math.round(unit * l.qty * 100) / 100, client_unit: l.client, changed: diff, ...(l.configurable ? { configurable: true } : {}),
       commercial: { base_price: l.p.base_price, ...(l.p.dealer_price != null ? { dealer_price: l.p.dealer_price } : {}), msrp: l.p.msrp, map: l.p.map, tiers: l.p.tiers || null,
                     group: l.p.group || "", manufacturer: l.slug, price_note: l.p.price_note || "" } });
   }
