@@ -132,7 +132,7 @@ async function loadAll(who, b) {
   const catalog = {}; for (const [s, c] of cats) if (c) catalog[s] = c;
   /* Shop categories + retail reference (owner 2026-11-06, _report_catalog): one catalog per line bought, cached 10 minutes;
      Golden from the dealer's own Golden catalog. A line that can't be read gives no reference (a gap), never a guess. */
-  const refcat = {}; const rcNotes = []; let goldenInfo = null;
+  const refcat = {}; const rcNotes = []; let goldenInfo = null, goldenOnce = null;
   /* review #109: a failed or unavailable catalog is never cached (the next report tries again) and Golden gets 3 seconds —
      past that its purchases are listed as "catalog unavailable", never guessed and never failing the whole report */
   const keep = async (key, ms, fn, good) => { const c = CACHE.get(key); if (c && Date.now() - c.at < ms) return c.v; const v = await fn(); if (good(v)) CACHE.set(key, { at: Date.now(), v }); return v; };
@@ -142,7 +142,8 @@ async function loadAll(who, b) {
       if (RC.GOLDEN.has(s2)) { const fl = await cached('flags', 60000, () => readFlags((pp) => sb('GET', pp)));
         /* Golden (owner 2026-11-06 §7): live with a bounded retry, else HCPS's stored reference of Golden's retail data
            (≤ 7 days, labelled with its date), else unavailable — _golden_ref */
-        const gr = await GREF.goldenReference({ sbGet: (pp) => sb('GET', pp), sbSend: (m, pp, body, h) => sb(m, pp, body, h), fetchCatalog: RC.goldenFetcher((pp) => sb('GET', pp), String(root), fl) });
+        if (!goldenOnce) goldenOnce = GREF.goldenReference({ sbGet: (pp) => sb('GET', pp), sbSend: (m, pp, body, h) => sb(m, pp, body, h), fetchCatalog: RC.goldenFetcher((pp) => sb('GET', pp), String(root), fl) });
+        const gr = await goldenOnce;   // one Golden call per report, even when purchases carry both Golden codes
         refcat[s2] = gr.catalog; goldenInfo = gr;
         if (!gr.catalog) refcat[s2] = { unavailableReason: gr.reason }; }
       else refcat[s2] = await keep('rcat:' + s2, 600000, () => RC.lineCatalog(reportDeps(), s2), (v) => !!(v && v.readable));

@@ -89,7 +89,7 @@ function valuate(rows, o) {
       else if (asPiece && !asOrder) { uq = q / res.pack; uomConv = true; }
       else reason = 'uom_review';
     }
-    if (uomConv) uomConverted.push({ manufacturer: r.mfr, code: r.code, source_qty: q, pack: res.pack, order_units: Math.round(uq * 1000) / 1000, evidence: `reported $${r2(Math.abs(unitCost))} per unit ≈ standard $${r2(res.cost / res.pack)} per piece (pack of ${res.pack} at $${r2(res.cost)})` });
+    if (uomConv) uomConverted.push({ manufacturer: r.mfr, code: r.code, source_qty: q, pack: res.pack, order_units: Math.round(uq * 1000) / 1000, evidence: `the reported price per unit matches one piece of a pack of ${res.pack} (catalog order unit), not a whole pack` });   // no cost figure — this reaches the dealer
     if (reason) { if (r.amt !== 0) add(gaps, r.mfr + '|' + r.code + '|' + reason, () => ({ manufacturer: r.mfr, manufacturer_name: o.mName(r.mfr), code: r.code, name: r.name, amount: 0, units: 0, reason }), (x) => { x.amount = r2(x.amount + r.amt); x.units += q; }); continue; }
     const ret = r2(uq * res.ref);
     const cp = typeof o.custom === 'function' ? o.custom(r.loc, r.mfr, res.code || r.code) : null;
@@ -246,6 +246,8 @@ function build(input) {
   }
   const notes = [];
   if (valuation.matched_cost > 0) notes.push('Retail values are POTENTIAL retail of the inventory purchased, at today\'s Shop retail reference prices (official MSRP, else HCPS calculated retail at 2× standard dealer cost) — not sales made. Historical purchases are valued at current prices.');
+  if (valuation.uom && valuation.uom.converted_lines) notes.push(`${valuation.uom.converted_lines} purchase line(s) were reported in single pieces of a product sold in packs or cases; for retail value they are counted in the catalog's order unit (for example 8 pieces = 2 packs of 4). Unit columns of the retail tables are order units; the quantities as reported are kept in the purchase tables.`);
+  if (valuation.uom && valuation.uom.review_lines) notes.push(`${valuation.uom.review_lines} product(s) sold in packs or cases could not be told apart as pieces or packs from the report — not valued until reviewed ("Unit of measure needs review").`);
   if (S.notes.duplicates_removed) notes.push(`${S.notes.duplicates_removed} commission-statement line(s) that repeat a sales-report line were counted once.`);
   if (S.notes.rows_without_amount) notes.push(`${S.notes.rows_without_amount} reported line(s) have no amount (for example open invoices) and are not counted.`);
   if (W.ytd && all.length) notes.push(`This year runs through ${monthLabel(W.through)}, the latest month HCPS has manufacturer reports for on these lines.`);

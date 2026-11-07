@@ -91,7 +91,7 @@ const build = (sales, o) => REP.build(Object.assign({ year: Y, today: `${Y}-12-1
     const mfrName = { bemis: 'Bemis' };
     const V = build([mk(BR, 'bemis', 2, 'SEAT4', 'Seat', 2, 200), mk(BR, 'bemis', 3, 'SEAT4', 'Seat', 8, 200), mk(BR, 'bemis', 4, 'SEAT4', 'Seat', 2, 900), mk(BR, 'bemis', 5, 'NOCOST2', 'Case', 3, 120)], { mfrName }).valuation;
     const p = V.by_product.find((x) => x.code === 'SEAT4'); eq([p.units, p.source_units, p.retail], [4, 10, 800], '2 cases + 8 pieces (= 2 cases); the source quantity is kept');
-    eq(V.uom.converted.map((c) => [c.source_qty, c.pack, c.order_units]), [[8, 4, 2]]); ok(/per piece/.test(V.uom.converted[0].evidence), 'evidence');
+    eq(V.uom.converted.map((c) => [c.source_qty, c.pack, c.order_units]), [[8, 4, 2]]); ok(/one piece of a pack of 4/.test(V.uom.converted[0].evidence) && !/\$/.test(V.uom.converted[0].evidence), 'evidence, no cost figure');
     eq(V.gaps.map((g) => [g.code, g.reason]).sort(), [['NOCOST2', 'uom_review'], ['SEAT4', 'uom_review']]);
     eq(V.uom.review_lines, 2);
     /* pack of 2 at 0.72× standard: "an order unit at a discount" and "a piece at a premium" both fit → review, never guessed */

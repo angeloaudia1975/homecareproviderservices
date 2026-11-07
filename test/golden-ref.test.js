@@ -59,5 +59,18 @@ const slow = (ms) => () => new Promise((r) => setTimeout(() => r({ ok: true, jso
     await G.goldenReference({ sbGet: S.sbGet, sbSend: send, fetchCatalog: ok(PRODUCTS) });
     assert.equal(writes, 1);
   });
+  await t('review #114: a smaller catalog MERGES into the reference — other dealers\' SKUs and a known standard price stay; 30-day-old SKUs drop', async () => {
+    const G = fresh(), S = store(); const old = new Date(Date.now() - 31 * 864e5).toISOString(), recent = new Date(Date.now() - 864e5).toISOString();
+    S.db.golden_retail_ref = { at: new Date(Date.now() - 7 * 3600e3).toISOString(), count: 3, items: {
+      KEEP: { s: 'KEEP', n: 'Other dealer SKU', c: null, m: 999, d: null, t: recent }, GB108B: { s: 'GB108B', n: 'Buzzaround', c: null, m: null, d: 700, t: recent },
+      GONE: { s: 'GONE', n: 'Old', c: null, m: 10, d: null, t: old } } };
+    await G.goldenReference({ sbGet: S.sbGet, sbSend: S.sbSend, fetchCatalog: ok([{ sku: 'GB108B', name: 'Buzzaround', msrp: 1600, dealer_price: 650, price_source: 'account' }]) });
+    const it = S.db.golden_retail_ref.items;
+    assert.deepEqual(Object.keys(it).sort(), ['GB108B', 'KEEP']); assert.deepEqual([it.GB108B.m, it.GB108B.d], [1600, 700], 'standard price kept; the account price never stored');
+  });
+  await t('no Golden access: no retry', async () => {
+    const G = fresh(), S = store(); let n = 0;
+    await G.goldenReference({ sbGet: S.sbGet, sbSend: S.sbSend, fetchCatalog: async () => { n++; return { reason: 'no_access' }; } }); assert.equal(n, 1);
+  });
   console.log(`\ngolden reference: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

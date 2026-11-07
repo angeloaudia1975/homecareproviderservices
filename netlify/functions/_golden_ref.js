@@ -12,6 +12,7 @@
 const KEY = 'golden_retail_ref', MON = 'golden_ref_monitor';
 const REFRESH_EVERY = 6 * 3600e3;          // rewrite the stored reference at most every 6 h
 const STALE_MAX = 7 * 24 * 3600e3;          // a stored reference older than 7 days is not used
+const ITEM_MAX = 30 * 24 * 3600e3;          // a SKU no live answer has confirmed for 30 days leaves the reference
 const TRY_MS = 3000, RETRY_MS = 2500, RETRY_IF_FAST = 1500;
 const pos = (v) => { const n = Number(v); return n > 0 ? Math.round(n * 100) / 100 : null; };
 const r2 = (n) => Math.round(Number(n) * 100) / 100;
@@ -23,7 +24,7 @@ function within(p, ms) { return Promise.race([p.then((v) => ({ v }), (e) => ({ e
 async function live(fetchCatalog) {
   const t0 = Date.now(); MEM.mon.calls++;
   let r = await within(Promise.resolve().then(fetchCatalog), TRY_MS);
-  if (!(r.v && r.v.ok) && Date.now() - t0 < RETRY_IF_FAST) r = await within(Promise.resolve().then(fetchCatalog), RETRY_MS);   // one quick retry
+  if (!(r.v && (r.v.ok || r.v.reason === 'no_access')) && Date.now() - t0 < RETRY_IF_FAST) r = await within(Promise.resolve().then(fetchCatalog), RETRY_MS);   // one quick retry
   MEM.mon.last_ms = Date.now() - t0;
   if (r.timeout) { MEM.mon.timeouts++; MEM.mon.last_error = 'timeout'; return { reason: 'timeout' }; }
   if (r.e || !r.v) { MEM.mon.failures++; MEM.mon.last_error = String((r.e && r.e.message) || 'no answer').slice(0, 120); return { reason: 'failed' }; }
@@ -44,7 +45,7 @@ function toReference(products) {
     if (!g || !g.sku) continue;
     const msrp = pos(g.msrp), std = g.price_source === 'standard' ? pos(g.dealer_price) : null;
     if (!msrp && !std) continue;
-    items[String(g.sku).toUpperCase()] = { s: String(g.sku), n: String(g.name || g.title || '').slice(0, 120), c: g.category ? String(g.category).slice(0, 60) : null, m: msrp, d: std };
+    items[String(g.sku).toUpperCase()] = { s: String(g.sku), n: String(g.name || g.title || '').slice(0, 120), c: g.category ? String(g.category).slice(0, 60) : null, m: msrp, d: std, t: null };
   }
   return items;
 }
@@ -76,7 +77,12 @@ async function goldenReference(deps, opts) {
     const items = toReference(got.products);
     const fresh = stored && now - Date.parse(stored.at) < REFRESH_EVERY;
     if (!fresh && Object.keys(items).length) {
-      const v = { at: new Date(now).toISOString(), count: Object.keys(items).length, items };
+      /* review #114: MERGE per SKU — one dealer's (possibly smaller) catalog never replaces the others' SKUs; a SKU leaves
+         only when no live answer has confirmed it for 30 days. A standard price is never dropped by an answer without one. */
+      const merged = {}; const iso = new Date(now).toISOString();
+      for (const [k, x] of Object.entries((stored && stored.items) || {})) if (x && x.t && now - Date.parse(x.t) <= ITEM_MAX) merged[k] = x;
+      for (const [k, x] of Object.entries(items)) { const o = merged[k]; merged[k] = Object.assign({}, x, { m: x.m || (o && o.m) || null, d: x.d || (o && o.d) || null, t: iso }); }
+      const v = { at: iso, count: Object.keys(merged).length, items: merged };
       try { await upsert(deps.sbSend, KEY, v); MEM.ref = v; MEM.at = Date.now(); } catch (e) { console.error('golden ref write failed', e && String(e.message).slice(0, 100)); }
     }
     return { catalog: catalogFrom(items, got.products, new Date(now).toISOString(), 'live'), source: 'live', as_of: new Date(now).toISOString() };
