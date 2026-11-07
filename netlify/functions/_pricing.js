@@ -294,7 +294,7 @@ async function priceOrders({ orders, dealerId, sb, catalogFile, contentFile, man
     /* Visible is not sellable: a discontinued product is shown for reference only. */
     if (!l.p || l.p._discontinued || l.rule) {
       changed = true;
-      o.items.push(Object.assign({ code: l.code, qty: l.qty, available: false, unit: null, line_total: null, client_unit: l.client, changed: true }, l.configurable ? { configurable: true } : {}, l.family != null ? { family: l.family } : {}, l.upgrade ? { upgrade: l.upgrade } : {},
+      o.items.push(Object.assign({ code: l.code, qty: l.qty, available: false, unit: null, line_total: null, client_unit: l.client, changed: true }, l.configurable ? { configurable: true } : {}, (l.p && l.p._discontinued) ? { discontinued: true } : {}, l.family != null ? { family: l.family } : {}, l.upgrade ? { upgrade: l.upgrade } : {},
         l.rule ? { rule: l.rule } : {}, l.min_order_qty ? { min_order_qty: l.min_order_qty } : {}, l.requires ? { requires: l.requires } : {}));
       continue;
     }

@@ -158,7 +158,8 @@ exports.handler = async (event)=>{
       catch(e){ console.error("release pricing failed",e&&e.message); return json(503,{error:"pricing_unavailable",message:"Prices could not be checked right now — nothing was changed."}); }
       const po=(priced.orders||[])[0]||{items:[]};
       const lines=its.map((i,k)=>{ const n=(po.items||[])[k]||{}; const old=num(i.unit_price);
-        if(n.configurable) return {id:i.id,code:i.code,name:i.name,qty:i.qty,old_unit:old,new_unit:old,kept:true};
+        /* a configured line that is now discontinued or breaks an order rule is unavailable, never kept */
+        if(n.configurable && !(n.available===false && (n.rule||n.discontinued))) return {id:i.id,code:i.code,name:i.name,qty:i.qty,old_unit:old,new_unit:old,kept:true};
         return {id:i.id,code:i.code,name:i.name,qty:i.qty,old_unit:old,new_unit:n.available===false?null:(n.unit==null?null:num(n.unit))}; });
       const unavailable=lines.filter(l=>l.new_unit==null);
       if(unavailable.length) return json(409,{error:"items_unavailable",message:"Some items can no longer be priced as ordered — contact the dealer before releasing.",lines});
@@ -171,7 +172,7 @@ exports.handler = async (event)=>{
          then the recorded freight stands. */
       const oldFr=cur.freight_fee==null?null:num(cur.freight_fee);
       const newFr=(kept.length||po.freight_fee==null)?oldFr:r2(num(po.freight_fee));
-      const frChanged=oldFr!=null&&newFr!=null&&Math.abs(newFr-oldFr)>=0.005;
+      const frChanged=newFr!=null&&(oldFr==null?newFr>0:Math.abs(newFr-oldFr)>=0.005);
       const proposal={lines:changed.map(l=>({id:l.id,unit:l.new_unit})),freight:frChanged?newFr:null};
       if(changed.length||frChanged){
         const c=b.confirmed&&typeof b.confirmed==="object"?b.confirmed:null;
@@ -183,7 +184,7 @@ exports.handler = async (event)=>{
       }
       const at=new Date().toISOString(), stamp=at.slice(0,16).replace("T"," ");
       const who=me.email||me.name;
-      const detail=[...changed.map(l=>`${l.code} $${l.old_unit.toFixed(2)} → $${l.new_unit.toFixed(2)}`),...(frChanged?[`freight $${oldFr.toFixed(2)} → $${newFr.toFixed(2)}`]:[]),...kept.map(l=>`${l.code} kept at $${l.old_unit.toFixed(2)} (checked by hand)`)];
+      const detail=[...changed.map(l=>`${l.code} $${l.old_unit.toFixed(2)} → $${l.new_unit.toFixed(2)}`),...(frChanged?[`freight $${num(oldFr).toFixed(2)} → $${newFr.toFixed(2)}`]:[]),...kept.map(l=>`${l.code} kept at $${l.old_unit.toFixed(2)} (checked by hand)`)];
       const startNote=`Release from ${AS.LABEL} started by ${who} ${stamp} UTC`+(detail.length?` — ${detail.join("; ")}`+(note?` — dealer confirmation / check: ${note}`:""):"");
       const notes1=String([cur.admin_notes||"",startNote].filter(Boolean).join("\n")).slice(-4000);
       /* 1 — still held? record what is about to change (status-guarded; a cancelled or released order is left alone) */

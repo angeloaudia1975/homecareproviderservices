@@ -127,6 +127,7 @@ function holdWorld(o){
     order_items:[{id:'i1',order_id:'h1',code:'A1',name:'Widget',qty:2,unit_price:10,line_total:20}] }});
   const inner=W.fetch; W.fetch=async(u,x)=>{ u=String(u); if(u.startsWith(M.BASE+'/auth/v1/user')) return {ok:true,status:200,json:async()=>({id:'s',email:'p@x.com'})};
     if(u===OB+'/data/manufacturers.json') return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(o.mfrs||mfrs))};
+    if(o.file&&u===OB+'/data/acme.json') return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(o.file))};
     if(u.startsWith(OB+'/data/')) return {ok:false,status:404,json:async()=>null,text:async()=>''}; return inner(u,x); };
   W.C=M.load('orders-admin.js',W,{ORDERING_BASE:OB},ROOT); return W;
 }
@@ -158,12 +159,21 @@ await t('release: a line sold in two price families (the order record keeps no f
   const r2=await rel(W,{kept_prices_checked:true,note:'checked family S on the dealer PO'}); eq([r2.status,r2.body.kept,r2.body.subtotal],[200,1,20],JSON.stringify(r2.body));
   eq(W.db.order_items[0].unit_price,10,'recorded price kept'); ok(/A1 kept at \$10\.00/.test(W.db.orders[0].admin_notes),'noted');
 });
+await t('release: a configured line that is now discontinued or breaks an order rule is unavailable, never kept at its old price',async()=>{
+  const W=holdWorld({acct:'AC-7',products:[],file:[{code:'A1',name:'Widget',category:'X',base_price:10,min_order_qty:5,upgrades:[{label:'Rail',price_add:5}]}]});
+  const r=await rel(W); eq([r.status,r.body.error],[409,'items_unavailable'],JSON.stringify(r.body).slice(0,300));
+  const r2=await rel(W,{kept_prices_checked:true,note:'x'}); eq(r2.body.error,'items_unavailable'); eq(W.db.orders[0].status,'pending_account_setup','never released');
+  const W2=holdWorld({acct:'AC-7',products:[],file:[{code:'A1',name:'Widget',category:'X',base_price:10,upgrades:[{label:'Rail',price_add:5}]}]});
+  eq((await rel(W2)).body.error,'manual_price_check','an upgradeable code is flagged too');
+});
 await t('release: freight is re-worked by the shop rule; a freight change needs the same confirmation',async()=>{
   const fm=[{slug:'acme',name:'Acme',hasData:true,freight:{summary:'$15',groups:[{label:'Acme S&H',brandKeywords:['*'],flatFee:15}],elseActual:false}}];
   const W=holdWorld({acct:'AC-7',mfrs:fm,order:{freight_fee:0,estimated_total:20}});
   const r=await rel(W); eq([r.status,r.body.error,r.body.freight.new],[409,'prices_changed',15],JSON.stringify(r.body).slice(0,300));
+  const rx=await rel(W,{dealer_confirmed:true,note:'ok',confirmed:{lines:r.body.proposal.lines,freight:null}}); eq(rx.status,409,'the new freight must be confirmed too');
   const r2=await rel(W,{dealer_confirmed:true,note:'ok by email',confirmed:r.body.proposal}); eq([r2.status,r2.body.freight_fee],[200,15],JSON.stringify(r2.body));
   eq([W.db.orders[0].freight_fee,W.db.orders[0].estimated_total],[15,35]);
+  const Wn=holdWorld({acct:'AC-7',mfrs:fm,order:{freight_fee:null}}); const rn=await rel(Wn); eq([rn.status,rn.body.error],[409,'prices_changed'],'freight with none recorded needs confirmation too');
 });
 await t('release: a cancelled order is never touched, and a failed line write leaves the order HELD with the change noted',async()=>{
   const W=holdWorld({acct:'AC-7',order:{status:'cancelled'}}); const r=await rel(W); eq(r.status,409); eq(W.db.order_items[0].unit_price,10);
