@@ -43,7 +43,9 @@ async function lineCatalog(deps, slug) {
     if (msrp) { const unit = SF.unitOf(p, rec); const q = Number((rec && rec.case_qty) || p.case_qty) || 1;
       ref = unit === 'each' && q > 1 ? r2(msrp * q) : r2(msrp); src = 'msrp'; }
     else if (c && pos(c.cost)) { ref = r2(2 * c.cost); src = 'calculated'; }
-    out.set(C, { code: String(p.code), name: (m && m.name) || (f && f.name) || '', category: (m && m.category) || (f && f.category) || null, ref, ref_source: src, cost: c && pos(c.cost) ? pos(c.cost) : null });
+    out.set(C, { code: String(p.code), name: (m && m.name) || (f && f.name) || '', category: (m && m.category) || (f && f.category) || null, ref, ref_source: src, cost: c && pos(c.cost) ? pos(c.cost) : null,
+      /* order unit size (case / pack quantity from the commercial record) — the report's quantity is checked against it */
+      pack: Number((rec && rec.case_qty) || p.case_qty) > 1 ? Number((rec && rec.case_qty) || p.case_qty) : 1 });
   }
   return { byCode: out, readable: !!L.costs };
 }
@@ -76,4 +78,12 @@ function lookup(cat, slug, code) {
   if (GOLDEN.has(slug)) { let c = C; for (let i = 0; i < 2 && /-[A-Z0-9]{1,4}$/.test(c); i++) { c = c.replace(/-[A-Z0-9]{1,4}$/, ''); if (cat.byCode.has(c)) return { entry: cat.byCode.get(c), matched_by: 'golden_base' }; } }
   return null;
 }
-module.exports = { lineCatalog, goldenCatalog, lookup, isMarketing, MARKETING, LEGACY, GOLDEN };
+/* the dealer's live Golden catalog call, for _golden_ref (Golden's own authorization; { reason:'no_access' } without it) */
+function goldenFetcher(sbGet, dealerId, flags) {
+  return async () => {
+    const a = await GS.access(sbGet, dealerId, flags); if (!a.ok) return { reason: 'no_access' };
+    const deleg = Object.assign({ sub_dealer: a.c.sub_dealer, sub_branch: a.c.sub_branch, actor: 'report:' + String(dealerId).slice(0, 40), role: 'hcps_staff' }, a.acct ? { acct: a.acct } : {});
+    return GR.catalogFor(deleg);
+  };
+}
+module.exports = { goldenFetcher, lineCatalog, goldenCatalog, lookup, isMarketing, MARKETING, LEGACY, GOLDEN };

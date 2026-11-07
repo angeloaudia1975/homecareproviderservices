@@ -7,7 +7,8 @@ const XLSX = require('xlsx');
 
 const WHY = { no_quantity: 'No quantity reported', no_amount: 'No amount', not_in_catalog: 'Not matched to a Shop product', no_retail_reference: 'No MSRP or standard cost in the Shop',
   marketing: 'Marketing / display item (not resold)', credit_without_units: 'Credit with no returned units', configuration_not_priced: 'Golden configuration with upgrades — base model price not used',
-  catalog_unavailable: 'Shop catalog could not be read — try again' };
+  uom_review: 'Unit of measure needs review (pack / case vs piece unclear)',
+  catalog_unavailable: 'Catalog could not be read and no recent stored copy — try again', golden_not_connected: 'No Golden catalog connection for this account and no recent stored copy' };
 const n = (v) => (v == null || v === '' ? null : Number(v));
 const pctCell = (v) => (v == null ? null : Number(v) / 100);
 
@@ -21,7 +22,7 @@ function sheet(rows, widths, money, pctCols) {
   }
   return ws;
 }
-const VCOLS = ['Wholesale purchases (valued)', 'Units', 'Potential retail — Shop reference', 'Gross profit — Shop', 'Margin — Shop',
+const VCOLS = ['Wholesale purchases (valued)', 'Units (order units)', 'Potential retail — Shop reference', 'Gross profit — Shop', 'Margin — Shop',
   'Potential retail — your prices', 'Gross profit — your prices', 'Margin — your prices'];
 const vrow = (x) => [n(x.cost), n(x.units), n(x.retail), n(x.profit), pctCell(x.margin_pct), n(x.custom_retail), n(x.custom_profit), pctCell(x.custom_margin_pct)];
 
@@ -76,6 +77,9 @@ function build({ report, scopeName, dealerName, generated }) {
     ...(R.categories || []).map((c) => [c.category, n(c.units), n(c.purchases), n(c.prior), pctCell(c.change_pct)])], [32, 8, 16, 20, 10], [2, 3], [4]), 'Purchases by category');
   XLSX.utils.book_append_sheet(wb, sheet([['Product', 'Item #', 'Manufacturer', 'Category', 'Units', 'Purchases'],
     ...(R.top_products || []).map((p) => [p.name, p.code, p.manufacturer_name, p.category, n(p.qty), n(p.purchases)])], [36, 14, 22, 22, 8, 14], [5], []), 'Top products');
+  const UC = (V.uom && V.uom.converted) || [];
+  if (UC.length) XLSX.utils.book_append_sheet(wb, sheet([['Manufacturer', 'Item #', 'Quantity as reported', 'Pack size', 'Counted as (order units)', 'Why'],
+    ...UC.map((c) => [c.manufacturer, c.code, n(c.source_qty), n(c.pack), n(c.order_units), c.evidence])], [22, 14, 18, 10, 20, 60], [], []), 'Unit conversions');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Notes'], ...(R.notes || []).map((t) => [t])]), 'Notes');
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }

@@ -117,7 +117,7 @@ async function render({ report, dealer, scopeName, generated }) {
       { label: 'Retail (Shop)', w: 80, align: 'r', get: (r) => money(r.retail) }, { label: 'Profit', w: 70, align: 'r', get: (r) => money(r.profit) },
       { label: 'Margin', w: 52, align: 'r', get: (r) => pm(r.margin_pct) }, { label: 'Retail (yours)', w: 105, align: 'r', get: (r) => money(r.custom_retail) }], V.by_category);
     if (R.company) { y -= 8; para(`Company comparison, same period: this location bought ${money(R.purchases.total)} of the company's ${money(R.company.purchases)} (${R.company.branch_share_pct == null ? '—' : R.company.branch_share_pct + '%'}). Company potential retail ${money(R.company.retail_benchmark)}, profit ${money(R.company.profit)}, margin ${R.company.margin_pct == null ? '—' : R.company.margin_pct + '%'}.`); }
-    if (V.gaps && V.gaps.length) { y -= 4; para(`${money(V.gap_amount)} of purchases could not be valued (no matching Shop product or no MSRP / standard cost) — listed in the Excel export.`, { color: MUTED, size: 8 }); }
+    if (V.gaps && V.gaps.length) { y -= 4; para(`${money(V.gap_amount)} of purchases could not be valued (no matching Shop product, no MSRP / standard cost, a unit of measure to review, or no Golden catalog) — listed with the reason in the Excel export.`, { color: MUTED, size: 8 }); }
   }
 
   heading('By manufacturer', 'Manufacturer-reported purchases. A dash means HCPS history for the line does not cover last year.');

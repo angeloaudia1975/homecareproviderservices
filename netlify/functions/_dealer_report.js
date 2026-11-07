@@ -57,6 +57,7 @@ function valuate(rows, o) {
   const pct1 = (a, b) => (b > 0 ? Math.round(a / b * 1000) / 10 : null);
   let total = 0, cost = 0, retail = 0, custom = 0; const customSet = new Set();
   const gaps = new Map(), byM = new Map(), byC = new Map(), byP = new Map(), byMonth = new Map();
+  const uomConverted = [];
   const add = (map, k, init, f) => { const x = map.get(k) || init(); f(x); map.set(k, x); };
   for (const r of rows) {
     total += r.amt;
@@ -70,14 +71,31 @@ function valuate(rows, o) {
        the base MSRP — no invented upgrade pricing). A line whose catalog could not be read says so. */
     const q = r.qty;
     const unitCost = r.qty ? r.amt / r.qty : null;
-    const reason = res && res.unavailable ? 'catalog_unavailable' : !(Math.abs(r.qty) > 0) ? 'no_quantity' : !(r.amt !== 0) ? 'no_amount' : (r.amt < 0 && !(r.qty < 0)) ? 'credit_without_units' : !res ? 'not_in_catalog' : !(res.ref > 0) ? 'no_retail_reference'
+    let reason = res && res.unavailable ? (res.reason === 'golden_not_connected' ? 'golden_not_connected' : 'catalog_unavailable') : !(Math.abs(r.qty) > 0) ? 'no_quantity' : !(r.amt !== 0) ? 'no_amount' : (r.amt < 0 && !(r.qty < 0)) ? 'credit_without_units' : !res ? 'not_in_catalog' : !(res.ref > 0) ? 'no_retail_reference'
       : (res.matched_by === 'golden_base' && !((res.base_price || res.cost) > 0 && unitCost != null && Math.abs(unitCost) <= (res.base_price || res.cost) * 1.02 + 0.01)) ? 'configuration_not_priced' : null;
+    /* UNIT OF MEASURE (owner 2026-11-06 §6): the manufacturer's quantity is kept as supplied. For a product sold in packs /
+       cases the retail reference is per ORDER unit, so the report's price per unit tells which unit it counted: about the
+       standard order-unit cost → order units (as is); about the standard cost of ONE piece → pieces, converted to packs with
+       the documented pack size (evidence kept); neither, or no standard cost to compare → "unit of measure needs review"
+       — never a guessed total. Never inferred from a name; never multiplied twice. */
+    let uq = q, uomConv = false;
+    if (!reason && (res.pack || 1) > 1) {
+      const c = res.cost, uc = unitCost == null ? null : Math.abs(unitCost);
+      /* "about" a standard cost = 60%–150% of it (dealer discounts, freight-in). When BOTH readings fit (small packs) or
+         neither does, the unit is not provable → review, never a guess. */
+      const near = (x) => x >= 0.6 && x <= 1.5;
+      const asOrder = c > 0 && uc != null && near(uc / c), asPiece = c > 0 && uc != null && near(uc * res.pack / c);
+      if (asOrder && !asPiece) uq = q;
+      else if (asPiece && !asOrder) { uq = q / res.pack; uomConv = true; }
+      else reason = 'uom_review';
+    }
+    if (uomConv) uomConverted.push({ manufacturer: r.mfr, code: r.code, source_qty: q, pack: res.pack, order_units: Math.round(uq * 1000) / 1000, evidence: `the reported price per unit matches one piece of a pack of ${res.pack} (catalog order unit), not a whole pack` });   // no cost figure — this reaches the dealer
     if (reason) { if (r.amt !== 0) add(gaps, r.mfr + '|' + r.code + '|' + reason, () => ({ manufacturer: r.mfr, manufacturer_name: o.mName(r.mfr), code: r.code, name: r.name, amount: 0, units: 0, reason }), (x) => { x.amount = r2(x.amount + r.amt); x.units += q; }); continue; }
-    const ret = r2(q * res.ref);
+    const ret = r2(uq * res.ref);
     const cp = typeof o.custom === 'function' ? o.custom(r.loc, r.mfr, res.code || r.code) : null;
-    const cRet = cp > 0 ? r2(q * cp) : ret; if (cp > 0) customSet.add(r.mfr + '|' + r.code);
+    const cRet = cp > 0 ? r2(uq * cp) : ret; if (cp > 0) customSet.add(r.mfr + '|' + r.code);
     cost += r.amt; retail += ret; custom += cRet;
-    const upd = (x) => { x.cost = r2(x.cost + r.amt); x.retail = r2(x.retail + ret); x.custom_retail = r2(x.custom_retail + cRet); x.units += q; };
+    const upd = (x) => { x.cost = r2(x.cost + r.amt); x.retail = r2(x.retail + ret); x.custom_retail = r2(x.custom_retail + cRet); x.units = Math.round((x.units + uq) * 1000) / 1000; x.source_units = (x.source_units || 0) + q; };
     const init = () => ({ cost: 0, retail: 0, custom_retail: 0, units: 0 });
     add(byM, r.mfr, () => Object.assign({ slug: r.mfr, name: o.mName(r.mfr) }, init()), upd);
     add(byC, o.catOf(r), () => Object.assign({ category: o.catOf(r) }, init()), upd);
@@ -91,6 +109,7 @@ function valuate(rows, o) {
     benchmark: { retail, profit: r2(retail - cost), margin_pct: pct1(retail - cost, retail) },
     custom: { retail: custom, profit: r2(custom - cost), margin_pct: pct1(custom - cost, custom), products_with_custom_price: customSet.size },
     difference: r2(custom - retail),
+    uom: { converted: uomConverted.slice(0, 200), converted_lines: uomConverted.length, review_lines: [...gaps.values()].filter((g) => g.reason === 'uom_review').length },
     by_manufacturer: list(byM), by_category: list(byC), by_product: list(byP).slice(0, 100),
     monthly: (o.months || []).map((m) => fin(byMonth.get(m) || { month: m, cost: 0, retail: 0, custom_retail: 0, units: 0 })),
     gaps: [...gaps.values()].sort((a, b) => b.amount - a.amount), gap_amount: r2([...gaps.values()].reduce((t, g) => t + g.amount, 0)) };
@@ -227,6 +246,8 @@ function build(input) {
   }
   const notes = [];
   if (valuation.matched_cost > 0) notes.push('Retail values are POTENTIAL retail of the inventory purchased, at today\'s Shop retail reference prices (official MSRP, else HCPS calculated retail at 2× standard dealer cost) — not sales made. Historical purchases are valued at current prices.');
+  if (valuation.uom && valuation.uom.converted_lines) notes.push(`${valuation.uom.converted_lines} purchase line(s) were reported in single pieces of a product sold in packs or cases; for retail value they are counted in the catalog's order unit (for example 8 pieces = 2 packs of 4). Unit columns of the retail tables are order units; the quantities as reported are kept in the purchase tables.`);
+  if (valuation.uom && valuation.uom.review_lines) notes.push(`${valuation.uom.review_lines} product(s) sold in packs or cases could not be told apart as pieces or packs from the report — not valued until reviewed ("Unit of measure needs review").`);
   if (S.notes.duplicates_removed) notes.push(`${S.notes.duplicates_removed} commission-statement line(s) that repeat a sales-report line were counted once.`);
   if (S.notes.rows_without_amount) notes.push(`${S.notes.rows_without_amount} reported line(s) have no amount (for example open invoices) and are not counted.`);
   if (W.ytd && all.length) notes.push(`This year runs through ${monthLabel(W.through)}, the latest month HCPS has manufacturer reports for on these lines.`);
