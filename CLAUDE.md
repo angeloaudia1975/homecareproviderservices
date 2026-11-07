@@ -2334,6 +2334,31 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     read is never cached and its purchases say "catalog unavailable"; Golden gets 3 s inside a report.
     **Production check (Angelo, 2026-11-06 20:54 CT):** `public.orders` has NO check constraints (read-only query, 0 rows),
     so the `pending_account_setup` status records normally.
+    **CONTINUATION DIRECTIVE (owner 2026-11-06 20:55 CT — RULES, do not re-ask):** (1) the 630-identifier backfill stays ON
+    HOLD; the 553 proposed verifications are NOT approved; keep the read-only CSV. (2) **Territory rules are removed as a
+    source of ordering eligibility** — Dealer Manager (`dealer_manufacturers.active`) is the ONLY source; no geography,
+    territory, import history or account-number presence ever substitutes. A read-only impact report of dealers relying on
+    territory visibility comes first; material loss of real active dealers' shopping access goes to Angelo before that
+    production change; never auto-grant or auto-remove real entitlements to compensate. (3) **No import, sync or background
+    job may grant, activate or re-enable ordering** (sales / commission imports, Zoho sync, propagate functions, dealer
+    imports): they may record, match, flag and suggest access changes for HCPS review only; regression tests prove it.
+    (4) A missing manufacturer account is never an ordering denial (hold workflow as built). (5) Held-order status must be
+    verified against the live DB lifecycle (constraints, enums, triggers, transitions) before it is called production-verified.
+    (6) Reporting keeps the manufacturer's quantity EXACTLY as supplied; converts units only with a documented conversion;
+    retail reference in the SAME unit; never double-multiply case × qty; never infer pack size from a name; uncertain UOM =
+    "requires review", not a total; Bemis / Ovation sampled against source documents. (7) Golden valuation: server-side cache
+    of Golden retail reference (MSRP / standard only — never dealer-specific wholesale as a public reference), bounded retries,
+    freshness rules, stale-but-valid fallback, clear unavailable markers, logging + monitoring; never a silent zero; no
+    invented upgrade MSRP. (8) **Social Media Ad Builder is approved to BUILD** inside the 360 Dealer Portal (authorized
+    products only, official photos/descriptions, templates, dealer branding, MAP-compliant price, live editor, save/duplicate,
+    PNG/JPEG export in FB/IG square, portrait, story, landscape, suggested captions/hashtags/CTA, storefront link, company /
+    branch scoping, no discontinued/unauthorized products; no invented claims, discounts or promotions); scheduling/publishing
+    architecture approved (Facebook Page, Instagram Professional, LinkedIn where permitted; drafts, calendar, dealer approval
+    before publication, pause/edit/cancel, status/retry, duplicate protection, server-side tokens) via official APIs only, kept
+    disabled until platform approval; no real dealer social account connected and nothing published without that dealer's
+    authorization; no paid services. (9) Live James Medical checks use the existing authenticated session; no new login or
+    preview; no real orders, customer emails or social posts for testing; Cloud Medical stays separate. Batches A → E;
+    escalate only real dealer-access impact, historical bulk writes, production SQL, external account authorization or costs.
     **Staff preview of the Account Center (#110):** the dealer preview token reads account_center / favorites / branding /
     showroom / account_get; every other dealer-tools action answers 403 in preview.
     **Known gaps recorded for Angelo (not changed):** a dealer with NO Dealer Manager grid still sees territory-rule lines
