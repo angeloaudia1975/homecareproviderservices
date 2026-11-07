@@ -801,7 +801,9 @@ function renderAccountVerification(){
     <table><thead><tr><th>Dealer</th><th>Line</th><th>Account #</th><th>Submitted</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
   <div class="card"><h2>Verify accounts on file <span class="hint" style="text-transform:none">— mark a dealer's existing account numbers as verified (green in their Account Center)</span></h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select id="dmDealer" style="min-width:280px;max-width:100%"><option value="">Choose a dealer…</option>${dopts}</select><button class="go sm" onclick="loadDmAccounts()">Show accounts</button></div>
-    <div id="dmList" style="margin-top:10px"></div></div>
+    <div id="dmList" style="margin-top:10px"></div>
+    <div style="margin-top:12px;border-top:1px solid #eef2f6;padding-top:10px"><b>Historical verification — dry run</b> <span class="hint" style="text-transform:none">— every identifier already on file with its proposed status and any conflict. Read-only: nothing is verified until the backfill is approved. New numbers saved in Dealer 360 are verified at once.</span>
+      <div style="margin-top:6px"><button class="go sm" onclick="dryRunCsv()">Download dry-run list (CSV)</button> <span id="drSt" class="st"></span></div></div></div>
   <div class="card"><h2>Location access for a login <span class="hint" style="text-transform:none">— who sees which locations in the Account Center (D2). Default: a head-office login sees its company; a branch login only its own (a branch is never widened).</span></h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select id="scUid" style="min-width:280px;max-width:100%"><option value="">Choose a login…</option>${lopts}</select>
       <select id="scScope"><option value="default">Default rule</option><option value="own">Own location only</option><option value="company">Whole company</option></select>
@@ -824,6 +826,15 @@ async function loadDmAccounts(){
   box.innerHTML=R.length?`<table><thead><tr><th>Line</th><th>Account #</th><th>Ordering</th><th>Verified</th><th></th></tr></thead><tbody>${R.map(r=>`<tr><td>${esc(r.manufacturer)}</td><td>${esc(r.account_ref||"—")}</td><td>${r.active===false?"Off":"On"}</td><td>${r.verified_at?esc(fmtDate(r.verified_at))+(r.verified_by?" · "+esc(r.verified_by):""):"—"}</td>
       <td>${r.verified_at?`<button class="go sm" data-m="${esc(r.manufacturer)}" onclick="dmVerify(this.dataset.m,false)">Undo</button>`:(r.account_ref?`<button class="go orange sm" data-m="${esc(r.manufacturer)}" onclick="dmVerify(this.dataset.m,true)">Verify</button>`:'<span class="dim">no number</span>')}</td></tr>`).join("")}</tbody></table>`
     :'<div class="dim">No manufacturer accounts on file for this dealer.</div>';
+}
+async function dryRunCsv(){
+  const st=$("#drSt"); if(st) st.textContent="Preparing…";
+  let j; try{ j=await post({action:"verification_dry_run"}); }catch(e){ if(st) st.textContent=""; return; }
+  const cols=["dealer","city","location","manufacturer","identifier","kind","ordering","current","proposed","issues","provenance","dealer_id"];
+  const q=v=>{ const s=String(v==null?"":v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+  const csv=[cols.join(",")].concat((j.rows||[]).map(r=>cols.map(c=>q(r[c])).join(","))).join("\r\n");
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv"})); a.download="manufacturer-identifier-verification-dry-run.csv"; document.body.appendChild(a); a.click(); a.remove();
+  const s=j.summary||{}; if(st) st.textContent=`${s.identifiers||0} identifiers · ${Object.entries(s.by_proposed||{}).map(([k,v])=>k+": "+v).join(" · ")}`;
 }
 async function dmVerify(m,on){ const did=($("#dmDealer")||{}).value; try{ await post({action:on?"dm_verify":"dm_unverify",dealer_id:did,manufacturer:m},"Saving…"); }catch(e){ return; } loadDmAccounts(); }
 async function saveScope(){ const uid=($("#scUid")||{}).value, scope=($("#scScope")||{}).value; if(!uid) return;

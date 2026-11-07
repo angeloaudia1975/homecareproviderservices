@@ -19,7 +19,7 @@ function world(){
   const W=M.createWorld({ tokens:{dealer:'d@x.com'}, tables:{ app_settings:[{key:'platform_state',value:{mode:'live'}}],
     manufacturers:[{slug:'acme',name:'Acme',contact_email:'orders@acme-manufacturer.example'}], manufacturer_meta:[{slug:'acme'}],
     dealers:[{id:'d1',parent_id:null,is_test:false}], dealer_users:[{uid:'u1',status:'approved',dealer_id:'d1',email:'d@x.com'}],
-    dealer_manufacturers:[{dealer_id:'d1',manufacturer:'acme',active:true,status:'active'}],
+    dealer_manufacturers:[{dealer_id:'d1',manufacturer:'acme',active:true,status:'active',account_ref:(world.noAcct?null:'AC-1')}],
     dealer_contract_prices:[], product_overrides:[], product_images:[], product_links:[], product_media:[], product_content:[], product_skus:[],
     custom_products:[{manufacturer:'acme',active:true,code:'A1',name:'Widget',category:'X',base_price:10}],
     orders:[], order_items:[], tracking_requests:[], email_sends:[], intent_events:[], email_attribution:[] }});
@@ -47,6 +47,20 @@ await t('a recorded order emails ONLY the dealer (an order-received acknowledgme
   ok(/Freight: pending/.test(m.text)&&/Actual shipping charges apply to all orders\./.test(m.text),'freight pending + the line note');
   ok(!/Total: \$/.test(m.text),'no final total while freight is pending');
   eq(W.db.orders[0].status,'submitted','stored as received');
+});
+await t('owner 2026-11-06: an approved line with NO manufacturer account on file is recorded (never blocked) and HELD as Pending Manufacturer Account Setup — the head office identifier counts; Golden is never held here',async()=>{
+  world.noAcct=true; const W=world(); world.noAcct=false; const C=M.load('orders-api.js',W,{ORDERING_BASE:OB,RESEND_API_KEY:'k'},ROOT);
+  const r=await M.call(C,{action:'create',dealer:{business:'B',email:'buyer@x.com',contact:'C'},orders:[{manufacturer_slug:'acme',po:'P2',items:[{code:'A1',qty:1,unit:10}]}]},{headers:{authorization:'Bearer dealer'}});
+  eq(r.status,200,JSON.stringify(r.body).slice(0,300)); eq(W.db.orders[0].status,'pending_account_setup','held');
+  eq([r.body.orders[0].status,r.body.orders[0].account_hold],['pending_account_setup',true]);
+  const m=W.calls.filter(c=>/resend/.test(c.url))[0].body; ok(/Pending Manufacturer Account Setup/.test(m.html)&&/Pending Manufacturer Account Setup/.test(m.text),'dealer told');
+  ok(!/not held/.test(m.text),'never says it is not held');
+  // a head-office identifier counts for its branch
+  world.noAcct=true; const W2=world(); world.noAcct=false; W2.db.dealers.push({id:'hq',parent_id:null}); W2.db.dealers[0].parent_id='hq';
+  W2.db.dealer_manufacturers.push({dealer_id:'hq',manufacturer:'acme',active:true,account_ref:'HQ-9'});
+  const r2=await M.call(M.load('orders-api.js',W2,{ORDERING_BASE:OB,RESEND_API_KEY:'k'},ROOT),{action:'create',dealer:{business:'B',email:'buyer@x.com'},orders:[{manufacturer_slug:'acme',po:'P3',items:[{code:'A1',qty:1,unit:10}]}]},{headers:{authorization:'Bearer dealer'}});
+  eq([r2.status,W2.db.orders[0].status],[200,'submitted'],'head office account counts');
+  const A=require(path.join(ROOT,'_account_setup.js')); eq(await A.missingIdentifiers(async()=>{throw new Error('no read');},'d1',['golden-technologies']),[],'Golden never held (no read even)');
 });
 await t('a dealer tracking request goes to HCPS only, never the manufacturer',async()=>{
   const src=fs.readFileSync(path.join(ROOT,'dealer-tools-api.js'),'utf8');
@@ -101,6 +115,37 @@ await t('Order Review: "New Yuwell Manufacturer Account Required" on open Yuwell
   eq(r.status,200,JSON.stringify(r.body).slice(0,200));
   const by=Object.fromEntries(r.body.orders.map(o=>[o.id,o.account_notice]));
   eq([by.y1,by.y2,by.y3,by.a1],['New Yuwell Manufacturer Account Required','','',''],'d1 no account; d2 has one; cancelled and other lines never');
+});
+/* ---- owner 2026-11-06: releasing an order held for manufacturer account setup ---- */
+function holdWorld(o){
+  const W=M.createWorld({ tokens:{staff:'p@x.com'}, tables:{ staff_users:[{email:'p@x.com',role:'president',active:true}],
+    dealers:[{id:'d1',business_name:'D One',parent_id:null}], manufacturers:[{slug:'acme',name:'Acme'}], manufacturer_meta:[{slug:'acme'}],
+    dealer_manufacturers:[{dealer_id:'d1',manufacturer:'acme',active:true,account_ref:o.acct||null}],
+    dealer_contract_prices:o.contract||[], product_overrides:[], product_images:[], product_links:[], product_media:[], product_content:[], product_skus:[],
+    custom_products:[{manufacturer:'acme',active:true,code:'A1',name:'Widget',category:'X',base_price:10}],
+    orders:[{id:'h1',dealer_id:'d1',manufacturer:'acme',status:'pending_account_setup',subtotal:20,submitted_at:'2026-11-06T01:00:00Z'}],
+    order_items:[{id:'i1',order_id:'h1',code:'A1',name:'Widget',qty:2,unit_price:10,line_total:20}] }});
+  const inner=W.fetch; W.fetch=async(u,x)=>{ u=String(u); if(u.startsWith(M.BASE+'/auth/v1/user')) return {ok:true,status:200,json:async()=>({id:'s',email:'p@x.com'})};
+    if(u===OB+'/data/manufacturers.json') return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(mfrs))};
+    if(u.startsWith(OB+'/data/')) return {ok:false,status:404,json:async()=>null,text:async()=>''}; return inner(u,x); };
+  W.C=M.load('orders-admin.js',W,{ORDERING_BASE:OB},ROOT); return W;
+}
+const rel=(W,b)=>M.call(W.C,Object.assign({action:'release_account_hold',id:'h1'},b||{}),{headers:{authorization:'Bearer staff'}});
+await t('a held order is released only once the account is on file; same prices → Received by HCPS, the same order (nothing re-entered)',async()=>{
+  const W=holdWorld({}); const r=await rel(W); eq([r.status,r.body.error],[409,'account_not_set_up']); eq(W.db.orders[0].status,'pending_account_setup');
+  const s=await M.call(W.C,{action:'set_status',id:'h1',status:'placed'},{headers:{authorization:'Bearer staff'}}); eq(s.status,409,'cannot be placed while held');
+  const W0=holdWorld({acct:'AC-7'}); W0.db.order_items=[]; const r0=await rel(W0); eq([r0.status,r0.body.error],[409,'no_items'],'no lines read → never released'); eq(W0.db.orders[0].status,'pending_account_setup');
+  const W2=holdWorld({acct:'AC-7'}); const r2=await rel(W2); eq([r2.status,r2.body.status,r2.body.changed,r2.body.subtotal],[200,'submitted',0,20],JSON.stringify(r2.body));
+  eq([W2.db.orders[0].status,W2.db.orders.length],['submitted',1]); ok(/Released from Pending Manufacturer Account Setup/.test(W2.db.orders[0].admin_notes),'audit note');
+  const l=await M.call(W2.C,{action:'list'},{headers:{authorization:'Bearer staff'}}); eq(l.status,200);
+});
+await t('a price that changed since the dealer ordered needs the dealer\'s confirmation (noted) before release; then the new prices are stored',async()=>{
+  const W=holdWorld({acct:'AC-7',contract:[{dealer_id:'d1',manufacturer:'acme',code:'A1',price:8,active:true}]});
+  const r=await rel(W); eq([r.status,r.body.error],[409,'prices_changed'],JSON.stringify(r.body)); eq(r.body.lines[0].new_unit,8);
+  eq(W.db.orders[0].status,'pending_account_setup','unchanged');
+  const r2=await rel(W,{dealer_confirmed:true}); eq(r2.status,409,'a confirmation needs a note');
+  const r3=await rel(W,{dealer_confirmed:true,note:'Jim confirmed by phone 11/6'}); eq([r3.status,r3.body.subtotal],[200,16],JSON.stringify(r3.body));
+  eq([W.db.order_items[0].unit_price,W.db.order_items[0].line_total,W.db.orders[0].subtotal],[8,16,16]); ok(/dealer confirmed: Jim confirmed/.test(W.db.orders[0].admin_notes),'confirmation recorded');
 });
 await t('Order Review: unreadable account numbers → the notice says "verify", never hidden',async()=>{
   const r=await listOf(adminWorld({failAcct:true}));

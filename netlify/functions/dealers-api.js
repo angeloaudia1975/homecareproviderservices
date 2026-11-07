@@ -973,6 +973,20 @@ exports.handler = async (event)=>{
         await sbSend("PATCH",`dealer_account_claims?id=eq.${id}&status=eq.pending`,{status:"verified",decided_at:at,decided_by:by},{Prefer:"return=minimal"});
         return json(200,{ok:true,updated_ordering_row:!!row});
       }
+      /* Historical verification DRY RUN (owner 2026-11-06): read-only list of every identifier on file with its proposed
+         status and conflicts — nothing is written; the backfill runs only after Angelo approves the list. */
+      if(act==="verification_dry_run"){
+        const DR=require("./_verification_dryrun.js");
+        let dms,dl,cl;
+        try{ [dms,dl,cl]=await Promise.all([
+          sbGetAll("dealer_manufacturers?account_ref=not.is.null&select=dealer_id,manufacturer,account_ref,active,verified_at,verified_by,verified_ref","dealer_id,manufacturer"),
+          sbGetAll("dealers?select=id,business_name,parent_id,city,state,is_test"),
+          sbGetAll("dealer_account_claims?status=eq.pending&select=dealer_id,manufacturer,account_ref,status") ]); }
+        catch(e){ return json(503,{error:"The account identifiers could not be read — nothing was changed."}); }
+        const test=new Set((dl||[]).filter(d=>d.is_test).map(d=>String(d.id)));
+        const r=DR.build({dms:(dms||[]).filter(x=>!test.has(String(x.dealer_id))),dealers:dl,claims:cl});
+        return json(200,Object.assign({ok:true,dry_run:true,written:0},r));
+      }
       if(act==="dm_accounts"){
         if(!b.dealer_id) return json(400,{error:"dealer_id required"});
         let rows; try{ rows=await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(b.dealer_id)}&select=manufacturer,account_ref,active,verified_at,verified_by,verified_ref&order=manufacturer.asc`); }

@@ -172,12 +172,20 @@ exports.handler = async (event) => {
         address: loc.address || "", zip: loc.zip || "", contact_name: loc.contact_name || "", phone: loc.phone || "", email: loc.email || "",
         can_request: String(loc.id) === String(did) || !self.parent_id,
         accounts: L.map((m) => Object.assign({ slug: m.slug, name: m.name }, AC.accountStatus({ slug: m.slug, dm: dmBy.get(loc.id + "|" + m.slug) || null,
-          claim: clBy.get(loc.id + "|" + m.slug) || null, verifiedClaim: vcBy.get(loc.id + "|" + m.slug) || null, accessOpen: acBy.has(loc.id + "|" + m.slug), goldenStatus: loc.golden_status }))),
+          claim: clBy.get(loc.id + "|" + m.slug) || null, verifiedClaim: vcBy.get(loc.id + "|" + m.slug) || null, accessOpen: acBy.has(loc.id + "|" + m.slug), goldenStatus: loc.golden_status })))
+          /* owner directive 2026-11-06: a line HCPS has not approved for this dealer (no ordering row, no account on file, nothing
+             requested) stays out of the dealer's portal — ABM / Ovation no longer show as "No account". */
+          .filter((x) => x.status !== "none"),
       }));
       const addresses = [{ key: "main", label: "Business address", address: self.address || "", city: self.city || "", state: self.state || "", zip: self.zip || "" }]
         .concat((addrs || []).map((a) => ({ key: a.addr_key, label: a.label || "", address: a.address || "", city: a.city || "", state: a.state || "", zip: a.zip || "" })));
       return json(200, { ok: true,
-        company: { business_name: self.business_name || "", hcps_account: self.hcps_account || "", contact_name: self.contact_name || "", email: self.email || "",
+        company: { business_name: self.business_name || "", hcps_account: self.hcps_account || "",
+          /* the "HCPS account" field often holds the dealer's Golden account number (James Medical: 190255) — say so */
+          hcps_account_label: (() => { const h = String(self.hcps_account || "").trim().toUpperCase(); if (!h) return "HCPS account";
+            const g = (dms || []).find((r) => String(r.dealer_id) === String(did) && (r.manufacturer === "golden-technologies" || r.manufacturer === "golden") && String(r.account_ref || "").trim().toUpperCase() === h);
+            return g ? "Golden account #" : "HCPS account"; })(),
+          contact_name: self.contact_name || "", email: self.email || "",
           phone: self.phone || "", website: self.website || "", logo_url: self.logo_url || null, default_ship_key: self.default_ship_key || null, head_office: !self.parent_id },
         contacts: (contacts || []).map((c) => ({ id: c.id, name: c.name || "", title: c.title || "", email: c.email || "", phone: c.phone || "" })),
         addresses, locations, pending: (pending || []).map((p) => ({ created_at: p.created_at, changes: p.changes || {} })),

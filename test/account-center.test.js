@@ -117,6 +117,14 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
     ok(!self.accounts.some(a => a.slug === 'ohio-medical'), 'retired line hidden'); ok(!self.accounts.some(a => a.slug === 'dalton'), 'switched-off line hidden');
     ok(!JSON.stringify(r.body).includes('SECRET-1') && !JSON.stringify(r.body).includes('Someone Else') && !JSON.stringify(r.body).includes('Other Person'), 'no other dealer');
   });
+  await t('owner 2026-11-06: a line not approved for the dealer (no row, no account, nothing requested) is not listed; the HCPS account field is labelled when it is the Golden number', async () => {
+    const dm = [{ dealer_id: HQ, manufacturer: 'yuwell', account_ref: null, active: true },
+      { dealer_id: HQ, manufacturer: 'golden-technologies', account_ref: 'H-1', active: true }];
+    const r = await as(tools(world({ dm })), 'hq', { action: 'account_center' }); const self = r.body.locations.find(l => l.is_self);
+    eq(self.accounts.map(a => [a.slug, a.status]).sort(), [['golden-technologies', 'verified'], ['yuwell', 'pending']], 'access4u (not approved) hidden');
+    eq(r.body.company.hcps_account_label, 'Golden account #');
+    const r2 = await as(tools(world()), 'hq', { action: 'account_center' }); eq(r2.body.company.hcps_account_label, 'HCPS account');
+  });
   await t('branch login: only its own location (D2), its own accounts', async () => {
     const W = world(); const r = await as(tools(W), 'br', { action: 'account_center' });
     eq(r.body.locations.map(l => l.name), ['Acme Branch']); eq(r.body.scope, 'own'); eq(r.body.company.head_office, false);

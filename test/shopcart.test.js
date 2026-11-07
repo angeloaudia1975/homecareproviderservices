@@ -14,7 +14,7 @@ const html=fs.readFileSync(SHOP,'utf8');
 const slice=(a,b)=>{ const i=html.indexOf(a), j=html.indexOf(b,i); if(i<0||j<0) throw new Error('anchor '+(i<0?a:b)); return html.slice(i,j); };
 const lineOf=a=>{ const i=html.indexOf('\n'+a); if(i<0) throw new Error('anchor '+a); return html.slice(i+1,html.indexOf('\n',i+1)); };
 const CODE=[lineOf('const money = '),lineOf('const esc = '),
-  ...['function familyQty','function tierQty','function contractPrice','function lineRatePrice','function withUpgrade','function upgradeAddPurchase','function unitPrice','const cartKey=','function groupCart','function linesSubtotal','function packOf'].map(a=>grabDecl(html,a)),
+  ...['function familyQty','function tierQty','function contractPrice','function lineRatePrice','function withUpgrade','function upgradeAddPurchase','function unitPrice','const cartKey=','function groupCart','function linesSubtotal','function packOf','function acctSetupNeeded','function acctSetupNoticeHtml'].map(a=>grabDecl(html,a)),
   slice('/* ---------- SERVER PRICING','/* ---------- submit (one order'), slice('/* REQUEST ACCESS (owner, C3-06','function renderBanner(){'), slice('/* ONE CHECKOUT = ONE ORDER','async function submitOrder(){'), slice('async function submitOrder(){','/* ---- Golden orders (blueprint'), slice('function hydrateCart(saved){','/* ---- persistent cart')].join('\n');
 
 let fail=0, pass=0;
@@ -69,7 +69,7 @@ function env(opts){
       const slug=decodeURIComponent(u.slice((OB+(content?'/data/content/':'/data/')).length).replace(/\.json.*$/,''));
       if(content||!(slug in FILE)) return {ok:false,status:404,json:async()=>null};
       return {ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(FILE[slug]))}; }
-    if(u.startsWith('https://api.resend.com')){ const m=JSON.parse(o.body); allMail.push(m); if(/^(\[New account required\] )?New order/.test(m.subject)) emails.push(m); return {ok:opts.emailFails?false:true,status:opts.emailFails?500:200,json:async()=>({id:'m'})}; }
+    if(u.startsWith('https://api.resend.com')){ const m=JSON.parse(o.body); allMail.push(m); if(/^(\[New account required\] |\[Pending account setup\] )?New order/.test(m.subject)) emails.push(m); return {ok:opts.emailFails?false:true,status:opts.emailFails?500:200,json:async()=>({id:'m'})}; }
     return inner(url,o);
   };
   W.fetch=router;
@@ -87,7 +87,7 @@ function env(opts){
      function computeFreight(slug,lines){ return {rows:[],fee:0,itemsTotal:linesSubtotal(lines),actualNote:''}; }
      async function submitGoldenOrder(){ }
      ${CODE}
-     return {submitOrder, requestAccess, accessNoticeHtml, needsAccess, hydrateCart, applyServerPrices, priceNoteHtml, priceBannerHtml, serverPriceCheck, unitPrice, PRICE_NOTES};`);
+     return {submitOrder, requestAccess, accessNoticeHtml, acctSetupNoticeHtml, needsAccess, hydrateCart, applyServerPrices, priceNoteHtml, priceBannerHtml, serverPriceCheck, unitPrice, PRICE_NOTES};`);
   const CART=new Map(), MFR={}, AUTH={status:'approved',session:{access_token:'jwt'},prices:Object.assign({},opts.prices||{})};
   const page=shop(router,$,m=>toasts.push(m),{querySelector:()=>null},{ORDERS_ENDPOINT:API,ORDER_ENDPOINT:'/submit'},AUTH,null,CART,MFR,{orders:[]},{},{},console);
   const prod=(code,x)=>Object.assign(JSON.parse(JSON.stringify(FILE[LINE].find(p=>p.code===code))),x||{});
@@ -389,22 +389,28 @@ await t('before the SQL runs (no submission_key column) orders record exactly as
 });
 /* ---- C3-06: new manufacturer account notice ---- */
 const addY=(E,qty)=>{ E.CART.set('yuwell::Y1',{p:JSON.parse(JSON.stringify(FILE.yuwell[0])),qty}); E.MFR.yuwell={po:'PO-Y',notes:''}; };
-await t('a Yuwell order without a Yuwell account number is NOT blocked, and says "New Yuwell Manufacturer Account Required" everywhere',async()=>{
+await t('owner 2026-11-06: an approved line with no manufacturer account (Yuwell) is NOT blocked — recorded and HELD as "Pending Manufacturer Account Setup", told everywhere',async()=>{
   const E=env(); addY(E,1); await E.page.submitOrder();
-  eq([E.W.db.orders.length,E.CART.size],[1,0],'recorded, cart cleared');
-  const hc=E.emails[0]; ok(hc&&/New Yuwell Manufacturer Account Required/.test(hc.html)&&/New Yuwell Manufacturer Account Required/.test(hc.text),'HCPS intake email');
-  ok(/^\[New account required\]/.test(hc.subject),'intake subject: '+(hc&&hc.subject));
-  ok(confirmations(E).some(m=>/New Yuwell Manufacturer Account Required/.test(m.html||'')),'dealer confirmation');
+  eq([E.W.db.orders.length,E.CART.size,E.W.db.orders[0].status],[1,0,'pending_account_setup'],'recorded, cart cleared, held');
+  const hc=E.emails[0]; ok(hc&&/PENDING MANUFACTURER ACCOUNT SETUP/.test(hc.html)&&/PENDING MANUFACTURER ACCOUNT SETUP/.test(hc.text),'HCPS intake email');
+  ok(/^\[Pending account setup\]/.test(hc.subject),'intake subject: '+(hc&&hc.subject));
+  ok(confirmations(E).some(m=>/Pending Manufacturer Account Setup/.test(m.html||'')),'dealer confirmation');
+  ok(E.toasts.some(m=>/Pending Manufacturer Account Setup/.test(m)),'dealer told at checkout: '+E.toasts.join(' | '));
 });
-await t('a Yuwell order from a dealer WITH an account number carries no notice; other lines never do',async()=>{
+await t('a Yuwell order from a dealer WITH an account number is not held and carries no notice; other lines with an account never do',async()=>{
   const E=env({yuwellAccount:'YW-1'}); addY(E,1); E.add('A1',1); await E.page.submitOrder();
-  eq(E.W.db.orders.length,2,'both recorded');
-  ok(E.allMail.every(m=>!/Manufacturer Account Required/.test((m.html||'')+(m.text||'')+(m.subject||''))),'no notice anywhere');
+  eq(E.W.db.orders.length,2,'both recorded'); ok(E.W.db.orders.every(o=>o.status==='submitted'),'none held');
+  ok(E.allMail.every(m=>!/Manufacturer Account Required|ACCOUNT SETUP/i.test((m.html||'')+(m.text||'')+(m.subject||''))),'no notice anywhere');
 });
-await t('if the account rows cannot be read, the order still stands and HCPS is asked to verify',async()=>{
+await t('if the account rows cannot be read, the order still stands (not held) and HCPS is asked to verify',async()=>{
   const E=env({failAcct:true}); addY(E,1); await E.page.submitOrder();
-  eq(E.W.db.orders.length,1,'recorded');
+  eq([E.W.db.orders.length,E.W.db.orders[0].status],[1,'submitted'],'recorded');
   ok(/account status could not be checked — verify/.test(E.emails[0].html),'HCPS asked to verify');
+});
+await t('checkout shows the account-setup notice and the application link for an approved line with no account — and nothing for a line with one',async()=>{
+  const E=env(); E.AUTH.access={your_accounts:['other'],available:['yuwell'],account_setup_needed:['yuwell']};
+  const h=E.page.acctSetupNoticeHtml('yuwell','Yuwell'); ok(/Yuwell account setup needed/.test(h)&&/Pending Manufacturer Account Setup/.test(h)&&/showP360\('apply'\)/.test(h)&&/pending confirmation/.test(h),h);
+  eq(E.page.acctSetupNoticeHtml('other','Other'),'','no notice when an account is on file');
 });
 console.log(`\nshop cart: ${pass} passed, ${fail} failed`); process.exitCode=fail?1:0;
 })();

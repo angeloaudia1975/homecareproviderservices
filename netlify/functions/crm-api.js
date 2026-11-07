@@ -548,11 +548,14 @@ exports.handler = async (event)=>{
       const [contacts,dealer,lines,mfrs]=await Promise.all([
         sbGet(`dealer_contacts?dealer_id=eq.${did}&select=id,email,name,title,role,phone,cell&order=name`).catch(()=>[]),
         sbGet(`dealers?id=eq.${did}&select=email,contact_name,phone`).catch(()=>[]),
-        sbGet(`dealer_manufacturers?dealer_id=eq.${did}&select=manufacturer,account_ref,active`).catch(()=>[]),
+        sbGet(`dealer_manufacturers?dealer_id=eq.${did}&select=manufacturer,account_ref,active,verified_at,verified_by,verified_ref`).catch(()=>sbGet(`dealer_manufacturers?dealer_id=eq.${did}&select=manufacturer,account_ref,active`).catch(()=>[])),
         sbGet("manufacturers?select=slug,name").catch(()=>[]),
       ]);
       const mfrName={}; (mfrs||[]).forEach(m=>mfrName[m.slug]=m.name||m.slug);
-      const accounts=(lines||[]).map(l=>({slug:l.manufacturer,name:mfrName[l.manufacturer]||l.manufacturer,account_ref:l.account_ref||"",active:l.active!==false}))
+      /* verified = HCPS verified THIS identifier (the same rule as the dealer's Account Center, _account_center.accountStatus) */
+      const vOk=l=>!!(l.verified_at&&String(l.account_ref||"").trim()&&String(l.verified_ref||"").trim().toUpperCase()===String(l.account_ref||"").trim().toUpperCase());
+      const accounts=(lines||[]).map(l=>({slug:l.manufacturer,name:mfrName[l.manufacturer]||l.manufacturer,account_ref:l.account_ref||"",active:l.active!==false,
+          verified:vOk(l),verified_at:vOk(l)?l.verified_at:null,verified_by:vOk(l)?(l.verified_by||null):null}))
         .sort((a,b)=>a.name.localeCompare(b.name));
       return json(200,{ok:true,contacts:contacts||[],primary_email:String((dealer&&dealer[0]&&dealer[0].email)||"").toLowerCase(),accounts});
     }
@@ -607,8 +610,11 @@ exports.handler = async (event)=>{
       if(!b.dealer_id||!b.manufacturer) return json(400,{error:"dealer_id + manufacturer required"});
       // Account numbers are organization-level: set it here and fill it across the dealer's family
       // (parent + branches) wherever a branch has none yet — a branch with its own number is left alone.
-      await orgAccounts.propagateAccountRef(String(b.manufacturer), b.dealer_id, clean(b.account_ref,60));
-      return json(200,{ok:true});
+      /* Owner directive 2026-11-06: an identifier HCPS enters here is verified at once (who + when) and never changes
+         ordering access (Dealer Manager decides that). Strict: a failed save is an error, never a silent ok. */
+      try{ const r=await orgAccounts.saveVerifiedAccountRef(String(b.manufacturer), b.dealer_id, clean(b.account_ref,60), me.email||me.name);
+        return json(200,Object.assign({ok:true},r)); }
+      catch(e){ console.error("save_account_ref failed",e&&e.message); return json(502,{ok:false,error:"The account number could not be saved — nothing was changed. Please try again."}); }
     }
 
     // Log a real touch — call / visit / email / meeting / note — into the timeline,

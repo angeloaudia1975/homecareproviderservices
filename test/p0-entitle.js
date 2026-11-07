@@ -6,4 +6,6 @@ const ORD = process.env.ORDER_REPO || path.join(__dirname, '..', '..', 'homecare
 let shop = [];
 try { shop = JSON.parse(fs.readFileSync(path.join(ORD, 'public', 'data', 'manufacturers.json'), 'utf8')).map(m => m.slug); } catch (e) {}
 const LINES = [...new Set(shop.concat(['ovation-medical', 'bemis', 'strongback-mobility', 'climbing-steps', 'bemis-copy', 'ohio-medical', 'gce', 'other-line', 'complete-medical-supplies']))];
-module.exports = (dealerId, lines) => (lines || LINES).map(manufacturer => ({ dealer_id: dealerId, manufacturer, active: true }));
+/* Each granted line carries a synthetic manufacturer account identifier, so an order is recorded as "submitted"; suites that
+   test the "Pending Manufacturer Account Setup" hold (owner 2026-11-06) build rows without one. */
+module.exports = (dealerId, lines) => (lines || LINES).map(manufacturer => ({ dealer_id: dealerId, manufacturer, active: true, account_ref: 'SYN-ACCT' }));

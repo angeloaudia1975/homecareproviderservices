@@ -11,6 +11,9 @@ const json = (c,o)=>({statusCode:c,headers:{"content-type":"application/json","c
 const H = ()=>({apikey:SERVICE_ROLE,Authorization:`Bearer ${SERVICE_ROLE}`});
 const SC = require("./_scope.js");
 const AN = require("./_account_notice.js");
+const AS = require("./_account_setup.js");
+const PRICING = require("./_pricing.js");
+const ORDERING_BASE = (process.env.ORDERING_BASE || "https://hcpsonlineordering.netlify.app").replace(/\/+$/, "");
 /* AN.readRows takes (method, path) like orders-api's sb(); this file reads with sbGet(path). */
 const sbGet2=(m,path)=>sbGet(path);
 async function sbGet(path){ const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:H()}); if(!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`); return r.json(); }
@@ -20,8 +23,10 @@ const num=v=>{ const n=Number(v); return Number.isFinite(n)?n:0; };
 /* Order statuses (owner, 2026-10-27): HCPS receives every dealer order and places it with the manufacturer itself.
    submitted = received by HCPS · placed = HCPS placed it with the manufacturer · confirmed = the manufacturer
    confirmed it (its confirmation # and the actual freight are recorded then) · shipped · completed · cancelled. */
-const STATUSES=["submitted","placed","confirmed","shipped","completed","cancelled"];
-const NEXT={submitted:["placed","cancelled"],placed:["confirmed","cancelled"],confirmed:["shipped","cancelled"],shipped:["completed"],completed:[],cancelled:[]};
+/* pending_account_setup (owner 2026-11-06): recorded, held until HCPS has the dealer's manufacturer account; RELEASED to
+   "submitted" only by the release action below (identifier on file + prices re-checked), or cancelled. */
+const STATUSES=["pending_account_setup","submitted","placed","confirmed","shipped","completed","cancelled"];
+const NEXT={pending_account_setup:["cancelled"],submitted:["placed","cancelled"],placed:["confirmed","cancelled"],confirmed:["shipped","cancelled"],shipped:["completed"],completed:[],cancelled:[]};
 const r2=n=>Math.round(Number(n)*100)/100;
 
 async function whoami(event){
@@ -82,7 +87,8 @@ exports.handler = async (event)=>{
           contact:{name:o.contact_name||"",email:o.contact_email||"",phone:o.contact_phone||""},
           items:(o.order_items||[]).map(i=>({code:i.code,name:i.name,qty:i.qty,unit:num(i.unit_price),line:num(i.line_total)})),
           item_count:(o.order_items||[]).reduce((n,i)=>n+num(i.qty),0),
-          account_notice:(()=>{ if(o.status==="cancelled"||!AN.noticeFor(o.manufacturer)) return "";
+          account_notice:(()=>{ if(o.status===AS.STATUS) return AS.LABEL+" — record the dealer's "+(mfrName[o.manufacturer]||"manufacturer")+" account in Dealer 360, then release this order";
+            if(o.status==="cancelled"||!AN.noticeFor(o.manufacturer)) return "";
             if(!acctRows) return AN.noticeFor(o.manufacturer,mfrName[o.manufacturer])+" (account status could not be checked — verify)";
             return AN.missingAccounts(acctRows,o.dealer_id,[o.manufacturer]).length?AN.noticeFor(o.manufacturer,mfrName[o.manufacturer]):""; })(),
         };
@@ -122,6 +128,47 @@ exports.handler = async (event)=>{
       const upd=await sbSend("PATCH",`orders?id=eq.${encodeURIComponent(b.id)}&status=eq.${encodeURIComponent(from)}`,patch,{Prefer:"return=representation"});
       if(!upd||!upd.length) return json(409,{error:"changed",message:"This order was updated by someone else — reload."});
       return json(200,{ok:true,status,freight_fee:upd[0].freight_fee,estimated_total:upd[0].estimated_total,admin_notes:upd[0].admin_notes});
+    }
+
+    /* RELEASE A HELD ORDER (owner 2026-11-06): the same order the dealer submitted moves on once HCPS has the dealer's
+       manufacturer account on file — nothing is re-entered. Its prices are re-checked with the server's pricing as it is now
+       (the dealer's account may carry different prices): any change needs the dealer's confirmation first, recorded as
+       dealer_confirmed + a note; the new prices are then stored. Nothing is sent to the manufacturer here — the order
+       becomes "submitted" and HCPS places it as usual. */
+    if(b.action==="release_account_hold"){
+      if(!manage) return json(403,{error:"Not permitted"});
+      if(!b.id) return json(400,{error:"id required"});
+      const cur=(await sbGet(`orders?id=eq.${encodeURIComponent(b.id)}&select=id,dealer_id,manufacturer,status,subtotal,freight_fee,estimated_total,admin_notes`))[0];
+      if(!cur) return json(404,{error:"order not found"});
+      cur.order_items=await sbGet(`order_items?order_id=eq.${encodeURIComponent(b.id)}&select=id,code,name,qty,unit_price,line_total&order=id.asc`);
+      if(!Array.isArray(cur.order_items)||!cur.order_items.length) return json(409,{error:"no_items",message:"This order has no line items on record — check it before releasing."});
+      if(cur.status!==AS.STATUS) return json(409,{error:"not_held",message:"This order is not waiting for manufacturer account setup."});
+      let missing; try{ missing=await AS.missingIdentifiers((m,pth)=>sbGet(pth),cur.dealer_id,[cur.manufacturer]); }
+      catch(e){ return json(503,{error:"account_unreadable",message:"The dealer's manufacturer accounts could not be read — nothing was changed."}); }
+      if(missing.length) return json(409,{error:"account_not_set_up",message:"No manufacturer account is on file for this dealer yet — record it in Dealer 360 first."});
+      const items=(cur.order_items||[]).map(i=>({code:i.code,qty:i.qty,unit:num(i.unit_price)}));
+      let priced;
+      try{ const F=PRICING.remoteFiles(ORDERING_BASE);
+        priced=await PRICING.priceOrders({orders:[{manufacturer_slug:cur.manufacturer,items}],dealerId:cur.dealer_id,sb:(m,pth)=>sbGet(pth),catalogFile:F.catalogFile,contentFile:F.contentFile,manufacturersFile:F.manufacturersFile}); }
+      catch(e){ console.error("release pricing failed",e&&e.message); return json(503,{error:"pricing_unavailable",message:"Prices could not be checked right now — nothing was changed."}); }
+      const po=(priced.orders||[])[0]||{items:[]};
+      const lines=(cur.order_items||[]).map((i,k)=>{ const n=(po.items||[])[k]||{}; return {id:i.id,code:i.code,name:i.name,qty:i.qty,old_unit:num(i.unit_price),new_unit:n.available===false?null:(n.unit==null?null:num(n.unit))}; });
+      const unavailable=lines.filter(l=>l.new_unit==null);
+      if(unavailable.length) return json(409,{error:"items_unavailable",message:"Some items can no longer be priced as ordered — contact the dealer before releasing.",lines});
+      const changed=lines.filter(l=>Math.abs(l.new_unit-l.old_unit)>=0.005);
+      const note=clean(b.note,500);
+      if(changed.length && !(b.dealer_confirmed===true && note)) return json(409,{error:"prices_changed",message:"Prices changed since the dealer ordered. Confirm the new prices with the dealer, then release with their confirmation noted.",lines});
+      const at=new Date().toISOString();
+      if(changed.length){
+        for(const l of changed) await sbSend("PATCH",`order_items?id=eq.${encodeURIComponent(l.id)}`,{unit_price:l.new_unit,line_total:r2(l.new_unit*num(l.qty))},{Prefer:"return=minimal"});
+      }
+      const sub=r2(lines.reduce((t,l)=>t+l.new_unit*num(l.qty),0));
+      const patch={status:"submitted",updated_at:at,subtotal:sub};
+      if(cur.estimated_total!=null) patch.estimated_total=r2(sub+num(cur.freight_fee));
+      patch.admin_notes=String([cur.admin_notes||"",`Released from ${AS.LABEL} by ${me.email||me.name} ${at.slice(0,16).replace("T"," ")} UTC`+(changed.length?` — ${changed.length} price(s) changed, dealer confirmed: ${note}`:"")].filter(Boolean).join("\n")).slice(-4000);
+      const upd=await sbSend("PATCH",`orders?id=eq.${encodeURIComponent(b.id)}&status=eq.${encodeURIComponent(AS.STATUS)}`,patch,{Prefer:"return=representation"});
+      if(!upd||!upd.length) return json(409,{error:"changed",message:"This order was updated by someone else — reload."});
+      return json(200,{ok:true,status:"submitted",subtotal:sub,changed:changed.length});
     }
 
     return json(400,{error:"unknown action"});

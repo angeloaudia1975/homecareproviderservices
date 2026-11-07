@@ -81,7 +81,8 @@ async function loadDealerPayload(dealer_id, fallbackEmail){
     // company-level access decision (a branch inherits its HQ's territory)
     try{
       const self=d[0];
-      let gov=self;
+      let gov=self; let hqRefs=[];
+      if(self.parent_id){ try{ const hr=await sb("GET",`dealer_manufacturers?dealer_id=eq.${self.parent_id}&select=manufacturer,account_ref`); hqRefs=(hr||[]).filter(x=>x.account_ref&&String(x.account_ref).trim()).map(x=>x.manufacturer); }catch(e){ hqRefs=[]; } }
       if(self.parent_id){ const p=await sb("GET",`dealers?id=eq.${self.parent_id}&select=business_name,address,city,state,zip`); if(p&&p[0]) gov=p[0]; }
       let lat=null;
       try{ const q=qkey(gov); if(q){ const gc=await sb("GET",`geocache?q=eq.${encodeURIComponent(q)}&ok=eq.true&select=lat&limit=1`); if(gc&&gc[0]) lat=gc[0].lat; } }catch(e){}
@@ -90,7 +91,9 @@ async function loadDealerPayload(dealer_id, fallbackEmail){
          golden_status:self.golden_status||"None", ovation_access:!!self.ovation_access},
         // "Your accounts" = lines the dealer actually has an account NUMBER for; lines that
         // are merely granted in the admin grid (no account_ref) show as "Available to you".
-        (dm||[]).filter(x=>x.account_ref&&String(x.account_ref).trim()).map(x=>x.manufacturer),
+        /* identifiers are organization-level: the head office's identifier counts for its branches (owner 2026-11-06,
+           the same rule the order server uses to hold an order for account setup — _account_setup.missingIdentifiers) */
+        [...(dm||[]).filter(x=>x.account_ref&&String(x.account_ref).trim()).map(x=>x.manufacturer),...hqRefs],
         // Granted lines (everything ticked in the admin grid) — authoritative over territory.
         (dm||[]).map(x=>x.manufacturer));
       if(access) access.golden_url = self.golden_url || "";   // this dealer's specific Golden portal path
@@ -98,7 +101,10 @@ async function loadDealerPayload(dealer_id, fallbackEmail){
          of the dealer's own — the order server (orders-api linesNotCarried) will not price or record them. The storefront
          shows "Request access" for these; nothing is granted here. */
       if(access){ const carried=new Set((dm||[]).map(x=>String(x.manufacturer)));
-        access.request_access=[...new Set([...(access.your_accounts||[]),...(access.available||[])])].filter(s=>!carried.has(String(s))).sort(); }
+        access.request_access=[...new Set([...(access.your_accounts||[]),...(access.available||[])])].filter(s=>!carried.has(String(s))).sort();
+        /* approved lines with no manufacturer account on file: shoppable and orderable — checkout records the order as
+           "Pending Manufacturer Account Setup" and offers the application (owner 2026-11-06) */
+        access.account_setup_needed=(access.available||[]).filter(s=>carried.has(String(s))).sort(); }
     }catch(e){}
     // Per-product contract prices (company-level): the governing/master account's prices apply to
     // all its branches; a branch's own rows override. Keyed "slug::code" for the portal's unitPrice().
