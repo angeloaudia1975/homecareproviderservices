@@ -2394,8 +2394,9 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     product's advertised price and the ad version when scheduled — a different price or an edited ad stops it; a server error /
     rate limit / no answer on the posting call itself is never retried ("check the page"); an edit restarts failed platforms;
     a paused post past its time never resumes. Merged admin #115 dcc4a94 / ordering #69 7fe9e2a. SQL
-    `supabase/c8_social_ads.sql` (sha256 d31eedf1…, re-runnable over the first draft) — Angelo runs it; saving ads answers
-    503 until then (designing / downloading work).
+    `supabase/c8_social_ads.sql` (sha256 d31eedf1…, re-runnable over the first draft) — RUN by Angelo 2026-11-06 23:11 CT,
+    all 5 checks true; public-key probe (storefront key, control 200): read / insert / update / delete on all 5 tables 401,
+    the private `social-media` bucket lists nothing. Saving ads is live; publishing stays OFF.
     **Advertising-rule research (2026-11-06 ~14:40 CT, from repo documents + live catalog data; counts only):** documented
     MAP for Bemis (Terms of Agreement, dealer application 2026 — written MAP policy incl. dealer websites; "call for price"
     allowed; dealers selling online must notify Bemis and use Bemis content), Golden (eMAP per product), Strongback (Rev C
