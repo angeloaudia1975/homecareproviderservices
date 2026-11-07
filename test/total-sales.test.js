@@ -73,6 +73,10 @@ const build = (sales, o) => REP.build(Object.assign({ year: Y, today: `${Y}-12-1
     const r = build(sales, { mfrName: { dalton: 'Dalton', 'golden-technologies': 'Golden' } }); const V = r.valuation;
     eq(r.categories.map((c) => c.category).sort(), ['Exercise', 'Lift Chairs', 'Scooters']);
     eq(V.by_product.map((p) => p.code).sort(), ['EX201-1', 'GB108B-ST']); eq(V.gaps.map((g) => [g.code, g.reason]), [['PR510-MED-IRH', 'configuration_not_priced']]);
+    /* the dealer's own Golden base price (account pricing, no standard price) also tells a plain configuration from a paid upgrade */
+    const acct = (sl, c) => { const m = resolve(sl, c); return m && sl === 'golden-technologies' ? Object.assign({}, m, { cost: null, base_price: m.code === 'GB108B' ? 800 : 1000 }) : m; };
+    const r3 = build(sales, { resolve: acct }); eq(r3.valuation.by_product.map((p) => p.code).sort(), ['EX201-1', 'GB108B-ST']);
+    eq(r3.valuation.gaps.map((g) => g.reason), ['configuration_not_priced'], 'the $1,400 chair over a $1,000 base is still an upgrade');
     const r2 = build(sales, { resolve: (sl, c) => (sl === 'golden-technologies' ? { unavailable: true } : resolve(sl, c)) });
     ok(r2.valuation.gaps.filter((g) => g.reason === 'catalog_unavailable').length === 2, 'unavailable');
   });

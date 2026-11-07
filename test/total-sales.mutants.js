@@ -7,7 +7,7 @@ const M = [
   { f: DR, from: "if (o.isMkt(r.code, r.name, r.mfr)) {", to: "if (false) {", why: 'marketing items valued' },
   { f: DR, from: "const isMkt = (c, nm, s) => mktWords(c, nm) && !listed(s, c, nm);", to: "const isMkt = (c, nm, s) => mktWords(c, nm);", why: 'a Shop product named display treated as marketing' },
   { f: DR, from: "(r.amt < 0 && !(r.qty < 0)) ? 'credit_without_units' :", to: "", why: 'amount-only credit removes a unit' },
-  { f: DR, from: "(res.matched_by === 'golden_base' && !(res.cost > 0 && unitCost != null && Math.abs(unitCost) <= res.cost * 1.02 + 0.01)) ? 'configuration_not_priced' : null", to: "null", why: 'upgraded Golden chair valued at base MSRP' },
+  { f: DR, from: "(res.matched_by === 'golden_base' && !((res.base_price || res.cost) > 0 && unitCost != null && Math.abs(unitCost) <= (res.base_price || res.cost) * 1.02 + 0.01)) ? 'configuration_not_priced' : null", to: "null", why: 'upgraded Golden chair valued at base MSRP' },
   { f: DR, from: "res && res.unavailable ? 'catalog_unavailable' :", to: "", why: 'unavailable catalog not said' },
   { f: DR, from: "((input.catalog && input.catalog[n.manufacturer]) || {})[n.code] ?", to: "input.catalog[n.manufacturer][n.code] ?", why: 'P0: absent catalog file read' },
   { f: DR, from: "const ret = r2(q * res.ref);", to: "const ret = r2(2 * r.amt);", why: '2× purchases instead of the Shop reference' },
