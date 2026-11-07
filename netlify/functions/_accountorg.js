@@ -34,17 +34,20 @@ module.exports = function (sbGet, sbSend) {
   }
 
   // Assign `ref` to `dealerId` for `slug`, then fill blanks across the family.
+  /* IMPORTS NEVER GRANT ORDERING (owner directive 2026-11-06 20:55 CT, §3): this is called by the sales-report and
+     commission importers. It records the identifier only — an existing row keeps its `active` exactly as Dealer Manager set
+     it; a line with no row gets one with active=false (the column defaults to true, so it is always written). */
   async function propagateAccountRef(slug, dealerId, ref) {
     slug = String(slug || "").trim();
     ref = String(ref == null ? "" : ref).trim();
     if (!slug || !dealerId) return;
     // 1) Set on the dealer itself (explicit — may differ from the org number).
-    await sbSend(
-      "POST",
-      "dealer_manufacturers?on_conflict=dealer_id,manufacturer",
-      { dealer_id: dealerId, manufacturer: slug, account_ref: ref || null, active: true },
-      { Prefer: "resolution=merge-duplicates,return=minimal" }
-    ).catch(() => {});
+    const own = await sbGet(`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(dealerId)}&manufacturer=eq.${encodeURIComponent(slug)}&select=dealer_id`).catch(() => null);
+    if (Array.isArray(own) && own.length)
+      await sbSend("PATCH", `dealer_manufacturers?dealer_id=eq.${encodeURIComponent(dealerId)}&manufacturer=eq.${encodeURIComponent(slug)}`, { account_ref: ref || null }, { Prefer: "return=minimal" }).catch(() => {});
+    else if (Array.isArray(own) && ref)
+      await sbSend("POST", "dealer_manufacturers?on_conflict=dealer_id,manufacturer", { dealer_id: dealerId, manufacturer: slug, account_ref: ref, active: false },
+        { Prefer: "resolution=ignore-duplicates,return=minimal" }).catch(() => {});
     if (!ref) return;
     // 2) Fill blanks across the family with the org primary.
     const { root, ids } = await family(dealerId);
@@ -52,26 +55,20 @@ module.exports = function (sbGet, sbSend) {
     const inlist = ids.map(encodeURIComponent).join(",");
     const cur = await sbGet(
       `dealer_manufacturers?manufacturer=eq.${encodeURIComponent(slug)}&dealer_id=in.(${inlist})&select=dealer_id,account_ref,active`
-    ).catch(() => []);
-    const byId = {}, accessById = {};
-    for (const r of cur || []) {
-      byId[r.dealer_id] = String(r.account_ref || "").trim();
-      accessById[r.dealer_id] = r.active !== false;
-    }
+    ).catch(() => null);
+    if (!Array.isArray(cur)) return;   // unreadable: never guess (a guess could create rows)
+    const byId = {}, has = new Set();
+    for (const r of cur) { byId[r.dealer_id] = String(r.account_ref || "").trim(); has.add(String(r.dealer_id)); }
     const orgPrimary = byId[root] || ref; // prefer the parent org's number
-    const fill = [];
     for (const id of ids) {
-      if (!byId[id]) fill.push({ dealer_id: id, manufacturer: slug, account_ref: orgPrimary, active: accessById[id] !== false });
+      if (byId[id]) continue;
+      if (has.has(String(id)))   // existing row, blank number: fill the number only (its ordering state is untouched)
+        await sbSend("PATCH", `dealer_manufacturers?dealer_id=eq.${encodeURIComponent(id)}&manufacturer=eq.${encodeURIComponent(slug)}&account_ref=is.null`, { account_ref: orgPrimary }, { Prefer: "return=minimal" }).catch(() => {});
+      else
+        await sbSend("POST", "dealer_manufacturers?on_conflict=dealer_id,manufacturer", { dealer_id: id, manufacturer: slug, account_ref: orgPrimary, active: false },
+          { Prefer: "resolution=ignore-duplicates,return=minimal" }).catch(() => {});
     }
-    if (fill.length)
-      await sbSend(
-        "POST",
-        "dealer_manufacturers?on_conflict=dealer_id,manufacturer",
-        fill,
-        { Prefer: "resolution=merge-duplicates,return=minimal" }
-      ).catch(() => {});
   }
-
 
   // A Dealer Manager grid save may grant a NEW manufacturer line with an existing
   // HQ account number. Fill branch BLANKS only; never change an independently assigned
@@ -119,26 +116,17 @@ module.exports = function (sbGet, sbSend) {
   const enc = encodeURIComponent;
   const norm = (s) => String(s == null ? "" : s).trim().toLowerCase();
 
-  // Ensure the (dealer × manufacturer) relationship is marked ACTIVE without touching its
-  // account number. Merge-duplicates updates only the columns in the payload, so account_ref
-  // is preserved.
-  async function markActive(slug, dealerId) {
-    slug = String(slug || "").trim();
-    if (!slug || !dealerId) return;
-    await sbSend(
-      "POST",
-      "dealer_manufacturers?on_conflict=dealer_id,manufacturer",
-      { dealer_id: dealerId, manufacturer: slug, active: true },
-      { Prefer: "resolution=merge-duplicates,return=minimal" }
-    ).catch(() => {});
-  }
+  /* Formerly "markActive": a report used to turn the line ON for ordering. Owner directive 2026-11-06 §3: a report may
+     identify the relationship and SUGGEST access for HCPS review, never grant it — nothing is written here. */
+  async function markActive(slug, dealerId) { return { suggested: true, slug: String(slug || ""), dealer_id: dealerId, written: false }; }
 
   // Conflict-aware account-number maintenance from a report. Compares the number the report
   // carries for a dealer to what's on file and decides what to do — never silently overwrites a
   // DIFFERENT existing number. Returns the outcome so the importer can report/flag it:
-  //   {status:"set"}         — was blank, now set (and filled across the family) + marked active
-  //   {status:"confirmed"}   — already matched; relationship (re)marked active
-  //   {status:"active_only"} — report had no number; relationship marked active from activity
+  //   {status:"set"}         — was blank, now set (and filled across the family); ordering NOT changed
+  //   {status:"confirmed"}   — already matched; ordering NOT changed
+  //   {status:"active_only"} — report had no number; nothing written
+  //   suggest_access:true    — the line is not on for ordering: listed for HCPS review in Dealer Manager (never granted)
   //   {status:"conflict", existing, incoming} — differs; left untouched, flagged for review
   //   {status:"skip"}        — nothing to do
   // opts.apply=false makes it a DRY RUN (no writes) so a preview can show what WOULD change.
@@ -153,18 +141,14 @@ module.exports = function (sbGet, sbSend) {
     ).catch(() => []);
     const row = cur && cur[0];
     const existing = row ? String(row.account_ref || "").trim() : "";
-    if (!incomingRef) {
-      if (apply) await markActive(slug, dealerId);
-      return { status: "active_only", existing };
-    }
+    const suggest = !row || row.active === false;
+    const sx = suggest ? { suggest_access: true } : {};
+    if (!incomingRef) return Object.assign({ status: "active_only", existing }, sx);
     if (!existing) {
       if (apply) await propagateAccountRef(slug, dealerId, incomingRef);
-      return { status: "set", incoming: incomingRef };
+      return Object.assign({ status: "set", incoming: incomingRef }, sx);
     }
-    if (norm(existing) === norm(incomingRef)) {
-      if (apply && (!row || row.active === false)) await markActive(slug, dealerId);
-      return { status: "confirmed", existing };
-    }
+    if (norm(existing) === norm(incomingRef)) return Object.assign({ status: "confirmed", existing }, sx);
     return { status: "conflict", existing, incoming: incomingRef };
   }
 

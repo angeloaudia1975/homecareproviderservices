@@ -141,15 +141,17 @@ async function importV2(mi, b, me, slug, rate, rows){
       if(res.status==="set") acct.updated.push({dealer_id:dealerId,name:o.name,account_ref:refs[0]});
       else if(res.status==="conflict") acct.conflicts.push({dealer_id:dealerId,name:o.name,existing:res.existing,incoming:res.incoming,reason:"differs_from_record"});
       else if(res.status==="confirmed") acct.confirmed.push({dealer_id:dealerId,name:o.name,account_ref:res.existing});
-      else if(res.status==="active_only") acct.active++; }
+      else if(res.status==="active_only") acct.active++;
+      if(res.suggest_access) (acct.suggest=acct.suggest||[]).push({dealer_id:dealerId,name:o.name}); }
   }
   let total=0, comm=0, matched=0; const unmatched=new Set();
   for(const x of recs){ total+=x.rec.amount; comm+=x.rec.commission; if(x.rec.dealer_id) matched++; else if(x.raw.company) unmatched.add(String(x.raw.company).trim()); }
   const summary={ path:"v2", rows:recs.length, matched_lines:matched, unmatched_lines:recs.length-matched, unmatched:[...unmatched].slice(0,100),
     total_sales:Math.round(total*100)/100, total_commission:Math.round(comm*100)/100, commission_rate:rate,
     ship_to_flags:shipToFlags(rows,details,byId),
-    accounts:{ updated:acct.updated.length, confirmed:acct.confirmed.length, active_marked:acct.active, conflicts:acct.conflicts.length,
-      updated_list:acct.updated.slice(0,200), conflict_list:acct.conflicts.slice(0,200) }, v2 };
+    accounts:{ updated:acct.updated.length, confirmed:acct.confirmed.length, active_marked:0, conflicts:acct.conflicts.length,
+      updated_list:acct.updated.slice(0,200), conflict_list:acct.conflicts.slice(0,200),
+      access_suggestions:(acct.suggest||[]).slice(0,200) }, v2 };   /* owner 2026-11-06 §3: a report never turns ordering on — it suggests */
   if(!apply) return json(200,{ok:true,preview:summary});
   return json(200,{ok:true,imported:v2.noop?0:(v2.inserted||0),summary});
 }
@@ -251,10 +253,12 @@ exports.handler = async (event)=>{
         else if(res.status==="conflict") acct.conflicts.push({dealer_id:dealerId,name:o.name,existing:res.existing,incoming:res.incoming,reason:"differs_from_record"});
         else if(res.status==="confirmed") acct.confirmed.push({dealer_id:dealerId,name:o.name,account_ref:res.existing});
         else if(res.status==="active_only") acct.active++;
+        if(res.suggest_access) (acct.suggest=acct.suggest||[]).push({dealer_id:dealerId,name:o.name});
       }
     }
-    const accounts={ updated:acct.updated.length, confirmed:acct.confirmed.length, active_marked:acct.active,
-      conflicts:acct.conflicts.length, updated_list:acct.updated.slice(0,200), conflict_list:acct.conflicts.slice(0,200) };
+    const accounts={ updated:acct.updated.length, confirmed:acct.confirmed.length, active_marked:0,
+      conflicts:acct.conflicts.length, updated_list:acct.updated.slice(0,200), conflict_list:acct.conflicts.slice(0,200),
+      access_suggestions:(acct.suggest||[]).slice(0,200) };   /* never granted — listed for review in Dealer Manager */
 
     const summary={ rows:mapped.length, matched_lines:matchedLines, unmatched_lines:mapped.length-matchedLines,
       dealers:perDealer.length, unmatched:[...unmatchedNames].slice(0,100),

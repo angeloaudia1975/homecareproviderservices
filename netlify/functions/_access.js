@@ -51,7 +51,13 @@ function inExclusiveTerritory(state, name, lat){
 // line on and the dealer sees it" always holds, regardless of state or account status. Only when the
 // grid is completely empty do we fall back to the territory rules, so dealers set up before the grid
 // was used never silently go dark. (Golden is still surfaced separately via `golden`.)
-function computeAccess(gov, ownedSlugs, grantedSlugs){
+/* GRID-ONLY (owner directive 2026-11-06 20:55 CT, §2): Dealer Manager is the ONLY source of ordering eligibility — no
+   territory, geography, import history or account number substitutes. With opts.gridOnly the territory fallback is gone (a
+   dealer with no grid sees no lines) and the Golden button follows the STORED Golden status only (no Kentucky "Prospect" by
+   territory). Rolled out by the switch phase2_flags.grid_only_access after the impact report (dealers-api
+   entitlement_impact) — the territory rules stay for rep prospecting (map / routes), never for ordering. */
+function computeAccess(gov, ownedSlugs, grantedSlugs, opts){
+  const gridOnly = !!(opts && opts.gridOnly);
   const owned = new Set([...(ownedSlugs || [])].filter(s => s && !RETIRED.isRetiredLine(s)));
   /* Grid vs territory is decided on the RAW grants (Golden aside), BEFORE retired lines are removed: a dealer
      whose only grant is a retired line (e.g. "ohio-medical") still has a grid, so they get exactly nothing —
@@ -63,7 +69,7 @@ function computeAccess(gov, ownedSlugs, grantedSlugs){
   const name = gov.business_name || "";
 
   let eligible;
-  if (hasGrid) {
+  if (hasGrid || gridOnly) {
     // Explicit admin grants win — the dealer can order exactly what was ticked.
     eligible = new Set(granted);
   } else {
@@ -84,7 +90,7 @@ function computeAccess(gov, ownedSlugs, grantedSlugs){
   // Kentucky dealer is treated as a Golden PROSPECT (HCPS actively develops Golden across KY),
   // so Golden shows as an approved territory line for them. Elsewhere, use the stored status.
   let golden = gov.golden_status || "None";
-  if (golden !== "Account" && st === "KY") golden = "Prospect";
+  if (!gridOnly && golden !== "Account" && st === "KY") golden = "Prospect";
 
   return {
     your_accounts,
