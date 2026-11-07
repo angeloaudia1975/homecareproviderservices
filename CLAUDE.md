@@ -2334,8 +2334,13 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     read is never cached and its purchases say "catalog unavailable"; Golden gets 3 s inside a report.
     **Production check (Angelo, 2026-11-06 20:54 CT):** `public.orders` has NO check constraints (read-only query, 0 rows),
     so the `pending_account_setup` status records normally.
-    **CONTINUATION DIRECTIVE (owner 2026-11-06 20:55 CT — RULES, do not re-ask):** (1) the 630-identifier backfill stays ON
-    HOLD; the 553 proposed verifications are NOT approved; keep the read-only CSV. (2) **Territory rules are removed as a
+    **FINAL VERIFICATION RULE (owner 2026-11-06 20:57 CT — supersedes every earlier backfill / dry-run note):** an account
+    number, account name or manufacturer-issued identifier on file in HCPS's record (`dealer_manufacturers.account_ref`) IS
+    VERIFIED — all 630 existing and every future entry; no CSV review, report matching or second button; removing it clears
+    the status; numeric / alphanumeric / names equally valid; identifiers and family associations are never changed; dealer-
+    entered numbers (claims) still don't self-verify; verified NEVER grants ordering (Dealer Manager only). Implemented as a
+    rule derived from the record (admin #112), not a bulk write.
+    **CONTINUATION DIRECTIVE (owner 2026-11-06 20:55 CT — RULES, do not re-ask):** (1) [superseded by the rule above]. (2) **Territory rules are removed as a
     source of ordering eligibility** — Dealer Manager (`dealer_manufacturers.active`) is the ONLY source; no geography,
     territory, import history or account-number presence ever substitutes. A read-only impact report of dealers relying on
     territory visibility comes first; material loss of real active dealers' shopping access goes to Angelo before that
