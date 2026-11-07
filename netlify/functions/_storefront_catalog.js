@@ -119,15 +119,16 @@ async function lineData(deps, line, enrichedOnly) {
   }
   /* standard cost and MAP: the shop's own engine (no contract price, no line discount, quantity 1 — a quantity break or
      special never applies at 1) */
-  let costs = null;
+  let costs = null, merged = null;
   try {
     const lp = await PR.lineProducts({ slug: line, sb: deps.sb, catalogFile: deps.catalogFile, contentFile: deps.contentFile, contract: {}, rates: {}, cart: new Map() });
     /* official MSRP on file in the private commercial catalog (legacy lines keep it there): the merged product's MSRP unless
        the shop derived it (_msrp_suggested = 2 × dealer price, never an official figure) */
+    merged = lp.products || [];   // the shop's own merged products (enrichment category / name) — reports categorise from them
     costs = new Map((lp.products || []).map((p) => { let c = null; try { c = lp.engine.unitPrice(p, 1); } catch (e) { c = null; }
       const m = Number(p.msrp); return [String(p.code), { cost: c, map: p.map, msrp: !p._msrp_suggested && p.msrp_auto !== true && m > 0 ? m : null }]; }));
   } catch (e) { console.error('storefront cost read failed', line, e && String(e.message).slice(0, 120)); costs = null; }
-  return { file: file || [], facts, costs, content };
+  return { file: file || [], facts, costs, content, merged };
 }
 
 /* C3-07 owner directive 2026-11-06 15:23 CT: the DEFAULT customer retail of each product of a line, for My Retail Prices,

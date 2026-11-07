@@ -93,6 +93,33 @@ async function render({ report, dealer, scopeName, generated }) {
   page.drawLine({ start: { x: M, y: base }, end: { x: W - M, y: base }, thickness: 0.5, color: LINE });
   y = base - 16;
 
+  /* ---- Total Sales (owner 2026-11-06, Priority 7): the same valuation as the screen and Excel */
+  const V = R.valuation;
+  if (V && V.matched_cost > 0) {
+    heading('Total Sales — potential retail of purchases', 'Potential retail is the value of the inventory purchased at today’s Shop retail reference (manufacturer MSRP, else HCPS calculated retail at 2× standard dealer cost) — not sales made. Historical purchases are valued at current prices.');
+    const vt = [
+      ['Wholesale valued', money(V.matched_cost), `Coverage ${V.coverage_pct == null ? '—' : V.coverage_pct + '%'} of ${money(V.purchases_total)} purchases`],
+      ['Potential retail (Shop)', money(V.benchmark.retail), `Profit ${money(V.benchmark.profit)} · margin ${V.benchmark.margin_pct == null ? '—' : V.benchmark.margin_pct + '%'}`],
+      ['Potential retail (your prices)', money(V.custom.retail), V.custom.products_with_custom_price ? `Profit ${money(V.custom.profit)} · margin ${V.custom.margin_pct == null ? '—' : V.custom.margin_pct + '%'}` : 'No retail prices of your own set — Shop reference used'],
+      ['Difference', money(V.difference), 'Your prices versus the Shop reference'],
+    ];
+    need(70); const tw2 = (W - 2 * M - 18) / 4;
+    vt.forEach((t, i) => { const x = M + i * (tw2 + 6); page.drawRectangle({ x, y: y - 58, width: tw2, height: 58, color: ZEBRA, borderColor: LINE, borderWidth: 0.6 });
+      text(clip(t[0], tw2 - 12, 7.5, true), x + 7, y - 13, { size: 7.5, bold: true, color: MUTED }); text(clip(t[1], tw2 - 12, 14, true), x + 7, y - 32, { size: 14, bold: true, color: NAVY });
+      wrap(t[2], tw2 - 12, 6.8).slice(0, 2).forEach((l, k) => text(l, x + 7, y - 44 - k * 8, { size: 6.8, color: MUTED })); });
+    y -= 64;
+    const pm = (v) => (v == null ? '—' : v + '%');
+    table([{ label: 'Manufacturer', w: 150, get: (r) => r.name, bold: true }, { label: 'Wholesale', w: 75, align: 'r', get: (r) => money(r.cost) },
+      { label: 'Retail (Shop)', w: 80, align: 'r', get: (r) => money(r.retail) }, { label: 'Profit', w: 70, align: 'r', get: (r) => money(r.profit) },
+      { label: 'Margin', w: 52, align: 'r', get: (r) => pm(r.margin_pct) }, { label: 'Retail (yours)', w: 105, align: 'r', get: (r) => money(r.custom_retail) }], V.by_manufacturer);
+    y -= 8;
+    table([{ label: 'Category', w: 150, get: (r) => r.category, bold: true }, { label: 'Wholesale', w: 75, align: 'r', get: (r) => money(r.cost) },
+      { label: 'Retail (Shop)', w: 80, align: 'r', get: (r) => money(r.retail) }, { label: 'Profit', w: 70, align: 'r', get: (r) => money(r.profit) },
+      { label: 'Margin', w: 52, align: 'r', get: (r) => pm(r.margin_pct) }, { label: 'Retail (yours)', w: 105, align: 'r', get: (r) => money(r.custom_retail) }], V.by_category);
+    if (R.company) { y -= 8; para(`Company comparison, same period: this location bought ${money(R.purchases.total)} of the company's ${money(R.company.purchases)} (${R.company.branch_share_pct == null ? '—' : R.company.branch_share_pct + '%'}). Company potential retail ${money(R.company.retail_benchmark)}, profit ${money(R.company.profit)}, margin ${R.company.margin_pct == null ? '—' : R.company.margin_pct + '%'}.`); }
+    if (V.gaps && V.gaps.length) { y -= 4; para(`${money(V.gap_amount)} of purchases could not be valued (no matching Shop product or no MSRP / standard cost) — listed in the Excel export.`, { color: MUTED, size: 8 }); }
+  }
+
   heading('By manufacturer', 'Manufacturer-reported purchases. A dash means HCPS history for the line does not cover last year.');
   table([{ label: 'Manufacturer', w: 190, get: (r) => r.name, bold: true }, { label: 'Purchases', w: 85, align: 'r', get: (r) => money(r.purchases) },
     { label: 'Last year', w: 85, align: 'r', get: (r) => money(r.prior) }, { label: 'Change', w: 70, align: 'r', get: (r) => pctTxt(r.change_pct), color: chg },
@@ -127,7 +154,7 @@ async function render({ report, dealer, scopeName, generated }) {
   para(`Orders placed in the 360 Dealer Portal: ${R.portal.orders}, ${money(R.portal.merchandise)} merchandise${R.portal.cancelled_excluded ? `; ${R.portal.cancelled_excluded} cancelled order(s) excluded` : ''}. Portal orders are shown apart and not added to purchases: once a manufacturer ships and reports an order it appears in purchases.`);
 
   heading('About this report');
-  para('Purchases are manufacturer-reported (sales reports and commission statements received by HCPS). Year-over-year comparisons appear only where HCPS holds that line’s history for the whole comparison period. Categories come from the current HCPS catalog. No costs, margins or customer traffic are estimated.', { color: MUTED, size: 8 });
+  para('Purchases are manufacturer-reported (sales reports and commission statements received by HCPS). Year-over-year comparisons appear only where HCPS holds that line’s history for the whole comparison period. Categories come from the current HCPS catalog. Potential retail and margins value purchased inventory at current Shop reference prices; they are not sales or customer traffic.', { color: MUTED, size: 8 });
   for (const n of R.notes) para('• ' + n, { color: MUTED, size: 8 });
 
   pages.forEach((p, i) => { p.drawText(safe(`HomeCare Provider Services · 360 Dealer Portal · Confidential — prepared for ${dealer.business_name || 'the dealer'}`), { x: M, y: 22, size: 7, font: F, color: MUTED });
