@@ -70,6 +70,13 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
     eq(AC.visibleLocations(HQ, fam, { scope: 'list', locations: [BR2, OTHER] }).map(x => x.id), [HQ, BR2], 'a list never reaches outside the company');
     eq(AC.visibleLocations(OTHER, fam, null), [], 'unknown self → nothing');
   });
+  await t("HCPS's read-only preview: the Account Center reads; every change is refused; an expired token is refused", async () => {
+    const W = world(); W.db.dealer_preview_tokens = [{ token: 'pv1', dealer_id: HQ, expires_at: new Date(Date.now() + 600000).toISOString() }, { token: 'pvold', dealer_id: HQ, expires_at: new Date(Date.now() - 1000).toISOString() }];
+    const C = tools(W);
+    const r = await as(C, 'preview:pv1', { action: 'account_center' }); eq(r.body.ok, true, JSON.stringify(r.body).slice(0, 200)); ok(r.body.locations.length >= 2 && r.body.locations.some((l) => l.is_self), 'company view ' + r.body.locations.length);
+    const w = await as(C, 'preview:pv1', { action: 'account_change_request', location_id: HQ, changes: { phone: '555-000-0000' } }); eq(w.status, 403);
+    const x = await as(C, 'preview:pvold', { action: 'account_center' }); eq(x.body.status, 'unauthorized');
+  });
   await t('status: verified / pending (on file, submitted, access asked, ordering only) / none; Golden from its status', async () => {
     eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y1', verified_at: 'x', verified_ref: 'y1', active: true } }).status, 'verified');
     eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y2', verified_at: 'x', verified_ref: 'Y1', active: true } }).status, 'pending', 'number changed since verified');
