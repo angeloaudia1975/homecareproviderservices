@@ -87,7 +87,7 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
     eq(AC.accountStatus({ slug: 'y', dm: { account_ref: '  ', active: true } }).status, 'pending', 'a blank identifier is not verified');
     eq(AC.accountStatus({ slug: 'y', dm: { account_ref: 'Y1', active: true }, claim: { account_ref: 'Y9' } }).pending_claim, 'Y9', 'a different dealer-entered number stays a pending claim');
     eq(AC.accountStatus({ slug: 'y', dm: null, claim: { account_ref: 'Z' } }).label, 'Submitted — HCPS is verifying');
-    eq(AC.accountStatus({ slug: 'y', dm: null, verifiedClaim: { account_ref: 'Z' } }).status, 'verified');
+    eq(AC.accountStatus({ slug: 'y', dm: null, verifiedClaim: { account_ref: 'Z' } }).status, 'none', 'removing the identifier from the record clears it, even after a verified claim');
     eq(AC.accountStatus({ slug: 'y', dm: null, accessOpen: true }).status, 'pending');
     eq(AC.accountStatus({ slug: 'y', dm: { active: true } }).label, 'Ordering set up — account number not on file');
     eq(AC.accountStatus({ slug: 'y' }).status, 'none');
@@ -262,14 +262,14 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
     eq(W.db.dealer_contacts.find(x => x.id === 'c0000000-0000-0000-0000-000000000009').name, 'Other Person', 'another dealer\'s contact never touched');
     eq(W.db.dealer_change_requests[0].status, 'approved');
   });
-  await t('claim verify: number confirmed on the existing row, ordering NOT turned on; no row → none created', async () => {
+  await t('claim verify: number confirmed on the existing row, ordering NOT turned on; no row → the number is recorded with ordering OFF', async () => {
     const W = world({ dm: [{ dealer_id: HQ, manufacturer: 'yuwell', account_ref: null, active: false }],
       claims: [{ id: 1, dealer_id: HQ, manufacturer: 'yuwell', account_ref: 'Y-200', status: 'pending' }, { id: 2, dealer_id: HQ, manufacturer: 'access4u', account_ref: 'A-1', status: 'pending' }] });
     const C = adm(W);
     eq((await post(C, { action: 'claim_verify', id: 1 })).body.updated_ordering_row, true);
     const row = W.db.dealer_manufacturers.find(x => x.manufacturer === 'yuwell'); eq([row.account_ref, row.active, !!row.verified_at, row.verified_ref], ['Y-200', false, true, 'Y-200']);
     eq((await post(C, { action: 'claim_verify', id: 2 })).body.updated_ordering_row, false);
-    eq(W.db.dealer_manufacturers.length, 1, 'nothing created'); eq(W.db.dealer_account_claims.map(x => x.status), ['verified', 'verified']);
+    const a4 = W.db.dealer_manufacturers.find(x => x.manufacturer === 'access4u'); eq([a4.account_ref, a4.active], ['A-1', false], 'identifier recorded, ordering stays off'); eq(W.db.dealer_account_claims.map(x => x.status), ['verified', 'verified']);
     eq((await post(C, { action: 'claim_verify', id: 1 })).status, 409, 'already decided');
   });
   await t('claim verify: a DIFFERENT number on file is never replaced silently (409), only with confirm', async () => {

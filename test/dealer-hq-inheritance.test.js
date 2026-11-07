@@ -66,6 +66,10 @@ const ref=(w,id,manufacturer=m)=>(w.db.dealer_manufacturers||[]).find(r=>r.deale
   assert.equal(r2.status,200,JSON.stringify(r2.body)); assert.equal(ref(w2,"child-blank").active,false,"ordering switch unchanged"); assert.equal(ref(w2,"child-blank").verified_ref,"jamesmed-login","a username is a valid identifier");
   const r3=await call(load("crm-api.js",w2),{action:"save_account_ref",dealer_id:"child-blank",manufacturer:m,account_ref:""},{token:"pres"});
   assert.equal(r3.status,200); assert.equal(ref(w2,"child-blank").verified_at,null,"clearing the number clears verification");
+  /* Dealer 360 shows every identifier on file as verified (owner rule 2026-11-06), blank ones not */
+  { const s6=seed(); const w6=createWorld(s6); w6.db.dealer_manufacturers.push({dealer_id:"hq-family",manufacturer:"pedifix",account_ref:"OLD-1",active:true},{dealer_id:"hq-family",manufacturer:"dalton",account_ref:"  ",active:true});
+    const c6=await call(load("crm-api.js",w6),{action:"contacts",dealer_id:"hq-family"},{token:"pres"}); const ac=(c6.body.accounts||[]);
+    assert.equal((ac.find(a=>a.slug==="pedifix")||{}).verified,true,"on file = verified"); assert.equal((ac.find(a=>a.slug==="dalton")||{}).verified,false,"blank is not"); }
   /* the dealer's own row saved, then the branch fill fails: never "nothing was changed" — saved, with a warning */
   let n=0; const s4=seed(); s4.failWrite=(meth,table)=>/dealer_manufacturers/.test(table)&&++n>1?500:0; const w4=createWorld(s4);
   const r4=await call(load("crm-api.js",w4),{action:"save_account_ref",dealer_id:"hq-family",manufacturer:"bemis",account_ref:"B-9"},{token:"pres"});

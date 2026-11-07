@@ -968,8 +968,10 @@ exports.handler = async (event)=>{
           await sbSend("PATCH",`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(cl.dealer_id)}&manufacturer=eq.${encodeURIComponent(cl.manufacturer)}`,
             {account_ref:cl.account_ref,verified_at:at,verified_by:by,verified_ref:cl.account_ref},{Prefer:"return=minimal"});
         }
-        /* No ordering row → nothing is created in dealer_manufacturers (that table also drives ordering); the verified claim
-           itself is the record, and the Account Center shows it green. Ordering stays a separate HCPS decision. */
+        /* No row yet → the identifier is recorded on a row that does NOT open ordering (active=false): the record is the one
+           place an identifier lives (owner rule 2026-11-06 — on file = verified, removing it clears it); ordering stays a
+           separate Dealer Manager decision. */
+        else await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",{dealer_id:cl.dealer_id,manufacturer:cl.manufacturer,account_ref:cl.account_ref,active:false,verified_at:at,verified_by:by,verified_ref:cl.account_ref},{Prefer:"resolution=ignore-duplicates,return=minimal"});
         await sbSend("PATCH",`dealer_account_claims?id=eq.${id}&status=eq.pending`,{status:"verified",decided_at:at,decided_by:by},{Prefer:"return=minimal"});
         return json(200,{ok:true,updated_ordering_row:!!row});
       }

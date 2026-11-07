@@ -823,7 +823,7 @@ async function loadDmAccounts(){
   box.innerHTML='<div class="dim">Loading…</div>';
   let j; try{ j=await post({action:"dm_accounts",dealer_id:did}); }catch(e){ box.innerHTML=""; return; }
   const R=j.rows||[];
-  box.innerHTML=R.length?`<table><thead><tr><th>Line</th><th>Account #</th><th>Ordering</th><th>Verified</th></tr></thead><tbody>${R.map(r=>`<tr><td>${esc(r.manufacturer)}</td><td>${esc(r.account_ref||"—")}</td><td>${r.active===false?"Off":"On"}</td><td>${r.account_ref?`<span style="font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;border-radius:999px;padding:1px 7px">✓ Verified</span>${r.verified_at?" <span class=\"dim\">"+esc(fmtDate(r.verified_at))+(r.verified_by?" · "+esc(r.verified_by):"")+"</span>":" <span class=\"dim\">on file</span>"}`:'<span class="dim">no number</span>'}</td></tr>`).join("")}</tbody></table>`
+  box.innerHTML=R.length?`<table><thead><tr><th>Line</th><th>Account #</th><th>Ordering</th><th>Verified</th></tr></thead><tbody>${R.map(r=>`<tr><td>${esc(r.manufacturer)}</td><td>${esc(r.account_ref||"—")}</td><td>${r.active===false?"Off":"On"}</td><td>${r.verified?`<span style="font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;border-radius:999px;padding:1px 7px">✓ Verified</span>${r.verified_at?" <span class=\"dim\">"+esc(fmtDate(r.verified_at))+(r.verified_by?" · "+esc(r.verified_by):"")+"</span>":" <span class=\"dim\">on file</span>"}`:'<span class="dim">no number</span>'}</td></tr>`).join("")}</tbody></table>`
     :'<div class="dim">No manufacturer accounts on file for this dealer.</div>';
 }
 async function dryRunCsv(){

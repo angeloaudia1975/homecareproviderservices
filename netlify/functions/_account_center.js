@@ -4,7 +4,7 @@
    · Locations a login may see (D2, owner 2026-11-05): a head-office login sees its company's authorized locations, a
      branch login ONLY its own. HCPS alone changes that (dealer_user_scope). A branch is never widened, whatever a scope
      row says; a head office may be narrowed to itself or to a list of its own locations.
-   · Manufacturer account status: green = HCPS verified the account number; amber = on file / submitted / requested,
+   · Manufacturer account status: green = an identifier on file in HCPS's record (verified by owner rule 2026-11-06); amber = submitted / requested / ordering only,
      waiting on HCPS; red = none. Verification never grants ordering — `active` (ordering) is a separate fact.
    · A dealer's own edits are REQUESTS: they are validated here and queued for HCPS approval (dealer_change_requests).
    · A logo upload must really be a JPEG or PNG (file signature, not the name), 1 MB at most. */
@@ -52,8 +52,8 @@ function accountStatus({ slug, dm, claim, verifiedClaim, accessOpen, goldenStatu
      different number the dealer submitted stays a separate pending claim until HCPS saves it. */
   if (ref.trim()) return Object.assign({ status: "verified", label: "Verified by HCPS", account_ref: ref.trim(), ordering: !!(dm && dm.active !== false) },
     claim && !same(claim.account_ref, ref) ? { pending_claim: String(claim.account_ref || "") } : {});
-  /* A verified claim counts only when no different number is on file. */
-  if (verifiedClaim && !claim && (!ref || same(verifiedClaim.account_ref, ref))) return { status: "verified", label: "Verified by HCPS", account_ref: String(verifiedClaim.account_ref || ""), ordering: !!(dm && dm.active !== false) };
+  /* A verified claim is shown through the record: HCPS's approval writes its number on file (dealers-api claim_verify),
+     so removing the identifier from the record clears the status (owner rule 2026-11-06). */
   if (claim) return { status: "pending", label: "Submitted — HCPS is verifying", account_ref: String(claim.account_ref || ""), ordering: !!(dm && dm.active !== false) };
   if (dm && dm.active !== false) return { status: "pending", label: "Ordering set up — account number not on file", account_ref: null, ordering: true };
   if (accessOpen) return { status: "pending", label: "Access requested — HCPS is reviewing", account_ref: null, ordering: false };

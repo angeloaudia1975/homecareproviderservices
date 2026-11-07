@@ -5,6 +5,8 @@ const F = (n) => path.join(__dirname, '..', 'netlify', 'functions', n);
 const AS = F('_account_setup.js'), OA = F('orders-admin.js'), AO = F('_accountorg.js'), DT = F('dealer-tools-api.js');
 const ACF = F('_account_center.js'), DR = F('_verification_dryrun.js');
 const M = [
+  { f: F('crm-api.js'), from: "const vOk=l=>!!String(l.account_ref||\"\").trim();", to: "const vOk=l=>!!l.verified_at;", why: 'Dealer 360 not verified by presence' },
+  { f: F('dealers-api.js'), from: "else await sbSend(\"POST\",\"dealer_manufacturers?on_conflict=dealer_id,manufacturer\",{dealer_id:cl.dealer_id,manufacturer:cl.manufacturer,account_ref:cl.account_ref,active:false", to: "else await sbSend(\"POST\",\"dealer_manufacturers?on_conflict=dealer_id,manufacturer\",{dealer_id:cl.dealer_id,manufacturer:cl.manufacturer,account_ref:cl.account_ref,active:true", why: 'claim verify grants ordering' },
   { f: ACF, from: "if (ref.trim()) return Object.assign({ status: \"verified\"", to: "if (false) return Object.assign({ status: \"verified\"", why: 'identifier on file not verified' },
   { f: ACF, from: "ordering: !!(dm && dm.active !== false) },\n    claim", to: "ordering: true },\n    claim", why: 'verified treated as ordering' },
   { f: ACF, from: "if (ref.trim())", to: "if (ref)", why: 'blank identifier verified' },
