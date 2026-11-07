@@ -78,6 +78,18 @@ function orgFor(w) {
     assert.deepEqual([row(w, "hq", "pedifix").account_ref, row(w, "hq", "pedifix").active], ["P-9", false]);
     assert.equal(row(w, "hq", "dalton").active, true, "the ticked line is approved");
   });
+  await t("review #113: a UI-shaped save (refCarry from sales history) never erases an unticked line's identifier; an HQ save never re-grants a branch's unticked line", async () => {
+    const w = createWorld(seed()); const C = load("dealers-api.js", w);
+    const r = await call(C, { action: "access", dealer_id: "hq", manufacturers: ["dalton"], refCarry: { bemis: "B-1", pedifix: "P-9" } }, { token: "pres" });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual([row(w, "hq", "bemis") && row(w, "hq", "bemis").account_ref, row(w, "hq", "bemis") && row(w, "hq", "bemis").active], ["B-1", false]);
+    assert.deepEqual([row(w, "hq", "pedifix").account_ref, row(w, "hq", "pedifix").active], ["P-9", false]);
+    w.db.dealer_manufacturers.push({ dealer_id: "br", manufacturer: "bemis", account_ref: null, active: true });
+    await call(C, { action: "access", dealer_id: "br", manufacturers: [] }, { token: "pres" });
+    assert.equal(row(w, "br", "bemis").active, false, "branch unticked bemis (row kept, off)");
+    await call(C, { action: "access", dealer_id: "hq", manufacturers: ["bemis"] }, { token: "pres" });
+    assert.deepEqual([row(w, "br", "bemis").active, row(w, "br", "bemis").account_ref], [false, "B-1"], "the HQ save fills the number only — never re-grants");
+  });
   await t("§2 territory suggestions write nothing; the bulk pre-fill is retired", async () => {
     const w = createWorld(seed()); const before = JSON.stringify(w.db.dealer_manufacturers);
     const C = load("dealers-api.js", w);
@@ -88,7 +100,10 @@ function orgFor(w) {
   });
   await t("§3 Zoho account sync and staff tools never write active:true", async () => {
     const z = fs.readFileSync(path.join(__dirname, "../netlify/functions/zoho-api.js"), "utf8");
-    assert.ok(!/rpc\("propagate_org_account_numbers"/.test(z), "the SQL function that set active=true is no longer called");
+    assert.ok(!/rpc\("propagate_org_account_numbers"/.test(z), "v1 (set active=true) is no longer called");
+    assert.ok(/rpc\("propagate_org_account_numbers_v2"/.test(z), "v2 fills numbers only");
+    const v2 = fs.readFileSync(path.join(__dirname, "../supabase/propagate_org_account_numbers_v2.sql"), "utf8");
+    assert.ok(/o\.org_ref, false/.test(v2) && !/do update set[^;]*active/.test(v2) && /revoke all on function public\.propagate_org_account_numbers_v2\(\) from public, anon, authenticated/.test(v2), "v2 never grants and is closed to the public key");
     const d = fs.readFileSync(path.join(__dirname, "../netlify/functions/dealers-api.js"), "utf8");
     const dmWrites = d.split("\n").filter((l) => /dealer_manufacturers/.test(l) && /active:true/.test(l));
     assert.deepEqual(dmWrites, [], "no dealer_manufacturers write in dealers-api sets active:true on its own line");

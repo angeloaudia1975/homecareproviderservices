@@ -601,8 +601,10 @@ exports.handler = async (event)=>{
         /* A line taken OFF the grid keeps its account identifier on file with ordering off (owner 2026-11-06: an identifier
            on file is the dealer's verified account; Dealer Manager decides ordering) — it is never erased by a grid save. */
         const sel=new Set(b.manufacturers.map(String));
-        const carriedRefs=new Set(Object.values((b.refCarry&&typeof b.refCarry==="object")?b.refCarry:{}).map(v=>String(v||"").trim().toUpperCase()).filter(Boolean));
-        const keepOff=Object.keys(refBy).filter(m=>!sel.has(String(m)) && !carriedRefs.has(String(refBy[m]||"").trim().toUpperCase()));   /* a merged duplicate's number moved to its canonical line */
+        /* Every line the save leaves unticked stays as a row with ordering OFF (its identifier kept, if any): unticking never
+           erases an identifier, and an HQ save can only fill a branch's number, never re-grant a line the branch turned off
+           (fillHeadquartersBlanks patches existing rows' numbers only). Review of #113 (findings 1 and 3). */
+        const keepOff=[...new Set((existing||[]).map(r=>String(r.manufacturer)))].filter(m=>!sel.has(m));
         const gridRows=b.manufacturers.map(m=>({m,active:true})).concat(keepOff.map(m=>({m,active:false})));
         if(gridRows.length) await sbSend("POST","dealer_manufacturers",gridRows.map(({m,active})=>{ const row={dealer_id:b.dealer_id,manufacturer:m,active,account_ref:refBy[m]||null};
           if(verBy){ const v=verBy[m]; const keep=v&&String(v.verified_ref||"").toUpperCase()===String(row.account_ref||"").toUpperCase()&&row.account_ref;
@@ -821,7 +823,9 @@ exports.handler = async (event)=>{
            written); a line with no row is recorded with ordering OFF (the column defaults to on, so it is always written). */
         { let have=null; try{ have=new Set((await sbGetAll("dealer_manufacturers?select=dealer_id,manufacturer","dealer_id,manufacturer")).map(x=>x.dealer_id+"|"+x.manufacturer)); }catch(e){ errors.push("lines: could not read the current access grid — no lines written"); }
           if(have){ const upd=lineArr.filter(x=>have.has(x.dealer_id+"|"+x.manufacturer)), add=lineArr.filter(x=>!have.has(x.dealer_id+"|"+x.manufacturer)).map(x=>Object.assign({},x,{active:false}));
-            const r1=await UP.upsertKeepingValues(sbSend,"dealer_manufacturers?on_conflict=dealer_id,manufacturer",upd); ents=r1.written; r1.errors.forEach(m=>errors.push("lines: "+m));
+            /* existing rows: PATCH the number only — an upsert could re-insert a row deleted meanwhile with the column's
+               default active=true (review of #113, finding 6) */
+            for(const x of upd){ if(!String(x.account_ref||"").trim()) continue; try{ await sbSend("PATCH",`dealer_manufacturers?dealer_id=eq.${encodeURIComponent(x.dealer_id)}&manufacturer=eq.${encodeURIComponent(x.manufacturer)}`,{account_ref:x.account_ref},{Prefer:"return=minimal"}); ents++; }catch(e){ errors.push("lines: "+e.message); } }
             for(let i=0;i<add.length;i+=500){ try{ await sbSend("POST","dealer_manufacturers?on_conflict=dealer_id,manufacturer",add.slice(i,i+500),{Prefer:"resolution=ignore-duplicates,return=minimal"}); ents+=Math.min(500,add.length-i); }catch(e){ errors.push("lines: "+e.message); } } } }
 
         // per-dealer: set contact/email/phone + promote the top-ranked (HQ) address

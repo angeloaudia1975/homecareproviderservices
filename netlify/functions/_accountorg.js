@@ -63,7 +63,7 @@ module.exports = function (sbGet, sbSend) {
     for (const id of ids) {
       if (byId[id]) continue;
       if (has.has(String(id)))   // existing row, blank number: fill the number only (its ordering state is untouched)
-        await sbSend("PATCH", `dealer_manufacturers?dealer_id=eq.${encodeURIComponent(id)}&manufacturer=eq.${encodeURIComponent(slug)}&account_ref=is.null`, { account_ref: orgPrimary }, { Prefer: "return=minimal" }).catch(() => {});
+        await sbSend("PATCH", `dealer_manufacturers?dealer_id=eq.${encodeURIComponent(id)}&manufacturer=eq.${encodeURIComponent(slug)}&or=(account_ref.is.null,account_ref.eq.)`, { account_ref: orgPrimary }, { Prefer: "return=minimal" }).catch(() => {});
       else
         await sbSend("POST", "dealer_manufacturers?on_conflict=dealer_id,manufacturer", { dealer_id: id, manufacturer: slug, account_ref: orgPrimary, active: false },
           { Prefer: "resolution=ignore-duplicates,return=minimal" }).catch(() => {});

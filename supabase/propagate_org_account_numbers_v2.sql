@@ -1,16 +1,18 @@
--- HCPS — propagate_org_account_numbers() v2 (owner directive 2026-11-06 20:55 CT, §3: imports and syncs never grant ordering)
--- The v1 function (propagate_org_account_numbers.sql) inserted branch rows with active = true and set active = true on
--- conflict, so filling an organization's account number into a branch also turned ordering on. v2 fills the NUMBER only:
---   · an existing row keeps its `active` exactly as Dealer Manager set it;
---   · a branch with no row for the line gets one with active = false (ordering stays off until Dealer Manager).
--- No code calls this function any more (zoho-api fills blanks itself with _accountorg.propagateAccountRef); v2 removes the
--- latent grant in case anything calls it later. Same name, same signature, same privileges (CREATE OR REPLACE keeps grants).
--- Rollback: re-run supabase/propagate_org_account_numbers.sql (restores v1 — not recommended).
-create or replace function propagate_org_account_numbers()
+-- HCPS — propagate_org_account_numbers_v2() (owner directive 2026-11-06 20:55 CT, §3: imports and syncs never grant ordering)
+-- v1 (propagate_org_account_numbers.sql) inserted branch rows with active = true and set active = true on conflict, so filling
+-- an organization's account number into a branch also turned ordering on — and as a SECURITY DEFINER function with no REVOKE
+-- it may be callable with the public key. This file:
+--   1. creates propagate_org_account_numbers_v2(): fills branch BLANK numbers only; an existing row keeps `active` exactly as
+--      Dealer Manager set it; a branch with no row for the line gets one with active = false;
+--   2. makes v2 callable by the server (service_role) only;
+--   3. closes v1 to everyone but the owner (no code calls it any more — zoho-api calls v2).
+-- RULE 19: execute revoked from public, anon, authenticated. Additive; rollback: drop function propagate_org_account_numbers_v2();
+-- and re-grant v1 to the roles it had (note them from the read-only check before running).
+create or replace function public.propagate_org_account_numbers_v2()
   returns integer
   language plpgsql
   security definer
-  set search_path = public
+  set search_path = public, pg_temp
 as $$
 declare
   filled integer;
@@ -48,5 +50,14 @@ begin
 end
 $$;
 
--- check: the installed body no longer sets active = true
-select position('active = true' in pg_get_functiondef('public.propagate_org_account_numbers()'::regprocedure)) = 0 as no_longer_grants;
+revoke all on function public.propagate_org_account_numbers_v2() from public, anon, authenticated;
+grant execute on function public.propagate_org_account_numbers_v2() to service_role;
+revoke all on function public.propagate_org_account_numbers() from public, anon, authenticated, service_role;
+
+-- check (one row, all true)
+select
+  position('active = true' in pg_get_functiondef('public.propagate_org_account_numbers_v2()'::regprocedure)) = 0 as v2_never_grants,
+  has_function_privilege('service_role', 'public.propagate_org_account_numbers_v2()', 'execute')            as v2_server_can_run,
+  not has_function_privilege('anon', 'public.propagate_org_account_numbers_v2()', 'execute')                as v2_closed_to_public_key,
+  not has_function_privilege('anon', 'public.propagate_org_account_numbers()', 'execute')                   as v1_closed_to_public_key,
+  not has_function_privilege('authenticated', 'public.propagate_org_account_numbers()', 'execute')          as v1_closed_to_signed_in;
