@@ -7,7 +7,7 @@ const XLSX = require('xlsx');
 
 const WHY = { no_quantity: 'No quantity reported', no_amount: 'No amount', not_in_catalog: 'Not matched to a Shop product', no_retail_reference: 'No MSRP or standard cost in the Shop',
   marketing: 'Marketing / display item (not resold)', credit_without_units: 'Credit with no returned units', configuration_not_priced: 'Golden configuration with upgrades — base model price not used',
-  catalog_unavailable: 'Shop catalog could not be read — try again' };
+  catalog_unavailable: 'Catalog could not be read and no recent stored copy — try again', golden_not_connected: 'No Golden catalog connection for this account and no recent stored copy' };
 const n = (v) => (v == null || v === '' ? null : Number(v));
 const pctCell = (v) => (v == null ? null : Number(v) / 100);
 

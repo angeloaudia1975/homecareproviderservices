@@ -17,6 +17,7 @@ const REP = require('./_dealer_report.js');
 const RETIRED = require('./_retired_lines.js');
 const STYLE = require('./_ai_style.js');
 const RC = require('./_report_catalog.js');
+const GREF = require('./_golden_ref.js');
 const RP = require('./_retail_price.js');
 const PR = require('./_pricing.js');
 const { flags: readFlags } = require('./_flags.js');
@@ -131,7 +132,7 @@ async function loadAll(who, b) {
   const catalog = {}; for (const [s, c] of cats) if (c) catalog[s] = c;
   /* Shop categories + retail reference (owner 2026-11-06, _report_catalog): one catalog per line bought, cached 10 minutes;
      Golden from the dealer's own Golden catalog. A line that can't be read gives no reference (a gap), never a guess. */
-  const refcat = {}; const rcNotes = [];
+  const refcat = {}; const rcNotes = []; let goldenInfo = null;
   /* review #109: a failed or unavailable catalog is never cached (the next report tries again) and Golden gets 3 seconds —
      past that its purchases are listed as "catalog unavailable", never guessed and never failing the whole report */
   const keep = async (key, ms, fn, good) => { const c = CACHE.get(key); if (c && Date.now() - c.at < ms) return c.v; const v = await fn(); if (good(v)) CACHE.set(key, { at: Date.now(), v }); return v; };
@@ -139,12 +140,16 @@ async function loadAll(who, b) {
   await Promise.all(slugs.map(async (s2) => {
     try {
       if (RC.GOLDEN.has(s2)) { const fl = await cached('flags', 60000, () => readFlags((pp) => sb('GET', pp)));
-        refcat[s2] = await keep('gcat:' + root, 600000, () => within(RC.goldenCatalog((pp) => sb('GET', pp), String(root), fl), 3000), (v) => !!v); }
+        /* Golden (owner 2026-11-06 §7): live with a bounded retry, else HCPS's stored reference of Golden's retail data
+           (≤ 7 days, labelled with its date), else unavailable — _golden_ref */
+        const gr = await GREF.goldenReference({ sbGet: (pp) => sb('GET', pp), sbSend: (m, pp, body, h) => sb(m, pp, body, h), fetchCatalog: RC.goldenFetcher((pp) => sb('GET', pp), String(root), fl) });
+        refcat[s2] = gr.catalog; goldenInfo = gr;
+        if (!gr.catalog) refcat[s2] = { unavailableReason: gr.reason }; }
       else refcat[s2] = await keep('rcat:' + s2, 600000, () => RC.lineCatalog(reportDeps(), s2), (v) => !!(v && v.readable));
     } catch (e) { refcat[s2] = null; console.error('report catalog failed', s2, e && String(e.message).slice(0, 120)); }
-    if (!refcat[s2] || refcat[s2].readable === false) rcNotes.push(s2);
+    if (!refcat[s2] || refcat[s2].readable === false || refcat[s2].unavailableReason) rcNotes.push(s2);
   }));
-  const resolve = (slug, code, name) => { const cat0 = refcat[slug]; if (!cat0) return { unavailable: true };
+  const resolve = (slug, code, name) => { const cat0 = refcat[slug]; if (!cat0) return { unavailable: true }; if (cat0.unavailableReason) return { unavailable: true, reason: cat0.unavailableReason };
     const m = RC.lookup(cat0, slug, code); if (!m) return null; return Object.assign({}, m.entry, { matched_by: m.matched_by }); };
   let retailRows = [];
   try { retailRows = await sbAll(`dealer_retail_prices?dealer_id=eq.${enc(root)}&select=manufacturer,code,location_id,price&order=id.asc`); } catch (e) { if (!/PGRST205|42P01/.test(String(e.message))) throw e; }
@@ -152,6 +157,9 @@ async function loadAll(who, b) {
   const report = REP.build({ year, today, locations, scope, sales: sales || [], orders: (orders || []).map((o) => Object.assign(o, { items: o.order_items || [] })),
     quotes: quotesRaw || [], catalog, mfrName, firstReport, reportedMonths, network, isRetired: RETIRED.isRetiredLine,
     resolve, isMarketing: RC.isMarketing, marketingLabel: RC.MARKETING, customPrice, companyView: headOffice });
+  if (goldenInfo && goldenInfo.source === 'stored') report.notes.push(`Golden retail prices come from HCPS's stored copy of Golden's catalog as of ${String(goldenInfo.as_of).slice(0, 10)} — Golden did not answer in time just now.`);
+  if (report.valuation) report.valuation.sources = Object.assign({}, report.valuation.sources || {}, goldenInfo ? { golden: { source: goldenInfo.source || 'unavailable', as_of: goldenInfo.as_of || null, reason: goldenInfo.reason || goldenInfo.live_reason || null } } : {});
+  if (goldenInfo) GREF.recordMonitor((m, pp, body, h) => sb(m, pp, body, h), { last_report_coverage_pct: report.valuation ? report.valuation.coverage_pct : null }).catch(() => {});
   if (rcNotes.length) report.notes.push('The Shop catalog could not be read just now for: ' + rcNotes.map((x) => mfrName[x] || x).join(', ') + ' — their purchases are listed as not valued (never estimated); try again shortly.');
   if (quotesRaw == null) report.notes.push('Saved quotes are not available yet.');
   let brand = { business_name: self.business_name || '', logo_url: null };

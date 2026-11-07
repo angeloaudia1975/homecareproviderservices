@@ -70,7 +70,7 @@ function valuate(rows, o) {
        the base MSRP — no invented upgrade pricing). A line whose catalog could not be read says so. */
     const q = r.qty;
     const unitCost = r.qty ? r.amt / r.qty : null;
-    const reason = res && res.unavailable ? 'catalog_unavailable' : !(Math.abs(r.qty) > 0) ? 'no_quantity' : !(r.amt !== 0) ? 'no_amount' : (r.amt < 0 && !(r.qty < 0)) ? 'credit_without_units' : !res ? 'not_in_catalog' : !(res.ref > 0) ? 'no_retail_reference'
+    const reason = res && res.unavailable ? (res.reason === 'golden_not_connected' ? 'golden_not_connected' : 'catalog_unavailable') : !(Math.abs(r.qty) > 0) ? 'no_quantity' : !(r.amt !== 0) ? 'no_amount' : (r.amt < 0 && !(r.qty < 0)) ? 'credit_without_units' : !res ? 'not_in_catalog' : !(res.ref > 0) ? 'no_retail_reference'
       : (res.matched_by === 'golden_base' && !((res.base_price || res.cost) > 0 && unitCost != null && Math.abs(unitCost) <= (res.base_price || res.cost) * 1.02 + 0.01)) ? 'configuration_not_priced' : null;
     if (reason) { if (r.amt !== 0) add(gaps, r.mfr + '|' + r.code + '|' + reason, () => ({ manufacturer: r.mfr, manufacturer_name: o.mName(r.mfr), code: r.code, name: r.name, amount: 0, units: 0, reason }), (x) => { x.amount = r2(x.amount + r.amt); x.units += q; }); continue; }
     const ret = r2(q * res.ref);
