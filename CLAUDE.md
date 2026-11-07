@@ -2332,6 +2332,8 @@ until all three pass the Gold Standard (Structure, Content, Commerce, Partner 36
     is valued only when it cost no more than the base standard price — a paid upgrade is never valued at base MSRP. A return
     removes units only when the report prints a negative quantity; amount-only credits are listed. A catalog that can't be
     read is never cached and its purchases say "catalog unavailable"; Golden gets 3 s inside a report.
+    **Production check (Angelo, 2026-11-06 20:54 CT):** `public.orders` has NO check constraints (read-only query, 0 rows),
+    so the `pending_account_setup` status records normally.
     **Staff preview of the Account Center (#110):** the dealer preview token reads account_center / favorites / branding /
     showroom / account_get; every other dealer-tools action answers 403 in preview.
     **Known gaps recorded for Angelo (not changed):** a dealer with NO Dealer Manager grid still sees territory-rule lines
