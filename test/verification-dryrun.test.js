@@ -19,12 +19,13 @@ function seed() { return standardSeed({
     assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.written, 0); assert.equal(JSON.stringify(w.db.dealer_manufacturers), before, 'nothing written');
     const by = (d, m) => r.body.rows.find((x) => x.dealer_id === d && x.manufacturer === m);
     assert.equal(r.body.summary.identifiers, 7);
-    assert.equal(by('hq', 'bemis').proposed, 'Verify — branch has its own identifier, check');
-    assert.equal(by('hq', 'strongback-mobility').proposed, 'Already verified'); assert.equal(by('hq', 'strongback-mobility').kind, 'name / username');
-    assert.equal(by('hq', 'dalton').proposed, 'Review — conflict', 'same identifier on two families (case-insensitive)');
-    assert.equal(by('hq', 'pedifix').proposed, 'Verify', 'PediFix re-used numbers are noted, not a conflict'); assert.match(by('hq', 'pedifix').issues, /PediFix/);
+    assert.equal(by('hq', 'bemis').proposed, 'Verified — branch has its own identifier');
+    assert.equal(by('hq', 'strongback-mobility').proposed, 'Verified');
+    assert.ok(r.body.rows.every((x) => x.current === 'Verified'), 'every identifier on file is verified (owner rule 2026-11-06)'); assert.equal(by('hq', 'strongback-mobility').kind, 'name / username');
+    assert.equal(by('hq', 'dalton').proposed, 'Verified — conflict noted', 'same identifier on two families (case-insensitive)');
+    assert.equal(by('hq', 'pedifix').proposed, 'Verified', 'PediFix re-used numbers are noted, not a conflict'); assert.match(by('hq', 'pedifix').issues, /PediFix/);
     assert.ok(!r.body.rows.some((x) => x.dealer_id === 'tst'), 'TEST dealer left out'); assert.ok(!r.body.rows.some((x) => x.manufacturer === 'yuwell'), 'blank identifier not listed');
-    assert.match(by('hq', 'bemis').provenance, /not stored/);
+    assert.match(by('hq', 'bemis').provenance, /not recorded/);
   });
   await t('management only', async () => {
     const r = await call(load('dealers-api.js', createWorld(seed())), { action: 'verification_dry_run' }, { token: 'greg' });

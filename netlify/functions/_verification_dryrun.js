@@ -30,11 +30,12 @@ function build({ dms, dealers, claims }) {
     const ref = String(r.account_ref).trim();
     const kind = /\d/.test(ref) ? (/[A-Za-z]/.test(ref) ? 'alphanumeric' : 'numeric') : 'name / username';
     const conflict = (shared && shared.size > 1 && !NAME_FIRST.has(r.manufacturer)) || (cl && cl.status === 'pending' && norm(cl.account_ref) !== norm(r.account_ref));
-    const proposed = verified ? 'Already verified' : conflict ? 'Review — conflict' : (fam && fam.size > 1) ? 'Verify — branch has its own identifier, check' : 'Verify';
+    /* owner rule 2026-11-06 20:57 CT: every identifier on file IS verified; conflicts are listed for information only */
+    const proposed = conflict ? 'Verified — conflict noted' : (fam && fam.size > 1) ? 'Verified — branch has its own identifier' : 'Verified';
     return { dealer_id: String(r.dealer_id), dealer: d.business_name || d.name || '', city: [d.city, d.state].filter(Boolean).join(', '), location: d.parent_id ? 'branch' : 'head office',
       manufacturer: r.manufacturer, identifier: ref, kind, ordering: r.active === false ? 'not approved' : 'approved',
-      current: verified ? 'Verified' : 'Pending (not verified)', proposed, issues: issues.join('; '),
-      provenance: verified ? `Verified by ${r.verified_by || 'HCPS'} ${String(r.verified_at).slice(0, 10)}` : 'Recorded by HCPS (Dealer 360, Dealer Manager or a report import) — the source of each historical entry was not stored' };
+      current: 'Verified', proposed, issues: issues.join('; '),
+      provenance: verified ? `Saved by ${r.verified_by || 'HCPS'} ${String(r.verified_at).slice(0, 10)}` : 'On file in HCPS — verified by owner rule 2026-11-06 (who entered it was not recorded)' };
   }).sort((a, b) => (a.proposed > b.proposed ? 1 : a.proposed < b.proposed ? -1 : 0) || a.dealer.localeCompare(b.dealer) || a.manufacturer.localeCompare(b.manufacturer));
   const summary = { identifiers: out.length, dealers: new Set(out.map((o) => o.dealer_id)).size, by_proposed: {}, by_kind: {}, by_manufacturer: {} };
   for (const o of out) { summary.by_proposed[o.proposed] = (summary.by_proposed[o.proposed] || 0) + 1; summary.by_kind[o.kind] = (summary.by_kind[o.kind] || 0) + 1; summary.by_manufacturer[o.manufacturer] = (summary.by_manufacturer[o.manufacturer] || 0) + 1; }

@@ -3,7 +3,14 @@
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
 const F = (n) => path.join(__dirname, '..', 'netlify', 'functions', n);
 const AS = F('_account_setup.js'), OA = F('orders-admin.js'), AO = F('_accountorg.js'), DT = F('dealer-tools-api.js');
+const ACF = F('_account_center.js'), DR = F('_verification_dryrun.js');
 const M = [
+  { f: F('crm-api.js'), from: "const vOk=l=>!!String(l.account_ref||\"\").trim();", to: "const vOk=l=>!!l.verified_at;", why: 'Dealer 360 not verified by presence' },
+  { f: F('dealers-api.js'), from: "else await sbSend(\"POST\",\"dealer_manufacturers?on_conflict=dealer_id,manufacturer\",{dealer_id:cl.dealer_id,manufacturer:cl.manufacturer,account_ref:cl.account_ref,active:false", to: "else await sbSend(\"POST\",\"dealer_manufacturers?on_conflict=dealer_id,manufacturer\",{dealer_id:cl.dealer_id,manufacturer:cl.manufacturer,account_ref:cl.account_ref,active:true", why: 'claim verify grants ordering' },
+  { f: ACF, from: "if (ref.trim()) return Object.assign({ status: \"verified\"", to: "if (false) return Object.assign({ status: \"verified\"", why: 'identifier on file not verified' },
+  { f: ACF, from: "ordering: !!(dm && dm.active !== false) },\n    claim", to: "ordering: true },\n    claim", why: 'verified treated as ordering' },
+  { f: ACF, from: "if (ref.trim())", to: "if (ref)", why: 'blank identifier verified' },
+  { f: DR, from: "current: 'Verified', proposed", to: "current: 'Pending', proposed", why: 'identifier list says pending' },
   { f: AS, from: "if (d && d[0] && d[0].parent_id) ids.push(String(d[0].parent_id));", to: "", why: 'head-office identifier ignored' },
   { f: AS, from: "(r) => String(r.account_ref == null ? '' : r.account_ref).trim()", to: "(r) => true", why: 'blank identifier counted as an account' },
   { f: AS, from: "(s) => s && !GOLDEN.has(s)", to: "(s) => s", why: 'Golden held' },
@@ -33,7 +40,7 @@ const M = [
   { f: DT, from: "&& String(loc.golden_status || \"None\") !== \"None\")", to: "&& false)", why: 'Golden prospect hidden' },
   { f: DT, from: "return g ? \"Golden account #\" : \"HCPS account\";", to: "return \"HCPS account\";", why: 'Golden number labelled HCPS account' },
 ];
-const SUITES = ['order-routing.test.js', 'dealer-hq-inheritance.test.js', 'account-center.test.js', 'shopcart.test.js'];
+const SUITES = ['order-routing.test.js', 'dealer-hq-inheritance.test.js', 'account-center.test.js', 'shopcart.test.js', 'verification-dryrun.test.js'];
 const run = () => { for (const t of SUITES) { const r = spawnSync(process.execPath, [path.join(__dirname, t)], { encoding: 'utf8', env: process.env }); if (r.status !== 0) return r; } return { status: 0 }; };
 if (run().status !== 0) { console.log('CONTROL FAILED'); process.exit(1); }
 let k = 0; const s = [], bad = [];
